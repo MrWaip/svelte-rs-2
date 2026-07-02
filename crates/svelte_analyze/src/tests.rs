@@ -6488,6 +6488,15 @@ mod block_semantics_each_tests {
         );
     }
 
+    #[track_caller]
+    fn assert_render_index_required(sem: &EachBlockSemantics, expected: bool) {
+        assert_eq!(
+            sem.render_index_required, expected,
+            "render_index_required: expected {expected:?}, got {:?}",
+            sem.render_index_required
+        );
+    }
+
     fn first_each_semantics<'a>(
         data: &'a AnalysisData<'_>,
         component: &'a svelte_ast::Component,
@@ -6719,6 +6728,24 @@ mod block_semantics_each_tests {
         );
         let sem = first_each_semantics(&data, &component);
         assert_each_flags(sem, EachFlags::ITEM_IMMUTABLE);
+    }
+
+    #[test]
+    fn each_keyed_by_item_requires_render_index_when_item_member_mutated() {
+        let (component, data) = analyze_source(
+            r#"<script>let items = $state([]);</script>{#each items as item (item)}<button onclick={() => item.name = 1}>{item.name}</button>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert_render_index_required(sem, true);
+    }
+
+    #[test]
+    fn each_keyed_by_item_no_render_index_without_mutation() {
+        let (component, data) = analyze_source(
+            r#"<script>let items = $state([]);</script>{#each items as item (item)}<span>{item.name}</span>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert_render_index_required(sem, false);
     }
 
     #[test]

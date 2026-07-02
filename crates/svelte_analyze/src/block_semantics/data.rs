@@ -54,6 +54,8 @@ pub struct EachBlockSemantics {
 
     pub shadows_outer: bool,
 
+    pub render_index_required: bool,
+
     pub async_kind: EachAsyncKind,
 
     pub collection: EachCollection,

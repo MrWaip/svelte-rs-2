@@ -3,7 +3,7 @@ use crate::codegen::expr::coarse_wrap;
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use svelte_analyze::{
-    EachAsyncKind, EachBlockSemantics, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
+    EachAsyncKind, EachBlockSemantics, EachCollectionSource, EachFlavor, EachIndexKind,
     EachItemKind, EachKeyKind,
 };
 use svelte_ast::NodeId;
@@ -135,13 +135,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<EachEmit> {
         let block = self.ctx.query.each_block(block_id);
 
-        let (body_uses_index, key_uses_index) = match sem.index {
-            EachIndexKind::Declared {
-                used_in_body,
-                used_in_key,
-                ..
-            } => (used_in_body, used_in_key),
-            EachIndexKind::Absent => (false, false),
+        let key_uses_index = match sem.index {
+            EachIndexKind::Declared { used_in_key, .. } => used_in_key,
+            EachIndexKind::Absent => false,
         };
 
         let user_index_name = block.index.as_ref().map(|r| {
@@ -155,22 +151,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let needs_group_index = matches!(sem.flavor, EachFlavor::BindGroup);
         let needs_collection_id = sem.shadows_outer;
-        let needs_store_index = sem.each_flags.contains(EachFlags::ITEM_REACTIVE)
-            && match &sem.item {
-                EachItemKind::Identifier(item) => self.ctx.query.scoping().is_member_mutated(*item),
-                EachItemKind::Pattern(_) | EachItemKind::NoBinding => false,
-            };
-
-        let needs_legacy_writeback_index = user_index_name.is_none()
-            && match &sem.item {
-                EachItemKind::Identifier(item) => self
-                    .ctx
-                    .query
-                    .analysis
-                    .binding_semantics(*item)
-                    .is_each_item_indexed_legacy(),
-                EachItemKind::Pattern(_) | EachItemKind::NoBinding => false,
-            };
+        let needs_render = sem.render_index_required;
 
         let internal_index_name = self
             .ctx
@@ -179,15 +160,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .each_index_internal_names
             .get(&block_id)
             .cloned();
-
-        let render_reasons = [
-            body_uses_index,
-            needs_group_index,
-            needs_collection_id,
-            needs_store_index,
-            needs_legacy_writeback_index,
-        ];
-        let needs_render = render_reasons.contains(&true);
 
         let render_index_name = if !needs_render {
             None
