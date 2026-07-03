@@ -128,7 +128,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let template_was_empty_before = state.template.is_empty();
 
         let will_css_wrap = matches!(strategy, ContentStrategy::CssWrappedComponent(_));
-        let reserved_tpl_name = if is_root_anchor && !will_css_wrap {
+        let reserved_tpl_name = if is_root_anchor && !will_css_wrap && !state.suppress_root_finalize
+        {
             Some(self.ctx.state.gen_ident("root"))
         } else {
             None
@@ -305,7 +306,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let special_block_end = state.init.len();
 
-        if needs_anchor_reserve && !pre_emit_frag_pending {
+        if needs_anchor_reserve && !pre_emit_frag_pending && !state.suppress_root_finalize {
             let frag = self.ctx.state.gen_ident("fragment");
             if skip_node_reserve {
                 state.pending_anchor_idents = Some((frag, String::new()));
@@ -384,9 +385,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 needs_reset = state.last_fragment_needs_reset;
             }
             ContentStrategy::SingleBlock(id) => {
-                let standalone = self.standalone_ctx_for_single(ctx, id);
-                let use_ctx = standalone.as_ref().unwrap_or(ctx);
-                self.emit_fragment_child(state, use_ctx, id)?;
+                if state.suppress_root_finalize {
+                    self.process_children_with_prefix(state, ctx, &children, emitted_prefix_next)?;
+                    needs_reset = state.last_fragment_needs_reset;
+                } else {
+                    let standalone = self.standalone_ctx_for_single(ctx, id);
+                    let use_ctx = standalone.as_ref().unwrap_or(ctx);
+                    self.emit_fragment_child(state, use_ctx, id)?;
+                }
             }
             ContentStrategy::CssWrappedComponent(id) => {
                 let inline_into_parent = matches!(ctx.anchor, FragmentAnchor::Child { .. });
