@@ -1,7 +1,7 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 import A from "./A.svelte";
-var root_2 = $.from_html(`<span>child</span>`);
+var root = $.from_html(`<span>child</span>`);
 export default function App($$anchor) {
 	let current = A;
 	let cond = false;
@@ -14,7 +14,7 @@ export default function App($$anchor) {
 				var node_1 = $.first_child(fragment_1);
 				{
 					var consequent = ($$anchor) => {
-						var span = root_2();
+						var span = root();
 						$.append($$anchor, span);
 					};
 					$.if(node_1, ($$render) => {

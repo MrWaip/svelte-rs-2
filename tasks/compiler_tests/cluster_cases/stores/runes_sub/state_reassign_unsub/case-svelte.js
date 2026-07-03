@@ -1,7 +1,7 @@
 import * as $ from "svelte/internal/client";
 import { writable } from "svelte/store";
-var root_1 = $.from_html(` <button>remove</button>`, 1);
-var root_2 = $.from_html(`<button>add</button>`);
+var root = $.from_html(` <button>remove</button>`, 1);
+var root_1 = $.from_html(`<button>add</button>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	const $watcherA = () => $.store_get($.get(watcherA), "$watcherA", $$stores);
@@ -11,7 +11,7 @@ export default function App($$anchor, $$props) {
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var fragment_1 = root_1();
+			var fragment_1 = root();
 			var text = $.first_child(fragment_1);
 			var button = $.sibling(text);
 			$.template_effect(() => $.set_text(text, `${$watcherA() ?? ""} `));
@@ -19,7 +19,7 @@ export default function App($$anchor, $$props) {
 			$.append($$anchor, fragment_1);
 		};
 		var alternate = ($$anchor) => {
-			var button_1 = root_2();
+			var button_1 = root_1();
 			$.delegated("click", button_1, () => $.store_unsub($.set(watcherA, writable(0), true), "$watcherA", $$stores));
 			$.append($$anchor, button_1);
 		};

@@ -1,27 +1,23 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<span></span>`);
-var root_3 = $.from_html(`<h1>Big</h1>`);
-var root_4 = $.from_html(`<h2>Small</h2>`);
-var root_2 = $.from_html(`<div><input/></div> <!>`, 1);
-var root_5 = $.from_html(`<span></span>`);
-var root_7 = $.from_html(`<h1>Big</h1>`);
-var root_8 = $.from_html(`<h2>Small</h2>`);
-var root_6 = $.from_html(`<div><input/></div> <!>`, 1);
-var root = $.from_html(`<div><!></div> <div><!></div>`, 1);
+var root = $.from_html(`<span></span>`);
+var root_1 = $.from_html(`<h1>Big</h1>`);
+var root_2 = $.from_html(`<h2>Small</h2>`);
+var root_3 = $.from_html(`<div><input/></div> <!>`, 1);
+var root_4 = $.from_html(`<div><!></div> <div><!></div>`, 1);
 export default function App($$anchor) {
 	let count = 0;
 	let visible = true;
-	var fragment = root();
+	var fragment = root_4();
 	var div = $.first_child(fragment);
 	var node = $.child(div);
 	{
 		var consequent = ($$anchor) => {
-			var span = root_1();
+			var span = root();
 			span.textContent = "0";
 			$.append($$anchor, span);
 		};
 		var alternate_1 = ($$anchor) => {
-			var fragment_1 = root_2();
+			var fragment_1 = root_3();
 			var div_1 = $.first_child(fragment_1);
 			var input = $.child(div_1);
 			$.remove_input_defaults(input);
@@ -30,11 +26,11 @@ export default function App($$anchor) {
 			var node_1 = $.sibling(div_1, 2);
 			{
 				var consequent_1 = ($$anchor) => {
-					var h1 = root_3();
+					var h1 = root_1();
 					$.append($$anchor, h1);
 				};
 				var alternate = ($$anchor) => {
-					var h2 = root_4();
+					var h2 = root_2();
 					$.append($$anchor, h2);
 				};
 				$.if(node_1, ($$render) => {
@@ -54,12 +50,12 @@ export default function App($$anchor) {
 	var node_2 = $.child(div_2);
 	{
 		var consequent_2 = ($$anchor) => {
-			var span_1 = root_5();
+			var span_1 = root();
 			span_1.textContent = "0";
 			$.append($$anchor, span_1);
 		};
 		var alternate_3 = ($$anchor) => {
-			var fragment_2 = root_6();
+			var fragment_2 = root_3();
 			var div_3 = $.first_child(fragment_2);
 			var input_1 = $.child(div_3);
 			$.remove_input_defaults(input_1);
@@ -68,11 +64,11 @@ export default function App($$anchor) {
 			var node_3 = $.sibling(div_3, 2);
 			{
 				var consequent_3 = ($$anchor) => {
-					var h1_1 = root_7();
+					var h1_1 = root_1();
 					$.append($$anchor, h1_1);
 				};
 				var alternate_2 = ($$anchor) => {
-					var h2_1 = root_8();
+					var h2_1 = root_2();
 					$.append($$anchor, h2_1);
 				};
 				$.if(node_3, ($$render) => {

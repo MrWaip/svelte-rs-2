@@ -1,16 +1,16 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p> </p>`);
-var root = $.from_html(`<div></div>`);
+var root = $.from_html(`<p> </p>`);
+var root_1 = $.from_html(`<div></div>`);
 export default function App($$anchor) {
 	let numbers = $.proxy([
 		1,
 		2,
 		3
 	]);
-	var div = root();
+	var div = root_1();
 	{
 		const x = ($$anchor, n = $.noop) => {
-			var p = root_1();
+			var p = root();
 			var text = $.child(p, true);
 			$.reset(p);
 			$.template_effect(() => $.set_text(text, n()));

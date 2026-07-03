@@ -5,7 +5,7 @@ export default function App($$anchor, $$props) {
 	let url = "/api";
 	function outer() {
 		async function inner() {
-			let data = (await $.save($.async_derived(() => fetch(url))))();
+			let data = await $.async_derived(() => fetch(url));
 			return $.get(data);
 		}
 		return inner;

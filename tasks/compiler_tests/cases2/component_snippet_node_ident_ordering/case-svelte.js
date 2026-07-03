@@ -1,12 +1,12 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<!> <div class="cap"><!></div>`, 1);
-var root = $.from_html(`<div><!></div>`);
+var root = $.from_html(`<!> <div class="cap"><!></div>`, 1);
+var root_1 = $.from_html(`<div><!></div>`);
 export default function App($$anchor, $$props) {
-	var div = root();
+	var div = root_1();
 	var node = $.child(div);
 	{
 		const footer = ($$anchor) => {
-			var fragment = root_1();
+			var fragment = root();
 			var node_1 = $.first_child(fragment);
 			$.component(node_1, () => $$props.Btn, ($$anchor, Btn_1) => {
 				Btn_1($$anchor, {});

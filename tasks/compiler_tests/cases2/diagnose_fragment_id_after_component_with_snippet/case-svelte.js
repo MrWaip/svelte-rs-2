@@ -1,12 +1,12 @@
 import * as $ from "svelte/internal/client";
 import A from "./A.svelte";
 import B from "./B.svelte";
-var root_3 = $.from_html(`<div>c</div>`);
-var root = $.from_html(`<!> <!>`, 1);
+var root = $.from_html(`<div>c</div>`);
+var root_1 = $.from_html(`<!> <!>`, 1);
 export default function App($$anchor) {
 	let data = null;
 	let x = null;
-	var fragment = root();
+	var fragment = root_1();
 	var node = $.first_child(fragment);
 	{
 		const inner = ($$anchor) => {
@@ -27,7 +27,7 @@ export default function App($$anchor) {
 			var node_2 = $.first_child(fragment_2);
 			{
 				var consequent = ($$anchor) => {
-					var div = root_3();
+					var div = root();
 					$.append($$anchor, div);
 				};
 				$.if(node_2, ($$render) => {

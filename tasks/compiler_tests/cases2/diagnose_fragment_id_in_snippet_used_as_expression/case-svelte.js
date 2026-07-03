@@ -1,5 +1,10 @@
 import * as $ from "svelte/internal/client";
 import Child from "./Child.svelte";
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy"
+]);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	const body = ($$anchor) => {
@@ -20,11 +25,7 @@ export default function App($$anchor, $$props) {
 		}
 		$.append($$anchor, fragment);
 	};
-	let props = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy"
-	]);
+	let props = $.rest_props($$props, rest_excludes);
 	{
 		let $0 = $.derived(() => $$props.show ? body : undefined);
 		Child($$anchor, { get icon() {

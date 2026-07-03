@@ -1,16 +1,17 @@
 App[$.FILENAME] = "(unknown)";
 import * as $ from "svelte/internal/client";
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy",
+	"$$host",
+	"x"
+]);
 var root = $.add_locations($.from_html(`<p> </p>`), App[$.FILENAME], [[7, 0]]);
 export default function App($$anchor, $$props) {
 	$.check_target(new.target);
 	$.push($$props, true, App);
-	let x = $.prop($$props, "x", 7, 0), rest = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy",
-		"$$host",
-		"x"
-	], "rest");
+	let x = $.prop($$props, "x", 7, 0), rest = $.rest_props($$props, rest_excludes, "rest");
 	let rawData = $.tag($.state({
 		a: 1,
 		b: 2

@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<a> </a>`);
+var root = $.from_html(`<a> </a>`);
 export default function App($$anchor, $$props) {
 	let items = $.prop($$props, "items", 8);
 	var fragment = $.comment();
@@ -10,7 +10,7 @@ export default function App($$anchor, $$props) {
 			const { button } = $.get(item);
 			return { button };
 		});
-		var a = root_1();
+		var a = root();
 		var text = $.child(a, true);
 		$.reset(a);
 		$.template_effect(() => {

@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<p> </p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	let items = $.proxy([
 		1,
@@ -10,7 +10,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	$.each(node, 17, () => items, $.index, ($$anchor, item) => {
 		const row = ($$anchor, v = $.noop) => {
-			var p = root_2();
+			var p = root();
 			var text = $.child(p, true);
 			$.reset(p);
 			$.template_effect(() => $.set_text(text, v()));

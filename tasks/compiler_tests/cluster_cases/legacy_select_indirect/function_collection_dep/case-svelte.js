@@ -1,7 +1,7 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<option> </option>`);
-var root = $.from_html(`<select></select> `, 1);
+var root = $.from_html(`<option> </option>`);
+var root_1 = $.from_html(`<select></select> `, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
 	let letters = $.prop($$props, "letters", 24, () => [
@@ -14,10 +14,10 @@ export default function App($$anchor, $$props) {
 		return letters().map((x) => x.toUpperCase());
 	}
 	$.init();
-	var fragment = root();
+	var fragment = root_1();
 	var select = $.first_child(fragment);
 	$.each(select, 5, () => $.untrack(uppercase), $.index, ($$anchor, letter) => {
-		var option = root_1();
+		var option = root();
 		var text = $.child(option, true);
 		$.reset(option);
 		var option_value = {};

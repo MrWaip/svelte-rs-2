@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p>row</p>`);
-var root_2 = $.from_html(`<div><!></div>`);
+var root = $.from_html(`<p>row</p>`);
+var root_1 = $.from_html(`<div><!></div>`);
 export default function App($$anchor, $$props) {
 	function compute() {
 		return $$props.n + 1;
@@ -10,12 +10,12 @@ export default function App($$anchor, $$props) {
 	{
 		const row = ($$anchor) => {
 			const value = $.derived(compute);
-			var p = root_1();
+			var p = root();
 			$.append($$anchor, p);
 		};
 		$.boundary(node, {}, ($$anchor) => {
 			const value = $.derived(compute);
-			var div = root_2();
+			var div = root_1();
 			var node_1 = $.child(div);
 			row(node_1);
 			$.reset(div);

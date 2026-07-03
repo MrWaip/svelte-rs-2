@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<span>x</span>`);
+var root = $.from_html(`<span>x</span>`);
 var root_1 = $.from_html(`<!> <!>`, 1);
 export default function App($$anchor, $$props) {
 	let headerTag = $.prop($$props, "headerTag", 3, "div");
@@ -13,7 +13,7 @@ export default function App($$anchor, $$props) {
 		var node_2 = $.sibling(node_1, 2);
 		{
 			var consequent = ($$anchor) => {
-				var span = root_2();
+				var span = root();
 				$.append($$anchor, span);
 			};
 			$.if(node_2, ($$render) => {

@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<input type="checkbox"/>`);
+var root = $.from_html(`<input type="checkbox"/>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
 	const filtered = $.mutable_source();
@@ -12,7 +12,7 @@ export default function App($$anchor, $$props) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 1, () => $.get(filtered), $.index, ($$anchor, item, $$index) => {
-		var input = root_1();
+		var input = root();
 		$.remove_input_defaults(input);
 		$.bind_checked(input, () => $.get(item).done, ($$value) => ($.get(item).done = $$value, $.invalidate_inner_signals(() => ($.get(filtered), $.get(items)))));
 		$.append($$anchor, input);

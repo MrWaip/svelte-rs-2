@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<b> </b>`);
+var root = $.from_html(`<b> </b>`);
 export default function App($$anchor) {
 	let arr = $.proxy([
 		1,
@@ -10,7 +10,7 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 18, () => arr, (item) => item, ($$anchor, item, i) => {
-		var b = root_1();
+		var b = root();
 		var text = $.child(b, true);
 		$.reset(b);
 		$.bind_this(b, (v, i) => elements[i] = v, (i) => elements[i], () => [$.get(i)]);

@@ -1,7 +1,7 @@
 App[$.FILENAME] = "(unknown)";
 import * as $ from "svelte/internal/client";
-var root_1 = $.add_locations($.from_html(`<p>failed</p>`), App[$.FILENAME], [[13, 2]]);
-var root_2 = $.add_locations($.from_html(`<div> </div>`), App[$.FILENAME], [[10, 1]]);
+var root = $.add_locations($.from_html(`<p>failed</p>`), App[$.FILENAME], [[13, 2]]);
+var root_1 = $.add_locations($.from_html(`<div> </div>`), App[$.FILENAME], [[10, 1]]);
 export default function App($$anchor, $$props) {
 	$.check_target(new.target);
 	$.push($$props, true, App);
@@ -15,13 +15,13 @@ export default function App($$anchor, $$props) {
 		const failed = $.wrap_snippet(App, function($$anchor) {
 			const value = $.tag($.derived(compute), "value");
 			$.validate_snippet_args(...arguments);
-			var p = root_1();
+			var p = root();
 			$.append($$anchor, p);
 		});
 		$.boundary(node, { failed }, ($$anchor) => {
 			const value = $.tag($.derived(compute), "value");
 			$.get(value);
-			var div = root_2();
+			var div = root_1();
 			var text = $.child(div, true);
 			$.reset(div);
 			$.template_effect(() => $.set_text(text, $.get(value)));

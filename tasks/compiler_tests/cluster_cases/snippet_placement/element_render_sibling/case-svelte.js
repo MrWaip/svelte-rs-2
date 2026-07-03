@@ -1,11 +1,11 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<span>hi</span>`);
-var root = $.from_html(`<div><!></div>`);
+var root = $.from_html(`<span>hi</span>`);
+var root_1 = $.from_html(`<div><!></div>`);
 export default function App($$anchor) {
-	var div = root();
+	var div = root_1();
 	{
 		const t = ($$anchor) => {
-			var span = root_1();
+			var span = root();
 			$.append($$anchor, span);
 		};
 		var node = $.child(div);

@@ -1,16 +1,16 @@
 import * as $ from "svelte/internal/client";
 const row = ($$anchor, c = $.noop) => {
-	var span = root_1();
+	var span = root();
 	var text = $.child(span, true);
 	$.reset(span);
 	$.template_effect(() => $.set_text(text, c()));
 	$.append($$anchor, span);
 };
-var root_1 = $.from_html(`<span> </span>`);
-var root = $.from_html(`<button> </button> <!>`, 1);
+var root = $.from_html(`<span> </span>`);
+var root_1 = $.from_html(`<button> </button> <!>`, 1);
 export default function App($$anchor) {
 	let count = $.state(0);
-	var fragment = root();
+	var fragment = root_1();
 	var button = $.first_child(fragment);
 	var text_1 = $.child(button, true);
 	$.reset(button);

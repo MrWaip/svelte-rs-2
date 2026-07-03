@@ -1,13 +1,13 @@
 import * as $ from "svelte/internal/client";
 const summary = ($$anchor) => {
-	var section = root_1();
+	var section = root();
 	$.append($$anchor, section);
 };
-var root_1 = $.from_html(`<section class="summary svelte-ic1cb7">summary</section>`);
-var root = $.from_html(`<div><!></div>`);
+var root = $.from_html(`<section class="summary svelte-ic1cb7">summary</section>`);
+var root_1 = $.from_html(`<div><!></div>`);
 export default function App($$anchor) {
 	let active = true;
-	var div = root();
+	var div = root_1();
 	$.set_class(div, 1, "chunk-shell svelte-ic1cb7", null, {}, { state: active });
 	var node = $.child(div);
 	summary(node);

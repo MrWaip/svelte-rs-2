@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p> </p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
 	let rows = $.prop($$props, "rows", 8);
 	const lookup = {
@@ -23,7 +23,7 @@ export default function App($$anchor, $$props) {
 				y
 			};
 		});
-		var p = root_1();
+		var p = root();
 		var text = $.child(p);
 		$.reset(p);
 		$.template_effect(() => $.set_text(text, `${$.get(computed_const).x ?? ""}:${$.get(computed_const).y ?? ""}`));

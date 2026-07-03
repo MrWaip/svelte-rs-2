@@ -1,12 +1,12 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<div><div></div> <button></button></div>`);
-var root_3 = $.from_html(`<div><p>Lorem</p></div>`);
-var root_4 = $.from_html(`<h2>Old UI</h2>`);
-var root_1 = $.from_html(`<div><!></div>`);
-var root_5 = $.from_html(`<div></div>`);
-var root = $.from_html(`<h1><span></span> <button>+</button> some long text</h1> <noscript></noscript> <!>`, 1);
+var root = $.from_html(`<div><div></div> <button></button></div>`);
+var root_1 = $.from_html(`<div><p>Lorem</p></div>`);
+var root_2 = $.from_html(`<h2>Old UI</h2>`);
+var root_3 = $.from_html(`<div><!></div>`);
+var root_4 = $.from_html(`<div></div>`);
+var root_5 = $.from_html(`<h1><span></span> <button>+</button> some long text</h1> <noscript></noscript> <!>`, 1);
 export default function App($$anchor) {
-	var fragment = root();
+	var fragment = root_5();
 	var h1 = $.first_child(fragment);
 	var span = $.child(h1);
 	span.textContent = `Entities ${logged_in ?? ""}`;
@@ -15,11 +15,11 @@ export default function App($$anchor) {
 	var node = $.sibling(h1, 4);
 	{
 		var consequent_2 = ($$anchor) => {
-			var div = root_1();
+			var div = root_3();
 			var node_1 = $.child(div);
 			{
 				var consequent = ($$anchor) => {
-					var div_1 = root_2();
+					var div_1 = root();
 					var div_2 = $.child(div_1);
 					div_2.textContent = user_name;
 					var button = $.sibling(div_2, 2);
@@ -28,11 +28,11 @@ export default function App($$anchor) {
 					$.append($$anchor, div_1);
 				};
 				var consequent_1 = ($$anchor) => {
-					var div_3 = root_3();
+					var div_3 = root_1();
 					$.append($$anchor, div_3);
 				};
 				var alternate = ($$anchor) => {
-					var h2 = root_4();
+					var h2 = root_2();
 					$.append($$anchor, h2);
 				};
 				$.if(node_1, ($$render) => {
@@ -45,7 +45,7 @@ export default function App($$anchor) {
 			$.append($$anchor, div);
 		};
 		var alternate_1 = ($$anchor) => {
-			var div_4 = root_5();
+			var div_4 = root_4();
 			div_4.textContent = `Spinner ${percent ?? ""}`;
 			$.append($$anchor, div_4);
 		};

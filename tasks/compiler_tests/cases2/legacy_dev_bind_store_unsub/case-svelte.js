@@ -8,7 +8,7 @@ export default function App($$anchor, $$props) {
 	$.push($$props, false, App);
 	const $s = () => ($.validate_store($.get(s), "s"), $.store_get($.get(s), "$s", $$stores));
 	const [$$stores, $$cleanup] = $.setup_stores();
-	let s = $.mutable_source(writable(0));
+	let s = $.tag($.mutable_source(writable(0)), "s");
 	function swap() {
 		$.store_unsub($.set(s, writable(1)), "$s", $$stores);
 	}

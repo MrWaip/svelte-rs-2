@@ -3,7 +3,7 @@ import Panel from "./Panel.svelte";
 import { formatDate } from "./utils.js";
 import { onMount } from "svelte";
 const badge = ($$anchor, text = $.noop, variant = $.noop) => {
-	var span = root_2();
+	var span = root_1();
 	let classes;
 	var text_2 = $.child(span, true);
 	$.reset(span);
@@ -17,7 +17,7 @@ const badge = ($$anchor, text = $.noop, variant = $.noop) => {
 	$.append($$anchor, span);
 };
 const card = ($$anchor, heading = $.noop, body = $.noop) => {
-	var div = root_3();
+	var div = root_2();
 	var h3 = $.child(div);
 	var text_3 = $.child(h3, true);
 	$.reset(h3);
@@ -33,47 +33,48 @@ const card = ($$anchor, heading = $.noop, body = $.noop) => {
 	});
 	$.append($$anchor, div);
 };
-var root_1 = $.from_html(`<li> </li>`);
-var root_2 = $.from_html(`<span> </span>`);
-var root_3 = $.from_html(`<div class="card"><h3> </h3> <p> </p> <!></div>`);
-var root_5 = $.from_html(`<!> <div class="entry"> </div>`, 1);
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy",
+	"title",
+	"theme",
+	"editable",
+	"config",
+	"multiplier"
+]);
+var root = $.from_html(`<li> </li>`);
+var root_1 = $.from_html(`<span> </span>`);
+var root_2 = $.from_html(`<div class="card"><h3> </h3> <p> </p> <!></div>`);
+var root_3 = $.from_html(`<!> <div class="entry"> </div>`, 1);
 var root_4 = $.from_html(`<section><p> </p> <!></section>`);
-var root_8 = $.from_html(`Title <p>Nothing here yet</p>`, 1);
-var root_7 = $.from_html(`<p>Nothing here yet</p> <!>`, 1);
-var root_9 = $.from_html(`<noscript></noscript> <p> </p>`, 1);
-var root_10 = $.from_html(`<span empty="">Duis aute irure dolor in reprehenderit in voluptate velit esse
+var root_5 = $.from_html(`Title <p>Nothing here yet</p>`, 1);
+var root_6 = $.from_html(`<p>Nothing here yet</p> <!>`, 1);
+var root_7 = $.from_html(`<noscript></noscript> <p> </p>`, 1);
+var root_8 = $.from_html(`<span empty="">Duis aute irure dolor in reprehenderit in voluptate velit esse
                 cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat
                 cupidatat non proident, sunt in culpa qui officia deserunt
                 mollit anim id est laborum. Chunk 0.</span>`);
-var root_12 = $.from_html(`<h1>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed
+var root_9 = $.from_html(`<h1>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed
                     do eiusmod tempor incididunt ut labore et dolore magna
                     aliqua. Chunk 0.</h1>`);
-var root_14 = $.from_html(`<h2>EMPTY</h2>`);
+var root_10 = $.from_html(`<h2>EMPTY</h2>`);
 var root_11 = $.from_html(`<div><input/></div> <!>`, 1);
-var root_15 = $.from_html(`<p> </p>`);
-var root = $.from_html(`<header><h1> </h1> <input/> <button> </button></header> <!> <!> <div> <p> </p> <div>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
+var root_12 = $.from_html(`<p> </p>`);
+var root_13 = $.from_html(`<header><h1> </h1> <input/> <button> </button></header> <!> <!> <div> <p> </p> <div>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
         tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
         veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
         commodo consequat. <!></div> <!> <input/> <!> <!></div>`, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	const row = ($$anchor, item = $.noop) => {
-		var li = root_1();
+		var li = root();
 		var text_1 = $.child(li);
 		$.reset(li);
 		$.template_effect(() => $.set_text(text_1, `${item() ?? ""} — ${$.get(count) ?? ""}`));
 		$.append($$anchor, li);
 	};
-	let theme = $.prop($$props, "theme", 3, "light"), config = $.prop($$props, "config", 27, () => $.proxy({})), multiplier = $.prop($$props, "multiplier", 3, 2), extras = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy",
-		"title",
-		"theme",
-		"editable",
-		"config",
-		"multiplier"
-	]);
+	let theme = $.prop($$props, "theme", 3, "light"), config = $.prop($$props, "config", 27, () => $.proxy({})), multiplier = $.prop($$props, "multiplier", 3, 2), extras = $.rest_props($$props, rest_excludes);
 	let count = $.state(0);
 	let query = $.state("");
 	let state = $.state("");
@@ -106,7 +107,7 @@ export default function App($$anchor, $$props) {
 		reset,
 		formatTitle
 	};
-	var fragment = root();
+	var fragment = root_13();
 	var header = $.first_child(fragment);
 	$.attribute_effect(header, () => ({
 		id: "top",
@@ -132,7 +133,7 @@ export default function App($$anchor, $$props) {
 			$.reset(p_1);
 			var node_2 = $.sibling(p_1, 2);
 			$.each(node_2, 17, () => items, $.index, ($$anchor, item) => {
-				var fragment_1 = root_5();
+				var fragment_1 = root_3();
 				var node_3 = $.first_child(fragment_1);
 				row(node_3, () => $.get(item));
 				var div_1 = $.sibling(node_3, 2);
@@ -155,7 +156,7 @@ export default function App($$anchor, $$props) {
 					return $.get(count);
 				},
 				children: ($$anchor, $$slotProps) => {
-					var fragment_3 = root_7();
+					var fragment_3 = root_6();
 					var node_4 = $.sibling($.first_child(fragment_3), 2);
 					Panel(node_4, {
 						label: "empty",
@@ -164,7 +165,7 @@ export default function App($$anchor, $$props) {
 						},
 						children: ($$anchor, $$slotProps) => {
 							$.next();
-							var fragment_4 = root_8();
+							var fragment_4 = root_5();
 							$.next();
 							$.append($$anchor, fragment_4);
 						},
@@ -176,7 +177,7 @@ export default function App($$anchor, $$props) {
 			});
 		};
 		var alternate = ($$anchor) => {
-			var fragment_5 = root_9();
+			var fragment_5 = root_7();
 			var p_2 = $.sibling($.first_child(fragment_5), 2);
 			var text_9 = $.child(p_2, true);
 			$.reset(p_2);
@@ -208,7 +209,7 @@ export default function App($$anchor, $$props) {
 	var node_6 = $.sibling($.child(div_3));
 	{
 		var consequent_2 = ($$anchor) => {
-			var span_1 = root_10();
+			var span_1 = root_8();
 			$.template_effect(() => {
 				$.set_attribute(span_1, "title", `${$$props.title ?? ""}: ${$.get(doubled) ?? ""}`);
 				$.set_attribute(span_1, "state", $.get(state));
@@ -226,7 +227,7 @@ export default function App($$anchor, $$props) {
 			var node_7 = $.sibling(div_4, 2);
 			{
 				var consequent_3 = ($$anchor) => {
-					var h1_1 = root_12();
+					var h1_1 = root_9();
 					$.template_effect(() => $.set_attribute(h1_1, "state", $.get(state)));
 					$.append($$anchor, h1_1);
 				};
@@ -235,7 +236,7 @@ export default function App($$anchor, $$props) {
 					$.append($$anchor, text_12);
 				};
 				var alternate_1 = ($$anchor) => {
-					var h2 = root_14();
+					var h2 = root_10();
 					$.append($$anchor, h2);
 				};
 				$.if(node_7, ($$render) => {
@@ -259,7 +260,7 @@ export default function App($$anchor, $$props) {
 	$.reset(div_3);
 	var node_8 = $.sibling(div_3, 2);
 	$.each(node_8, 17, () => items, $.index, ($$anchor, item) => {
-		var p_4 = root_15();
+		var p_4 = root_12();
 		$.attribute_effect(p_4, () => ({
 			...extras,
 			"data-index": "chunk-0"

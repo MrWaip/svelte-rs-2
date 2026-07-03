@@ -1,12 +1,12 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<label>b <input type="checkbox"/></label>`);
-var root = $.from_html(`<button> </button> <label>a <input type="checkbox"/></label> <!> <label> <input value="just here, so b is not the last input"/></label>`, 1);
+var root = $.from_html(`<label>b <input type="checkbox"/></label>`);
+var root_1 = $.from_html(`<button> </button> <label>a <input type="checkbox"/></label> <!> <label> <input value="just here, so b is not the last input"/></label>`, 1);
 export default function App($$anchor, $$props) {
 	const binding_group = [];
 	let test = $.prop($$props, "test", 28, () => []);
 	let hidden = $.mutable_source(false);
-	var fragment = root();
+	var fragment = root_1();
 	var button = $.first_child(fragment);
 	var text = $.child(button);
 	$.reset(button);
@@ -18,7 +18,7 @@ export default function App($$anchor, $$props) {
 	var node = $.sibling(label, 2);
 	{
 		var consequent = ($$anchor) => {
-			var label_1 = root_1();
+			var label_1 = root();
 			var input_1 = $.sibling($.child(label_1));
 			$.remove_input_defaults(input_1);
 			input_1.value = input_1.__value = "b";

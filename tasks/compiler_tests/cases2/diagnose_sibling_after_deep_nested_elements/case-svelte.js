@@ -1,8 +1,8 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<div><div><div><div><span>a</span></div></div></div> <div><!></div></div>`);
+var root = $.from_html(`<div><div><div><div><span>a</span></div></div></div> <div><!></div></div>`);
 export default function App($$anchor) {
 	const inner = ($$anchor, mf = $.noop) => {
-		var div = root_1();
+		var div = root();
 		var div_1 = $.sibling($.child(div), 2);
 		var node = $.child(div_1);
 		$.key(node, () => x, ($$anchor) => {

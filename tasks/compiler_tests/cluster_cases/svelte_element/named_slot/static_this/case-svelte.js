@@ -1,11 +1,11 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 import Foo from "./Foo.svelte";
-var root_1 = $.from_html(`<span>default</span>`);
+var root = $.from_html(`<span>default</span>`);
 export default function App($$anchor) {
 	Foo($$anchor, {
 		children: ($$anchor, $$slotProps) => {
-			var span = root_1();
+			var span = root();
 			$.append($$anchor, span);
 		},
 		$$slots: {

@@ -1,11 +1,11 @@
 import * as $ from "svelte/internal/client";
 import Component from "./Component.svelte";
-var root_1 = $.from_html(`<p>child content</p>`);
-var root = $.from_html(`<!> <!> <!>`, 1);
+var root = $.from_html(`<p>child content</p>`);
+var root_1 = $.from_html(`<!> <!> <!>`, 1);
 export default function App($$anchor) {
 	let ref = $.state(void 0);
 	let plainRef;
-	var fragment = root();
+	var fragment = root_1();
 	var node = $.first_child(fragment);
 	$.bind_this(Component(node, {}), ($$value) => $.set(ref, $$value, true), () => $.get(ref));
 	var node_1 = $.sibling(node, 2);
@@ -14,7 +14,7 @@ export default function App($$anchor) {
 	$.bind_this(Component(node_2, {
 		name: "test",
 		children: ($$anchor, $$slotProps) => {
-			var p = root_1();
+			var p = root();
 			$.append($$anchor, p);
 		},
 		$$slots: { default: true }

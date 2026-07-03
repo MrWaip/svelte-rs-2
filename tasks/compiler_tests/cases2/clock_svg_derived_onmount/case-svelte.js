@@ -1,8 +1,8 @@
 import * as $ from "svelte/internal/client";
 import { onMount } from "svelte";
-var root_2 = $.from_svg(`<line class="minor svelte-1kjtqer" y1="42" y2="45"></line>`);
+var root = $.from_svg(`<line class="minor svelte-1kjtqer" y1="42" y2="45"></line>`);
 var root_1 = $.from_svg(`<line class="major svelte-1kjtqer" y1="35" y2="45"></line><!>`, 1);
-var root = $.from_svg(`<svg viewBox="-50 -50 100 100" class="svelte-1kjtqer"><circle class="clock-face svelte-1kjtqer" r="48"></circle><!><line class="hour svelte-1kjtqer" y1="2" y2="-20"></line><line class="minute svelte-1kjtqer" y1="4" y2="-30"></line><g><line class="second svelte-1kjtqer" y1="10" y2="-38"></line><line class="second-counterweight svelte-1kjtqer" y1="10" y2="2"></line></g></svg>`);
+var root_2 = $.from_svg(`<svg viewBox="-50 -50 100 100" class="svelte-1kjtqer"><circle class="clock-face svelte-1kjtqer" r="48"></circle><!><line class="hour svelte-1kjtqer" y1="2" y2="-20"></line><line class="minute svelte-1kjtqer" y1="4" y2="-30"></line><g><line class="second svelte-1kjtqer" y1="10" y2="-38"></line><line class="second-counterweight svelte-1kjtqer" y1="10" y2="2"></line></g></svg>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	let time = $.state($.proxy(new Date()));
@@ -17,7 +17,7 @@ export default function App($$anchor, $$props) {
 			clearInterval(interval);
 		};
 	});
-	var svg = root();
+	var svg = root_2();
 	var node = $.sibling($.child(svg));
 	$.each(node, 16, () => [
 		0,
@@ -42,7 +42,7 @@ export default function App($$anchor, $$props) {
 			3,
 			4
 		], $.index, ($$anchor, offset) => {
-			var line_1 = root_2();
+			var line_1 = root();
 			$.template_effect(() => $.set_attribute(line_1, "transform", `rotate(${6 * (minute + offset)})`));
 			$.append($$anchor, line_1);
 		});

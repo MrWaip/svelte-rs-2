@@ -1,13 +1,13 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<li><!></li>`);
+var root = $.from_html(`<li><!></li>`);
 var root_1 = $.from_html(`<ul></ul>`);
-var root = $.from_html(`<article><span class="name"> </span> <!></article>`);
+var root_2 = $.from_html(`<article><span class="name"> </span> <!></article>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
 	let file = $.prop($$props, "file", 8);
 	$.init();
-	var article = root();
+	var article = root_2();
 	var span = $.child(article);
 	var text = $.child(span, true);
 	$.reset(span);
@@ -16,7 +16,7 @@ export default function App($$anchor, $$props) {
 		var consequent = ($$anchor) => {
 			var ul = root_1();
 			$.each(ul, 5, () => ($.deep_read_state(file()), $.untrack(() => file().children)), $.index, ($$anchor, child) => {
-				var li = root_2();
+				var li = root();
 				var node_1 = $.child(li);
 				App(node_1, { get file() {
 					return $.get(child);

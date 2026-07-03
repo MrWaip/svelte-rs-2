@@ -5,7 +5,7 @@ var root = $.add_locations($.from_html(`<button>+</button>`), App[$.FILENAME], [
 export default function App($$anchor, $$props) {
 	$.check_target(new.target);
 	$.push($$props, false, App);
-	let count = $.mutable_source(0);
+	let count = $.tag($.mutable_source(0), "count");
 	function bump() {
 		$.set(count, $.get(count) + 1);
 	}

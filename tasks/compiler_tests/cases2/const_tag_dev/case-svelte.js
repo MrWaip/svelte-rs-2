@@ -1,6 +1,6 @@
 App[$.FILENAME] = "(unknown)";
 import * as $ from "svelte/internal/client";
-var root_1 = $.add_locations($.from_html(`<p> </p>`), App[$.FILENAME], [[7, 1]]);
+var root = $.add_locations($.from_html(`<p> </p>`), App[$.FILENAME], [[7, 1]]);
 export default function App($$anchor, $$props) {
 	$.check_target(new.target);
 	$.push($$props, true, App);
@@ -15,7 +15,7 @@ export default function App($$anchor, $$props) {
 	$.add_svelte_meta(() => $.each(node, 17, () => items, $.index, ($$anchor, item) => {
 		const doubled = $.tag($.derived(() => $.get(item) * 2), "doubled");
 		$.get(doubled);
-		var p = root_1();
+		var p = root();
 		var text = $.child(p, true);
 		$.reset(p);
 		$.template_effect(() => $.set_text(text, $.get(doubled)));

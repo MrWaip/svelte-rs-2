@@ -6,8 +6,8 @@ const defaultWrapWith = ($$anchor, mf = $.noop) => {
 	$.snippet(node, mf);
 	$.append($$anchor, fragment);
 };
-var root_3 = $.from_html(`<b>x</b>`);
-var root = $.from_html(`<div><!></div>`);
+var root = $.from_html(`<b>x</b>`);
+var root_1 = $.from_html(`<div><!></div>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	const $page = () => $.store_get(page, "$page", $$stores);
@@ -17,7 +17,7 @@ export default function App($$anchor, $$props) {
 		var node_1 = $.first_child(fragment_1);
 		{
 			var consequent = ($$anchor) => {
-				var b = root_3();
+				var b = root();
 				$.append($$anchor, b);
 			};
 			$.if(node_1, ($$render) => {
@@ -27,7 +27,7 @@ export default function App($$anchor, $$props) {
 		$.append($$anchor, fragment_1);
 	};
 	let wrapWith = $.prop($$props, "wrapWith", 3, defaultWrapWith);
-	var div = root();
+	var div = root_1();
 	var node_2 = $.child(div);
 	$.snippet(node_2, wrapWith, () => mf);
 	$.reset(div);

@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<div> </div>`);
+var root = $.from_html(`<div> </div>`);
 export default function App($$anchor, $$props) {
 	function compute() {
 		return $$props.n + 1;
@@ -8,7 +8,7 @@ export default function App($$anchor, $$props) {
 	var node = $.first_child(fragment);
 	$.boundary(node, {}, ($$anchor) => {
 		const value = $.derived(compute);
-		var div = root_1();
+		var div = root();
 		var text = $.child(div, true);
 		$.reset(div);
 		$.template_effect(() => $.set_text(text, $.get(value)));

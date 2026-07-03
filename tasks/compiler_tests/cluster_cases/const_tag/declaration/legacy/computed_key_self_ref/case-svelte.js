@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<button> </button>`);
+var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
 	let boxes = [{ k1: "a" }];
 	let area = "";
@@ -15,7 +15,7 @@ export default function App($$anchor) {
 				sidetwo
 			};
 		});
-		var button = root_1();
+		var button = root();
 		var text = $.child(button);
 		$.reset(button);
 		$.template_effect(() => $.set_text(text, `${$.get(computed_const).sideone ?? ""}${$.get(computed_const).sidetwo ?? ""}${$.get(computed_const).i ?? ""}`));

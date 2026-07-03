@@ -5,8 +5,8 @@ var root = $.add_locations($.from_html(`<p> </p> <strong> </strong> <!>`, 1), Ap
 export default function App($$anchor, $$props) {
 	$.check_target(new.target);
 	$.push($$props, false, App);
-	let title = $.mutable_source("x");
-	let count = $.mutable_source(0);
+	let title = $.tag($.mutable_source("x"), "title");
+	let count = $.tag($.mutable_source(0), "count");
 	function tick() {
 		$.set(title, "y");
 		$.set(count, 1);

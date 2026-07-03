@@ -1,14 +1,14 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<h1>Header</h1>`);
-var root_2 = $.from_html(`<p>Footer</p>`);
+var root = $.from_html(`<h1>Header</h1>`);
+var root_1 = $.from_html(`<p>Footer</p>`);
 export default function App($$anchor) {
 	{
 		const header = ($$anchor) => {
-			var h1 = root_1();
+			var h1 = root();
 			$.append($$anchor, h1);
 		};
 		const footer = ($$anchor) => {
-			var p = root_2();
+			var p = root_1();
 			$.append($$anchor, p);
 		};
 		Card($$anchor, {

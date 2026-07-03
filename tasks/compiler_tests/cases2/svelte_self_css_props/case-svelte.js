@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<svelte-css-wrapper style="display: contents"><!></svelte-css-wrapper>`, 1);
+var root = $.from_html(`<svelte-css-wrapper style="display: contents"><!></svelte-css-wrapper>`, 1);
 export default function App($$anchor) {
 	let count = 1;
 	let color = "red";
@@ -8,7 +8,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var fragment_1 = root_1();
+			var fragment_1 = root();
 			var node_1 = $.first_child(fragment_1);
 			{
 				$.css_props(node_1, () => ({ "--my-color": color }));

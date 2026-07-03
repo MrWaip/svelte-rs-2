@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
 import { tooltip } from "./actions.js";
-var root_1 = $.from_html(`<div> </div>`);
+var root = $.from_html(`<div> </div>`);
 export default function App($$anchor) {
 	let items = $.proxy([
 		"a",
@@ -10,7 +10,7 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 17, () => items, $.index, ($$anchor, item) => {
-		var div = root_1();
+		var div = root();
 		var text = $.child(div, true);
 		$.reset(div);
 		$.attach(div, () => tooltip);

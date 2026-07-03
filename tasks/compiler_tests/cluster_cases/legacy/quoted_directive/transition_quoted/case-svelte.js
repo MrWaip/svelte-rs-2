@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<div></div>`);
+var root = $.from_html(`<div></div>`);
 export default function App($$anchor) {
 	function fade(node) {
 		return {};
@@ -10,7 +10,7 @@ export default function App($$anchor) {
 	var node_1 = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var div = root_1();
+			var div = root();
 			$.transition(3, div, () => fade, () => ({ duration: 200 }));
 			$.append($$anchor, div);
 		};

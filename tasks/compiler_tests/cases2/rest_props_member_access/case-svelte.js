@@ -1,13 +1,14 @@
 import * as $ from "svelte/internal/client";
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy",
+	"id"
+]);
 var root = $.from_html(`<p> </p> <span> </span> <div> </div>`, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
-	let props = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy",
-		"id"
-	]);
+	let props = $.rest_props($$props, rest_excludes);
 	const label = $.derived(() => $$props.label + "!");
 	const style = $.derived(() => $$props.style);
 	const color = $.derived(() => $$props.style.color);

@@ -5,9 +5,9 @@ var root = $.add_locations($.from_html(`<button>bump</button> <div></div>`, 1), 
 export default function App($$anchor, $$props) {
 	$.check_target(new.target);
 	$.push($$props, false, App);
-	let title = $.mutable_source("t");
-	let counter = $.mutable_source(0);
-	let flag = $.mutable_source("x");
+	let title = $.tag($.mutable_source("t"), "title");
+	let counter = $.tag($.mutable_source(0), "counter");
+	let flag = $.tag($.mutable_source("x"), "flag");
 	function bump() {
 		$.set(title, $.get(title) + "!");
 		$.set(counter, $.get(counter) + 1);
