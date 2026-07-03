@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Load narsil-mcp tools. Always prefer narsil-mcp tools for code search. Use narsil-mcp reindex tool first, when results outdated.'"
+            "command": "echo 'Prefer narsil-mcp for code search. An empty result is NOT a disconnect and NOT a reason to fall back to grep: the index is fine. Escalate instead — prose query -> semantic_search (BM25, not search_code); exact symbol -> find_symbols/get_symbol_definition; drop file_pattern and simplify the query. Only after that ladder is exhausted use grep. reindex ONLY when on-disk code actually changed. Protocol: docs/agents/narsil.md'"
           }
         ]
       }
