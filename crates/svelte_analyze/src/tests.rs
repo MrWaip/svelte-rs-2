@@ -6221,6 +6221,61 @@ fn analyze_module_ignores_nested_only_store_like_bindings() {
 }
 
 #[test]
+fn analyze_module_reports_experimental_async_for_derived_await() {
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"
+        export async function create_derived(get_promise, get_num) {
+            let value = $derived((await get_promise()) * get_num());
+            return { get value() { return value; } };
+        }
+    "#;
+
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false);
+    let async_diags = diags
+        .iter()
+        .filter(|diag| diag.kind.code() == "experimental_async")
+        .count();
+
+    assert_eq!(async_diags, 1, "unexpected diagnostics: {diags:?}");
+}
+
+#[test]
+fn analyze_module_reports_experimental_async_for_module_top_level_derived_await() {
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"
+        export const value = $derived(await Promise.resolve(1));
+    "#;
+
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false);
+    let async_diags = diags
+        .iter()
+        .filter(|diag| diag.kind.code() == "experimental_async")
+        .count();
+
+    assert_eq!(async_diags, 1, "unexpected diagnostics: {diags:?}");
+}
+
+#[test]
+fn analyze_module_ignores_await_in_plain_module_function() {
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"
+        export async function load(fetch) {
+            const response = await fetch('/data');
+            return await response.json();
+        }
+    "#;
+
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false);
+
+    assert!(
+        !diags
+            .iter()
+            .any(|diag| diag.kind.code() == "experimental_async"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
 fn prop_source_member_mutation_root_in_script_assignment() {
     let (_component, data, parsed) = analyze_source_with_parsed(
         r#"<script>

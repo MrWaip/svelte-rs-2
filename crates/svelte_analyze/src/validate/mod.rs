@@ -131,6 +131,14 @@ pub fn validate_standalone_module(
     typescript::validate(program, diags);
 }
 
+pub fn validate_module_experimental_async(
+    data: &AnalysisData,
+    program: &Program<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    experimental_async::validate_module_program(data, program, diags);
+}
+
 fn validate_perf_class_warnings(
     program: &Program<'_>,
     base_function_depth: u32,

@@ -219,6 +219,10 @@ pub fn analyze_module<'a>(
                 &mut data.reactivity,
                 data.scoping.semantics(),
             );
+
+            if let Some(program) = parsed.program.as_ref() {
+                validate::validate_module_experimental_async(&data, program, &mut diags);
+            }
         }
         Err(errs) => diags.extend(errs),
     }

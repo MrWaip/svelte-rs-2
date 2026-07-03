@@ -24,6 +24,25 @@ pub(super) fn validate_instance_program(
         diags,
         function_depth: 0,
         expression_active: false,
+        check_top_level: true,
+    };
+    visitor.visit_program(program);
+}
+
+pub fn validate_module_program(
+    data: &AnalysisData<'_>,
+    program: &Program<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if data.script.experimental_async {
+        return;
+    }
+    let mut visitor = ExperimentalAsyncValidator {
+        reactivity: &data.reactivity,
+        diags,
+        function_depth: 0,
+        expression_active: false,
+        check_top_level: false,
     };
     visitor.visit_program(program);
 }
@@ -33,6 +52,7 @@ struct ExperimentalAsyncValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
     function_depth: u32,
     expression_active: bool,
+    check_top_level: bool,
 }
 
 impl<'a> Visit<'a> for ExperimentalAsyncValidator<'_> {
@@ -80,7 +100,7 @@ impl<'a> Visit<'a> for ExperimentalAsyncValidator<'_> {
     }
 
     fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
-        if self.function_depth == 0 || self.expression_active {
+        if (self.check_top_level && self.function_depth == 0) || self.expression_active {
             self.diags.push(Diagnostic::error(
                 DiagnosticKind::ExperimentalAsync,
                 Span::new(expr.span.start, expr.span.end),
