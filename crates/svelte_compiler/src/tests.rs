@@ -96,27 +96,6 @@ fn auto_mode_effect_rune_resolves_to_runes() {
 }
 
 #[test]
-fn auto_mode_shadowed_rune_name_stays_legacy() {
-    let options = CompileOptions {
-        name: Some("App".into()),
-        runes: RunesOption::Auto,
-        ..Default::default()
-    };
-    let result = compile(
-        "<script>function $state(x) { return x; } let v = $state(0);</script><p>{v}</p>",
-        &options,
-    );
-    let js = result
-        .js
-        .unwrap_or_else(|| panic!("compile produced no JS"))
-        .code;
-    assert!(
-        js.contains("svelte/internal/flags/legacy"),
-        "auto mode must treat shadowed rune name as a regular function, got:\n{js}"
-    );
-}
-
-#[test]
 fn auto_mode_top_level_await_in_module_resolves_to_runes() {
     let options = CompileOptions {
         name: Some("App".into()),

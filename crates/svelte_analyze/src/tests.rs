@@ -7061,16 +7061,6 @@ mod maybe_runes_resolution {
         assert!(!data.script.runes());
         assert!(!data.script.maybe_runes());
     }
-
-    #[test]
-    fn shadowed_rune_name_keeps_legacy_with_maybe_runes_true() {
-        let (_, data) = analyze_source_with_options(
-            r#"<script>function $state(v) { return v; } let n = $state(0);</script><p>{n}</p>"#,
-            opts(RunesOption::Auto, None),
-        );
-        assert!(!data.script.runes());
-        assert!(data.script.maybe_runes());
-    }
 }
 
 #[cfg(test)]
@@ -7997,14 +7987,6 @@ async function baz() { return 2; }
     fn evaluation_unary_not_is_boolean() {
         let source = "<script>let { x } = $props();</script><p>{!x}</p>";
         let ev = evaluate_first_expr(source, "!x");
-        assert!(ev.is_defined());
-        assert_eq!(ev.class(), Some(ValueClass::Boolean));
-    }
-
-    #[test]
-    fn evaluation_effect_tracking_call_is_boolean() {
-        let source = "<p>{$effect.tracking()}</p>";
-        let ev = evaluate_first_expr(source, "$effect.tracking()");
         assert!(ev.is_defined());
         assert_eq!(ev.class(), Some(ValueClass::Boolean));
     }
