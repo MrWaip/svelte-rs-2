@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,6 +25,14 @@ if (!fs.existsSync(srcPath)) {
 }
 
 const dstPath = path.resolve(packageRoot, 'compiler', 'native', 'svelte-rs2.node');
-fs.copyFileSync(srcPath, dstPath);
+const tmpPath = `${dstPath}.tmp-${process.pid}`;
+
+fs.copyFileSync(srcPath, tmpPath);
+
+if (process.platform === 'darwin') {
+  execFileSync('codesign', ['--force', '--sign', '-', tmpPath], { stdio: 'ignore' });
+}
+
+fs.renameSync(tmpPath, dstPath);
 
 console.log(`Copied ${srcPath} -> ${dstPath}`);
