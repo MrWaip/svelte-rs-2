@@ -34,13 +34,17 @@ impl<'a> NeedsContextVisitor<'a> {
     }
 
     fn is_safe_sym(&self, ident: &IdentifierReference<'_>) -> bool {
-        if let Some(ref_id) = ident.reference_id.get()
-            && self
-                .reactivity
-                .reference_semantics(ref_id)
-                .is_legacy_props_object_read()
-        {
-            return false;
+        if let Some(ref_id) = ident.reference_id.get() {
+            let reference = self.reactivity.reference_semantics(ref_id);
+            if reference.is_legacy_props_object_read() {
+                return false;
+            }
+            if let Some(store) = reference.store_symbol() {
+                return self.is_safe_binding(store);
+            }
+            if reference.is_store_subscription() {
+                return false;
+            }
         }
         let Some(sym_id) = self.resolve_ref(ident) else {
             return true;

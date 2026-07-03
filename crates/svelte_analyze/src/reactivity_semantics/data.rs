@@ -1070,6 +1070,15 @@ impl ReferenceSemantics {
         }
     }
 
+    pub(crate) fn store_symbol(&self) -> Option<SymbolId> {
+        match self {
+            ReferenceSemantics::StoreRead { symbol }
+            | ReferenceSemantics::StoreWrite { symbol }
+            | ReferenceSemantics::StoreUpdate { symbol } => Some(*symbol),
+            _ => None,
+        }
+    }
+
     pub fn is_store_subscription(&self) -> bool {
         match self {
             ReferenceSemantics::StoreRead { .. }
@@ -1664,6 +1673,8 @@ pub struct ReactivitySemantics {
 
     runes_mode: RunesMode,
 
+    svelte_store_rune_import: Option<SymbolId>,
+
     const_tag_order_legacy: Vec<SmallVec<[NodeId; 4]>>,
 
     const_tag_cycle_legacy: Option<ConstTagCycleFactLegacy>,
@@ -1703,6 +1714,7 @@ impl ReactivitySemantics {
             legacy_has_member_mutated: false,
             uses_runes: false,
             runes_mode: RunesMode::Runes,
+            svelte_store_rune_import: None,
             const_tag_order_legacy: Vec::new(),
             const_tag_cycle_legacy: None,
             legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics::new(),
@@ -2133,6 +2145,14 @@ impl ReactivitySemantics {
 
     pub(crate) fn set_runes_mode(&mut self, runes_mode: RunesMode) {
         self.runes_mode = runes_mode;
+    }
+
+    pub(crate) fn set_svelte_store_rune_import(&mut self, symbol: Option<SymbolId>) {
+        self.svelte_store_rune_import = symbol;
+    }
+
+    pub(crate) fn svelte_store_rune_import(&self) -> Option<SymbolId> {
+        self.svelte_store_rune_import
     }
 
     pub(crate) fn set_const_tag_order_legacy(

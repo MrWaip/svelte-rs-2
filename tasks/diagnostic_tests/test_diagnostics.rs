@@ -1329,6 +1329,10 @@ mod runes {
         "runes/validate_derived_rune_allowed_in_runes_mode"
     );
     diagnostic_case!(
+        state_rune_shadowed_by_param,
+        "runes/state_rune_shadowed_by_param"
+    );
+    diagnostic_case!(
         validate_derived_invalid_export,
         "runes/validate_derived_invalid_export"
     );

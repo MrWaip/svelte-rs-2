@@ -27,10 +27,10 @@ use crate::value_evaluation::{Evaluation, ValueEvaluation};
 use oxc_ast::ast::{
     ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentTarget,
     BindingPattern, CallExpression, Class, ClassElement, ExportNamedDeclaration, Expression,
-    Function, IdentifierReference, MemberExpression, MethodDefinition, MethodDefinitionKind,
-    NewExpression, PrivateFieldExpression, Program, PropertyDefinition, PropertyKey, Statement,
-    StaticMemberExpression, TaggedTemplateExpression, UpdateExpression, VariableDeclaration,
-    VariableDeclarationKind, VariableDeclarator,
+    Function, IdentifierReference, ImportDeclarationSpecifier, MemberExpression, MethodDefinition,
+    MethodDefinitionKind, NewExpression, PrivateFieldExpression, Program, PropertyDefinition,
+    PropertyKey, Statement, StaticMemberExpression, TaggedTemplateExpression, UpdateExpression,
+    VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
@@ -157,6 +157,37 @@ pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKin
     }
 }
 
+fn find_svelte_store_rune_import(
+    parsed: &JsAst<'_>,
+    scoping: &ComponentScoping,
+) -> Option<SymbolId> {
+    let base = &DERIVED_RUNE_NAME[1..];
+    for program in [parsed.module_program.as_ref(), parsed.program.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        for stmt in &program.body {
+            let Statement::ImportDeclaration(import) = stmt else {
+                continue;
+            };
+            if import.import_kind.is_type()
+                || import.source.value.as_str() != super::SVELTE_STORE_MODULE
+            {
+                continue;
+            }
+            for specifier in import.specifiers.iter().flatten() {
+                let ImportDeclarationSpecifier::ImportSpecifier(named) = specifier else {
+                    continue;
+                };
+                if named.local.name.as_str() == base {
+                    return scoping.find_binding(scoping.root_scope_id(), base);
+                }
+            }
+        }
+    }
+    None
+}
+
 const JS_UNDEFINED_NAME: &str = "undefined";
 
 pub(crate) struct ReactivityInputs {
@@ -172,11 +203,13 @@ pub(crate) fn build_v2<'a>(
     data: &mut AnalysisData<'a>,
     inputs: ReactivityInputs,
 ) {
+    let svelte_store_rune_import = find_svelte_store_rune_import(parsed, &data.scoping);
     let runes_mode = super::mode_resolution::resolve(
         &data.scoping,
         parsed,
         inputs.inline_runes,
         inputs.compile_runes,
+        svelte_store_rune_import,
     );
     data.script.runes_mode = runes_mode;
     let runes = runes_mode.is_runes();
@@ -185,6 +218,8 @@ pub(crate) fn build_v2<'a>(
 
     data.reactivity.set_uses_runes(runes);
     data.reactivity.set_runes_mode(runes_mode);
+    data.reactivity
+        .set_svelte_store_rune_import(svelte_store_rune_import);
     record_maybe_reactive_imports(data);
     let lr_collected = build_script_semantics_v2(
         component,
@@ -1519,6 +1554,9 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         let Some((call, rune_kind)) = rune_call(declarator) else {
             return;
         };
+        if rune_callee_resolves_to_binding(self.data, call) {
+            return;
+        }
         let root_node = declarator.node_id();
 
         if let BindingPattern::BindingIdentifier(id) = &declarator.id
@@ -2322,6 +2360,7 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if self.data.reactivity.uses_runes()
+            && !rune_callee_resolves_to_binding(self.data, call)
             && let Some(fact) =
                 detect_rune_from_call(call).and_then(|kind| rune_call_fact(kind, call))
         {
@@ -2492,6 +2531,16 @@ fn rune_call<'a>(
             | RuneKind::InspectTrace
     )
     .then_some((call, rune_kind))
+}
+
+fn rune_callee_resolves_to_binding(data: &AnalysisData<'_>, call: &CallExpression<'_>) -> bool {
+    let Some(ref_id) = expression_root_reference_id(&call.callee) else {
+        return false;
+    };
+    data.scoping
+        .semantics()
+        .symbol_for_reference(ref_id)
+        .is_some()
 }
 
 fn state_initializer_is_proxyable(call: &CallExpression<'_>) -> bool {

@@ -94,10 +94,21 @@ fn is_literal_rune_reference(data: &AnalysisData, dollar_name: &str) -> bool {
     if !svelte_ast::is_rune_name(dollar_name) {
         return false;
     }
+    if base_is_svelte_store_rune_import(data, dollar_name) {
+        return true;
+    }
     if rune_named_base_is_store(data, &dollar_name[1..]) {
         return false;
     }
     true
+}
+
+fn base_is_svelte_store_rune_import(data: &AnalysisData, dollar_name: &str) -> bool {
+    let Some(rune_import) = data.reactivity.svelte_store_rune_import() else {
+        return false;
+    };
+    let root = data.scoping.root_scope_id();
+    data.scoping.find_binding(root, &dollar_name[1..]) == Some(rune_import)
 }
 
 fn rune_named_base_is_store(data: &AnalysisData, base_name: &str) -> bool {
@@ -107,9 +118,8 @@ fn rune_named_base_is_store(data: &AnalysisData, base_name: &str) -> bool {
     };
     match data.reactivity.binding_semantics(base_sym) {
         BindingSemantics::Prop(_) | BindingSemantics::LegacyBindableProp(_) => base_name != "props",
-        BindingSemantics::NonReactive => true,
-        BindingSemantics::MaybeReactive
-        | BindingSemantics::State(_)
+        BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => true,
+        BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::OptimizedRune(_)

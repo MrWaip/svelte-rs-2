@@ -89,3 +89,19 @@ compiler_case!(
     runes_sub_sole_rune_shadowed_legacy_guard,
     "stores/runes_sub/sole_rune_shadowed_legacy_guard"
 );
+compiler_case!(
+    runes_sub_sole_rune_shadowed_by_local_import,
+    "stores/runes_sub/sole_rune_shadowed_by_local_import"
+);
+compiler_case!(
+    runes_sub_rune_shadowed_by_local_import_live_rune,
+    "stores/runes_sub/rune_shadowed_by_local_import_live_rune"
+);
+compiler_case!(
+    runes_sub_all_runes_shadowed_by_local_import,
+    "stores/runes_sub/all_runes_shadowed_by_local_import"
+);
+compiler_case!(
+    runes_sub_unrelated_local_import_guard,
+    "stores/runes_sub/unrelated_local_import_guard"
+);
