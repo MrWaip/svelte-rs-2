@@ -194,6 +194,10 @@ impl<'ast> Visit<'ast> for StandaloneModuleStoreValidator<'_> {
             return;
         }
 
+        if svelte_ast::is_rune_name(name) {
+            return;
+        }
+
         let root = self.data.scoping.root_scope_id();
         let Some(sym_id) = self.data.scoping.find_binding(root, &name[1..]) else {
             return;

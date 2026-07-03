@@ -1400,6 +1400,62 @@ fn collect_descendants_from_node(
                 }
             }
         }
+        Node::EachBlock(block) => {
+            let body = block.body;
+            let fallback = block.fallback;
+            collect_descendants_from_fragment(pruner, body, adjacent_only, seen_snippets, out);
+            if let Some(fallback) = fallback {
+                collect_descendants_from_fragment(
+                    pruner,
+                    fallback,
+                    adjacent_only,
+                    seen_snippets,
+                    out,
+                );
+            }
+        }
+        Node::IfBlock(block) => {
+            let consequent = block.consequent;
+            let alternate = block.alternate;
+            collect_descendants_from_fragment(
+                pruner,
+                consequent,
+                adjacent_only,
+                seen_snippets,
+                out,
+            );
+            if let Some(alternate) = alternate {
+                collect_descendants_from_fragment(
+                    pruner,
+                    alternate,
+                    adjacent_only,
+                    seen_snippets,
+                    out,
+                );
+            }
+        }
+        Node::AwaitBlock(block) => {
+            let pending = block.pending;
+            let then = block.then;
+            let catch = block.catch;
+            for fragment in [pending, then, catch].into_iter().flatten() {
+                collect_descendants_from_fragment(
+                    pruner,
+                    fragment,
+                    adjacent_only,
+                    seen_snippets,
+                    out,
+                );
+            }
+        }
+        Node::KeyBlock(block) => {
+            let fragment = block.fragment;
+            collect_descendants_from_fragment(pruner, fragment, adjacent_only, seen_snippets, out);
+        }
+        Node::SvelteBoundary(boundary) => {
+            let fragment = boundary.fragment;
+            collect_descendants_from_fragment(pruner, fragment, adjacent_only, seen_snippets, out);
+        }
         _ => {}
     }
 }
@@ -1432,7 +1488,12 @@ fn collect_descendants_from_fragment(
             | Node::ComponentNode(_)
             | Node::SvelteComponentLegacy(_)
             | Node::SvelteSelf(_)
-            | Node::SvelteFragmentLegacy(_) => {
+            | Node::SvelteFragmentLegacy(_)
+            | Node::EachBlock(_)
+            | Node::IfBlock(_)
+            | Node::AwaitBlock(_)
+            | Node::KeyBlock(_)
+            | Node::SvelteBoundary(_) => {
                 collect_descendants_from_node(pruner, id, adjacent_only, seen_snippets, out);
             }
             _ => {}

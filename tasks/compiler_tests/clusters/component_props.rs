@@ -46,3 +46,15 @@ compiler_case!(
     call_pure_global_nested_inline,
     "component_props/call_pure_global_nested_inline"
 );
+compiler_case!(
+    each_index_concat_unkeyed,
+    "component_props/each_index_concat_unkeyed"
+);
+compiler_case!(
+    each_index_concat_keyed_guard,
+    "component_props/each_index_concat_keyed_guard"
+);
+compiler_case!(
+    each_item_concat_guard,
+    "component_props/each_item_concat_guard"
+);

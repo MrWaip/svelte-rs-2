@@ -257,11 +257,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     thunks.push(Arg::Expr(read_thunk));
                 }
                 RenderArgKind::InertThunk => {
-                    let thunk = self
-                        .ctx
-                        .b
-                        .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(arg_expr)]);
-                    thunks.push(Arg::Expr(thunk));
+                    thunks.push(Arg::Expr(self.ctx.b.thunk(arg_expr)));
                 }
             }
         }

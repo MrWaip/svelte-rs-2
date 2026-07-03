@@ -1421,11 +1421,15 @@ fn derive_component_concat_semantics(
         })
         .collect();
 
-    let memo = component_prop_memo(&plan);
+    let memo = component_prop_memo(ctx, &ca.parts, &plan);
     (memo, plan)
 }
 
-fn component_prop_memo(plan: &[ConcatPartEmit]) -> ComponentPropMemo {
+fn component_prop_memo(
+    ctx: &Ctx<'_, '_>,
+    parts: &[ConcatPart],
+    plan: &[ConcatPartEmit],
+) -> ComponentPropMemo {
     let has_hoist = plan.iter().any(|emit| match emit {
         ConcatPartEmit::HoistDerived => true,
         ConcatPartEmit::Inline | ConcatPartEmit::Static => false,
@@ -1433,15 +1437,22 @@ fn component_prop_memo(plan: &[ConcatPartEmit]) -> ComponentPropMemo {
     if has_hoist {
         return ComponentPropMemo::Derived;
     }
-    let has_inline_dynamic = plan.iter().any(|emit| match emit {
-        ConcatPartEmit::Inline => true,
-        ConcatPartEmit::HoistDerived | ConcatPartEmit::Static => false,
-    });
-    if has_inline_dynamic {
-        ComponentPropMemo::Getter
-    } else {
-        ComponentPropMemo::Inline
+    for (part, emit) in parts.iter().zip(plan.iter()) {
+        match emit {
+            ConcatPartEmit::HoistDerived | ConcatPartEmit::Static => continue,
+            ConcatPartEmit::Inline => {}
+        }
+        let ConcatPart::Dynamic { id, .. } = part else {
+            continue;
+        };
+        let Some(data) = ctx.expression_data(*id) else {
+            continue;
+        };
+        if references_need_wrap(ctx, data) {
+            return ComponentPropMemo::Getter;
+        }
     }
+    ComponentPropMemo::Inline
 }
 
 fn derive_component_attach_emit(ctx: &Ctx<'_, '_>, at: &AttachTag) -> ComponentAttachEmit {

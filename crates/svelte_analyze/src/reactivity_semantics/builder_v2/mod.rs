@@ -1796,11 +1796,16 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             if self.data.reactivity.store_shadow_of_internal(sym).is_some() {
                 continue;
             }
-            if !self.data.scoping.is_member_mutated(sym)
-                && !self.data.scoping.is_mutated_any(sym)
-                && !self.bind_this_legacy_state_root_syms.contains(&sym)
-            {
-                continue;
+            if !self.bind_this_legacy_state_root_syms.contains(&sym) {
+                if !self.data.scoping.is_member_mutated(sym)
+                    && !self.data.scoping.is_mutated_any(sym)
+                {
+                    continue;
+                }
+                if !has_reactive_consumer_reference_legacy(self.data, sym, &self.reactive_body_refs)
+                {
+                    continue;
+                }
             }
             self.data.reactivity.record_legacy_state_binding(
                 sym,
@@ -1827,11 +1832,19 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 if self.data.reactivity.store_shadow_of_internal(sym).is_some() {
                     continue;
                 }
-                if !self.data.scoping.is_member_mutated(sym)
-                    && !self.data.scoping.is_mutated_any(sym)
-                    && !self.bind_this_legacy_state_root_syms.contains(&sym)
-                {
-                    continue;
+                if !self.bind_this_legacy_state_root_syms.contains(&sym) {
+                    if !self.data.scoping.is_member_mutated(sym)
+                        && !self.data.scoping.is_mutated_any(sym)
+                    {
+                        continue;
+                    }
+                    if !has_reactive_consumer_reference_legacy(
+                        self.data,
+                        sym,
+                        &self.reactive_body_refs,
+                    ) {
+                        continue;
+                    }
                 }
                 self.data.reactivity.record_legacy_state_binding(
                     sym,

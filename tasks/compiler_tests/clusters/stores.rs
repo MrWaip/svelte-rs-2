@@ -105,3 +105,11 @@ compiler_case!(
     runes_sub_unrelated_local_import_guard,
     "stores/runes_sub/unrelated_local_import_guard"
 );
+compiler_module_case!(
+    runes_sub_module_rune_shadowed_by_import,
+    "stores/runes_sub/module_rune_shadowed_by_import"
+);
+compiler_module_case!(
+    runes_sub_module_rune_no_shadow_guard,
+    "stores/runes_sub/module_rune_no_shadow_guard"
+);

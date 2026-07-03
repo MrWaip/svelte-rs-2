@@ -73,6 +73,7 @@ pub(super) struct Ctx<'c, 'a> {
 enum SiteContext {
     Text,
     ElementAttr,
+    StyleDirective,
     ComponentAttr,
     ComponentName,
     Structural,
@@ -262,17 +263,23 @@ fn visit_attributes(
                 StyleDirectiveValue::Concatenation(parts) => {
                     for p in parts {
                         if let ConcatPart::Dynamic { id, expr } = p {
-                            store_single(*id, expr.id(), ctx, sink, context);
+                            store_single(*id, expr.id(), ctx, sink, SiteContext::StyleDirective);
                         }
                     }
                     let exprs = parts.iter().filter_map(|p| match p {
                         ConcatPart::Dynamic { expr, .. } => Some(expr.id()),
                         ConcatPart::Static(_) => None,
                     });
-                    store_aggregate(a.id, exprs, ctx, sink, context);
+                    store_aggregate(a.id, exprs, ctx, sink, SiteContext::StyleDirective);
                 }
                 StyleDirectiveValue::Expression => {
-                    store_single(a.id, a.expression.id(), ctx, sink, context);
+                    store_single(
+                        a.id,
+                        a.expression.id(),
+                        ctx,
+                        sink,
+                        SiteContext::StyleDirective,
+                    );
                 }
                 StyleDirectiveValue::String(_) => {}
             },
@@ -487,7 +494,7 @@ fn compute<'a>(
             &evaluation,
             ctx.reactivity,
         ),
-        SiteContext::ElementAttr => {
+        SiteContext::ElementAttr | SiteContext::StyleDirective => {
             derive::volatile_element_attr(is_reactive, &facts.references, ctx)
         }
         SiteContext::ComponentAttr => is_reactive,
@@ -505,9 +512,27 @@ fn compute<'a>(
         .iter()
         .any(|&sym| is_context_member_root(ctx.reactivity.binding_semantics(sym)));
     let volatility = derive::volatility(reactive_gate, &facts);
+    let inline_style_emit = match context {
+        SiteContext::StyleDirective => true,
+        SiteContext::Text
+        | SiteContext::ElementAttr
+        | SiteContext::ComponentAttr
+        | SiteContext::ComponentName
+        | SiteContext::Structural
+        | SiteContext::Inert => false,
+    };
     let evaluation = match volatility {
-        Volatility::Heavy | Volatility::Asynchronous => Evaluation::unknown(),
         Volatility::Static | Volatility::Reactive => evaluation,
+        Volatility::Heavy | Volatility::Asynchronous => {
+            if inline_style_emit {
+                match &evaluation {
+                    Evaluation::Known(_) => Evaluation::unknown(),
+                    Evaluation::Defined { .. } | Evaluation::MaybeNullish { .. } => evaluation,
+                }
+            } else {
+                Evaluation::unknown()
+            }
+        }
     };
     let data = ExpressionData {
         volatility,

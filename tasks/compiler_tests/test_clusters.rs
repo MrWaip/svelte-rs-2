@@ -7,6 +7,13 @@ macro_rules! compiler_module_case {
             assert_compiler_module($path);
         }
     };
+    ($name:ident, $path:literal, ignore = $reason:literal) => {
+        #[test]
+        #[ignore = $reason]
+        fn $name() {
+            assert_compiler_module($path);
+        }
+    };
 }
 
 macro_rules! compiler_case {
@@ -216,3 +223,9 @@ mod template_runes;
 
 #[path = "clusters/boundary.rs"]
 mod boundary;
+
+#[path = "clusters/render_tag_arg.rs"]
+mod render_tag_arg;
+
+#[path = "clusters/css_prune.rs"]
+mod css_prune;

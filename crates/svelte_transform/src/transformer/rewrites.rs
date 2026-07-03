@@ -2,8 +2,8 @@ use std::iter;
 use std::mem;
 
 use oxc_ast::ast::{
-    Argument, AssignmentOperator, AssignmentTarget, Expression, SimpleAssignmentTarget,
-    UpdateOperator,
+    Argument, AssignmentOperator, AssignmentTarget, ChainElement, Expression,
+    SimpleAssignmentTarget, StaticMemberExpression, UpdateOperator,
 };
 use oxc_span::SPAN;
 use oxc_traverse::TraverseCtx;
@@ -1454,10 +1454,22 @@ impl<'a> ComponentTransformer<'_, 'a> {
         if is_lhs {
             return false;
         }
+        match expr {
+            Expression::StaticMemberExpression(member) => {
+                self.rewrite_rest_prop_static_member(member)
+            }
+            Expression::ChainExpression(chain) => match &mut chain.expression {
+                ChainElement::StaticMemberExpression(member) => {
+                    self.rewrite_rest_prop_static_member(member)
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn rewrite_rest_prop_static_member(&self, member: &mut StaticMemberExpression<'a>) -> bool {
         let Some(analysis) = self.analysis else {
-            return false;
-        };
-        let Expression::StaticMemberExpression(member) = expr else {
             return false;
         };
         let Expression::Identifier(id) = member.object.get_inner_expression() else {

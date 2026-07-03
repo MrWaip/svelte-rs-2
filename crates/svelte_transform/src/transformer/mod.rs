@@ -229,8 +229,8 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             Expression::AssignmentExpression(_) => self.transform_assignment(node, ctx),
             Expression::UpdateExpression(_) => self.transform_update(node, ctx),
             Expression::CallExpression(_) => self.rewrite_call_expression(node),
-            Expression::StaticMemberExpression(_) => {
-                self.rewrite_static_member_expression(node, ctx)
+            Expression::StaticMemberExpression(_) | Expression::ChainExpression(_) => {
+                self.rewrite_member_expression(node, ctx)
             }
             Expression::Identifier(_) => self.rewrite_identifier_expression(node),
             _ => {}
