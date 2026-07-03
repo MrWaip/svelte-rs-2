@@ -1,6 +1,6 @@
-use oxc_ast::ast::{CallExpression, Expression, IdentifierReference, Program};
+use oxc_ast::ast::{CallExpression, Expression, IdentifierReference, Program, VariableDeclarator};
 use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::walk_call_expression;
+use oxc_ast_visit::walk::{walk_call_expression, walk_variable_declarator};
 use oxc_span::{GetSpan, Span as OxcSpan};
 use oxc_syntax::reference::ReferenceId;
 use oxc_syntax::symbol::SymbolId;
@@ -9,7 +9,7 @@ use svelte_component_semantics::SymbolOwner;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::reactivity_semantics::data::DeclaratorGroup;
+use crate::reactivity_semantics::detect_rune_from_call;
 use crate::{AnalysisData, BindingSemantics};
 
 pub(super) fn validate_global_references(
@@ -215,23 +215,14 @@ impl StoreValidator<'_> {
         let Expression::Identifier(callee) = call.callee.get_inner_expression() else {
             return;
         };
-        let name = callee.name.as_str();
-        if !name.starts_with('$') || name.len() <= 1 {
+        if !self.data.reactivity.uses_runes() {
             return;
         }
-        if !is_rune_call(self.data, call) {
+        let name = callee.name.as_str();
+        if !svelte_ast::is_rune_name(name) {
             return;
         }
         let root = self.data.scoping.root_scope_id();
-        if let Some(subscription) = self.data.scoping.find_binding(root, name)
-            && self
-                .data
-                .reactivity
-                .binding_semantics(subscription)
-                .is_store()
-        {
-            return;
-        }
         let base = &name[1..];
         let Some(base_sym) = self.data.scoping.find_binding(root, base) else {
             return;
@@ -246,12 +237,54 @@ impl StoreValidator<'_> {
             self.span(callee.span()),
         ));
     }
+
+    fn check_legacy_rune_invalid_usage(&mut self, declarator: &VariableDeclarator<'_>) {
+        if self.data.reactivity.uses_runes() {
+            return;
+        }
+        let Some(Expression::CallExpression(call)) = declarator
+            .init
+            .as_ref()
+            .map(|init| init.get_inner_expression())
+        else {
+            return;
+        };
+        let Some(rune) = detect_rune_from_call(call) else {
+            return;
+        };
+        if !rune.is_bare_value_rune() {
+            return;
+        }
+        let Expression::Identifier(callee) = &call.callee else {
+            return;
+        };
+        let is_store = callee.reference_id.get().is_some_and(|ref_id| {
+            self.data
+                .reactivity
+                .reference_semantics(ref_id)
+                .is_store_subscription()
+        });
+        if is_store {
+            return;
+        }
+        self.diags.push(Diagnostic::error(
+            DiagnosticKind::RuneInvalidUsage {
+                rune: callee.name.to_string(),
+            },
+            self.span(call.span),
+        ));
+    }
 }
 
 impl<'ast> Visit<'ast> for StoreValidator<'_> {
     fn visit_call_expression(&mut self, call: &CallExpression<'ast>) {
         self.check_store_rune_conflict(call);
         walk_call_expression(self, call);
+    }
+
+    fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'ast>) {
+        self.check_legacy_rune_invalid_usage(declarator);
+        walk_variable_declarator(self, declarator);
     }
 }
 
@@ -272,12 +305,5 @@ fn declared_as_rune_or_prop(data: &AnalysisData, sym_id: SymbolId) -> bool {
         | BindingSemantics::NonReactive
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
-    }
-}
-
-fn is_rune_call(data: &AnalysisData, call: &CallExpression<'_>) -> bool {
-    match data.reactivity.declarator_semantics(call.node_id()).group() {
-        DeclaratorGroup::Rune => true,
-        DeclaratorGroup::Legacy | DeclaratorGroup::Contextual | DeclaratorGroup::Plain => false,
     }
 }

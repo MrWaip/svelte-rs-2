@@ -107,8 +107,8 @@ fn rune_named_base_is_store(data: &AnalysisData, base_name: &str) -> bool {
     };
     match data.reactivity.binding_semantics(base_sym) {
         BindingSemantics::Prop(_) | BindingSemantics::LegacyBindableProp(_) => base_name != "props",
-        BindingSemantics::NonReactive
-        | BindingSemantics::MaybeReactive
+        BindingSemantics::NonReactive => true,
+        BindingSemantics::MaybeReactive
         | BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedDerived(_)

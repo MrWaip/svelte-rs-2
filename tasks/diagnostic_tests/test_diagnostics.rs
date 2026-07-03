@@ -1603,6 +1603,7 @@ mod stores {
         global_ref_explicit_legacy_no_error,
         "stores/global_ref_explicit_legacy_no_error"
     );
+    diagnostic_case!(not_actual_runes, "stores/not_actual_runes");
 }
 
 mod host {

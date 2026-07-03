@@ -2163,6 +2163,15 @@ impl ReactivitySemantics {
         self.bindings.get_mut(sym).and_then(|slot| slot.as_mut())
     }
 
+    pub(crate) fn demote_store_shadowed_rune(&mut self, decl_node: OxcNodeId, symbol: SymbolId) {
+        if let Some(slot) = self.declarators.get_mut(decl_node) {
+            *slot = None;
+        }
+        if let Some(slot) = self.bindings.get_mut(symbol) {
+            *slot = None;
+        }
+    }
+
     pub(crate) fn record_state_binding(
         &mut self,
         sym: SymbolId,
@@ -2439,6 +2448,12 @@ impl ReactivitySemantics {
             self.reference_facts.resize_with(idx + 1, || None);
         }
         self.reference_facts[ref_id] = Some(semantics);
+    }
+
+    pub(crate) fn clear_reference_semantics(&mut self, ref_id: ReferenceId) {
+        if let Some(slot) = self.reference_facts.get_mut(ref_id) {
+            *slot = None;
+        }
     }
 
     pub(crate) fn record_let_carrier_binding(

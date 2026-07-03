@@ -3,4 +3,6 @@ pub(crate) mod data;
 pub mod legacy_reactive;
 mod mode_resolution;
 
-pub(crate) use builder_v2::{ReactivityInputs, build_v2, finalize_proxy, finalize_reactivity};
+pub(crate) use builder_v2::{
+    ReactivityInputs, build_v2, detect_rune_from_call, finalize_proxy, finalize_reactivity,
+};

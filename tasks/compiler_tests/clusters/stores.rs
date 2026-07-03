@@ -69,3 +69,23 @@ compiler_case!(
     runes_sub_derived_store_import_guard,
     "stores/runes_sub/derived_store_import_guard"
 );
+compiler_case!(
+    runes_sub_rune_shadowed_by_module_binding,
+    "stores/runes_sub/rune_shadowed_by_module_binding"
+);
+compiler_case!(
+    runes_sub_rune_shadowed_by_local_binding,
+    "stores/runes_sub/rune_shadowed_by_local_binding"
+);
+compiler_case!(
+    runes_sub_no_binding_guard,
+    "stores/runes_sub/no_binding_guard"
+);
+compiler_case!(
+    runes_sub_self_init_guard,
+    "stores/runes_sub/self_init_guard"
+);
+compiler_case!(
+    runes_sub_sole_rune_shadowed_legacy_guard,
+    "stores/runes_sub/sole_rune_shadowed_legacy_guard"
+);

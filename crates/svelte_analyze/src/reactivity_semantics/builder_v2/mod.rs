@@ -53,7 +53,7 @@ use svelte_component_semantics::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RuneKind {
+pub(crate) enum RuneKind {
     State,
     StateRaw,
     Derived,
@@ -74,6 +74,29 @@ enum RuneKind {
     StateSnapshot,
 }
 
+impl RuneKind {
+    pub(crate) fn is_bare_value_rune(self) -> bool {
+        match self {
+            RuneKind::State | RuneKind::Derived | RuneKind::Props => true,
+            RuneKind::StateRaw
+            | RuneKind::DerivedBy
+            | RuneKind::Effect
+            | RuneKind::EffectPre
+            | RuneKind::EffectRoot
+            | RuneKind::EffectTracking
+            | RuneKind::EffectPending
+            | RuneKind::Bindable
+            | RuneKind::StateEager
+            | RuneKind::Inspect
+            | RuneKind::InspectWith
+            | RuneKind::InspectTrace
+            | RuneKind::Host
+            | RuneKind::PropsId
+            | RuneKind::StateSnapshot => false,
+        }
+    }
+}
+
 const STATE_RUNE_NAME: &str = "$state";
 const DERIVED_RUNE_NAME: &str = "$derived";
 const EFFECT_RUNE_NAME: &str = "$effect";
@@ -90,7 +113,7 @@ fn assignment_target_field_access(target: &AssignmentTarget<'_>) -> Option<OxcNo
     }
 }
 
-fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
+pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     match &call.callee {
         Expression::Identifier(ident) => match ident.name.as_str() {
             STATE_RUNE_NAME => Some(RuneKind::State),
@@ -1246,6 +1269,7 @@ struct ScriptSemanticCollector<'d, 'a> {
     deferred_const_legacy_state_syms: Vec<SymbolId>,
     deferred_const_destructured_legacy_decls: Vec<(OxcNodeId, SmallVec<[SymbolId; 4]>)>,
     reactive_body_refs: FxHashSet<SymbolId>,
+    store_shadow_rune_candidates: Vec<(OxcNodeId, SymbolId, ReferenceId, bool)>,
 }
 
 impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
@@ -1271,6 +1295,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             deferred_const_legacy_state_syms: Vec::new(),
             deferred_const_destructured_legacy_decls: Vec::new(),
             reactive_body_refs,
+            store_shadow_rune_candidates: Vec::new(),
         }
     }
 
@@ -1393,6 +1418,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
 
         store::collect_store_declarations(self.data);
+        self.demote_store_shadowed_runes();
 
         self.finalize_deferred_const_legacy_state();
         self.finalize_deferred_const_destructured_legacy_state();
@@ -1464,6 +1490,28 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
     }
 
+    fn demote_store_shadowed_runes(&mut self) {
+        for (decl_node, symbol, callee_ref, is_module) in
+            mem::take(&mut self.store_shadow_rune_candidates)
+        {
+            if !self
+                .data
+                .reactivity
+                .reference_semantics(callee_ref)
+                .is_store_subscription()
+            {
+                continue;
+            }
+            if is_module {
+                self.data.reactivity.clear_reference_semantics(callee_ref);
+            } else {
+                self.data
+                    .reactivity
+                    .demote_store_shadowed_rune(decl_node, symbol);
+            }
+        }
+    }
+
     fn record_rune_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         if !self.data.script.runes() {
             return;
@@ -1472,6 +1520,18 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             return;
         };
         let root_node = declarator.node_id();
+
+        if let BindingPattern::BindingIdentifier(id) = &declarator.id
+            && let Some(symbol) = id.symbol_id.get()
+            && let Some(callee_ref) = expression_root_reference_id(&call.callee)
+        {
+            self.store_shadow_rune_candidates.push((
+                root_node,
+                symbol,
+                callee_ref,
+                !self.is_instance_program,
+            ));
+        }
 
         let var_declared = matches!(self.current_decl_kind, Some(VariableDeclarationKind::Var));
         let init_proxyable =
