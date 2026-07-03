@@ -22,6 +22,7 @@ use smallvec::SmallVec;
 
 enum HoistedDispatchKind {
     Snippet,
+    DebugTag,
     SvelteHead,
     SvelteWindow,
     SvelteDocument,
@@ -193,9 +194,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
             }
-            for &id in &bucket.debug_tags {
-                self.emit_hoisted_debug_tag(state, ctx, id)?;
-            }
             if recording_slot_const_tags {
                 state.legacy_slot_record_const_tag_end = false;
                 state.legacy_slot_const_tag_end = Some(state.init.len());
@@ -252,6 +250,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         for &id in &hoisted_snippets {
             ordered.push((id, HoistedDispatchKind::Snippet));
         }
+        for &id in &bucket.debug_tags {
+            ordered.push((id, HoistedDispatchKind::DebugTag));
+        }
         for &id in &bucket.svelte_head {
             ordered.push((id, HoistedDispatchKind::SvelteHead));
         }
@@ -279,6 +280,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             match kind {
                 HoistedDispatchKind::Snippet => {
                     self.emit_hoisted_snippet(state, ctx, id)?;
+                }
+                HoistedDispatchKind::DebugTag => {
+                    self.emit_hoisted_debug_tag(state, ctx, id)?;
                 }
                 HoistedDispatchKind::SvelteHead => {
                     self.emit_hoisted_svelte_head(state, ctx, id)?;
