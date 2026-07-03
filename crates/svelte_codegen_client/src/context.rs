@@ -335,18 +335,6 @@ impl<'a> Ctx<'a> {
         self.query.debug_tag(id)
     }
 
-    pub fn fragment_references_any_symbol(
-        &self,
-        fragment_id: svelte_ast::FragmentId,
-        syms: &rustc_hash::FxHashSet<SymbolId>,
-    ) -> bool {
-        self.query.view.fragment_references_any_symbol(
-            &self.query.component.store,
-            fragment_id,
-            syms,
-        )
-    }
-
     pub fn add_delegated_event(&mut self, event_name: String) {
         self.state.add_delegated_event(event_name);
     }

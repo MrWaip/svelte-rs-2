@@ -1,53 +1,13 @@
-use oxc_ast::ast::{Expression, Statement};
+use oxc_allocator::CloneIn;
+use oxc_ast::ast::Statement;
 use oxc_syntax::node::NodeId as OxcNodeId;
-use rustc_hash::FxHashSet;
-use svelte_analyze::{
-    AttributeSemantics, BlockSemantics, BoundaryPropSemantics, ConstTagBlockSemantics, Volatility,
-};
+use svelte_analyze::{AttributeSemantics, BoundaryPropSemantics, Volatility};
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, CodegenError, Result};
-use crate::context::Ctx;
-
-fn const_tag_bindings(
-    ctx: &Ctx<'_>,
-    sem: &ConstTagBlockSemantics,
-) -> (Vec<oxc_semantic::SymbolId>, bool) {
-    use oxc_ast::AstKind;
-    use oxc_ast::ast::BindingPattern;
-    let Some(AstKind::VariableDeclaration(decl)) =
-        ctx.query.view.scoping().js_kind(sem.decl_node_id)
-    else {
-        return (Vec::new(), false);
-    };
-    let Some(declarator) = decl.declarations.first() else {
-        return (Vec::new(), false);
-    };
-    let is_destructured = !matches!(declarator.id, BindingPattern::BindingIdentifier(_));
-    let mut bindings: Vec<oxc_semantic::SymbolId> = Vec::new();
-    svelte_component_semantics::walk_bindings(&declarator.id, |v| bindings.push(v.symbol));
-    (bindings, is_destructured)
-}
-
-fn build_const_tag_prefix_stmts<'a>(
-    ctx: &mut Ctx<'a>,
-    cloned: &mut Vec<(Vec<String>, Expression<'a>)>,
-) -> Vec<Statement<'a>> {
-    let mut stmts: Vec<Statement<'a>> = Vec::new();
-    let helper = ctx.query.view.derived_helper();
-    for (names, init) in cloned.drain(..) {
-        let Some(first) = names.first() else {
-            continue;
-        };
-        let thunk = ctx.b.thunk(init);
-        let derived = ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
-        stmts.push(ctx.b.const_stmt(first, derived));
-    }
-    stmts
-}
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn emit_svelte_boundary(
@@ -161,48 +121,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .copied()
             .collect();
 
-        let mut const_binding_syms: FxHashSet<oxc_semantic::SymbolId> = FxHashSet::default();
-        let mut const_tag_names: Vec<(NodeId, Vec<String>)> = Vec::new();
-        for &cid in &const_tag_ids {
-            let sem = match self.ctx.query.analysis.block_semantics(cid) {
-                BlockSemantics::ConstTag(s) => s.clone(),
-                _ => continue,
-            };
-            let (bindings, _) = const_tag_bindings(self.ctx, &sem);
-            let names: Vec<String> = bindings
-                .iter()
-                .map(|&s| {
-                    const_binding_syms.insert(s);
-                    self.ctx.query.view.symbol_name(s).to_string()
-                })
-                .collect();
-            const_tag_names.push((cid, names));
-        }
+        let duplicate_consts = !const_tag_ids.is_empty()
+            && !snippet_children.is_empty()
+            && !self.ctx.state.experimental_async;
 
-        let mut cloned_exprs_per_snippet: Vec<Vec<(Vec<String>, Expression<'a>)>> = Vec::new();
-        if !const_tag_ids.is_empty() && !snippet_children.is_empty() {
-            for _ in 0..snippet_children.len() {
-                let mut set: Vec<(Vec<String>, Expression<'a>)> = Vec::new();
-                for (cid, names) in &const_tag_names {
-                    let svelte_ast::Node::ConstTag(const_tag) =
-                        self.ctx.query.component.store.get(*cid)
-                    else {
-                        continue;
-                    };
-                    if let Some(Statement::VariableDeclaration(decl)) =
-                        self.ctx.state.parsed.stmt(const_tag.decl.id())
-                        && let Some(init) = decl.declarations.first().and_then(|d| d.init.as_ref())
-                    {
-                        let cloned = self.ctx.b.clone_expr(init);
-                        set.push((names.clone(), cloned));
-                    }
-                }
-                cloned_exprs_per_snippet.push(set);
+        let body_const_stmts: Vec<Statement<'a>> = if duplicate_consts {
+            let mut const_state = EmitState::new();
+            for &cid in &const_tag_ids {
+                self.emit_hoisted_const_tag(&mut const_state, &inner_ctx, cid)?;
             }
-        }
+            const_state.init
+        } else {
+            Vec::new()
+        };
 
         let mut snippet_decls: Vec<Statement<'a>> = Vec::new();
-        for (i, (snippet_id, _)) in snippet_children.iter().enumerate() {
+        for (snippet_id, _) in &snippet_children {
             let sem = match self.ctx.query.analysis.block_semantics(*snippet_id) {
                 svelte_analyze::BlockSemantics::Snippet(s) => s.clone(),
                 _ => {
@@ -212,27 +146,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     );
                 }
             };
-            let snippet_uses_const = if !const_binding_syms.is_empty() {
-                let body_id = match self.ctx.query.component.store.get(*snippet_id) {
-                    Node::SnippetBlock(block) => block.body,
-                    _ => continue,
-                };
-                self.ctx
-                    .fragment_references_any_symbol(body_id, &const_binding_syms)
-            } else {
-                false
-            };
-            let prepend = if snippet_uses_const && i < cloned_exprs_per_snippet.len() {
-                build_const_tag_prefix_stmts(self.ctx, &mut cloned_exprs_per_snippet[i])
-            } else {
-                Vec::new()
-            };
+            let prepend: Vec<Statement<'a>> = body_const_stmts
+                .iter()
+                .filter(|stmt| matches!(stmt, Statement::VariableDeclaration(_)))
+                .map(|stmt| stmt.clone_in(self.ctx.b.ast.allocator))
+                .collect();
             snippet_decls.push(self.build_snippet_const_with_prefix(*snippet_id, &sem, prepend)?);
         }
 
         let mut inner_state = EmitState::new();
         inner_state.skip_snippets = true;
+        inner_state.skip_const_tags = duplicate_consts;
         self.emit_fragment(&mut inner_state, &inner_ctx, boundary.fragment)?;
+        if duplicate_consts {
+            inner_state.init.splice(0..0, body_const_stmts);
+        }
         let body_stmts = self.pack_callback_body(inner_state, "$$anchor")?;
         let body_fn = self
             .ctx

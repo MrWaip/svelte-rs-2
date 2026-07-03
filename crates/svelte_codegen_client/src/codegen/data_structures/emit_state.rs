@@ -17,6 +17,7 @@ pub(crate) struct EmitState<'a> {
     pub script_blockers: Vec<u32>,
     pub extra_blockers: Vec<Expression<'a>>,
     pub skip_snippets: bool,
+    pub skip_const_tags: bool,
     pub last_fragment_needs_reset: bool,
     pub pending_element_init: Vec<Statement<'a>>,
     pub pending_element_update: Vec<Statement<'a>>,

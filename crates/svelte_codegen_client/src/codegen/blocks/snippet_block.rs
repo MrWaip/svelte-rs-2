@@ -89,6 +89,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let body_stmts = self.pack_callback_body(inner_state, "$$anchor")?;
 
         let mut all: Vec<Statement<'a>> = Vec::new();
+        all.extend(prepend_stmts);
         if self.ctx.state.dev {
             let args_id = self.ctx.b.rid_expr("arguments");
             all.push(
@@ -98,7 +99,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             );
         }
         all.extend(binding_decls);
-        all.extend(prepend_stmts);
         all.extend(body_stmts);
 
         let snippet_expr = if self.ctx.state.dev {

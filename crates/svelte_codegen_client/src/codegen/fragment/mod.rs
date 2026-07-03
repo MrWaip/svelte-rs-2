@@ -184,11 +184,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 BlockSemantics::ConstTag(s) => s.order_rank,
                 _ => 0,
             });
-            if has_async {
-                self.emit_const_tags_async_batch(state, &ordered)?;
-            } else {
-                for &id in &ordered {
-                    self.emit_hoisted_const_tag(state, ctx, id)?;
+            if !state.skip_const_tags {
+                if has_async {
+                    self.emit_const_tags_async_batch(state, &ordered)?;
+                } else {
+                    for &id in &ordered {
+                        self.emit_hoisted_const_tag(state, ctx, id)?;
+                    }
                 }
             }
             for &id in &bucket.debug_tags {
