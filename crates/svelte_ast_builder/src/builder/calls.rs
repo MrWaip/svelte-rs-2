@@ -59,6 +59,21 @@ impl<'a> Builder<'a> {
         Expression::CallExpression(self.alloc(self.call(callee, args)))
     }
 
+    pub fn new_expr<'short>(
+        &self,
+        callee: &str,
+        args: impl IntoIterator<Item = Arg<'a, 'short>>,
+    ) -> Expression<'a> {
+        let ident = self.ast.expression_identifier(SPAN, self.ast.atom(callee));
+        let args = args.into_iter().map(|a| self.arg_to_argument(a));
+        Expression::NewExpression(self.alloc(self.ast.new_expression(
+            SPAN,
+            ident,
+            NONE,
+            self.ast.vec_from_iter(args),
+        )))
+    }
+
     pub fn call_expr_at<'short>(
         &self,
         callee: &str,
@@ -115,7 +130,6 @@ impl<'a> Builder<'a> {
         member: &str,
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
     ) -> Expression<'a> {
-        let object = self.unwrap_chain(object);
         let property = self.ast.identifier_name(SPAN, self.ast.atom(member));
         let callee_inner = self
             .ast

@@ -30,7 +30,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &AwaitBlock) {
         ExpressionSemantics::Expression(d) => (d.volatility, d.blockers.clone()),
         ExpressionSemantics::NonSpecial => (Volatility::Static, SmallVec::new()),
     };
-    let wrapper = if blockers.is_empty() {
+    let is_asynchronous = expression_volatility.is_asynchronous();
+    let wrapper = if blockers.is_empty() && !is_asynchronous {
         AwaitWrapper::None
     } else {
         AwaitWrapper::AsyncWrap { blockers }

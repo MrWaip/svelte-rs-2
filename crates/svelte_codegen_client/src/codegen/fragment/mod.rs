@@ -128,14 +128,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         );
         let template_was_empty_before = state.template.is_empty();
 
-        let will_css_wrap = matches!(strategy, ContentStrategy::CssWrappedComponent(_));
-        let reserved_tpl_name = if is_root_anchor && !will_css_wrap && !state.suppress_root_finalize
-        {
-            Some(self.ctx.state.gen_ident("root"))
-        } else {
-            None
-        };
-
         let strategy_kind = StrategyKind::of(&strategy);
 
         let mut needs_reset = !matches!(
@@ -446,17 +438,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             && !state.template.is_empty()
             && !state.suppress_root_finalize
         {
-            let tpl_name = reserved_tpl_name
-                .clone()
-                .unwrap_or_else(|| self.ctx.state.gen_ident("root"));
-            self.finalize_root_template(
-                state,
-                ctx,
-                strategy_kind,
-                init_len_before,
-                tpl_name,
-                fragment_id,
-            )?;
+            self.finalize_root_template(state, ctx, strategy_kind, init_len_before, fragment_id)?;
         }
 
         Ok(FragmentEmitKind::Rendered)
@@ -708,26 +690,28 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             )
         };
 
-        let tpl_name = self.ctx.state.gen_ident("root");
-        let from_call = self.ctx.b.call_expr(
-            from_fn,
-            [Arg::Expr(self.ctx.b.template_str_expr(html)), Arg::Num(1.0)],
-        );
-
         let frag = self.ctx.state.gen_ident("fragment");
         let node = self.ctx.state.gen_ident("node");
-        state.init.push(
-            self.ctx
-                .b
-                .var_stmt(&frag, self.ctx.b.call_expr(&tpl_name, [])),
-        );
+        let frag_stmt_idx = state.init.len();
         state.init.push(self.ctx.b.var_stmt(
             &node,
             self.ctx.b.call_expr("$.first_child", [Arg::Ident(&frag)]),
         ));
 
         self.emit_css_props_wrapper_block(state, ctx, component_id, &node, namespace)?;
-        self.hoist(self.ctx.b.var_stmt(&tpl_name, from_call));
+
+        let dedup_key = (!self.ctx.state.dev).then(|| format!("{from_fn}\u{0}1\u{0}{html}"));
+        let from_call = self.ctx.b.call_expr(
+            from_fn,
+            [Arg::Expr(self.ctx.b.template_str_expr(html)), Arg::Num(1.0)],
+        );
+        let tpl_name = self.hoist_template_dedup(dedup_key, from_call);
+        state.init.insert(
+            frag_stmt_idx,
+            self.ctx
+                .b
+                .var_stmt(&frag, self.ctx.b.call_expr(&tpl_name, [])),
+        );
 
         let anchor_ident = match &ctx.anchor {
             FragmentAnchor::Root => "$$anchor".to_string(),
@@ -884,7 +868,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state: &mut EmitState<'a>,
         ctx: &FragmentCtx<'a>,
         init_len_before: usize,
-        tpl_name: String,
         slot_el_id: NodeId,
         fragment_id: svelte_ast::FragmentId,
     ) -> Result<()> {
@@ -893,7 +876,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ctx,
             StrategyKind::SingleElement,
             init_len_before,
-            tpl_name,
             fragment_id,
             Some(slot_el_id),
         )
@@ -905,7 +887,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ctx: &FragmentCtx<'a>,
         strategy_kind: StrategyKind,
         init_len_before: usize,
-        tpl_name: String,
         fragment_id: svelte_ast::FragmentId,
     ) -> Result<()> {
         self.finalize_root_template_inner(
@@ -913,7 +894,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ctx,
             strategy_kind,
             init_len_before,
-            tpl_name,
             fragment_id,
             None,
         )
@@ -925,27 +905,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ctx: &FragmentCtx<'a>,
         strategy_kind: StrategyKind,
         init_len_before: usize,
-        tpl_name: String,
         fragment_id: svelte_ast::FragmentId,
         slot_root_id: Option<NodeId>,
     ) -> Result<()> {
         let from_fn = self.template_from_fn(fragment_id);
         let html_str = state.template.as_html();
         let needs_import = state.template.needs_import_node;
+        let flags: u32 = match (strategy_kind, needs_import) {
+            (StrategyKind::Multi, false) => 1,
+            (StrategyKind::Multi, true) => 3,
+            (StrategyKind::SingleElement, true) => 2,
+            (StrategyKind::SingleElement, false) => 0,
+        };
+
+        let dedup_key =
+            (!self.ctx.state.dev).then(|| format!("{from_fn}\u{0}{flags}\u{0}{html_str}"));
+
         let mut from_html = {
             let b = &self.ctx.state.b;
             let tpl_expr = b.template_str_expr(&html_str);
-            match (strategy_kind, needs_import) {
-                (StrategyKind::Multi, false) => {
-                    b.call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(1.0)])
-                }
-                (StrategyKind::Multi, true) => {
-                    b.call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(3.0)])
-                }
-                (StrategyKind::SingleElement, true) => {
-                    b.call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(2.0)])
-                }
-                (StrategyKind::SingleElement, false) => b.call_expr(from_fn, [Arg::Expr(tpl_expr)]),
+            if flags == 0 {
+                b.call_expr(from_fn, [Arg::Expr(tpl_expr)])
+            } else {
+                b.call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags as f64)])
             }
         };
         if state.template.contains_script_tag {
@@ -964,8 +946,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 from_html = self.wrap_add_locations(from_html, locs);
             }
         }
-        let tpl_stmt = self.ctx.state.b.var_stmt(&tpl_name, from_html);
-        self.hoist(tpl_stmt);
+        let tpl_name = self.hoist_template_dedup(dedup_key, from_html);
 
         let var_name = match state.root_var.as_deref() {
             Some(name) => name.to_string(),
@@ -986,6 +967,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state.root_var = Some(var_name);
 
         Ok(())
+    }
+
+    fn hoist_template_dedup(
+        &mut self,
+        dedup_key: Option<String>,
+        from_html: Expression<'a>,
+    ) -> String {
+        if let Some(name) = dedup_key
+            .as_ref()
+            .and_then(|key| self.ctx.state.hoisted_templates.get(key).cloned())
+        {
+            return name;
+        }
+        let name = self.ctx.state.gen_ident("root");
+        let tpl_stmt = self.ctx.state.b.var_stmt(&name, from_html);
+        self.hoist(tpl_stmt);
+        if let Some(key) = dedup_key {
+            self.ctx.state.hoisted_templates.insert(key, name.clone());
+        }
+        name
     }
 
     fn emit_static_node(

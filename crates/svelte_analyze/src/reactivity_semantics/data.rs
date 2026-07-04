@@ -273,6 +273,26 @@ impl BindingSemantics {
         }
     }
 
+    pub fn legacy_state_immutable(&self) -> Option<bool> {
+        match self {
+            BindingSemantics::LegacyState(state) => Some(state.immutable),
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => None,
+        }
+    }
+
     pub(crate) fn is_legacy_api_export(&self) -> bool {
         match self {
             BindingSemantics::LegacyApiExport => true,

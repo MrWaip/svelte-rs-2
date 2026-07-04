@@ -96,6 +96,8 @@ pub struct CodegenState<'a> {
     pub(crate) const_tag_blockers: FxHashMap<SymbolId, (String, usize)>,
 
     pub(crate) each_item_writeback_places: Option<FxHashMap<SymbolId, Expression<'a>>>,
+
+    pub(crate) hoisted_templates: FxHashMap<String, String>,
 }
 
 impl<'a> CodegenState<'a> {
@@ -130,6 +132,7 @@ impl<'a> CodegenState<'a> {
             has_tracing: false,
             const_tag_blockers: FxHashMap::default(),
             each_item_writeback_places: None,
+            hoisted_templates: FxHashMap::default(),
         }
     }
 
@@ -284,9 +287,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn is_customizable_select(&self, id: NodeId) -> bool {
         self.query.view.is_customizable_select(id)
-    }
-    pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
-        self.query.view.is_svelte_fragment_slot(id)
     }
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.query.view.needs_var(id)

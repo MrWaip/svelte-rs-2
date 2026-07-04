@@ -2,7 +2,7 @@ mod data;
 pub mod rune_refs;
 pub mod transformer;
 
-pub use data::TransformData;
+pub use data::{RestExcludeKey, RestExcludes, TransformData};
 
 pub use transformer::{IgnoreQuery, TransformScriptOutput, sanitize_location, transform_script};
 

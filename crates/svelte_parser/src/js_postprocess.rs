@@ -114,12 +114,6 @@ impl<'a> JsPostprocessor<'a> {
             let inner = self.take_expr(&mut paren.expression);
             *expr = inner;
         }
-        if let Expression::ChainExpression(_) = expr {
-            let Expression::ChainExpression(chain) = self.take_expr(expr) else {
-                return;
-            };
-            *expr = chain_element_into_expression(chain.unbox().expression);
-        }
         match expr {
             Expression::StaticMemberExpression(m) => self.flatten_chain_object(&mut m.object),
             Expression::ComputedMemberExpression(m) => self.flatten_chain_object(&mut m.object),
@@ -211,16 +205,6 @@ impl<'a> JsPostprocessor<'a> {
                 _ => true,
             }
         });
-    }
-}
-
-fn chain_element_into_expression<'a>(element: ChainElement<'a>) -> Expression<'a> {
-    match element {
-        ChainElement::CallExpression(c) => Expression::CallExpression(c),
-        ChainElement::TSNonNullExpression(t) => Expression::TSNonNullExpression(t),
-        ChainElement::StaticMemberExpression(m) => Expression::StaticMemberExpression(m),
-        ChainElement::ComputedMemberExpression(m) => Expression::ComputedMemberExpression(m),
-        ChainElement::PrivateFieldExpression(m) => Expression::PrivateFieldExpression(m),
     }
 }
 

@@ -23,12 +23,6 @@ pub(crate) struct FunctionInfo {
     pub(crate) span_start: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AsyncDerivedMode {
-    Await,
-    Save,
-}
-
 #[derive(Default)]
 pub(crate) struct ClassStateInfo {
     pub(crate) backing: FxHashMap<OxcNodeId, String>,

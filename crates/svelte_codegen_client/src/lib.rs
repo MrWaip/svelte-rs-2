@@ -22,7 +22,7 @@ use svelte_analyze::{
 use svelte_ast::Node;
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::{JsOutput, SourcemapKind};
-use svelte_transform::TransformData;
+use svelte_transform::{RestExcludeKey, TransformData};
 
 use context::Ctx;
 use svelte_analyze::types::data::binding_group_name;
@@ -124,6 +124,7 @@ pub fn generate<'a>(
     let needs_ownership_validator =
         script_output.needs_ownership_validator || analysis.output.needs_component_bind_ownership;
     let mut script_comments = script_output.comments;
+    let script_rest_excludes = script_output.rest_excludes;
 
     let mut module_imports: Vec<Statement<'_>> = Vec::new();
     let mut module_body: Vec<Statement<'_>> = Vec::new();
@@ -149,6 +150,23 @@ pub fn generate<'a>(
     let template_body = codegen_result.body;
     let instance_snippets = codegen_result.instance_snippets;
     let hoistable_snippets = codegen_result.hoistable_snippets;
+
+    for re in script_rest_excludes {
+        let set_stmt = {
+            let keys: Vec<Arg<'_, '_>> = re
+                .keys
+                .iter()
+                .map(|k| match k {
+                    RestExcludeKey::Str(s) => Arg::StrRef(ctx.b.alloc_str(s)),
+                    RestExcludeKey::Num(n) => Arg::Num(*n),
+                })
+                .collect();
+            let arr = ctx.b.array_from_args(keys);
+            let new_set = ctx.b.new_expr("Set", [Arg::Expr(arr)]);
+            ctx.b.var_stmt(&re.name, new_set)
+        };
+        ctx.state.module_hoisted.push(set_stmt);
+    }
 
     let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
     all_hoisted.append(&mut ctx.state.module_hoisted);

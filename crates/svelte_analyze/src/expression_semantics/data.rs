@@ -35,6 +35,13 @@ impl Volatility {
             Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => true,
         }
     }
+
+    pub fn is_asynchronous(&self) -> bool {
+        match self {
+            Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
+            Volatility::Asynchronous => true,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

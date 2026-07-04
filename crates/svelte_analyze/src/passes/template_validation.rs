@@ -1551,10 +1551,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     fn visit_expression_tag(&mut self, tag: &ExpressionTag, ctx: &mut VisitContext<'_, '_>) {
         if expression_tag_body_is_declaration(ctx, tag) {
-            ctx.warnings_mut().push(Diagnostic::js_parse_error(
-                Span::new(tag.expression.span.start, tag.expression.span.start),
-                "Unexpected token".to_string(),
-            ));
             return;
         }
 

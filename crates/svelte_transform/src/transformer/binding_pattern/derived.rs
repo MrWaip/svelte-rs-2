@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::iter;
 use std::mem;
 
 use oxc_allocator::{CloneIn, Vec as OxcVec};
@@ -16,7 +15,7 @@ use svelte_ast_builder::{Arg, AssignLeft, Builder};
 use svelte_component_semantics::{SymbolId, walk_bindings};
 
 use super::super::location::sanitize_location;
-use super::super::model::{AsyncDerivedMode, ComponentTransformer};
+use super::super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
     pub(super) fn rewrite_derived(
@@ -261,15 +260,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
 
         let async_derived = self.b.call_expr("$.async_derived", args);
-        let result = match self.async_derived_mode() {
-            AsyncDerivedMode::Await => self.b.await_expr(async_derived),
-            AsyncDerivedMode::Save => {
-                let saved = self.b.call_expr("$.save", [Arg::Expr(async_derived)]);
-                self.b
-                    .call_expr_callee(self.b.await_expr(saved), iter::empty::<Arg<'a, '_>>())
-            }
-        };
-        declarator.init = Some(result);
+        declarator.init = Some(self.b.await_expr(async_derived));
         out.push(declarator);
     }
 
@@ -280,14 +271,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             .arrow_expr(self.b.no_params(), [self.b.expr_stmt(value)]);
         self.b.seed_arrow_scope(&thunk, self.gen_arrow_scope);
         self.b.call_expr("$.derived", [Arg::Expr(thunk)])
-    }
-
-    fn async_derived_mode(&self) -> AsyncDerivedMode {
-        if self.strip_exports && self.function_info_stack.len() > 1 {
-            AsyncDerivedMode::Save
-        } else {
-            AsyncDerivedMode::Await
-        }
     }
 
     fn collect_derived_leaves(
@@ -362,14 +345,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
 
         let async_derived = self.b.call_expr("$.async_derived", args);
-        match self.async_derived_mode() {
-            AsyncDerivedMode::Await => self.b.await_expr(async_derived),
-            AsyncDerivedMode::Save => {
-                let saved = self.b.call_expr("$.save", [Arg::Expr(async_derived)]);
-                self.b
-                    .call_expr_callee(self.b.await_expr(saved), iter::empty::<Arg<'a, '_>>())
-            }
-        }
+        self.b.await_expr(async_derived)
     }
 
     fn push_boxed_temp(
