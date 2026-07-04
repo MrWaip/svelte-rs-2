@@ -1959,6 +1959,11 @@ mod snippets {
     use super::*;
 
     diagnostic_case!(
+        snippet_name_duplicate_instance_binding,
+        "snippets/snippet_name_duplicate_instance_binding",
+        ignore = "snippet duplicate declaration check added in svelte 5.56.4"
+    );
+    diagnostic_case!(
         validate_snippet_parameter_assignment,
         "snippets/validate_snippet_parameter_assignment"
     );
@@ -2082,6 +2087,41 @@ mod template {
     diagnostic_case!(
         expression_tag_const_tag_still_ok,
         "template/expression_tag_const_tag_still_ok"
+    );
+    diagnostic_case!(
+        declaration_tag_invalid_type_var,
+        "template/declaration_tag_invalid_type_var",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_invalid_type_interface,
+        "template/declaration_tag_invalid_type_interface",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_invalid_type_ts_alias,
+        "template/declaration_tag_invalid_type_ts_alias",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_no_legacy_mode,
+        "template/declaration_tag_no_legacy_mode",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_duplicate,
+        "template/declaration_tag_duplicate",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_await_no_experimental,
+        "template/declaration_tag_await_no_experimental",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_type_nonts_parse_error,
+        "template/declaration_tag_type_nonts_parse_error",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
     );
     diagnostic_case!(
         node_invalid_placement_ssr_in_if_block,
