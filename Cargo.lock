@@ -1260,6 +1260,7 @@ dependencies = [
 name = "svelte_ast_builder"
 version = "0.1.0"
 dependencies = [
+ "memchr",
  "oxc_allocator",
  "oxc_ast",
  "oxc_parser",

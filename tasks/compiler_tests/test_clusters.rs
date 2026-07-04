@@ -1,36 +1,8 @@
-use compiler_tests::harness::{assert_compiler, assert_compiler_module};
-
-macro_rules! compiler_module_case {
-    ($name:ident, $path:literal) => {
-        #[test]
-        fn $name() {
-            assert_compiler_module($path);
-        }
-    };
-    ($name:ident, $path:literal, ignore = $reason:literal) => {
-        #[test]
-        #[ignore = $reason]
-        fn $name() {
-            assert_compiler_module($path);
-        }
-    };
-}
-
-macro_rules! compiler_case {
-    ($name:ident, $path:literal) => {
-        #[test]
-        fn $name() {
-            assert_compiler($path);
-        }
-    };
-    ($name:ident, $path:literal, ignore = $reason:literal) => {
-        #[test]
-        #[ignore = $reason]
-        fn $name() {
-            assert_compiler($path);
-        }
-    };
-}
+use compiler_tests::harness::{
+    assert_compiler_dev, assert_compiler_module_dev, assert_compiler_module_prod,
+    assert_compiler_prod,
+};
+use compiler_tests::{compiler_case, compiler_module_case};
 
 #[path = "clusters/events.rs"]
 mod events;

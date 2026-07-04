@@ -115,4 +115,4 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 - `context.md` §«Реактивность», §«Скоупы, биндинги, ссылки» — терминология.
 - `component-semantics.md` — scope-граф и `OxcNodeId`-биндинги, на которых строится классификация.
 - `bindings-and-references.md` — система идентификаторов под нашим API: биндинг/ссылка, `SymbolId`/`ReferenceId`, `BindingPattern`/`walk_bindings`, плоская семантика (контракт `binding_semantics`/`reference_semantics`).
-- Дочерние PRD: `state-rune.md`.
+- Дочерние PRD: `state-rune.md`, `destructuring.md`.

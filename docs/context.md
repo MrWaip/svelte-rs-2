@@ -26,7 +26,8 @@
 Справочники и дизайны:
 
 - `bindings-and-references.md` — система идентификаторов: биндинг/ссылка, `SymbolId`/`ReferenceId`, дерево `BindingPattern`, `walk_bindings`, OXC API.
-- `designs/binding-pattern-routing.md`, `designs/destructure-patterns.md`, `designs/props-destructure-alias.md` — утверждённые дизайны (через `/design`); читать, если scope пересекается.
+- `destructuring.md` — дочерний PRD `reactivity-semantics`: обход паттернов (`walk_bindings` / `walk_assignment_targets`), разворот объявлений, деструктур-присваивание, формы ключа `$props()`.
+- `designs/analyze-js-visitor-bundle.md` — дизайн (через `/design`) fan-out одного обхода JS-AST в слое `analyze`; читать, если scope пересекается.
 
 Догмы, банлист имён, правила взаимодействия — `../../CLAUDE.md`. Оригинал (JS-референс) — `../../original/compiler/`, источник истины для соответствия выходного JS; используется понять **что** портировать, не **как**.
 

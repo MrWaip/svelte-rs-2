@@ -2,17 +2,25 @@
 generate:
     cargo run -p generate_test_cases
 
-# Run all diagnostic integration tests
+# Run all diagnostic integration tests (aggregated summary via nextest)
 test-diagnostics:
-    cargo test -p diagnostic_tests --test diagnostic_tests
+    cargo nextest run -p diagnostic_tests --status-level fail
 
 # Run a single diagnostic test case
 test-diagnostic-case name:
     cargo test -p diagnostic_tests --test diagnostic_tests {{name}} -- --include-ignored
 
-# Run all compiler integration tests
+# Run all compiler integration tests (aggregated summary via nextest)
 test-compiler:
-    cargo test -p compiler_tests
+    cargo nextest run -p compiler_tests --status-level fail
+
+# List only #[ignore]d tests — known divergences (pkg defaults to compiler_tests)
+test-ignored-list pkg='compiler_tests':
+    cargo nextest list -p {{pkg}} --run-ignored ignored-only
+
+# Run only #[ignore]d tests — see which divergences now pass (pkg defaults to compiler_tests)
+test-ignored pkg='compiler_tests':
+    cargo nextest run -p {{pkg}} --run-ignored ignored-only --no-fail-fast
 
 # Run a single compiler test case
 test-case name:
@@ -26,9 +34,9 @@ test-case-verbose name:
 test-cluster name:
     cargo test -p compiler_tests --test compiler_tests_clusters {{name}} -- --include-ignored
 
-# Run all tests across all crates (pass extra cargo flags via `just test-all -- --locked`)
+# Run all tests across all crates (aggregated summary via nextest; pass extra flags via `just test-all --locked`)
 test-all *args:
-    cargo test --workspace {{args}}
+    cargo nextest run --workspace --status-level fail {{args}}
 
 # Remove Cargo build artifacts, including incremental caches, not used for 2 days
 sweep-2d:
@@ -43,13 +51,13 @@ lint:
 clippy-fix:
     cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
 
-# Run parser tests
+# Run parser tests (aggregated summary via nextest)
 test-parser:
-    cargo test -p svelte_parser
+    cargo nextest run -p svelte_parser --status-level fail
 
-# Run analyzer tests
+# Run analyzer tests (aggregated summary via nextest)
 test-analyzer:
-    cargo test -p svelte_analyze
+    cargo nextest run -p svelte_analyze --status-level fail
 
 # Walltime benchmark across all cases (criterion mean ms).
 bench-walltime-all:

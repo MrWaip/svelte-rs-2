@@ -78,20 +78,15 @@ fn main() {
             continue;
         }
 
-        // Write case-svelte.js (formatted via OXC)
-        let js_src = case["js"].as_str().expect("js field missing");
-        let js_path = dir.join("case-svelte.js");
-        let mut js_file = File::create(&js_path).expect("test invariant");
-        let allocator = Allocator::default();
-        let parser = Parser::new(&allocator, js_src, SourceType::default());
-        let parsed = parser.parse();
-        let codegen = Codegen::new();
-        let result = codegen.build(&parsed.program);
-        js_file
-            .write_all(result.code.as_bytes())
-            .expect("test invariant");
+        write_formatted_js(
+            &dir.join("case-svelte.js"),
+            case["js"].as_str().expect("js field missing"),
+        );
 
-        // Write case-svelte.css when a reference file exists.
+        if let Some(js_dev_src) = case.get("jsDev").and_then(|v| v.as_str()) {
+            write_formatted_js(&dir.join("case-svelte.dev.js"), js_dev_src);
+        }
+
         if let Some(css) = case["css"].as_str() {
             let css_path = dir.join("case-svelte.css");
             let css = strip_reference_only_css_markers(css);
@@ -101,4 +96,14 @@ fn main() {
                 .expect("test invariant");
         }
     }
+}
+
+fn write_formatted_js(path: &Path, src: &str) {
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, src, SourceType::default()).parse();
+    let result = Codegen::new().build(&parsed.program);
+    File::create(path)
+        .expect("test invariant")
+        .write_all(result.code.as_bytes())
+        .expect("test invariant");
 }

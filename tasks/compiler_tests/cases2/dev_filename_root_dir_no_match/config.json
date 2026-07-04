@@ -1,5 +1,1 @@
-{
-  "dev": true,
-  "filename": "/elsewhere/foo.svelte",
-  "rootDir": "/repo"
-}
+{"filename": "/elsewhere/foo.svelte", "rootDir": "/repo"}

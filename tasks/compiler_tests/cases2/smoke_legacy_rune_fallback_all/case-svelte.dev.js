@@ -1,0 +1,36 @@
+import "svelte/internal/flags/legacy";
+App[$.FILENAME] = "(unknown)";
+import * as $ from "svelte/internal/client";
+export default function App($$anchor, $$props) {
+	$.check_target(new.target);
+	$.push($$props, false, App);
+	const $state = () => ($.validate_store(state, "state"), $.store_get(state, "$state", $$stores));
+	const $derived = () => ($.validate_store(derived, "derived"), $.store_get(derived, "$derived", $$stores));
+	const $props = () => ($.validate_store(props, "props"), $.store_get(props, "$props", $$stores));
+	const $effect = () => ($.validate_store(effect, "effect"), $.store_get(effect, "$effect", $$stores));
+	const $inspect = () => ($.validate_store(inspect, "inspect"), $.store_get(inspect, "$inspect", $$stores));
+	const $bindable = () => ($.validate_store(bindable, "bindable"), $.store_get(bindable, "$bindable", $$stores));
+	const [$$stores, $$cleanup] = $.setup_stores();
+	let stateBase = 0;
+	let derivedBase = 1;
+	let propsBase = {};
+	let effectFn = () => {};
+	let inspectVal = "x";
+	let bindableDefault = false;
+	let s = $state()(stateBase);
+	let r = $state().raw(propsBase);
+	let snap = $state().snapshot(propsBase);
+	let d = $derived()(derivedBase);
+	let db = $derived().by(() => derivedBase);
+	let p = $props()();
+	let pid = $props().id();
+	let t = $effect().tracking();
+	$effect()(effectFn);
+	$effect().pre(effectFn);
+	$inspect()(inspectVal);
+	let b = $bindable()(bindableDefault);
+	var $$exports = { ...$.legacy_api() };
+	var $$pop = $.pop($$exports);
+	$$cleanup();
+	return $$pop;
+}

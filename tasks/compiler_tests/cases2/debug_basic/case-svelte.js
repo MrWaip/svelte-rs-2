@@ -1,11 +1,7 @@
-App[$.FILENAME] = "(unknown)";
 import * as $ from "svelte/internal/client";
-export default function App($$anchor, $$props) {
-	$.check_target(new.target);
-	$.push($$props, true, App);
+export default function App($$anchor) {
 	let x = 1;
 	let y = 2;
-	var $$exports = { ...$.legacy_api() };
 	$.template_effect(() => {
 		console.log({
 			x: $.snapshot(x),
@@ -21,5 +17,4 @@ export default function App($$anchor, $$props) {
 		console.log({});
 		debugger;
 	});
-	return $.pop($$exports);
 }
