@@ -6177,7 +6177,7 @@ fn analyze_module_reports_store_invalid_subscription_module() {
         console.log($count);
     "#;
 
-    let (_data, _parsed, diags) = analyze_module(&alloc, source, false);
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
     let store_diags = diags
         .iter()
         .filter(|diag| diag.kind.code() == "store_invalid_subscription_module")
@@ -6191,7 +6191,7 @@ fn analyze_module_reports_typescript_parameter_property() {
     let alloc = oxc_allocator::Allocator::default();
     let source = "export class Store { constructor(private readonly items: string[]) {} }";
 
-    let (_data, _parsed, diags) = analyze_module(&alloc, source, true);
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, true, false);
     let ts_diags = diags
         .iter()
         .filter(|diag| diag.kind.code() == "typescript_invalid_feature")
@@ -6210,7 +6210,7 @@ fn analyze_module_ignores_nested_only_store_like_bindings() {
         }
     "#;
 
-    let (_data, _parsed, diags) = analyze_module(&alloc, source, false);
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
 
     assert!(
         !diags
@@ -6230,7 +6230,7 @@ fn analyze_module_reports_experimental_async_for_derived_await() {
         }
     "#;
 
-    let (_data, _parsed, diags) = analyze_module(&alloc, source, false);
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
     let async_diags = diags
         .iter()
         .filter(|diag| diag.kind.code() == "experimental_async")
@@ -6246,7 +6246,7 @@ fn analyze_module_reports_experimental_async_for_module_top_level_derived_await(
         export const value = $derived(await Promise.resolve(1));
     "#;
 
-    let (_data, _parsed, diags) = analyze_module(&alloc, source, false);
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
     let async_diags = diags
         .iter()
         .filter(|diag| diag.kind.code() == "experimental_async")
@@ -6265,7 +6265,7 @@ fn analyze_module_ignores_await_in_plain_module_function() {
         }
     "#;
 
-    let (_data, _parsed, diags) = analyze_module(&alloc, source, false);
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
 
     assert!(
         !diags

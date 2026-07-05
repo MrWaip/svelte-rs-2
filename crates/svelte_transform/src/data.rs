@@ -26,6 +26,8 @@ pub struct TransformData {
     pub each_collection_block_by_item_legacy: FxHashMap<SymbolId, NodeId>,
 
     pub destructure_default_simple: FxHashMap<SymbolId, Vec<bool>>,
+
+    pub needs_ownership_validator: bool,
 }
 
 impl Default for TransformData {
@@ -44,6 +46,7 @@ impl TransformData {
             each_collection_internal_names_legacy: FxHashMap::default(),
             each_collection_block_by_item_legacy: FxHashMap::default(),
             destructure_default_simple: FxHashMap::default(),
+            needs_ownership_validator: false,
         }
     }
 }

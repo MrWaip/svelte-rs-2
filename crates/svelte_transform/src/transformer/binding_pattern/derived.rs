@@ -7,7 +7,7 @@ use oxc_ast::ast::{
     Argument, BindingPattern, CallExpression, Expression, Statement, VariableDeclarationKind,
     VariableDeclarator,
 };
-use oxc_span::SPAN;
+use oxc_span::{GetSpan, SPAN};
 
 use svelte_analyze::{DerivedKind, DerivedSource};
 
@@ -174,7 +174,8 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::CallExpression(mut call) = init else {
             unreachable!("sync $derived initializer is a call");
         };
-        call.callee = self.b.rid_expr("$.derived");
+        let callee_span = call.callee.span();
+        call.callee = self.b.rid_expr_at("$.derived", callee_span);
 
         if matches!(derived_kind, DerivedKind::Derived) {
             let passthrough = matches!(source, DerivedSource::Passthrough);
@@ -282,6 +283,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
         carrier_declarators: &mut Vec<VariableDeclarator<'a>>,
     ) -> Vec<(SymbolId, Expression<'a>)> {
         let mut leaves = Vec::new();
+        let carrier_label = match pattern {
+            BindingPattern::ArrayPattern(_) => "[$derived iterable]",
+            _ => "[$derived object]",
+        };
         walk_bindings(pattern, |v| {
             let root = root_template.clone_in_with_semantic_ids(self.b.ast.allocator);
             let access = self.unfold_carrier_access(
@@ -291,7 +296,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 v.excluded,
                 carriers,
                 carrier_declarators,
-                None,
+                Some(carrier_label),
                 decl_kind,
             );
             leaves.push((v.symbol, access));

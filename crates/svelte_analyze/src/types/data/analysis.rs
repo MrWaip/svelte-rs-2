@@ -298,6 +298,9 @@ impl<'a> AnalysisData<'a> {
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
         self.reactivity.binding_semantics(sym)
     }
+    pub fn console_call_contains_state(&self, call: OxcNodeId) -> bool {
+        self.value_evaluation.console_call_contains_state(call)
+    }
     pub fn declarator_semantics(&self, decl_node: OxcNodeId) -> DeclaratorSemantics {
         self.reactivity.declarator_semantics(decl_node)
     }

@@ -55,7 +55,6 @@ pub(in crate::codegen) enum BindingPatternOutput<'a> {
 pub(in crate::codegen) struct ConstTagDerived<'a> {
     pub target: &'a str,
     pub derived: Expression<'a>,
-    pub simple: bool,
     pub symbols: Vec<SymbolId>,
 }
 
@@ -286,6 +285,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 thunk
             };
             binding_stmts.push(self.ctx.b.let_init_stmt(&name, init));
+            if self.ctx.state.dev {
+                let name_alloc = self.ctx.b.alloc_str(&name);
+                let eager = if needs_derived {
+                    self.ctx.b.call_stmt("$.get", [Arg::Ident(name_alloc)])
+                } else {
+                    self.ctx.b.call_stmt(&name, iter::empty::<Arg<'_, '_>>())
+                };
+                binding_stmts.push(eager);
+            }
         });
 
         carrier_stmts.extend(binding_stmts);
@@ -364,7 +372,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Ok(ConstTagDerived {
                 target,
                 derived,
-                simple: true,
                 symbols,
             })
         } else {
@@ -408,7 +415,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Ok(ConstTagDerived {
                 target,
                 derived,
-                simple: false,
                 symbols,
             })
         }

@@ -402,6 +402,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags)]);
+        let from_call = if self.ctx.state.dev
+            && let Some(locs) = self.build_template_locations(&child_ctx, el_fragment)
+        {
+            self.wrap_add_locations(from_call, locs)
+        } else {
+            from_call
+        };
         self.hoist(self.ctx.b.var_stmt(&tpl_name, from_call));
 
         let EmitState {

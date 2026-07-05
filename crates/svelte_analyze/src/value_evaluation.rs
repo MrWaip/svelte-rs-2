@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::reactivity_semantics::data::{
     DeclaratorSemantics, DerivedKind, RuntimeRuneKind, StateKind,
@@ -10,6 +12,7 @@ use oxc_ast::ast::{
     Expression, Function, IdentifierReference, LogicalExpression, NewExpression, Statement,
     StaticMemberExpression, TemplateLiteral, UnaryExpression, VariableDeclaration,
 };
+use oxc_ast_visit::{Visit, walk};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -82,6 +85,10 @@ impl Evaluation {
             Self::MaybeNullish { .. } => false,
         }
     }
+
+    pub fn has_unknown(&self) -> bool {
+        matches!(self, Self::MaybeNullish { has_unknown: true })
+    }
 }
 
 #[cfg(test)]
@@ -93,15 +100,12 @@ impl Evaluation {
     pub(crate) fn is_function(&self) -> bool {
         matches!(self.class(), Some(ValueClass::Function))
     }
-
-    pub(crate) fn has_unknown(&self) -> bool {
-        matches!(self, Self::MaybeNullish { has_unknown: true })
-    }
 }
 
 #[derive(Default)]
 pub struct ValueEvaluation {
     by_symbol: FxHashMap<SymbolId, Evaluation>,
+    console_state_calls: FxHashSet<OxcNodeId>,
 }
 
 impl ValueEvaluation {
@@ -110,6 +114,10 @@ impl ValueEvaluation {
             Some(evaluation) => evaluation.clone(),
             None => Evaluation::unknown(),
         }
+    }
+
+    pub fn console_call_contains_state(&self, call: OxcNodeId) -> bool {
+        self.console_state_calls.contains(&call)
     }
 }
 
@@ -148,6 +156,7 @@ pub struct ValueEvaluator<'c, 'a> {
     function_decls: FxHashSet<SymbolId>,
     read_context: ReadContext,
     dev: bool,
+    binding_depth: Cell<u32>,
 }
 
 impl<'c, 'a> ValueEvaluator<'c, 'a> {
@@ -170,6 +179,7 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
             function_decls,
             read_context,
             dev,
+            binding_depth: Cell::new(0),
         }
     }
 
@@ -260,27 +270,115 @@ fn collect_bindings_init<'c, 'a>(
         }
     }
 
-    fn ingest_fn_decl<'c, 'a>(fd: &'c Function<'a>, fn_decls: &mut FxHashSet<SymbolId>) {
+    fn ingest_fn_decl<'c, 'a>(
+        fd: &'c Function<'a>,
+        map: &mut FxHashMap<SymbolId, &'c Expression<'a>>,
+        fn_decls: &mut FxHashSet<SymbolId>,
+    ) {
         if let Some(id) = &fd.id
             && let Some(sym) = id.symbol_id.get()
         {
             fn_decls.insert(sym);
+        }
+        if let Some(body) = &fd.body {
+            for stmt in &body.statements {
+                collect_stmt(stmt, map, fn_decls);
+            }
+        }
+    }
+
+    fn collect_stmt<'c, 'a>(
+        stmt: &'c Statement<'a>,
+        map: &mut FxHashMap<SymbolId, &'c Expression<'a>>,
+        fn_decls: &mut FxHashSet<SymbolId>,
+    ) {
+        match stmt {
+            Statement::VariableDeclaration(vd) => ingest_var_decl(vd, map),
+            Statement::FunctionDeclaration(fd) => ingest_fn_decl(fd, map, fn_decls),
+            Statement::ExportNamedDeclaration(en) => match &en.declaration {
+                Some(Declaration::VariableDeclaration(vd)) => ingest_var_decl(vd, map),
+                Some(Declaration::FunctionDeclaration(fd)) => ingest_fn_decl(fd, map, fn_decls),
+                _ => {}
+            },
+            Statement::BlockStatement(b) => {
+                for s in &b.body {
+                    collect_stmt(s, map, fn_decls);
+                }
+            }
+            Statement::IfStatement(i) => {
+                collect_stmt(&i.consequent, map, fn_decls);
+                if let Some(alt) = &i.alternate {
+                    collect_stmt(alt, map, fn_decls);
+                }
+            }
+            Statement::ForStatement(f) => collect_stmt(&f.body, map, fn_decls),
+            Statement::ForInStatement(f) => collect_stmt(&f.body, map, fn_decls),
+            Statement::ForOfStatement(f) => collect_stmt(&f.body, map, fn_decls),
+            Statement::WhileStatement(w) => collect_stmt(&w.body, map, fn_decls),
+            Statement::DoWhileStatement(w) => collect_stmt(&w.body, map, fn_decls),
+            Statement::LabeledStatement(l) => collect_stmt(&l.body, map, fn_decls),
+            Statement::TryStatement(t) => {
+                for s in &t.block.body {
+                    collect_stmt(s, map, fn_decls);
+                }
+                if let Some(h) = &t.handler {
+                    for s in &h.body.body {
+                        collect_stmt(s, map, fn_decls);
+                    }
+                }
+                if let Some(f) = &t.finalizer {
+                    for s in &f.body {
+                        collect_stmt(s, map, fn_decls);
+                    }
+                }
+            }
+            Statement::SwitchStatement(sw) => {
+                for case in &sw.cases {
+                    for s in &case.consequent {
+                        collect_stmt(s, map, fn_decls);
+                    }
+                }
+            }
+            Statement::ExpressionStatement(es) => collect_expr(&es.expression, map, fn_decls),
+            _ => {}
+        }
+    }
+
+    fn collect_expr<'c, 'a>(
+        expr: &'c Expression<'a>,
+        map: &mut FxHashMap<SymbolId, &'c Expression<'a>>,
+        fn_decls: &mut FxHashSet<SymbolId>,
+    ) {
+        match expr {
+            Expression::CallExpression(c) => {
+                collect_expr(&c.callee, map, fn_decls);
+                for arg in &c.arguments {
+                    if let Some(e) = arg.as_expression() {
+                        collect_expr(e, map, fn_decls);
+                    }
+                }
+            }
+            Expression::ArrowFunctionExpression(a) => {
+                for s in &a.body.statements {
+                    collect_stmt(s, map, fn_decls);
+                }
+            }
+            Expression::FunctionExpression(f) => {
+                if let Some(body) = &f.body {
+                    for s in &body.statements {
+                        collect_stmt(s, map, fn_decls);
+                    }
+                }
+            }
+            Expression::ParenthesizedExpression(p) => collect_expr(&p.expression, map, fn_decls),
+            _ => {}
         }
     }
 
     let programs = [parsed.program.as_ref(), parsed.module_program.as_ref()];
     for prog in programs.into_iter().flatten() {
         for stmt in &prog.body {
-            match stmt {
-                Statement::VariableDeclaration(vd) => ingest_var_decl(vd, &mut map),
-                Statement::FunctionDeclaration(fd) => ingest_fn_decl(fd, &mut fn_decls),
-                Statement::ExportNamedDeclaration(en) => match &en.declaration {
-                    Some(Declaration::VariableDeclaration(vd)) => ingest_var_decl(vd, &mut map),
-                    Some(Declaration::FunctionDeclaration(fd)) => ingest_fn_decl(fd, &mut fn_decls),
-                    _ => {}
-                },
-                _ => {}
-            }
+            collect_stmt(stmt, &mut map, &mut fn_decls);
         }
     }
     (map, fn_decls)
@@ -318,7 +416,128 @@ pub(crate) fn build<'a>(
         );
     }
 
-    ValueEvaluation { by_symbol }
+    let console_state_calls = if dev {
+        collect_console_state_calls(parsed, scoping, semantics, &by_symbol)
+    } else {
+        FxHashSet::default()
+    };
+
+    ValueEvaluation {
+        by_symbol,
+        console_state_calls,
+    }
+}
+
+pub(crate) fn build_module_console_calls<'a>(
+    parsed: &JsAst<'a>,
+    scoping: &ComponentScoping<'a>,
+    semantics: &ComponentSemantics<'a>,
+) -> ValueEvaluation {
+    let by_symbol = FxHashMap::default();
+    let console_state_calls = collect_console_state_calls(parsed, scoping, semantics, &by_symbol);
+    ValueEvaluation {
+        by_symbol,
+        console_state_calls,
+    }
+}
+
+const CONSOLE_STATE_METHODS: [&str; 9] = [
+    "debug",
+    "dir",
+    "error",
+    "group",
+    "groupCollapsed",
+    "info",
+    "log",
+    "trace",
+    "warn",
+];
+
+struct ConsoleStateWalk<'e, 'a> {
+    scoping: &'e ComponentScoping<'a>,
+    semantics: &'e ComponentSemantics<'a>,
+    by_symbol: &'e FxHashMap<SymbolId, Evaluation>,
+    calls: FxHashSet<OxcNodeId>,
+}
+
+impl<'e, 'a> Visit<'a> for ConsoleStateWalk<'e, 'a> {
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if self.is_console_state_call(call) {
+            self.calls.insert(call.node_id());
+        }
+        walk::walk_call_expression(self, call);
+    }
+}
+
+impl<'e, 'a> ConsoleStateWalk<'e, 'a> {
+    fn is_console_state_call(&self, call: &CallExpression<'a>) -> bool {
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return false;
+        };
+        let Expression::Identifier(console_id) = &member.object else {
+            return false;
+        };
+        if console_id.name != "console" {
+            return false;
+        }
+        if !CONSOLE_STATE_METHODS.contains(&member.property.name.as_str()) {
+            return false;
+        }
+        call.arguments.iter().any(|arg| match arg.as_expression() {
+            Some(expr) => self.arg_has_unknown(expr),
+            None => true,
+        })
+    }
+
+    fn arg_has_unknown(&self, expr: &Expression<'a>) -> bool {
+        match expr.get_inner_expression() {
+            Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::BigIntLiteral(_)
+            | Expression::TemplateLiteral(_) => false,
+            Expression::Identifier(id) => id
+                .reference_id
+                .get()
+                .and_then(|ref_id| self.scoping.symbol_for_reference(ref_id))
+                .map(|sym| self.evaluation(sym).has_unknown() || self.semantics.is_mutated(sym))
+                .unwrap_or(true),
+            Expression::UnaryExpression(unary) => self.arg_has_unknown(&unary.argument),
+            Expression::BinaryExpression(binary) => {
+                self.arg_has_unknown(&binary.left) || self.arg_has_unknown(&binary.right)
+            }
+            _ => true,
+        }
+    }
+
+    fn evaluation(&self, symbol: SymbolId) -> Evaluation {
+        match self.by_symbol.get(&symbol) {
+            Some(evaluation) => evaluation.clone(),
+            None => Evaluation::unknown(),
+        }
+    }
+}
+
+fn collect_console_state_calls<'a>(
+    parsed: &JsAst<'a>,
+    scoping: &ComponentScoping<'a>,
+    semantics: &ComponentSemantics<'a>,
+    by_symbol: &FxHashMap<SymbolId, Evaluation>,
+) -> FxHashSet<OxcNodeId> {
+    let mut walker = ConsoleStateWalk {
+        scoping,
+        semantics,
+        by_symbol,
+        calls: FxHashSet::default(),
+    };
+    for prog in [parsed.program.as_ref(), parsed.module_program.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        walker.visit_program(prog);
+    }
+    walker.calls
 }
 
 #[derive(Clone, Debug)]
@@ -844,7 +1063,9 @@ fn eval_identifier(
     if !guard.insert(init_node_id) {
         return smallvec![EvalAtom::Unknown];
     }
+    ctx.binding_depth.set(ctx.binding_depth.get() + 1);
     let result = eval_binding_init(sym, init_expr, ctx, guard);
+    ctx.binding_depth.set(ctx.binding_depth.get() - 1);
     guard.remove(&init_node_id);
     let optimized_or_runtime_rune = match ctx.reactivity.binding_semantics(sym) {
         BindingSemantics::OptimizedRune(_) | BindingSemantics::RuntimeRune { .. } => true,
@@ -913,6 +1134,7 @@ fn eval_binary(
         bin.operator,
         Equality | StrictEquality | Inequality | StrictInequality
     ) && ctx.dev
+        && ctx.binding_depth.get() == 0
     {
         return smallvec![EvalAtom::Unknown];
     }

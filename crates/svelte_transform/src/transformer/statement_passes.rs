@@ -16,6 +16,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.process_statements(stmts);
     }
 
+    pub(crate) fn strip_inspect_trace_statements(&mut self, stmts: &mut OxcVec<'a, Statement<'a>>) {
+        if self.dev {
+            return;
+        }
+        stmts.retain(|stmt| {
+            let Statement::ExpressionStatement(es) = stmt else {
+                return true;
+            };
+            !is_inspect_trace_call(&es.expression)
+        });
+    }
+
     fn process_statements(&mut self, stmts: &mut OxcVec<'a, Statement<'a>>) {
         let mut out = self.b.ast.vec_with_capacity(stmts.len());
         for stmt in stmts.drain(..) {

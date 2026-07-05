@@ -121,8 +121,9 @@ pub fn generate<'a>(
     let script_imports = script_output.imports;
     let script_body = script_output.body;
     let has_tracing = script_output.has_tracing;
-    let needs_ownership_validator =
-        script_output.needs_ownership_validator || analysis.output.needs_component_bind_ownership;
+    let needs_ownership_validator = script_output.needs_ownership_validator
+        || analysis.output.needs_component_bind_ownership
+        || ctx.transform_data.needs_ownership_validator;
     let mut script_comments = script_output.comments;
     let script_rest_excludes = script_output.rest_excludes;
 
@@ -138,6 +139,7 @@ pub fn generate<'a>(
             &analysis.scoping,
             &mut *ctx.state.ident_gen,
             ctx.state.line_index,
+            ctx.state.dev,
         );
 
         script_comments.extend(module_output.comments);
@@ -182,6 +184,15 @@ pub fn generate<'a>(
         fn_body.push(ctx.b.const_stmt(name, call));
     }
 
+    if ctx.state.dev {
+        fn_body.push(
+            ctx.b.expr_stmt(
+                ctx.b
+                    .call_expr("$.check_target", [Arg::Expr(ctx.b.new_target_expr())]),
+            ),
+        );
+    }
+
     if ctx.query.needs_sanitized_legacy_slots() {
         fn_body.push(ctx.b.const_stmt(
             "$$slots",
@@ -219,14 +230,6 @@ pub fn generate<'a>(
         ));
     }
 
-    if ctx.state.dev {
-        fn_body.push(
-            ctx.b.expr_stmt(
-                ctx.b
-                    .call_expr("$.check_target", [Arg::Expr(ctx.b.new_target_expr())]),
-            ),
-        );
-    }
     if runtime.needs_push {
         let mut push_args: Vec<Arg<'_, '_>> = vec![
             Arg::Ident("$$props"),

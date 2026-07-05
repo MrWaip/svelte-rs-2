@@ -237,18 +237,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .b
             .call_expr_callee(callee_expr, [Arg::Expr(anchor_expr), Arg::Expr(props_expr)]);
 
-        let final_expr = if let Some(bind_id) = props.bind_this {
+        let (final_expr, bind_this_validate) = if let Some(bind_id) = props.bind_this {
             self.build_bind_this_call(el_id, bind_id, component_call)?
         } else {
-            component_call
+            (component_call, None)
         };
 
-        let component_stmt = if is_svelte_self {
+        let component_stmt = if self.ctx.has_component_css_props(el_id) {
             self.ctx.b.expr_stmt(final_expr)
         } else {
+            let component_tag = if is_svelte_self {
+                "svelte:self"
+            } else {
+                cn_name.as_str()
+            };
             let extra_obj = self.ctx.b.object_expr([ObjProp::KeyValue(
                 "componentTag",
-                self.ctx.b.str_expr(&cn_name),
+                self.ctx.b.str_expr(component_tag),
             )]);
             self.add_svelte_meta_with_extra(final_expr, span_start, "component", Some(extra_obj))
         };
@@ -260,6 +265,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             props.memo_decls
         };
+        if let Some(stmt) = bind_this_validate {
+            state.init.push(stmt);
+        }
         for stmt in props.validate_binding_stmts {
             state.init.push(stmt);
         }
@@ -289,7 +297,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 self.ctx.b.call_stmt(
                     "$$ownership_validator.binding",
                     [
-                        Arg::Str(b.name.clone()),
+                        Arg::Str(b.source_ident.to_string()),
                         Arg::Ident(comp_id),
                         Arg::Ident(b.source_ident),
                     ],
@@ -362,10 +370,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             intermediate_ref,
             [Arg::Ident("$$anchor"), Arg::Expr(props_expr)],
         );
-        let inner_final = if let Some(bind_id) = bind_this_info {
+        let (inner_final, inner_validate) = if let Some(bind_id) = bind_this_info {
             self.build_bind_this_call(el_id, bind_id, inner_call)?
         } else {
-            inner_call
+            (inner_call, None)
         };
         let mut inner_body: Vec<Statement<'a>> =
             self.build_ownership_binding_stmts(&ownership_bindings, intermediate_ref);
@@ -395,6 +403,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some(extra_obj),
         );
 
+        if let Some(stmt) = inner_validate {
+            state.init.push(stmt);
+        }
         if snippet_decls.is_empty() && memo_decls.is_empty() {
             state.init.push(component_stmt);
         } else {

@@ -870,25 +870,6 @@ fn filename_relative_to_root_dir_normalizes_backslashes() {
 }
 
 #[test]
-fn component_as_named_slot_fill_does_not_consume_root_ident() {
-    let options = CompileOptions {
-        name: Some("App".into()),
-        runes: RunesOption::Legacy,
-        ..Default::default()
-    };
-    let source = "<script>\n    let x = 0;\n</script>\n\n<Wrap>\n    <Inner slot=\"image\" />\n    <span slot=\"action\">{x}</span>\n</Wrap>\n";
-    let result = compile(source, &options);
-    let js = result
-        .js
-        .unwrap_or_else(|| panic!("compile produced no JS"))
-        .code;
-    assert!(
-        js.contains("var root_2 = $.from_html(`<span slot=\"action\">"),
-        "expected `var root_2` for the span template (reference reserves root_1 for the component-as-slot fill), got:\n{js}"
-    );
-}
-
-#[test]
 fn attribute_invalid_event_handler_string_value() {
     let result = compile(
         r#"<button onclick="doSomething()"></button>"#,

@@ -233,7 +233,11 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             );
             let name = analysis.component_name().to_string();
             let _ = ident_gen.generate(&name);
-            let line_index = svelte_span::LineIndex::new(component.source.as_str());
+            let line_index = if options.dev {
+                svelte_span::LineIndex::new(component.source.as_str())
+            } else {
+                svelte_span::LineIndex::empty()
+            };
             let transform_data = {
                 let mut compile_ctx = svelte_types::CompileContext {
                     alloc: &js_alloc,
@@ -292,7 +296,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     let js_alloc = oxc_allocator::Allocator::default();
 
     let (analysis, mut parsed, diagnostics) =
-        svelte_analyze::analyze_module(&js_alloc, source, is_ts);
+        svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
 
     if options.generate == GenerateMode::False
         || diagnostics
@@ -310,7 +314,11 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
         .program
         .take()
         .expect("analyze_module produced no program");
-    let line_index = svelte_span::LineIndex::new(source);
+    let line_index = if dev {
+        svelte_span::LineIndex::new(source)
+    } else {
+        svelte_span::LineIndex::empty()
+    };
     let kind = options.sourcemap_kind;
     let filename = options.filename.clone();
     let js = svelte_codegen_client::generate_module(

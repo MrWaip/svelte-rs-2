@@ -1,4 +1,4 @@
-use std::mem;
+use std::{iter, mem};
 use svelte_emit_builders::runes::rune_get;
 use svelte_emit_builders::store::build_store_base_read;
 
@@ -139,7 +139,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .to_string()
         };
 
-        let _ = self.ctx.state.parsed.take_expr(bind.expression.id());
+        let bind_expr = self.ctx.state.parsed.take_expr(bind.expression.id());
+        if self.ctx.state.dev
+            && self.ctx.query.runes()
+            && !self.ctx.binding_property_non_reactive_ignored(bind.id)
+            && let Some(member) = &bind_expr
+            && let Some(stmt) = self.build_validate_binding_from_member(bind, member)
+        {
+            state.init.push(stmt);
+        }
 
         let stmt = match host_prop {
             HostProp::Window(WindowBindKind::ScrollX) => {
@@ -205,7 +213,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Statement<'a> {
         let getter = self.build_binding_getter(var, kind);
         let mut args: Vec<Arg<'a, '_>> = vec![Arg::StrRef(axis), Arg::Expr(getter)];
-        if !matches!(kind, HtmlBindKind::BindableProp) {
+        if !matches!(kind, HtmlBindKind::BindableProp) || self.ctx.state.dev {
             let setter = self.build_binding_setter_silent(var, kind);
             args.push(Arg::Expr(setter));
         }
@@ -214,19 +222,52 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn build_binding_getter(&self, var: &str, kind: &HtmlBindKind) -> Expression<'a> {
         if let HtmlBindKind::BindableProp | HtmlBindKind::StoreSubscribed { .. } = kind {
+            if self.ctx.state.dev {
+                let call = self
+                    .ctx
+                    .b
+                    .call_expr_callee(self.ctx.b.rid_expr(var), iter::empty::<Arg<'_, '_>>());
+                return self.ctx.b.named_function_expr(
+                    "get",
+                    self.ctx.b.no_params(),
+                    vec![self.ctx.b.return_stmt(call)],
+                    false,
+                );
+            }
             return self.ctx.b.rid_expr(var);
         }
         let body = match kind {
             HtmlBindKind::Rune | HtmlBindKind::LegacyState => rune_get(&self.ctx.b, var),
             _ => self.ctx.b.rid_expr(var),
         };
-        self.ctx
-            .b
-            .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(body)])
+        if self.ctx.state.dev {
+            self.ctx.b.named_function_expr(
+                "get",
+                self.ctx.b.no_params(),
+                vec![self.ctx.b.return_stmt(body)],
+                false,
+            )
+        } else {
+            self.ctx
+                .b
+                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(body)])
+        }
     }
 
     fn build_binding_setter_silent(&self, var: &str, kind: &HtmlBindKind) -> Expression<'a> {
         if let HtmlBindKind::BindableProp = kind {
+            if self.ctx.state.dev {
+                let call = self
+                    .ctx
+                    .b
+                    .call_expr_callee(self.ctx.b.rid_expr(var), [Arg::Ident("$$value")]);
+                return self.ctx.b.named_function_expr(
+                    "set",
+                    self.ctx.b.params(["$$value"]),
+                    vec![self.ctx.b.expr_stmt(call)],
+                    false,
+                );
+            }
             return self.ctx.b.rid_expr(var);
         }
         let body = match kind {
@@ -250,9 +291,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 self.ctx.b.rid_expr("$$value"),
             ),
         };
-        self.ctx
-            .b
-            .arrow_expr(self.ctx.b.params(["$$value"]), [self.ctx.b.expr_stmt(body)])
+        let body_stmt = self.ctx.b.expr_stmt(body);
+        if self.ctx.state.dev {
+            self.ctx.b.named_function_expr(
+                "set",
+                self.ctx.b.params(["$$value"]),
+                vec![body_stmt],
+                false,
+            )
+        } else {
+            self.ctx
+                .b
+                .arrow_expr(self.ctx.b.params(["$$value"]), [body_stmt])
+        }
     }
 
     fn bind_property_stmt(

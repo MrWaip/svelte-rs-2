@@ -466,7 +466,12 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
                         }
                     }
                     if self.dev {
-                        let label = self.class_tag_label(decl.name.as_str());
+                        let field_name = if decl.is_private {
+                            format!("#{}", decl.name)
+                        } else {
+                            decl.name.to_string()
+                        };
+                        let label = self.class_tag_label(&field_name);
                         let rhs = self.b.move_expr(&mut assign.right);
                         assign.right = self.b.call_expr("$.tag", [Arg::Expr(rhs), Arg::Str(label)]);
                     }

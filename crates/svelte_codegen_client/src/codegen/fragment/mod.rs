@@ -444,7 +444,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(FragmentEmitKind::Rendered)
     }
 
-    fn wrap_add_locations(
+    pub(in crate::codegen) fn wrap_add_locations(
         &self,
         from_html: Expression<'a>,
         locs: Expression<'a>,
@@ -480,7 +480,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Some(self.ctx.b.array_expr(vec![single]))
     }
 
-    fn build_template_locations(
+    pub(in crate::codegen) fn build_template_locations(
         &self,
         ctx: &FragmentCtx<'a>,
         fragment_id: svelte_ast::FragmentId,
@@ -512,7 +512,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         match node {
             svelte_ast::Node::Element(el) => {
-                out.push(self.build_single_element_loc(ctx, el.span.start, el.fragment));
+                if self.ctx.is_customizable_select(node_id) {
+                    out.push(self.single_location(el.span.start));
+                } else {
+                    out.push(self.build_single_element_loc(ctx, el.span.start, el.fragment));
+                }
             }
             svelte_ast::Node::SvelteFragmentLegacy(el) => {
                 let nodes = self
@@ -526,6 +530,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 for id in nodes {
                     self.push_node_locations(ctx, id, out);
                 }
+            }
+            svelte_ast::Node::ComponentNode(cn) if self.ctx.has_component_css_props(node_id) => {
+                out.push(self.single_location(cn.span.start));
             }
             _ => {}
         }
@@ -544,6 +551,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             svelte_ast::Node::Element(el) if ctx.inside_head && el.name == "title" => true,
             _ => false,
         }
+    }
+
+    fn single_location(&self, span_start: u32) -> Expression<'a> {
+        let (line, col) = self.ctx.state.line_index.line_col(span_start);
+        let b = &self.ctx.state.b;
+        b.array_expr(vec![b.num_expr(line as f64), b.num_expr(col as f64)])
     }
 
     fn build_single_element_loc(
@@ -705,6 +718,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             from_fn,
             [Arg::Expr(self.ctx.b.template_str_expr(html)), Arg::Num(1.0)],
         );
+        let from_call = if self.ctx.state.dev {
+            let span_start = self
+                .ctx
+                .query
+                .component
+                .store
+                .get(component_id)
+                .span()
+                .start;
+            let locs = self
+                .ctx
+                .b
+                .array_expr(vec![self.single_location(span_start)]);
+            self.wrap_add_locations(from_call, locs)
+        } else {
+            from_call
+        };
         let tpl_name = self.hoist_template_dedup(dedup_key, from_call);
         state.init.insert(
             frag_stmt_idx,

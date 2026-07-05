@@ -66,7 +66,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     init,
                     expr_offset,
                 );
-                self.dev_event_handler(ev.attr_id, handler, &ev.name)?
+                self.dev_component_event_handler(ev.attr_id, handler)?
             } else {
                 self.build_bubble_event_method_legacy()
             };

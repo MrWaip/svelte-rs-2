@@ -3,31 +3,57 @@ use std::borrow::Cow;
 use super::*;
 
 fn escape_template_raw(value: &str) -> Cow<'_, str> {
-    let needs_escape = value.as_bytes().windows(2).any(|w| w == b"${")
-        || value.bytes().any(|b| b == b'`' || b == b'\\');
-    if !needs_escape {
-        return Cow::Borrowed(value);
-    }
-    let mut out: Vec<u8> = Vec::with_capacity(value.len() + 4);
     let bytes = value.as_bytes();
-    let mut i = 0;
+    let first = {
+        let mut from = 0;
+        loop {
+            match memchr::memchr3(b'\\', b'`', b'$', &bytes[from..]) {
+                None => return Cow::Borrowed(value),
+                Some(rel) => {
+                    let pos = from + rel;
+                    if bytes[pos] != b'$' || bytes.get(pos + 1) == Some(&b'{') {
+                        break pos;
+                    }
+                    from = pos + 1;
+                }
+            }
+        }
+    };
+
+    let mut out = String::with_capacity(value.len() + 8);
+    out.push_str(&value[..first]);
+    let mut i = first;
     while i < bytes.len() {
-        let b = bytes[i];
-        if b == b'\\' {
-            out.extend_from_slice(b"\\\\");
-            i += 1;
-        } else if b == b'`' {
-            out.extend_from_slice(b"\\`");
-            i += 1;
-        } else if b == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
-            out.extend_from_slice(b"\\${");
-            i += 2;
-        } else {
-            out.push(b);
-            i += 1;
+        match memchr::memchr3(b'\\', b'`', b'$', &bytes[i..]) {
+            None => {
+                out.push_str(&value[i..]);
+                break;
+            }
+            Some(rel) => {
+                let pos = i + rel;
+                out.push_str(&value[i..pos]);
+                match bytes[pos] {
+                    b'\\' => {
+                        out.push_str("\\\\");
+                        i = pos + 1;
+                    }
+                    b'`' => {
+                        out.push_str("\\`");
+                        i = pos + 1;
+                    }
+                    _ if bytes.get(pos + 1) == Some(&b'{') => {
+                        out.push_str("\\${");
+                        i = pos + 2;
+                    }
+                    _ => {
+                        out.push('$');
+                        i = pos + 1;
+                    }
+                }
+            }
         }
     }
-    Cow::Owned(String::from_utf8(out).expect("ascii-only edits preserve utf-8"))
+    Cow::Owned(out)
 }
 
 impl<'a> Builder<'a> {

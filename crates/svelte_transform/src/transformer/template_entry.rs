@@ -220,8 +220,7 @@ pub(crate) fn run_template<'a, 'b>(
         let (getter, setter) = if let Some(base_symbol) = store_base_symbol {
             let base_name = analysis.scoping.symbol_name(base_symbol);
             let dollar_name: &str = b.alloc_str(&format!("${base_name}"));
-            let base_via_legacy_state = analysis.binding_semantics(base_symbol).is_legacy_state();
-            let getter_expr = if base_via_legacy_state {
+            let getter_expr = if dev {
                 let thunk_call =
                     b.call_expr_callee(b.rid_expr(dollar_name), iter::empty::<Arg<'_, '_>>());
                 b.named_function_expr("get", b.no_params(), vec![b.return_stmt(thunk_call)], false)
@@ -269,6 +268,7 @@ pub(crate) fn run_template<'a, 'b>(
         }
     }
 
+    transformer.transform_data.needs_ownership_validator |= transformer.needs_ownership_validator;
     transformer.transform_data
 }
 

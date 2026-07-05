@@ -5,16 +5,17 @@ mod this;
 
 use std::iter;
 
-use oxc_ast::ast::Statement;
+use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{
-    AttributeSemantics, BindPropertyKind, ElementBindPropertyKind, HtmlBindKind,
-    ImageNaturalSizeKind, MediaBindKind,
+    AttributeSemantics, BindPropertyKind, ElementBindPropertyKind, ElementBindSemantics,
+    HtmlBindKind, ImageNaturalSizeKind, MediaBindKind,
 };
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::SymbolId;
 
 use super::super::data_structures::EmitState;
+use super::super::dev::getter_return_member;
 use super::super::{Codegen, CodegenError, Result};
 
 use placement::BindPlacement;
@@ -56,12 +57,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let payload = payload.clone();
 
+        self.maybe_emit_element_validate_binding(state, bind, &payload);
+
         let bind_property = property_to_bind_kind(payload.property);
 
         let has_use = self.ctx.has_use_directive(owner_id);
         let bind_blockers = payload.blockers.to_vec();
 
         let placement = if matches!(payload.kind, HtmlBindKind::BindableProp)
+            && !payload.property.is_this()
             && let Some(p) = self.emit_bind_bindable_prop_shorthand(
                 bind,
                 owner_var,
@@ -83,6 +87,38 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             BindPlacement::Init(stmt) => state.pending_element_init.push(stmt),
         }
         Ok(())
+    }
+
+    fn maybe_emit_element_validate_binding(
+        &mut self,
+        state: &mut EmitState<'a>,
+        bind: &BindDirective,
+        payload: &ElementBindSemantics,
+    ) {
+        if !self.ctx.state.dev || !self.ctx.query.runes() {
+            return;
+        }
+        if !payload.needs_binding_validation {
+            return;
+        }
+        if self.ctx.binding_property_non_reactive_ignored(bind.id) {
+            return;
+        }
+        let stmt = {
+            let Some(seq) = self.ctx.state.parsed.expr(bind.expression.id()) else {
+                return;
+            };
+            let Expression::SequenceExpression(seq) = seq.get_inner_expression() else {
+                return;
+            };
+            let Some(member) = seq.expressions.first().and_then(getter_return_member) else {
+                return;
+            };
+            self.build_validate_binding_from_member(bind, member)
+        };
+        if let Some(stmt) = stmt {
+            state.pending_element_init.push(stmt);
+        }
     }
 
     fn gen_bind_placement(
@@ -155,16 +191,44 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .binding_semantics(symbol)
             .reads_via_each_item_accessor();
         let getter = if reads_via_signal {
-            self.ctx
+            let body = self.ctx.b.call_expr("$.get", [Arg::Ident(name)]);
+            if self.ctx.state.dev {
+                self.ctx.b.named_function_expr(
+                    "get",
+                    self.ctx.b.no_params(),
+                    vec![self.ctx.b.return_stmt(body)],
+                    false,
+                )
+            } else {
+                self.ctx.b.thunk(body)
+            }
+        } else if self.ctx.state.dev {
+            let call = self
+                .ctx
                 .b
-                .thunk(self.ctx.b.call_expr("$.get", [Arg::Ident(name)]))
+                .call_expr_callee(self.ctx.b.rid_expr(name), iter::empty::<Arg<'_, '_>>());
+            self.ctx.b.named_function_expr(
+                "get",
+                self.ctx.b.no_params(),
+                vec![self.ctx.b.return_stmt(call)],
+                false,
+            )
         } else {
             self.ctx.b.rid_expr(name)
         };
-        let setter = self.ctx.b.arrow_expr(
-            self.ctx.b.params(["$$value"]),
-            [self.ctx.b.expr_stmt(setter_body)],
-        );
+        let setter_stmt = self.ctx.b.expr_stmt(setter_body);
+        let setter = if self.ctx.state.dev {
+            self.ctx.b.named_function_expr(
+                "set",
+                self.ctx.b.params(["$$value"]),
+                vec![setter_stmt],
+                false,
+            )
+        } else {
+            self.ctx
+                .b
+                .arrow_expr(self.ctx.b.params(["$$value"]), [setter_stmt])
+        };
         self.build_bind_call_stmt(bind, bind_property, el_name, tag_name, getter, setter)
             .map(Some)
     }
@@ -192,6 +256,37 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .to_string()
         };
         let var_alloc = self.ctx.b.alloc_str(&var_name);
+
+        if self.ctx.state.dev {
+            let getter = self.ctx.b.named_function_expr(
+                "get",
+                self.ctx.b.no_params(),
+                vec![self.ctx.b.return_stmt(self.ctx.b.call_expr_callee(
+                    self.ctx.b.rid_expr(var_alloc),
+                    iter::empty::<Arg<'_, '_>>(),
+                ))],
+                false,
+            );
+            let setter =
+                self.ctx.b.named_function_expr(
+                    "set",
+                    self.ctx.b.params(["$$value"]),
+                    vec![self.ctx.b.expr_stmt(self.ctx.b.call_expr_callee(
+                        self.ctx.b.rid_expr(var_alloc),
+                        [Arg::Ident("$$value")],
+                    ))],
+                    false,
+                );
+            let bind_property = property_to_bind_kind(payload.property);
+            let stmt =
+                self.build_bind_call_stmt(bind, bind_property, el_name, tag_name, getter, setter)?;
+            let stmt = self.wrap_use_and_blockers(stmt, has_use_directive, bind_blockers);
+            return Ok(Some(if has_use_directive {
+                BindPlacement::Init(stmt)
+            } else {
+                BindPlacement::AfterUpdate(stmt)
+            }));
+        }
 
         let stmt = match payload.property {
             ElementBindPropertyKind::Value if tag_name == "select" => self.ctx.b.call_stmt(

@@ -12,9 +12,11 @@ use svelte_analyze::{AnalysisData, BindingSemantics, ComponentScoping, IdentGen,
 use svelte_ast_builder::Builder;
 
 pub(crate) struct PendingPropMutationValidation<'a> {
-    pub(crate) prop_alias: String,
+    pub(crate) prop_alias: Option<String>,
     pub(crate) root_name: String,
     pub(crate) segments: Vec<Expression<'a>>,
+    pub(crate) loc_span_start: u32,
+    pub(crate) bindable_source_root_name: Option<String>,
 }
 
 pub(crate) struct FunctionInfo {

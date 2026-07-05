@@ -1,7 +1,8 @@
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{Expression, Statement};
 use svelte_ast::{Attribute, NodeId};
 use svelte_ast_builder::Arg;
 
+use super::super::dev::getter_return_member;
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -10,7 +11,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         bind_id: NodeId,
         value: Expression<'a>,
-    ) -> Result<Expression<'a>> {
+    ) -> Result<(Expression<'a>, Option<Statement<'a>>)> {
         let Some(view) = self
             .ctx
             .query
@@ -47,6 +48,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "bind:this transformed sequence must carry getter and setter",
             );
         };
+        let validate = if self.ctx.state.dev
+            && self.ctx.query.runes()
+            && !self.ctx.binding_property_non_reactive_ignored(bind_id)
+        {
+            getter_return_member(&get_expr)
+                .and_then(|m| self.build_validate_binding_from_member(bind, m))
+        } else {
+            None
+        };
         let each_context: Vec<oxc_semantic::SymbolId> =
             match self.ctx.query.analysis.attributes.get(bind_id) {
                 svelte_analyze::AttributeSemantics::ComponentBind(b) => {
@@ -59,6 +69,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if let Some(dep) = dep {
             args.push(Arg::Expr(dep));
         }
-        Ok(self.ctx.b.call_expr("$.bind_this", args))
+        Ok((self.ctx.b.call_expr("$.bind_this", args), validate))
     }
 }

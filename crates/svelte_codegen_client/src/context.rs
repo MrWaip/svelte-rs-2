@@ -282,6 +282,11 @@ impl<'a> Ctx<'a> {
     pub fn hydration_attribute_changed_ignored(&self, id: NodeId) -> bool {
         self.query.view.hydration_attribute_changed_ignored(id)
     }
+    pub fn binding_property_non_reactive_ignored(&self, id: NodeId) -> bool {
+        self.query
+            .view
+            .is_ignored(id, "binding_property_non_reactive")
+    }
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
         self.query.view.needs_textarea_value_lowering(id)
     }

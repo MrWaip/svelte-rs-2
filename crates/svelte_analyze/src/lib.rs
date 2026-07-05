@@ -183,6 +183,7 @@ pub fn analyze_module<'a>(
     alloc: &'a oxc_allocator::Allocator,
     source: &'a str,
     is_ts: bool,
+    dev: bool,
 ) -> (AnalysisData<'a>, JsAst<'a>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
     let mut data = AnalysisData::new_empty(0);
@@ -219,6 +220,15 @@ pub fn analyze_module<'a>(
                 &mut data.reactivity,
                 data.scoping.semantics(),
             );
+
+            data.script.dev = dev;
+            if dev {
+                data.value_evaluation = value_evaluation::build_module_console_calls(
+                    &parsed,
+                    &data.scoping,
+                    data.scoping.semantics(),
+                );
+            }
 
             if let Some(program) = parsed.program.as_ref() {
                 validate::validate_module_experimental_async(&data, program, &mut diags);

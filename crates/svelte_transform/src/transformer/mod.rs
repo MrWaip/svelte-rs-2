@@ -120,6 +120,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
+            self.strip_inspect_trace_statements(stmts);
             return;
         }
         self.process_statement_block(stmts);

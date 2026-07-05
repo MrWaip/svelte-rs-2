@@ -110,6 +110,26 @@ impl BindingSemantics {
         }
     }
 
+    pub fn is_rune_backed(&self) -> bool {
+        match self {
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. } => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Store(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
     pub fn is_store(&self) -> bool {
         match self {
             BindingSemantics::Store(_) => true,

@@ -263,6 +263,7 @@ pub struct ElementBindSemantics {
     pub each_context_vars: SmallVec<[SymbolId; 4]>,
     pub group_value: Option<GroupBindValue>,
     pub group_id: Option<u32>,
+    pub needs_binding_validation: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

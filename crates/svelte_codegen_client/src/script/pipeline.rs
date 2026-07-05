@@ -110,6 +110,7 @@ pub fn transform_component_module_program<'a, 'b>(
     component_scoping: &'b ComponentScoping<'a>,
     ident_gen: &'b mut IdentGen,
     line_index: &'b svelte_span::LineIndex,
+    dev: bool,
 ) -> ScriptOutput<'a> {
     run_transform(
         allocator,
@@ -118,7 +119,7 @@ pub fn transform_component_module_program<'a, 'b>(
         component_scoping,
         ident_gen,
         false,
-        false,
+        dev,
         "",
         line_index,
         "(unknown)",

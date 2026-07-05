@@ -47,6 +47,12 @@ impl LineIndex {
         Self { line_starts }
     }
 
+    pub fn empty() -> Self {
+        Self {
+            line_starts: vec![0],
+        }
+    }
+
     pub fn line_col(&self, byte_offset: u32) -> (usize, usize) {
         let line_idx = self
             .line_starts

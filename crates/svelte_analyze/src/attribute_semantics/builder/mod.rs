@@ -11,7 +11,7 @@ use super::data::{
 };
 use crate::expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
-    Volatility,
+    ValueClass, Volatility,
 };
 use crate::reactivity_semantics::data::{
     BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, EachIndexStrategy,
@@ -33,7 +33,7 @@ use crate::value_evaluation::{
 };
 use oxc_ast::ast::{
     ArrayExpressionElement, ArrowFunctionExpression, AssignmentExpression, CallExpression,
-    Expression, Function, ObjectPropertyKind, UpdateExpression,
+    ChainElement, Expression, Function, ObjectPropertyKind, UpdateExpression,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_semantic::ScopeFlags;
@@ -137,6 +137,20 @@ fn derive_group_key(ctx: &Ctx<'_, '_>, state: &WalkState, d: &BindDirective) -> 
         keypath,
         references,
         parent_each_blocks,
+    }
+}
+
+fn bind_expr_is_member(ctx: &Ctx<'_, '_>, d: &BindDirective) -> bool {
+    let Some(expr) = ctx.parsed.expr(d.expression.id()) else {
+        return false;
+    };
+    match expr.get_inner_expression() {
+        Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_) => true,
+        Expression::ChainExpression(c) => matches!(
+            c.expression,
+            ChainElement::StaticMemberExpression(_) | ChainElement::ComputedMemberExpression(_)
+        ),
+        _ => false,
     }
 }
 
@@ -298,6 +312,23 @@ fn handler_reads_through_cell(semantics: BindingSemantics) -> bool {
     semantics.is_reactive() || semantics.is_reactive_const_tag()
 }
 
+fn handler_symbol_is_function(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
+    if ctx
+        .semantics
+        .symbol_flags(sym)
+        .contains(SymbolFlags::Function)
+    {
+        return true;
+    }
+    if ctx.reactivity.binding_semantics(sym).is_rune_backed() {
+        return false;
+    }
+    matches!(
+        ctx.value_evaluation.evaluation(sym).class(),
+        Some(ValueClass::Function)
+    )
+}
+
 fn references_include_reactive_const_tag(ctx: &Ctx<'_, '_>, expr_id: NodeId) -> bool {
     let Some(data) = ctx.expression_data(expr_id) else {
         return false;
@@ -321,6 +352,7 @@ impl<'a, 'p> Ctx<'a, 'p> {
 #[derive(Default)]
 struct WalkState {
     each_stack: SmallVec<[NodeId; 4]>,
+    control_depth: u32,
 }
 
 fn walk_fragment(
@@ -406,20 +438,25 @@ fn walk_fragment(
                 walk_fragment(ctx, state, b.fragment, store, groups);
             }
             Node::IfBlock(b) => {
+                state.control_depth += 1;
                 walk_fragment(ctx, state, b.consequent, store, groups);
                 if let Some(alt) = b.alternate {
                     walk_fragment(ctx, state, alt, store, groups);
                 }
+                state.control_depth -= 1;
             }
             Node::EachBlock(b) => {
+                state.control_depth += 1;
                 state.each_stack.push(b.id);
                 walk_fragment(ctx, state, b.body, store, groups);
                 state.each_stack.pop();
                 if let Some(fallback) = b.fallback {
                     walk_fragment(ctx, state, fallback, store, groups);
                 }
+                state.control_depth -= 1;
             }
             Node::AwaitBlock(b) => {
+                state.control_depth += 1;
                 if let Some(p) = b.pending {
                     walk_fragment(ctx, state, p, store, groups);
                 }
@@ -429,8 +466,13 @@ fn walk_fragment(
                 if let Some(c) = b.catch {
                     walk_fragment(ctx, state, c, store, groups);
                 }
+                state.control_depth -= 1;
             }
-            Node::KeyBlock(b) => walk_fragment(ctx, state, b.fragment, store, groups),
+            Node::KeyBlock(b) => {
+                state.control_depth += 1;
+                walk_fragment(ctx, state, b.fragment, store, groups);
+                state.control_depth -= 1;
+            }
             Node::SnippetBlock(b) => walk_fragment(ctx, state, b.body, store, groups),
             _ => {}
         }
@@ -505,6 +547,9 @@ fn classify_element_attrs(
                     } else {
                         SmallVec::new()
                     };
+                    let needs_binding_validation = bind_expr_is_member(ctx, d)
+                        && (!is_this || state.control_depth > 0)
+                        && !matches!(kind, HtmlBindKind::StoreSubscribed { .. });
                     if matches!(property, ElementBindPropertyKind::Group) {
                         groups.assign(d.id, derive_group_key(ctx, state, d));
                     }
@@ -518,6 +563,7 @@ fn classify_element_attrs(
                             each_context_vars,
                             group_value,
                             group_id: None,
+                            needs_binding_validation,
                         }),
                     );
                 }
@@ -967,16 +1013,9 @@ fn derive_handler_emit(
     let direct = match expr.get_inner_expression() {
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => true,
         Expression::Identifier(ident) => {
-            let symbol = ident
-                .reference_id
-                .get()
-                .and_then(|ref_id| ctx.semantics.get_reference(ref_id).symbol_id());
-            let is_function = symbol.is_some_and(|sym| {
-                ctx.semantics
-                    .symbol_flags(sym)
-                    .contains(SymbolFlags::Function)
-            });
-            let is_store_subscription = ident.reference_id.get().is_some_and(|ref_id| {
+            let ref_id = ident.reference_id.get();
+            let symbol = ref_id.and_then(|ref_id| ctx.semantics.get_reference(ref_id).symbol_id());
+            let is_store_subscription = ref_id.is_some_and(|ref_id| {
                 ctx.reactivity
                     .reference_semantics(ref_id)
                     .is_store_subscription()
@@ -985,7 +1024,10 @@ fn derive_handler_emit(
                 || symbol.is_some_and(|sym| {
                     handler_reads_through_cell(ctx.reactivity.binding_semantics(sym))
                 });
-            is_function || (!ctx.dev && !needs_wrap)
+            if !needs_wrap && symbol.is_some_and(|sym| handler_symbol_is_function(ctx, sym)) {
+                return HandlerEmit::Direct;
+            }
+            !ctx.dev && !needs_wrap
         }
         _ => false,
     };
