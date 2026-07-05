@@ -3,7 +3,7 @@
 label: analyze
 topics: analyze, smart analyzer, passes, dynamism, build order, analyze phases, semantics frame, semantic diagnostics
 
-Корневой PRD для слоя анализа (`crates/svelte_analyze`). Описывает рамку слоя и догму **smart analyzer**; per-subsystem семантика — в дочерних PRD `component-semantics`, `reactivity-semantics`, `expression-semantics`, `attribute-semantics`, `block-semantics`.
+Корневой PRD для слоя анализа (`crates/svelte_analyze`). Описывает рамку слоя и принцип **smart analyzer**; per-subsystem семантика — в дочерних PRD `component-semantics`, `reactivity-semantics`, `expression-semantics`, `attribute-semantics`, `block-semantics`.
 
 ## Назначение
 
@@ -62,7 +62,7 @@ ComponentSemantics
 
 ## Связь с другими документами
 
-- `context.md` §«Догмы», §«Кросс-каттинг» (диагностики).
+- `context.md` §«Принципы», §«Кросс-каттинг» (диагностики).
 - `component-semantics.md`, `reactivity-semantics.md`, `expression-semantics.md`, `attribute-semantics.md`, `block-semantics.md` — 3.A-подсистемы.
 - `parser.md` — граница парсер ↔ анализ.
 - `transform.md`, `codegen.md` — потребители анализа.

@@ -4,7 +4,7 @@ label: transform-server
 topics: server transform, SSR, target, rune erasure, state, derived, effect, props, store, assignment, svelte_transform_server
 
 Корневой PRD для слоя серверного трансформа (`svelte_transform_server`) — script-половины backend'а `generate: server`. Клиентский аналог — `transform.md`.
-Догма: **dumb transform** — мутирует JS AST по готовым ответам анализа, новых данных анализа не производит.
+Принцип: **dumb transform** — мутирует JS AST по готовым ответам анализа, новых данных анализа не производит.
 
 ## Назначение
 
@@ -38,7 +38,7 @@ topics: server transform, SSR, target, rune erasure, state, derived, effect, pro
 
 ## Связь с другими документами
 
-- `context.md` §«Догмы», §«Codegen-агностичность анализа» (target-агностичность анализа).
+- `context.md` §«Принципы», §«Codegen-агностичность анализа» (target-агностичность анализа).
 - `codegen-server.md` — вторая половина серверного backend'а (шаблон).
 - `transform.md` — клиентский аналог слоя.
 - `compiler.md` — точка ветвления пайплайна по `generate`.

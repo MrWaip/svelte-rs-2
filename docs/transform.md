@@ -4,7 +4,7 @@ label: transform
 topics: transform, client transform, JS AST mutation, dumb transform, transformer passes (runes/state/derived/props/assignments/legacy_reactive), writeback instrumentation
 
 Корневой PRD для слоя клиентского трансформа (`svelte_transform_client`) — backend'а `generate: client`. Серверный аналог — `transform-server.md`.
-Догма: **dumb transform** — мутирует JS AST по готовым ответам анализа, новых данных анализа не производит.
+Принцип: **dumb transform** — мутирует JS AST по готовым ответам анализа, новых данных анализа не производит.
 
 ## Назначение
 
@@ -42,7 +42,7 @@ topics: transform, client transform, JS AST mutation, dumb transform, transforme
 
 ## Связь с другими документами
 
-- `context.md` §«Догмы», §«Анализ в кодгене» (зеркальный анти-паттерн для трансформа).
+- `context.md` §«Принципы», §«Анализ в кодгене» (зеркальный анти-паттерн для трансформа).
 - `reactivity-semantics.md` — источник `ReferenceSemantics` для диспетчеров.
 - `analyze.md` — контракт «один запрос → одно решение».
 - `supporting-crates.md` — `svelte_ast_builder` (единственный конструктор oxc-узлов), `svelte_emit_builders` (формы `$.store_*`).

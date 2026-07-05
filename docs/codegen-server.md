@@ -4,7 +4,7 @@ label: codegen-server
 topics: server codegen, SSR emit, target, renderer, $$renderer, escape, static HTML accumulator, element, attribute, text, interpolation, fragment, if, each, component, snippet, boundary, hoisted, svelte_codegen_server
 
 Корневой PRD для слоя серверного кодгена (`svelte_codegen_server`) — template-половины backend'а `generate: server`. Клиентский аналог — `codegen.md`.
-Догма: **dumb codegen** — один запрос к анализу на один use case → одно однозначное решение эмита.
+Принцип: **dumb codegen** — один запрос к анализу на один use case → одно однозначное решение эмита.
 
 ## Назначение
 
@@ -44,7 +44,7 @@ topics: server codegen, SSR emit, target, renderer, $$renderer, escape, static H
 
 ## Связь с другими документами
 
-- `context.md` §«Догмы», §«Codegen-агностичность анализа» (target-агностичность анализа), §«Эмит-форма семантики».
+- `context.md` §«Принципы», §«Codegen-агностичность анализа» (target-агностичность анализа), §«Эмит-форма семантики».
 - `transform-server.md` — вторая половина серверного backend'а (скрипт).
 - `codegen.md` — клиентский аналог слоя.
 - `compiler.md` — точка ветвления пайплайна по `generate`.

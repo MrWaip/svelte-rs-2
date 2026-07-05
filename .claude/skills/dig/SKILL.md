@@ -18,7 +18,7 @@ Read both before anything else, every invocation:
 
 - `.claude/skills/_shared/parity-language.md` — how to talk to the user (domain terms only, internal vocabulary banned). Governs the Gate-1 message.
 - `.claude/skills/_shared/grounding.md` — the boundary-grounding gate (no load-bearing assumption crosses a boundary unproven). Governs the A/B verdict and Gate-1: the verdict is a load-bearing fact, prove it by pasted `file:line` / run, never by a symbol's name or memory.
-- `docs/context.md` — crate layers, dogmas (smart analyzer / dumb codegen, no analyze-in-codegen, identity by id); per-layer invariants in each layer's root PRD.
+- `docs/context.md` — crate layers, principles (smart analyzer / dumb codegen, no analyze-in-codegen, identity by id); per-layer invariants in each layer's root PRD.
 - `docs/context.md` §«Language» — ubiquitous language (Original, fork-set, deep-modules, HITL/AFK, tracer-bullet).
 - If finding touches a cluster from CLAUDE.md «Architectural root PRDs» — read that root PRD. Its invariants narrow the fork-set and force a **Need research** verdict on violation.
 

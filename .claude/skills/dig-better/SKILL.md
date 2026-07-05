@@ -12,7 +12,7 @@ Find the one place in the Original that caused a divergence, discover everything
 ## Read first (every time — don't skip because it's "already in session")
 
 - `docs/context.md` §«Language» — the real project vocabulary (Original, parser / analyze /
-  transform / codegen) and the layer dogmas (smart analyzer, dumb codegen).
+  transform / codegen) and the layer principles (smart analyzer, dumb codegen).
 - If the area belongs to a cluster with a root PRD (CLAUDE.md «Architectural root PRDs»),
   read it — its invariants may mean the fix is bigger than a local tweak.
 

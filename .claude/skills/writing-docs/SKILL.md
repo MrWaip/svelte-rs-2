@@ -22,7 +22,7 @@ A line earns its place only if it passes **both** gates. If it fails, delete it 
 
 1. **Durable, not status.** The line is true independently of the current code. A sentence a merged PR could falsify is status, and status has another home. Fails the gate: line numbers (`lib.rs:108`), "current state / first vertical slice / WIP / TODO / stub / filled in by later slices / awaiting `/audit`", percent-done, "not yet implemented", inventories of what already emits vs. what will. Write the target invariant — true in six months ("the template is emitted here, the script in the transform") — not a snapshot of progress ("only static attributes are emitted so far"). Partial coverage of a feature goes in an issue link, never an inline slice list.
 
-2. **Load-bearing.** The line changes a decision when writing or reviewing code. Test it: delete the line — does any implementation choice change? No → it's a **no-op** (a default the agent already honors: "code must be correct", "follow the dogmas") — cut it. A weak invariant is sharpened into a checkable one, not kept for volume. A checkable invariant carries its mechanical check where one exists: "`grep Emit` over the crate is empty", "enforced by the `Node` enum macro". Where none exists, anchor it with one canonical example, not an enumeration of every form — an example is a compressed check read at a glance; the exhaustive list is the wall of text that rots first.
+2. **Load-bearing.** The line changes a decision when writing or reviewing code. Test it: delete the line — does any implementation choice change? No → it's a **no-op** (a default the agent already honors: "code must be correct", "follow the principles") — cut it. A weak invariant is sharpened into a checkable one, not kept for volume. A checkable invariant carries its mechanical check where one exists: "`grep Emit` over the crate is empty", "enforced by the `Node` enum macro". Where none exists, anchor it with one canonical example, not an enumeration of every form — an example is a compressed check read at a glance; the exhaustive list is the wall of text that rots first.
 
 ## Single home
 
@@ -65,7 +65,7 @@ Title and frame, then the sections the layer needs — take what applies, not al
 label: <slug>
 topics: <canonical glossary terms>
 
-<1–2 sentences of frame: the crate(s), the place in the pipeline, the layer's dogma, the client/server counterpart.>
+<1–2 sentences of frame: the crate(s), the place in the pipeline, the layer's principle, the client/server counterpart.>
 
 ## Purpose
 The single question this layer answers. One paragraph.
@@ -80,7 +80,7 @@ Numbered. Each opens with a **bold** lead and passes The two gates. Mechanical c
 Concrete violations to scan for (`*Emit*` reads, template knowledge in the transform) — the recognizable bad forms, not a re-wording of the invariants above.
 
 ## Cross-document links
-Cross-links with section anchors (`context.md §"Dogmas"`).
+Cross-links with section anchors (`context.md §"Principles"`).
 </prd-template>
 
 Prose: compiler terminology over anything else; a glossary term bold on first use; no connective filler; the `CLAUDE.md` identifier ban holds in examples too.

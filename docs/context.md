@@ -2,7 +2,7 @@
 
 Единая точка входа в документацию и PRD Rust-компилятора Svelte v5. `.svelte` → client-side JS + scoped CSS.
 
-Отсюда расходятся все документы: оглавление ниже, затем верхнеуровневая рамка (слои крэйтов, догмы, кросс-каттинг) и доменный глоссарий. Инварианты конкретной подсистемы — в её корневом PRD рядом в этом каталоге.
+Отсюда расходятся все документы: оглавление ниже, затем верхнеуровневая рамка (слои крэйтов, принципы, кросс-каттинг) и доменный глоссарий. Инварианты конкретной подсистемы — в её корневом PRD рядом в этом каталоге.
 
 ## Карта документов
 
@@ -31,7 +31,7 @@
 - `destructuring.md` — дочерний PRD `reactivity-semantics`: обход паттернов (`walk_bindings` / `walk_assignment_targets`), разворот объявлений, деструктур-присваивание, формы ключа `$props()`.
 - `designs/analyze-js-visitor-bundle.md` — дизайн (через `/design`) fan-out одного обхода JS-AST в слое `analyze`; читать, если scope пересекается.
 
-Догмы, банлист имён, правила взаимодействия — `../../CLAUDE.md`. Оригинал (JS-референс) — `../../original/compiler/`, источник истины для соответствия выходного JS; используется понять **что** портировать, не **как**.
+Принципы, банлист имён, правила взаимодействия — `../../CLAUDE.md`. Оригинал (JS-референс) — `../../original/compiler/`, источник истины для соответствия выходного JS; используется понять **что** портировать, не **как**.
 
 Как писать, дополнять и ревьюить эти документы — скилл `writing-docs` (стандарт PRD: гейт «durable + load-bearing», single home, контракт `topics:`).
 
@@ -46,7 +46,9 @@
 
 Каждый слой — отдельный корневой PRD выше. Пайплайн: **парсер → анализ → трансформ → кодген** (+ CSS-трансформ). После анализа пайплайн ветвится по `generate: client | server`: одна target-агностичная `AnalysisData` питает два зеркальных backend'а — `svelte_transform_client` + `svelte_codegen_client` и `svelte_transform_server` + `svelte_codegen_server`. Серверные крэйты потребляют только доменные вердикты анализа — утёкшие emit-формы рефакторятся до потребления (см. §«Codegen-агностичность анализа»).
 
-## Догмы
+## Принципы
+
+**Verdict-directed backend (syntax-directed translation).** Analysis is the target-independent middle-end: it produces one verdict per Svelte unit. Transform and codegen — across client|server and dev|prod — are a syntax-directed translation over those verdicts: unit → one semantics query → exhaustive `match` on the verdict → instruction selection → print. Choosing the target form (getter vs property, one runtime call vs another, dev vs prod, client vs server) is legitimate instruction selection and lives in the backend; it is never analysis debt. The violation is the backend recovering a *domain fact* on its own — matching on a source name or shape, or re-walking the AST to re-derive what a unit means. That is semantic analysis leaking into the backend; in our topology such a fact must be born in the middle-end and consumed as a verdict. Universal: it holds for every unit (element, block, tag, expression, binding, event, whole component), in transform as well as codegen, on both backends, in both modes. Its negation has three named shapes: **Сырые факты** (assembling several side-tables instead of reading one verdict), **Анализ в кодгене** (matching on names or re-walking), **Эмит-форма семантики** (a verdict that already encodes a runtime call form). Existing violations are debt, not precedent: "match the surrounding code" does not apply where the neighbour breaks syntax-directed translation.
 
 - **smart analyzer / dumb codegen.** Анализ заранее вычисляет каждое решение; трансформ и кодген остаются линейными и тупыми — один запрос к анализу на одно однозначное решение, без пересборки фактов и `&&`-цепочек. Анализ **codegen/transform-agnostic**: несёт доменный вердикт, не форму печати/runtime-вызова — правило «вердикт → форма» живёт в кодгене/трансформе (см. «Codegen-агностичность анализа»).
 - **Анализ** — read-only над AST, единственный источник истины для семантики.
@@ -54,7 +56,7 @@
 - **Кодген** — берёт анализ + AST и печатает выходной JS; не пере-walk'ает AST за смыслом.
 - **Парсеры** — единственное место, превращающее исходник в AST (template / JS / CSS); даунстрим не пере-парсит.
 
-Детальные инварианты каждой догмы — в PRD соответствующего слоя.
+Детальные инварианты каждого принципа — в PRD соответствующего слоя.
 
 ## Кросс-каттинг
 
@@ -179,7 +181,7 @@ _Avoid_: codegen hint, допустимая emit-форма на вариант�
 **Эмит-форма семантики** *(en: emit-shaped semantics)* — анти-паттерн представления: в `*Semantics` хранится не доменная интерпретация, а уже выбранная форма runtime-вызова (`needs_safe_equal_wrap: bool`, `runtime_fn: "store_get"`, `template_arg_index: usize`). Граница: «выкинь рантайм Svelte, замени на другой реактивный — нужно ли менять анализ?». Если да — это эмит-форма, рефакторить в доменную категорию. Признаки в коде: имя поля/варианта повторяет идентификатор из `svelte/internal/client`, поле описывает «как эмитить», а не «что это».
 _Avoid_: codegen hint, runtime-shape, emit metadata, runtime-form.
 
-**Анализ в кодгене** *(en: codegen-side analysis)* — анти-паттерн расположения: кодген/трансформ запускает свой visit по JS/template-AST и пересобирает признаки, уже доступные в `*Semantics` (вхождения ссылки, наличие `await`, наличие вызова руны, реактивность ссылки). Нарушает догму **smart analyzer / dumb codegen** в обратную сторону: дублирование работы, риск расхождения с анализом, потеря единого источника истины. Локальный паттерн-матч на форму выражения ради перезаписи (`transformer/inspect.rs`) — не сюда; «анализ в кодгене» — это именно пересбор фактов.
+**Анализ в кодгене** *(en: codegen-side analysis)* — анти-паттерн расположения: кодген/трансформ запускает свой visit по JS/template-AST и пересобирает признаки, уже доступные в `*Semantics` (вхождения ссылки, наличие `await`, наличие вызова руны, реактивность ссылки). Нарушает принцип **smart analyzer / dumb codegen** в обратную сторону: дублирование работы, риск расхождения с анализом, потеря единого источника истины. Локальный паттерн-матч на форму выражения ради перезаписи (`transformer/inspect.rs`) — не сюда; «анализ в кодгене» — это именно пересбор фактов.
 _Avoid_: codegen-walk, in-codegen detection, повторный visit, recompute facts.
 
 **`ComponentSemantics`** — центральное хранилище семантики компонента: scope-tree, `SymbolTable`, `ReferenceTable`, side-tables.
