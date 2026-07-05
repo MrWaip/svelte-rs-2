@@ -24,33 +24,19 @@ impl ServerCodegen<'_> {
             | AttributeSemantics::CannotBeStatic(_)
             | AttributeSemantics::SpecialValueAttr(_)
             | AttributeSemantics::StyleDirectives(_)
-            | AttributeSemantics::Autofocus => {}
+            | AttributeSemantics::Autofocus
+            | AttributeSemantics::RuntimeBehavior => {}
         }
     }
 
     fn print_static_attribute(&self, attribute: &Attribute, out: &mut String) {
-        match attribute {
-            Attribute::StringAttribute(attr) => {
-                let value = attr.value(self.component.source.as_str());
-                out.push(' ');
-                out.push_str(&attr.name);
-                out.push_str("=\"");
-                out.push_str(&escape_attribute(value));
-                out.push('"');
-            }
-            Attribute::ExpressionAttribute(_)
-            | Attribute::BooleanAttribute(_)
-            | Attribute::ConcatenationAttribute(_)
-            | Attribute::SpreadAttribute(_)
-            | Attribute::ClassDirective(_)
-            | Attribute::StyleDirective(_)
-            | Attribute::BindDirective(_)
-            | Attribute::LetDirectiveLegacy(_)
-            | Attribute::UseDirective(_)
-            | Attribute::OnDirectiveLegacy(_)
-            | Attribute::TransitionDirective(_)
-            | Attribute::AnimateDirective(_)
-            | Attribute::AttachTag(_) => {}
+        if let Attribute::StringAttribute(attr) = attribute {
+            let value = attr.value(self.component.source.as_str());
+            out.push(' ');
+            out.push_str(&attr.name);
+            out.push_str("=\"");
+            out.push_str(&escape_attribute(value));
+            out.push('"');
         }
     }
 }

@@ -608,6 +608,12 @@ fn classify_element_attrs(
             Attribute::OnDirectiveLegacy(d) => {
                 classify_html_on_directive_legacy(ctx, d, store);
             }
+            Attribute::UseDirective(_)
+            | Attribute::TransitionDirective(_)
+            | Attribute::AnimateDirective(_)
+            | Attribute::AttachTag(_) => {
+                store.set(attr.id(), AttributeSemantics::RuntimeBehavior);
+            }
             Attribute::BooleanAttribute(a) if is_autofocus_attr(ctx, owner_id, &a.name) => {
                 store.set(a.id, AttributeSemantics::Autofocus);
             }

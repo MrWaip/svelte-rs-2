@@ -63,7 +63,8 @@ compiler_case!(
 );
 compiler_case!(
     runes_sub_rune_state_no_store_guard,
-    "stores/runes_sub/rune_state_no_store_guard"
+    "stores/runes_sub/rune_state_no_store_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     runes_sub_derived_store_import_guard,
@@ -103,7 +104,8 @@ compiler_case!(
 );
 compiler_case!(
     runes_sub_unrelated_local_import_guard,
-    "stores/runes_sub/unrelated_local_import_guard"
+    "stores/runes_sub/unrelated_local_import_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_module_case!(
     runes_sub_module_rune_shadowed_by_import,

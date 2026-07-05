@@ -30,12 +30,15 @@ pub enum AttributeSemantics {
     SpecialValueAttr(SpecialValueSemantics),
     StyleDirectives(StyleDirectivesSemantics),
     Autofocus,
+    RuntimeBehavior,
 }
 
 impl AttributeSemantics {
     pub fn forces_runtime_reference(&self) -> bool {
         match self {
-            AttributeSemantics::NonSpecial | AttributeSemantics::StaticAttr => false,
+            AttributeSemantics::NonSpecial
+            | AttributeSemantics::StaticAttr
+            | AttributeSemantics::RuntimeBehavior => false,
             AttributeSemantics::ElementBind(_)
             | AttributeSemantics::WindowBind(_)
             | AttributeSemantics::DocumentBind(_)

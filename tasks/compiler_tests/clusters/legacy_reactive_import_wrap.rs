@@ -6,7 +6,8 @@ compiler_case!(
 );
 compiler_case!(
     reactive_import_wrap_instance_reassign_read,
-    "legacy/reactive_import_wrap/instance_reassign_read"
+    "legacy/reactive_import_wrap/instance_reassign_read",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     reactive_import_wrap_instance_member_mutate,
@@ -22,5 +23,6 @@ compiler_case!(
 );
 compiler_case!(
     reactive_import_wrap_runes_import_mutated,
-    "legacy/reactive_import_wrap/runes_import_mutated"
+    "legacy/reactive_import_wrap/runes_import_mutated",
+    [prod, dev, ssr, ssr_dev]
 );

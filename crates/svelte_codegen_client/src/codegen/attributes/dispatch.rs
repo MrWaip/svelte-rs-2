@@ -293,6 +293,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     );
                 }
                 AttributeSemantics::StyleDirectives(_) => {}
+                AttributeSemantics::RuntimeBehavior => {}
                 AttributeSemantics::NonSpecial
                     if self.ctx.query.view.is_custom_element(owner_id) =>
                 {

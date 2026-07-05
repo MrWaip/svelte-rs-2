@@ -600,17 +600,23 @@ compiler_case!(custom_element_slots);
 
 compiler_case!(legacy_props_basic);
 
-compiler_case!(legacy_reactivity_let_basic);
+compiler_case!(legacy_reactivity_let_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_reactivity_var_basic);
+compiler_case!(legacy_reactivity_var_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_reactivity_member_mutation);
+compiler_case!(legacy_reactivity_member_mutation, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_reactivity_array_self_assign);
+compiler_case!(
+    legacy_reactivity_array_self_assign,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(legacy_reactivity_destructure);
 
-compiler_case!(diagnose_legacy_array_destructure_mixed_targets);
+compiler_case!(
+    diagnose_legacy_array_destructure_mixed_targets,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(legacy_reactive_assignment_basic);
 
@@ -674,29 +680,29 @@ compiler_case!(style_directive_string);
 
 compiler_case!(style_directive_concat);
 
-compiler_case!(on_directive);
+compiler_case!(on_directive, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(on_directive_modifiers);
+compiler_case!(on_directive_modifiers, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(on_directive_with_use);
 
 compiler_case!(on_directive_with_use_bind_this_order);
 
-compiler_case!(on_directive_nonpassive);
+compiler_case!(on_directive_nonpassive, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(on_directive_dev_apply);
+compiler_case!(on_directive_dev_apply, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(use_action_basic);
+compiler_case!(use_action_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(use_action_expression);
+compiler_case!(use_action_expression, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(use_action_reactive);
+compiler_case!(use_action_reactive, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(use_action_dotted);
+compiler_case!(use_action_dotted, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(use_action_dotted_hyphen);
+compiler_case!(use_action_dotted_hyphen, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(use_action_multiple);
+compiler_case!(use_action_multiple, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(use_action_in_if);
 
@@ -900,25 +906,25 @@ compiler_case!(bind_focused);
 // Transition tests
 // ---------------------------------------------------------------------------
 
-compiler_case!(transition_basic);
+compiler_case!(transition_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(transition_params);
+compiler_case!(transition_params, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(transition_in);
+compiler_case!(transition_in, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(transition_out);
+compiler_case!(transition_out, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(transition_in_out_separate);
+compiler_case!(transition_in_out_separate, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(transition_local);
+compiler_case!(transition_local, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(transition_global);
+compiler_case!(transition_global, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(transition_dotted_name);
+compiler_case!(transition_dotted_name, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(transition_in_if);
 
-compiler_case!(transition_reactive_params);
+compiler_case!(transition_reactive_params, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(transition_elseif_local);
 
@@ -926,7 +932,10 @@ compiler_case!(transition_after_delegated);
 
 compiler_case!(transition_after_delegated_descendant);
 
-compiler_case!(transition_before_lifecycle_events);
+compiler_case!(
+    transition_before_lifecycle_events,
+    [prod, dev, ssr, ssr_dev]
+);
 
 // ---------------------------------------------------------------------------
 // Animate directive tests
@@ -948,13 +957,13 @@ compiler_case!(animate_with_const_tag);
 // Attach tag tests
 // ---------------------------------------------------------------------------
 
-compiler_case!(attach_basic);
+compiler_case!(attach_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(attach_inline_arrow);
+compiler_case!(attach_inline_arrow, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(attach_conditional);
+compiler_case!(attach_conditional, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(attach_multiple);
+compiler_case!(attach_multiple, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(attach_with_directives);
 
@@ -1216,7 +1225,7 @@ compiler_case!(script_module_instance_ref);
 
 compiler_case!(script_module_only);
 
-compiler_case!(script_module_with_instance);
+compiler_case!(script_module_with_instance, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_options_basic);
 
@@ -1232,7 +1241,7 @@ compiler_case!(immutable_init_noctx_immutable);
 
 compiler_case!(immutable_init_noctx_mutable);
 
-compiler_case!(immutable_source_init_immutable);
+compiler_case!(immutable_source_init_immutable, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(immutable_source_noinit_immutable);
 
@@ -1410,9 +1419,12 @@ compiler_case!(derived_non_runes_invalid_usage);
 
 compiler_case!(smoke_runes_declarator_gaps_all);
 
-compiler_case!(smoke_runes_state_eager_panic);
+compiler_case!(smoke_runes_state_eager_panic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(smoke_ts_non_null_assertion_mutations);
+compiler_case!(
+    smoke_ts_non_null_assertion_mutations,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(text_expression_binary_no_nullish_fallback);
 
@@ -1452,7 +1464,7 @@ compiler_case!(preserve_comments_between_elements);
 
 compiler_case!(preserve_comments_in_block);
 
-compiler_case!(preserve_comments_svelte_ignore);
+compiler_case!(preserve_comments_svelte_ignore, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(preserve_comments_only_in_block);
 
@@ -1480,7 +1492,7 @@ compiler_case!(title_variants);
 compiler_case!(async_title_basic);
 
 // svelte:window tests
-compiler_case!(svelte_window_event_legacy);
+compiler_case!(svelte_window_event_legacy, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_window_event_legacy_with_if);
 
@@ -1490,11 +1502,11 @@ compiler_case!(diagnose_svelte_document_on_directive_legacy_prop_handler_wraps);
 
 compiler_case!(diagnose_svelte_body_on_directive_legacy_prop_handler_wraps);
 
-compiler_case!(svelte_window_action);
+compiler_case!(svelte_window_action, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_document_action);
+compiler_case!(svelte_document_action, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_window_event_attr);
+compiler_case!(svelte_window_event_attr, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_window_event_attr_props_handler);
 
@@ -1512,17 +1524,17 @@ compiler_case!(svelte_window_bind_size_with_template);
 
 compiler_case!(svelte_window_bind_online);
 
-compiler_case!(svelte_window_combined);
+compiler_case!(svelte_window_combined, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_window_reactive);
 
 compiler_case!(svelte_document_bindings);
 
-compiler_case!(svelte_document_events);
+compiler_case!(svelte_document_events, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_document_bubble);
+compiler_case!(svelte_document_bubble, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_document_combined);
+compiler_case!(svelte_document_combined, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_element_basic);
 
@@ -1687,13 +1699,13 @@ compiler_case!(svelte_element_children_expr);
 
 compiler_case!(svelte_element_body_multi_child_fragment);
 
-compiler_case!(svelte_body_event_attr);
+compiler_case!(svelte_body_event_attr, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_body_event_legacy);
+compiler_case!(svelte_body_event_legacy, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_body_action);
+compiler_case!(svelte_body_action, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_body_combined);
+compiler_case!(svelte_body_combined, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(boundary_basic);
 
@@ -1753,31 +1765,34 @@ compiler_case!(await_nested_content);
 // Event attribute tests (Svelte 5)
 // ---------------------------------------------------------------------------
 
-compiler_case!(event_attr_non_delegatable);
+compiler_case!(event_attr_non_delegatable, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(event_attr_delegated_after_non_delegated_order);
+compiler_case!(
+    event_attr_delegated_after_non_delegated_order,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(event_attr_capture);
+compiler_case!(event_attr_capture, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(event_attr_capture_non_deleg);
+compiler_case!(event_attr_capture_non_deleg, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(event_attr_gotpointercapture);
+compiler_case!(event_attr_gotpointercapture, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(event_attr_passive);
+compiler_case!(event_attr_passive, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(event_attr_passive_window);
+compiler_case!(event_attr_passive_window, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(event_attr_import_handler);
+compiler_case!(event_attr_import_handler, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(event_attr_member_handler);
+compiler_case!(event_attr_member_handler, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(event_attr_const_tag_destructure);
 
 compiler_case!(event_attr_props_handler);
 
-compiler_case!(event_attr_has_call);
+compiler_case!(event_attr_has_call, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(event_attr_dev_apply);
+compiler_case!(event_attr_dev_apply, [prod, dev, ssr, ssr_dev]);
 
 // ---------------------------------------------------------------------------
 // Expression memoization tests
@@ -1849,7 +1864,7 @@ compiler_case!(inspect_prod_strip);
 
 compiler_case!(inspect_trace_basic);
 
-compiler_case!(inspect_trace_contexts);
+compiler_case!(inspect_trace_contexts, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(inspect_trace_prod_strip);
 
@@ -1883,11 +1898,11 @@ compiler_case!(ts_strip_non_null);
 
 compiler_case!(ts_strip_const_tag);
 
-compiler_case!(ts_strip_attribute);
+compiler_case!(ts_strip_attribute, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(ts_strip_script_types);
 
-compiler_case!(ts_strip_handler_param_annotation);
+compiler_case!(ts_strip_handler_param_annotation, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(ts_strip_as_paren_optional_chain);
 
@@ -2027,7 +2042,7 @@ compiler_case!(animate_with_spread);
 
 compiler_case!(svelte_element_static_class_attr);
 
-compiler_case!(root_with_special_elements);
+compiler_case!(root_with_special_elements, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(needs_context_method_chain);
 
@@ -2118,11 +2133,11 @@ compiler_case!(diagnose_component_prop_hyphenated_key_derived);
 // Diagnose: svelte import patterns
 // ---------------------------------------------------------------------------
 
-compiler_case!(needs_context_nested_fn);
+compiler_case!(needs_context_nested_fn, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(member_expr_dynamic_local);
 
-compiler_case!(import_type_mixed);
+compiler_case!(import_type_mixed, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(derived_in_nested_function);
 
@@ -2236,7 +2251,7 @@ compiler_case!(attach_on_component);
 
 compiler_case!(attach_on_component_dynamic);
 
-compiler_case!(attach_on_document);
+compiler_case!(attach_on_document, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(each_keyed_destructure);
 
@@ -2262,7 +2277,7 @@ compiler_case!(bind_multiple_on_element);
 
 compiler_case!(if_else_chain_with_const);
 
-compiler_case!(event_mixed_delegation);
+compiler_case!(event_mixed_delegation, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(props_identifier_basic);
 
@@ -2392,9 +2407,12 @@ compiler_case!(add_locations_svelte_head_skips_hoisted_title);
 
 compiler_case!(add_locations_named_slot_wrapper);
 
-compiler_case!(auto_softlegacy_member_read);
+compiler_case!(auto_softlegacy_member_read, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(auto_hardlegacy_member_read_explicit);
+compiler_case!(
+    auto_hardlegacy_member_read_explicit,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(auto_hardlegacy_store_autosub_shadows_rune);
 
@@ -2516,7 +2534,10 @@ compiler_case!(diagnose_each_css_wrapper_root_order);
 
 compiler_case!(diagnose_component_bind_store_derived_base);
 
-compiler_case!(diagnose_nested_delegated_transition_order);
+compiler_case!(
+    diagnose_nested_delegated_transition_order,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_text_entity_leading_ws_before_if_block);
 
@@ -2592,7 +2613,7 @@ compiler_case!(ts_bindable_default_identifier_paren);
 
 compiler_case!(ts_derived_async_await_paren);
 
-compiler_case!(ts_state_proxyable_paren_arrow);
+compiler_case!(ts_state_proxyable_paren_arrow, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(ts_simple_expression_paren_default);
 

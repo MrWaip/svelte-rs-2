@@ -622,6 +622,55 @@ fn find_snippet_block<'a>(
     None
 }
 
+fn collect_runtime_behavior_directives(
+    component: &Component,
+    fragment: FragmentId,
+    out: &mut Vec<(&'static str, NodeId)>,
+) {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
+            Node::Element(el) => {
+                for attr in &el.attributes {
+                    match attr {
+                        Attribute::UseDirective(d) => out.push(("use:", d.id)),
+                        Attribute::TransitionDirective(d) => out.push(("transition:", d.id)),
+                        Attribute::AnimateDirective(d) => out.push(("animate:", d.id)),
+                        Attribute::AttachTag(a) => out.push(("@attach", a.id)),
+                        _ => {}
+                    }
+                }
+                collect_runtime_behavior_directives(component, el.fragment, out);
+            }
+            Node::EachBlock(b) => collect_runtime_behavior_directives(component, b.body, out),
+            Node::IfBlock(b) => {
+                collect_runtime_behavior_directives(component, b.consequent, out);
+                if let Some(alt) = b.alternate {
+                    collect_runtime_behavior_directives(component, alt, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+#[track_caller]
+fn assert_runtime_behavior_directives(component: &Component, data: &AnalysisData<'_>) {
+    let mut ids = Vec::new();
+    collect_runtime_behavior_directives(component, component.root, &mut ids);
+    assert!(
+        !ids.is_empty(),
+        "fixture has no runtime-behavior directives to classify"
+    );
+    for (kind, id) in ids {
+        let semantics = data.attributes.get(id);
+        assert_eq!(
+            *semantics,
+            AttributeSemantics::RuntimeBehavior,
+            "{kind}: expected RuntimeBehavior, got {semantics:?}"
+        );
+    }
+}
+
 fn parent_each_blocks_from_payload(
     data: &AnalysisData<'_>,
     bind_id: NodeId,
@@ -2225,6 +2274,23 @@ fn bind_group_marks_only_ancestor_each_blocks_referenced_by_expression() {
         parent_each_blocks_from_payload(&data, bind_id).as_slice(),
         &[outer_each.id]
     );
+}
+
+#[test]
+fn behavioral_directives_classify_as_runtime_behavior() {
+    let (component, data) = analyze_source(
+        r#"<script>
+    import { fade, flip } from 'svelte/transition';
+    function action(node) {}
+    function attach(node) {}
+    let items = $state([1, 2]);
+</script>
+{#each items as item (item)}
+    <div use:action transition:fade animate:flip {@attach attach}>{item}</div>
+{/each}
+<span in:fade out:fade></span>"#,
+    );
+    assert_runtime_behavior_directives(&component, &data);
 }
 
 #[test]

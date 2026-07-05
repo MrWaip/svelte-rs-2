@@ -44,7 +44,8 @@ compiler_case!(
 );
 compiler_case!(
     legacy_reactive_let_text,
-    "text_reactivity/legacy_reactive_let_text"
+    "text_reactivity/legacy_reactive_let_text",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(call_local_fn, "text_reactivity/call_local_fn");
 compiler_case!(
@@ -59,11 +60,13 @@ compiler_case!(call_effect_tracking, "text_reactivity/call_effect_tracking");
 compiler_case!(tagged_template_call, "text_reactivity/tagged_template_call");
 compiler_case!(
     call_reactive_arg_guard,
-    "text_reactivity/call_reactive_arg_guard"
+    "text_reactivity/call_reactive_arg_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     array_local_not_defined,
-    "text_reactivity/array_local_not_defined"
+    "text_reactivity/array_local_not_defined",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     string_local_defined_guard,
