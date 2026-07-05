@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<p> </p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	let show = true;
 	const promise = fetch("/api");
@@ -10,7 +10,7 @@ export default function App($$anchor) {
 			var fragment_1 = $.comment();
 			var node_1 = $.first_child(fragment_1);
 			$.await(node_1, () => promise, null, ($$anchor, value) => {
-				var p = root_2();
+				var p = root();
 				var text = $.child(p, true);
 				$.reset(p);
 				$.template_effect(() => $.set_text(text, $.get(value)));

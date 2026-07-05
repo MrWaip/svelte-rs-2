@@ -1,23 +1,21 @@
-App[$.FILENAME] = "(unknown)";
 import * as $ from "svelte/internal/client";
-var root = $.add_locations($.from_html(`<p> </p>`), App[$.FILENAME], [[7, 0]]);
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy",
+	"$$host",
+	"x"
+]);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
-	$.check_target(new.target);
-	$.push($$props, true, App);
-	let x = $.prop($$props, "x", 7, 0), rest = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy",
-		"$$host",
-		"x"
-	], "rest");
-	let rawData = $.tag($.state({
+	$.push($$props, true);
+	let x = $.prop($$props, "x", 7, 0), rest = $.rest_props($$props, rest_excludes);
+	let rawData = $.state({
 		a: 1,
 		b: 2
-	}), "rawData");
+	});
 	let snapshot = $.snapshot($.get(rawData));
 	var $$exports = {
-		...$.legacy_api(),
 		get x() {
 			return x();
 		},

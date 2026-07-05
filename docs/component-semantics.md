@@ -33,6 +33,7 @@ topics: ComponentSemantics, scope, Symbol/SymbolId, Reference/ReferenceId, Symbo
 3. **Read-only над AST** после build.
 4. **Identity by id, не по строке.** Резолвинг symbol / binding / reference — через `OxcNodeId` / `ReferenceId` / `SymbolId`. Никаких `find_binding_by_name("foo")` для реальных лукапов. Сравнение имени допустимо только для синтаксических предикатов (детект `$state`-callee, `$$props`).
 5. **JS-span'ы относительны содержимому скрипта.** `oxc_parser` парсит `<script>` / `<script module>` как standalone JS — span'ы на символах/биндингах/ссылках zero-based от тела скрипта. Потребители file-relative span'а лениво сдвигают через `Span::shifted_from_oxc(script_offset, oxc_span)` в точке вызова — без глобального rewrite, без скрытого состояния.
+6. **Class fields — sanctioned exception to "identity by id" (#4).** Class fields have no `SymbolId`/`ReferenceId`: identity is the access `OxcNodeId`, and `access → declaration` is resolved by `(name, is_private)` string match inside `ClassTable`. The exception stays sound because the string match never leaves `ClassTable` and the only key handed downstream is `OxcNodeId`.
 
 ## Связь с другими документами
 

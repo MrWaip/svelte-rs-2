@@ -1,7 +1,7 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p>loading...</p>`);
-var root_2 = $.from_html(`<p> </p>`);
-var root_3 = $.from_html(`<p>content</p>`);
+var root = $.from_html(`<p>loading...</p>`);
+var root_1 = $.from_html(`<p> </p>`);
+var root_2 = $.from_html(`<p>content</p>`);
 export default function App($$anchor) {
 	function handleError(error) {
 		console.error(error);
@@ -10,11 +10,11 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	{
 		const pending = ($$anchor) => {
-			var p = root_1();
+			var p = root();
 			$.append($$anchor, p);
 		};
 		const failed = ($$anchor, error = $.noop) => {
-			var p_1 = root_2();
+			var p_1 = root_1();
 			var text = $.child(p_1, true);
 			$.reset(p_1);
 			$.template_effect(() => $.set_text(text, error().message));
@@ -25,7 +25,7 @@ export default function App($$anchor) {
 			pending,
 			failed
 		}, ($$anchor) => {
-			var p_2 = root_3();
+			var p_2 = root_2();
 			$.append($$anchor, p_2);
 		});
 	}

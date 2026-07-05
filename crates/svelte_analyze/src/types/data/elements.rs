@@ -1,5 +1,6 @@
 use super::*;
 use crate::attribute_semantics::data::ComponentPropMemo;
+use crate::expression_semantics::Volatility;
 use oxc_syntax::node::NodeId as OxcNodeId;
 
 #[derive(Clone)]
@@ -110,9 +111,11 @@ pub enum LegacyDefaultSlot {
 pub struct ElementFlags {
     pub(crate) class_attr_id: NodeTable<NodeId>,
     pub(crate) class_directive_info: NodeTable<Vec<ClassDirectiveInfo>>,
+    pub(crate) class_directives_volatility: NodeTable<Volatility>,
     pub(crate) needs_clsx: NodeBitSet,
     pub(crate) static_class: NodeTable<String>,
     pub(crate) style_directives: NodeTable<Vec<StyleDirective>>,
+    pub(crate) style_directives_volatility: NodeTable<Volatility>,
     pub(crate) static_style: NodeTable<String>,
     pub(crate) needs_input_defaults: NodeBitSet,
     pub(crate) needs_var: NodeBitSet,
@@ -149,9 +152,11 @@ impl ElementFlags {
         Self {
             class_attr_id: NodeTable::new(node_count),
             class_directive_info: NodeTable::new(node_count),
+            class_directives_volatility: NodeTable::new(node_count),
             needs_clsx: NodeBitSet::new(node_count),
             static_class: NodeTable::new(node_count),
             style_directives: NodeTable::new(node_count),
+            style_directives_volatility: NodeTable::new(node_count),
             static_style: NodeTable::new(node_count),
             needs_input_defaults: NodeBitSet::new(node_count),
             needs_var: NodeBitSet::new(node_count),
@@ -186,6 +191,12 @@ impl ElementFlags {
     pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> {
         self.class_directive_info.get(id).map(|v| v.as_slice())
     }
+    pub fn class_directives_volatility(&self, id: NodeId) -> Volatility {
+        self.class_directives_volatility
+            .get(id)
+            .copied()
+            .unwrap_or(Volatility::Static)
+    }
     pub fn needs_clsx(&self, id: NodeId) -> bool {
         self.needs_clsx.contains(&id)
     }
@@ -194,6 +205,12 @@ impl ElementFlags {
     }
     pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] {
         self.style_directives.get(id).map_or(&[], |v| v.as_slice())
+    }
+    pub fn style_directives_volatility(&self, id: NodeId) -> Volatility {
+        self.style_directives_volatility
+            .get(id)
+            .copied()
+            .unwrap_or(Volatility::Static)
     }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool {
         self.needs_input_defaults.contains(&id)

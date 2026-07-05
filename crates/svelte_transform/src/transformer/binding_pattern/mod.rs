@@ -2,22 +2,22 @@ mod derived;
 mod legacy_props;
 mod legacy_state;
 mod props;
-mod single_identifier;
 mod state;
 
 use std::collections::HashMap;
+use std::iter;
 use std::mem;
 
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
 use oxc_ast::ast::{
-    Declaration, ExportNamedDeclaration, Expression, PropertyKey, Statement, VariableDeclaration,
-    VariableDeclarationKind, VariableDeclarator,
+    BindingPattern, Declaration, ExportNamedDeclaration, Expression, PropertyKey, Statement,
+    VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_span::{SPAN, Span};
 use oxc_traverse::TraverseCtx;
 
-use svelte_analyze::{DeclaratorSemantics, DerivedEmit};
+use svelte_analyze::{DeclaratorSemantics, DerivedEmit, RuntimeRuneKind};
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{Access, Step};
 use svelte_emit_builders::binding_pattern as bp;
@@ -134,14 +134,23 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 DeclaratorSemantics::RuneDerived {
                     kind,
                     emit: DerivedEmit::Sync,
-                } => self.rewrite_derived(decl_kind, declarator, kind, &mut pending),
+                    source,
+                } => self.rewrite_derived(decl_kind, declarator, kind, source, &mut pending),
 
                 DeclaratorSemantics::RuneDerived {
                     emit: DerivedEmit::Async,
                     ..
                 } => {
-                    self.flush_pending(&mut pending, decl_kind, span, declare, &mut out);
-                    out.push(self.rewrite_async_derived(decl_kind, span.start, declarator));
+                    if matches!(&declarator.id, BindingPattern::BindingIdentifier(_)) {
+                        self.rewrite_single_identifier_async_derived(
+                            span.start,
+                            declarator,
+                            &mut pending,
+                        );
+                    } else {
+                        self.flush_pending(&mut pending, decl_kind, span, declare, &mut out);
+                        out.push(self.rewrite_async_derived(decl_kind, span.start, declarator));
+                    }
                 }
 
                 DeclaratorSemantics::LegacyState => {
@@ -156,10 +165,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     self.rewrite_legacy_props(decl_kind, declarator, &mut pending)
                 }
 
+                DeclaratorSemantics::RuntimeRuneCall {
+                    kind: RuntimeRuneKind::EffectPending,
+                } => {
+                    self.rewrite_effect_pending_init(&mut declarator);
+                    pending.push(declarator);
+                }
+
                 DeclaratorSemantics::None
                 | DeclaratorSemantics::ClassFieldState(_)
                 | DeclaratorSemantics::ClassFieldDerived(_) => {
-                    self.rewrite_variable_rune_init(&mut declarator);
                     pending.push(declarator);
                 }
 
@@ -172,7 +187,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 }
 
                 DeclaratorSemantics::RuntimeRuneCall { .. } => {
-                    unreachable!("rune-call fact is keyed by the call node, not a declarator")
+                    unreachable!("non-effect-pending rune-call fact is keyed by the call node")
                 }
             }
         }
@@ -195,6 +210,21 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let decls = mem::replace(pending, self.b.ast.vec());
         let decl = self.b.ast.variable_declaration(span, kind, decls, declare);
         out.push(Statement::VariableDeclaration(self.b.alloc(decl)));
+    }
+
+    fn rewrite_effect_pending_init(&mut self, node: &mut VariableDeclarator<'a>) {
+        let Some(init) = node.init.as_mut() else {
+            return;
+        };
+        let init_expr = self.b.move_expr(init);
+        let Expression::CallExpression(_) = init_expr else {
+            return;
+        };
+        let pending_call = self.b.call_expr("$.pending", iter::empty::<Arg<'a, '_>>());
+        node.init = Some(
+            self.b
+                .call_expr("$.eager", [Arg::Expr(self.b.thunk(pending_call))]),
+        );
     }
 
     #[allow(clippy::too_many_arguments)]

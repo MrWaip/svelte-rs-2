@@ -195,3 +195,42 @@ compiler_case!(
     kiw_keyed_by_index_guard,
     "each/keyed_index_writeback/legacy/keyed_by_index_guard"
 );
+
+compiler_case!(typed_context_typed_ident, "each/typed_context/typed_ident");
+compiler_case!(
+    typed_context_typed_ident_index,
+    "each/typed_context/typed_ident_index"
+);
+compiler_case!(
+    typed_context_plain_ident_guard,
+    "each/typed_context/plain_ident_guard"
+);
+compiler_case!(
+    typed_context_plain_ident_index_guard,
+    "each/typed_context/plain_ident_index_guard"
+);
+compiler_case!(
+    typed_context_typed_object_guard,
+    "each/typed_context/typed_object_guard"
+);
+compiler_case!(
+    typed_context_typed_array_guard,
+    "each/typed_context/typed_array_guard"
+);
+
+compiler_case!(
+    render_index_param_key_is_item_member_mutation,
+    "each/render_index_param/runes/key_is_item_member_mutation"
+);
+compiler_case!(
+    render_index_param_key_is_item_no_mutation_guard,
+    "each/render_index_param/runes/key_is_item_no_mutation_guard"
+);
+compiler_case!(
+    render_index_param_reactive_item_member_mutation_guard,
+    "each/render_index_param/runes/reactive_item_member_mutation_guard"
+);
+compiler_case!(
+    render_index_param_pattern_member_mutation_guard,
+    "each/render_index_param/runes/pattern_member_mutation_guard"
+);

@@ -14,32 +14,33 @@ use util::{property_key_atom, simple_assignment_target_member_root_reference_id}
 
 use super::data::{
     BindingFacts, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
-    DeclaratorSemantics, DerivedDeclarationSemantics, DerivedEmit, DerivedKind,
+    DeclaratorSemantics, DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DerivedSource,
     OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
     ReactivitySemantics, ReferenceFacts, RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
 use super::legacy_reactive::LegacyReactiveDep;
 use crate::scope::{ComponentScoping, SymbolId};
-use crate::types::data::{AnalysisData, JsAst, SnippetData};
+use crate::types::data::{AnalysisData, JsAst};
 use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
-use crate::value_evaluation::{
-    Evaluation, ReadContext, ValueClass, ValueEvaluation, ValueEvaluator,
-};
+use crate::value_evaluation::{Evaluation, ValueEvaluation};
 use oxc_ast::ast::{
-    AssignmentExpression, AssignmentOperator, AssignmentTarget, BindingPattern, CallExpression,
-    Class, ClassElement, ExportNamedDeclaration, Expression, IdentifierReference, MemberExpression,
+    ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentTarget,
+    BindingPattern, CallExpression, Class, ClassElement, ExportNamedDeclaration, Expression,
+    Function, IdentifierReference, ImportDeclarationSpecifier, MemberExpression, MethodDefinition,
     MethodDefinitionKind, NewExpression, PrivateFieldExpression, Program, PropertyDefinition,
     PropertyKey, Statement, StaticMemberExpression, TaggedTemplateExpression, UpdateExpression,
     VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_assignment_expression, walk_call_expression, walk_class, walk_export_named_declaration,
-    walk_member_expression, walk_new_expression, walk_private_field_expression, walk_program,
-    walk_property_definition, walk_static_member_expression, walk_tagged_template_expression,
-    walk_update_expression, walk_variable_declaration, walk_variable_declarator,
+    walk_arrow_function_expression, walk_assignment_expression, walk_call_expression, walk_class,
+    walk_export_named_declaration, walk_function, walk_member_expression, walk_method_definition,
+    walk_new_expression, walk_private_field_expression, walk_program, walk_property_definition,
+    walk_static_member_expression, walk_tagged_template_expression, walk_update_expression,
+    walk_variable_declaration, walk_variable_declarator,
 };
+use oxc_syntax::scope::ScopeFlags;
 use std::mem;
 
 use oxc_span::GetSpan as _;
@@ -52,7 +53,7 @@ use svelte_component_semantics::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RuneKind {
+pub(crate) enum RuneKind {
     State,
     StateRaw,
     Derived,
@@ -73,6 +74,29 @@ enum RuneKind {
     StateSnapshot,
 }
 
+impl RuneKind {
+    pub(crate) fn is_bare_value_rune(self) -> bool {
+        match self {
+            RuneKind::State | RuneKind::Derived | RuneKind::Props => true,
+            RuneKind::StateRaw
+            | RuneKind::DerivedBy
+            | RuneKind::Effect
+            | RuneKind::EffectPre
+            | RuneKind::EffectRoot
+            | RuneKind::EffectTracking
+            | RuneKind::EffectPending
+            | RuneKind::Bindable
+            | RuneKind::StateEager
+            | RuneKind::Inspect
+            | RuneKind::InspectWith
+            | RuneKind::InspectTrace
+            | RuneKind::Host
+            | RuneKind::PropsId
+            | RuneKind::StateSnapshot => false,
+        }
+    }
+}
+
 const STATE_RUNE_NAME: &str = "$state";
 const DERIVED_RUNE_NAME: &str = "$derived";
 const EFFECT_RUNE_NAME: &str = "$effect";
@@ -81,7 +105,15 @@ const BINDABLE_RUNE_NAME: &str = "$bindable";
 const INSPECT_RUNE_NAME: &str = "$inspect";
 const HOST_RUNE_NAME: &str = "$host";
 
-fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
+fn assignment_target_field_access(target: &AssignmentTarget<'_>) -> Option<OxcNodeId> {
+    match target {
+        AssignmentTarget::PrivateFieldExpression(pfe) => Some(pfe.node_id()),
+        AssignmentTarget::StaticMemberExpression(member) => Some(member.node_id()),
+        _ => None,
+    }
+}
+
+pub(crate) fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     match &call.callee {
         Expression::Identifier(ident) => match ident.name.as_str() {
             STATE_RUNE_NAME => Some(RuneKind::State),
@@ -125,6 +157,37 @@ fn detect_rune_from_call(call: &CallExpression<'_>) -> Option<RuneKind> {
     }
 }
 
+fn find_svelte_store_rune_import(
+    parsed: &JsAst<'_>,
+    scoping: &ComponentScoping,
+) -> Option<SymbolId> {
+    let base = &DERIVED_RUNE_NAME[1..];
+    for program in [parsed.module_program.as_ref(), parsed.program.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        for stmt in &program.body {
+            let Statement::ImportDeclaration(import) = stmt else {
+                continue;
+            };
+            if import.import_kind.is_type()
+                || import.source.value.as_str() != super::SVELTE_STORE_MODULE
+            {
+                continue;
+            }
+            for specifier in import.specifiers.iter().flatten() {
+                let ImportDeclarationSpecifier::ImportSpecifier(named) = specifier else {
+                    continue;
+                };
+                if named.local.name.as_str() == base {
+                    return scoping.find_binding(scoping.root_scope_id(), base);
+                }
+            }
+        }
+    }
+    None
+}
+
 const JS_UNDEFINED_NAME: &str = "undefined";
 
 pub(crate) struct ReactivityInputs {
@@ -140,11 +203,13 @@ pub(crate) fn build_v2<'a>(
     data: &mut AnalysisData<'a>,
     inputs: ReactivityInputs,
 ) {
+    let svelte_store_rune_import = find_svelte_store_rune_import(parsed, &data.scoping);
     let runes_mode = super::mode_resolution::resolve(
         &data.scoping,
         parsed,
         inputs.inline_runes,
         inputs.compile_runes,
+        svelte_store_rune_import,
     );
     data.script.runes_mode = runes_mode;
     let runes = runes_mode.is_runes();
@@ -153,6 +218,8 @@ pub(crate) fn build_v2<'a>(
 
     data.reactivity.set_uses_runes(runes);
     data.reactivity.set_runes_mode(runes_mode);
+    data.reactivity
+        .set_svelte_store_rune_import(svelte_store_rune_import);
     record_maybe_reactive_imports(data);
     let lr_collected = build_script_semantics_v2(
         component,
@@ -180,11 +247,14 @@ pub(crate) fn build_v2<'a>(
         data.script.immutable,
     );
 
+    data.reactivity.consolidate_legacy_state_declarators();
+
     let reference_count = data.scoping.references_len();
     data.reactivity.reserve_references(reference_count);
     let bind_this_proxy_targets = references::collect_raw_param_reads(component, parsed, data);
     references::collect_symbol_semantics(data);
     references::apply_bind_this_proxy_targets(data, &bind_this_proxy_targets);
+    data.reactivity.classify_derived_sources();
     const_tag_order_legacy::build(component, parsed, data);
     compute_const_tag_reactivity(component, parsed, data);
 
@@ -198,13 +268,10 @@ pub(crate) fn finalize_reactivity(
     parsed: &JsAst<'_>,
     reactivity: &mut ReactivitySemantics,
     value_evaluation: &ValueEvaluation,
-    scoping: &ComponentScoping<'_>,
-    snippets: &SnippetData,
     semantics: &ComponentSemantics<'_>,
-    dev: bool,
 ) {
     optimize_derived(reactivity, value_evaluation, semantics);
-    finalize_proxy(parsed, reactivity, scoping, snippets, semantics, dev);
+    finalize_proxy(parsed, reactivity, semantics);
 }
 
 fn promote_legacy_exported_const_state(
@@ -468,35 +535,24 @@ fn is_non_coercive(operator: AssignmentOperator) -> bool {
 pub(crate) fn finalize_proxy(
     parsed: &JsAst<'_>,
     reactivity: &mut ReactivitySemantics,
-    scoping: &ComponentScoping<'_>,
-    snippets: &SnippetData,
     semantics: &ComponentSemantics<'_>,
-    dev: bool,
 ) {
     if !reactivity.uses_runes() {
         return;
     }
 
     let (binding_inits, field_inits, signal_writes, class_fields) = {
-        let evaluator = ValueEvaluator::new(
-            parsed,
-            scoping,
-            semantics,
-            reactivity,
-            snippets,
-            ReadContext::Declaration,
-            dev,
-        );
-        let init_proxyable = collect_init_proxyable(parsed, &evaluator);
+        let init_proxyable = collect_init_proxyable(parsed);
         let mut collector = ProxyCollector {
             reactivity,
-            evaluator: &evaluator,
             semantics,
             init_proxyable: &init_proxyable,
             binding_inits: Vec::new(),
             field_inits: Vec::new(),
             signal_writes: Vec::new(),
             class_fields: FxHashMap::default(),
+            in_constructor: false,
+            next_is_constructor: false,
         };
         for program in [parsed.program.as_ref(), parsed.module_program.as_ref()]
             .into_iter()
@@ -534,13 +590,14 @@ pub(crate) fn finalize_proxy(
 
 struct ProxyCollector<'c, 'a> {
     reactivity: &'c ReactivitySemantics,
-    evaluator: &'c ValueEvaluator<'c, 'a>,
     semantics: &'c ComponentSemantics<'a>,
     init_proxyable: &'c FxHashMap<SymbolId, bool>,
     binding_inits: Vec<(SymbolId, bool)>,
     field_inits: Vec<(OxcNodeId, bool)>,
     signal_writes: Vec<ReferenceId>,
     class_fields: FxHashMap<OxcNodeId, ClassFieldSemantics>,
+    in_constructor: bool,
+    next_is_constructor: bool,
 }
 
 impl<'c, 'a> Visit<'a> for ProxyCollector<'c, 'a> {
@@ -569,6 +626,42 @@ impl<'c, 'a> Visit<'a> for ProxyCollector<'c, 'a> {
             self.classify_field_read(expr.node_id());
         }
         walk_static_member_expression(self, expr);
+    }
+
+    fn visit_method_definition(&mut self, method: &MethodDefinition<'a>) {
+        if method.kind == MethodDefinitionKind::Constructor {
+            self.next_is_constructor = true;
+        }
+        walk_method_definition(self, method);
+    }
+
+    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
+        let prev = self.in_constructor;
+        self.in_constructor = mem::take(&mut self.next_is_constructor);
+        walk_function(self, func, flags);
+        self.in_constructor = prev;
+    }
+
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        self.next_is_constructor = false;
+        let prev = self.in_constructor;
+        self.in_constructor = false;
+        walk_arrow_function_expression(self, arrow);
+        self.in_constructor = prev;
+    }
+
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if matches!(
+            detect_rune_from_call(call),
+            Some(RuneKind::Derived | RuneKind::DerivedBy)
+        ) {
+            let prev = self.in_constructor;
+            self.in_constructor = false;
+            walk_call_expression(self, call);
+            self.in_constructor = prev;
+        } else {
+            walk_call_expression(self, call);
+        }
     }
 }
 
@@ -607,14 +700,20 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
     }
 
     fn classify_assignment(&mut self, expr: &AssignmentExpression<'a>) {
-        if let DeclaratorSemantics::ClassFieldState(state) =
-            self.reactivity.declarator_semantics(expr.node_id())
-        {
-            if state.kind == StateKind::State
+        let decl = self.reactivity.declarator_semantics(expr.node_id());
+        if matches!(
+            &decl,
+            DeclaratorSemantics::ClassFieldState(_) | DeclaratorSemantics::ClassFieldDerived(_)
+        ) {
+            if let DeclaratorSemantics::ClassFieldState(state) = &decl
+                && state.kind == StateKind::State
                 && let Expression::CallExpression(call) = expr.right.get_inner_expression()
             {
                 let proxied = self.state_arg_proxies(call);
                 self.field_inits.push((expr.node_id(), proxied));
+            }
+            if let Some(access) = assignment_target_field_access(&expr.left) {
+                self.class_fields.insert(access, ClassFieldSemantics::None);
             }
             return;
         }
@@ -687,7 +786,11 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
                 let proxy = kind == StateKind::State
                     && is_non_coercive(operator)
                     && self.write_value_proxies(operator, right);
-                ClassFieldSemantics::State { kind, proxy }
+                ClassFieldSemantics::State {
+                    kind,
+                    proxy,
+                    tracked: self.read_tracked(kind),
+                }
             }
             ClassFieldSemantics::Derived { .. } | ClassFieldSemantics::None => base,
         };
@@ -701,7 +804,19 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
         let Some(base) = self.resolved_field(access_node) else {
             return;
         };
-        self.class_fields.insert(access_node, base);
+        let field = match base {
+            ClassFieldSemantics::State { kind, proxy, .. } => ClassFieldSemantics::State {
+                kind,
+                proxy,
+                tracked: self.read_tracked(kind),
+            },
+            ClassFieldSemantics::Derived { .. } | ClassFieldSemantics::None => base,
+        };
+        self.class_fields.insert(access_node, field);
+    }
+
+    fn read_tracked(&self, kind: StateKind) -> bool {
+        !(self.in_constructor && matches!(kind, StateKind::State | StateKind::StateRaw))
     }
 
     fn resolved_field(&self, access_node: OxcNodeId) -> Option<ClassFieldSemantics> {
@@ -710,6 +825,7 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
             DeclaratorSemantics::ClassFieldState(state) => Some(ClassFieldSemantics::State {
                 kind: state.kind,
                 proxy: false,
+                tracked: true,
             }),
             DeclaratorSemantics::ClassFieldDerived(derived) => {
                 Some(ClassFieldSemantics::Derived { kind: derived.kind })
@@ -766,10 +882,13 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
     fn should_proxy(&self, expr: &Expression<'a>) -> bool {
         let expr = expr.get_inner_expression();
         let Expression::Identifier(id) = expr else {
-            return proxies_evaluation(&self.evaluator.evaluate(expr));
+            return should_proxy_node_only(expr);
         };
+        if id.name == "undefined" {
+            return false;
+        }
         let Some(symbol) = self.semantics.symbol_for_identifier_reference(id) else {
-            return proxies_evaluation(&self.evaluator.evaluate(expr));
+            return true;
         };
         if self.semantics.is_mutated(symbol) {
             return true;
@@ -778,12 +897,31 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
     }
 }
 
-fn collect_init_proxyable<'a>(
-    parsed: &JsAst<'a>,
-    evaluator: &ValueEvaluator<'_, 'a>,
-) -> FxHashMap<SymbolId, bool> {
+fn should_proxy_node_only(expr: &Expression) -> bool {
+    let expr = expr.get_inner_expression();
+    if expr.is_literal() {
+        return false;
+    }
+    if matches!(
+        expr,
+        Expression::TemplateLiteral(_)
+            | Expression::ArrowFunctionExpression(_)
+            | Expression::FunctionExpression(_)
+            | Expression::UnaryExpression(_)
+            | Expression::BinaryExpression(_)
+    ) {
+        return false;
+    }
+    if let Expression::Identifier(id) = expr
+        && id.name == "undefined"
+    {
+        return false;
+    }
+    true
+}
+
+fn collect_init_proxyable(parsed: &JsAst<'_>) -> FxHashMap<SymbolId, bool> {
     let mut collector = InitProxyableCollector {
-        evaluator,
         proxyable: FxHashMap::default(),
     };
     for program in [parsed.program.as_ref(), parsed.module_program.as_ref()]
@@ -801,43 +939,20 @@ fn collect_init_proxyable<'a>(
     collector.proxyable
 }
 
-struct InitProxyableCollector<'c, 'a> {
-    evaluator: &'c ValueEvaluator<'c, 'a>,
+struct InitProxyableCollector {
     proxyable: FxHashMap<SymbolId, bool>,
 }
 
-impl<'c, 'a> Visit<'a> for InitProxyableCollector<'c, 'a> {
+impl<'a> Visit<'a> for InitProxyableCollector {
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         if let BindingPattern::BindingIdentifier(id) = &declarator.id
             && let Some(init) = &declarator.init
             && let Some(symbol) = id.symbol_id.get()
         {
-            let proxyable =
-                proxies_evaluation(&self.evaluator.evaluate(init.get_inner_expression()));
+            let proxyable = should_proxy_node_only(init.get_inner_expression());
             self.proxyable.insert(symbol, proxyable);
         }
         walk_variable_declarator(self, declarator);
-    }
-}
-
-fn proxies_evaluation(evaluation: &Evaluation) -> bool {
-    match evaluation {
-        Evaluation::Known(_) => false,
-        Evaluation::Defined { class } => proxies_value_class(*class),
-        Evaluation::MaybeNullish { .. } => true,
-    }
-}
-
-fn proxies_value_class(class: Option<ValueClass>) -> bool {
-    match class {
-        None | Some(ValueClass::Object) => true,
-        Some(
-            ValueClass::String
-            | ValueClass::Number
-            | ValueClass::Boolean
-            | ValueClass::BigInt
-            | ValueClass::Function,
-        ) => false,
     }
 }
 
@@ -926,10 +1041,12 @@ fn rune_call_fact(kind: RuneKind, call: &CallExpression<'_>) -> Option<Declarato
         RuneKind::Derived => Some(DeclaratorSemantics::RuneDerived {
             kind: DerivedKind::Derived,
             emit: derived_emit(call),
+            source: DerivedSource::Computed,
         }),
         RuneKind::DerivedBy => Some(DeclaratorSemantics::RuneDerived {
             kind: DerivedKind::DerivedBy,
             emit: derived_emit(call),
+            source: DerivedSource::Computed,
         }),
         RuneKind::Props => Some(DeclaratorSemantics::RuneProps),
         RuneKind::Bindable
@@ -1187,6 +1304,7 @@ struct ScriptSemanticCollector<'d, 'a> {
     deferred_const_legacy_state_syms: Vec<SymbolId>,
     deferred_const_destructured_legacy_decls: Vec<(OxcNodeId, SmallVec<[SymbolId; 4]>)>,
     reactive_body_refs: FxHashSet<SymbolId>,
+    store_shadow_rune_candidates: Vec<(OxcNodeId, SymbolId, ReferenceId, bool)>,
 }
 
 impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
@@ -1212,6 +1330,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             deferred_const_legacy_state_syms: Vec::new(),
             deferred_const_destructured_legacy_decls: Vec::new(),
             reactive_body_refs,
+            store_shadow_rune_candidates: Vec::new(),
         }
     }
 
@@ -1334,6 +1453,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
 
         store::collect_store_declarations(self.data);
+        self.demote_store_shadowed_runes();
 
         self.finalize_deferred_const_legacy_state();
         self.finalize_deferred_const_destructured_legacy_state();
@@ -1405,6 +1525,28 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
     }
 
+    fn demote_store_shadowed_runes(&mut self) {
+        for (decl_node, symbol, callee_ref, is_module) in
+            mem::take(&mut self.store_shadow_rune_candidates)
+        {
+            if !self
+                .data
+                .reactivity
+                .reference_semantics(callee_ref)
+                .is_store_subscription()
+            {
+                continue;
+            }
+            if is_module {
+                self.data.reactivity.clear_reference_semantics(callee_ref);
+            } else {
+                self.data
+                    .reactivity
+                    .demote_store_shadowed_rune(decl_node, symbol);
+            }
+        }
+    }
+
     fn record_rune_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         if !self.data.script.runes() {
             return;
@@ -1412,24 +1554,35 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         let Some((call, rune_kind)) = rune_call(declarator) else {
             return;
         };
+        if rune_callee_resolves_to_binding(self.data, call) {
+            return;
+        }
         let root_node = declarator.node_id();
+
+        if let BindingPattern::BindingIdentifier(id) = &declarator.id
+            && let Some(symbol) = id.symbol_id.get()
+            && let Some(callee_ref) = expression_root_reference_id(&call.callee)
+        {
+            self.store_shadow_rune_candidates.push((
+                root_node,
+                symbol,
+                callee_ref,
+                !self.is_instance_program,
+            ));
+        }
 
         let var_declared = matches!(self.current_decl_kind, Some(VariableDeclarationKind::Var));
         let init_proxyable =
             matches!(rune_kind, RuneKind::State) && state_initializer_is_proxyable(call);
 
-        let is_destructure = !matches!(&declarator.id, BindingPattern::BindingIdentifier(_));
-
         match rune_kind {
             RuneKind::State => {
-                if is_destructure {
-                    self.data.reactivity.record_declarator_semantics(
-                        root_node,
-                        DeclaratorSemantics::RuneState {
-                            kind: StateKind::State,
-                        },
-                    );
-                }
+                self.data.reactivity.record_declarator_semantics(
+                    root_node,
+                    DeclaratorSemantics::RuneState {
+                        kind: StateKind::State,
+                    },
+                );
                 let root_proxied = if matches!(&declarator.id, BindingPattern::BindingIdentifier(_))
                 {
                     init_proxyable
@@ -1449,14 +1602,12 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 );
             }
             RuneKind::StateRaw => {
-                if is_destructure {
-                    self.data.reactivity.record_declarator_semantics(
-                        root_node,
-                        DeclaratorSemantics::RuneState {
-                            kind: StateKind::StateRaw,
-                        },
-                    );
-                }
+                self.data.reactivity.record_declarator_semantics(
+                    root_node,
+                    DeclaratorSemantics::RuneState {
+                        kind: StateKind::StateRaw,
+                    },
+                );
                 self.record_state_root_declaration(
                     &declarator.id,
                     root_node,
@@ -1470,6 +1621,12 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 );
             }
             RuneKind::StateEager => {
+                self.data.reactivity.record_declarator_semantics(
+                    root_node,
+                    DeclaratorSemantics::RuneState {
+                        kind: StateKind::StateEager,
+                    },
+                );
                 self.record_state_root_declaration(
                     &declarator.id,
                     root_node,
@@ -1484,40 +1641,48 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             }
             RuneKind::Derived => {
                 let emit = derived_emit(call);
-                if is_destructure {
-                    self.data.reactivity.record_declarator_semantics(
-                        root_node,
-                        DeclaratorSemantics::RuneDerived {
-                            kind: DerivedKind::Derived,
-                            emit,
-                        },
-                    );
+                self.data.reactivity.record_declarator_semantics(
+                    root_node,
+                    DeclaratorSemantics::RuneDerived {
+                        kind: DerivedKind::Derived,
+                        emit,
+                        source: DerivedSource::Computed,
+                    },
+                );
+                if matches!(emit, DerivedEmit::Sync)
+                    && matches!(&declarator.id, BindingPattern::BindingIdentifier(_))
+                    && let Some(ref_id) = derived_source_reference(call)
+                {
+                    self.data
+                        .reactivity
+                        .record_deferred_derived_source(root_node, ref_id);
                 }
                 self.record_derived_pattern(
                     &declarator.id,
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::Derived,
                         emit,
+                        var_declared,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::Derived);
             }
             RuneKind::DerivedBy => {
                 let emit = derived_emit(call);
-                if is_destructure {
-                    self.data.reactivity.record_declarator_semantics(
-                        root_node,
-                        DeclaratorSemantics::RuneDerived {
-                            kind: DerivedKind::DerivedBy,
-                            emit,
-                        },
-                    );
-                }
+                self.data.reactivity.record_declarator_semantics(
+                    root_node,
+                    DeclaratorSemantics::RuneDerived {
+                        kind: DerivedKind::DerivedBy,
+                        emit,
+                        source: DerivedSource::Computed,
+                    },
+                );
                 self.record_derived_pattern(
                     &declarator.id,
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::DerivedBy,
                         emit,
+                        var_declared,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::DerivedBy);
@@ -1631,11 +1796,16 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             if self.data.reactivity.store_shadow_of_internal(sym).is_some() {
                 continue;
             }
-            if !self.data.scoping.is_member_mutated(sym)
-                && !self.data.scoping.is_mutated_any(sym)
-                && !self.bind_this_legacy_state_root_syms.contains(&sym)
-            {
-                continue;
+            if !self.bind_this_legacy_state_root_syms.contains(&sym) {
+                if !self.data.scoping.is_member_mutated(sym)
+                    && !self.data.scoping.is_mutated_any(sym)
+                {
+                    continue;
+                }
+                if !has_reactive_consumer_reference_legacy(self.data, sym, &self.reactive_body_refs)
+                {
+                    continue;
+                }
             }
             self.data.reactivity.record_legacy_state_binding(
                 sym,
@@ -1662,11 +1832,19 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 if self.data.reactivity.store_shadow_of_internal(sym).is_some() {
                     continue;
                 }
-                if !self.data.scoping.is_member_mutated(sym)
-                    && !self.data.scoping.is_mutated_any(sym)
-                    && !self.bind_this_legacy_state_root_syms.contains(&sym)
-                {
-                    continue;
+                if !self.bind_this_legacy_state_root_syms.contains(&sym) {
+                    if !self.data.scoping.is_member_mutated(sym)
+                        && !self.data.scoping.is_mutated_any(sym)
+                    {
+                        continue;
+                    }
+                    if !has_reactive_consumer_reference_legacy(
+                        self.data,
+                        sym,
+                        &self.reactive_body_refs,
+                    ) {
+                        continue;
+                    }
                 }
                 self.data.reactivity.record_legacy_state_binding(
                     sym,
@@ -2161,6 +2339,12 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
         self.record_rune_declarator(declarator);
         if self.is_instance_program {
             self.record_legacy_state_declarator(declarator);
+            let node = declarator.node_id();
+            svelte_component_semantics::walk_bindings(&declarator.id, |v| {
+                self.data
+                    .reactivity
+                    .record_declarator_node_for_symbol(v.symbol, node);
+            });
         }
         walk_variable_declarator(self, declarator);
     }
@@ -2189,6 +2373,7 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if self.data.reactivity.uses_runes()
+            && !rune_callee_resolves_to_binding(self.data, call)
             && let Some(fact) =
                 detect_rune_from_call(call).and_then(|kind| rune_call_fact(kind, call))
         {
@@ -2225,7 +2410,10 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
             }
             if !matches!(
                 &prop.key,
-                PropertyKey::StaticIdentifier(_) | PropertyKey::PrivateIdentifier(_)
+                PropertyKey::StaticIdentifier(_)
+                    | PropertyKey::PrivateIdentifier(_)
+                    | PropertyKey::StringLiteral(_)
+                    | PropertyKey::NumericLiteral(_)
             ) {
                 continue;
             }
@@ -2269,6 +2457,15 @@ impl<'a> ScriptSemanticCollector<'_, 'a> {
                     member.object.get_inner_expression()
                 }
                 AssignmentTarget::PrivateFieldExpression(member) => {
+                    member.object.get_inner_expression()
+                }
+                AssignmentTarget::ComputedMemberExpression(member) => {
+                    if !matches!(
+                        member.expression.get_inner_expression(),
+                        Expression::StringLiteral(_) | Expression::NumericLiteral(_)
+                    ) {
+                        continue;
+                    }
                     member.object.get_inner_expression()
                 }
                 _ => continue,
@@ -2347,6 +2544,16 @@ fn rune_call<'a>(
             | RuneKind::InspectTrace
     )
     .then_some((call, rune_kind))
+}
+
+fn rune_callee_resolves_to_binding(data: &AnalysisData<'_>, call: &CallExpression<'_>) -> bool {
+    let Some(ref_id) = expression_root_reference_id(&call.callee) else {
+        return false;
+    };
+    data.scoping
+        .semantics()
+        .symbol_for_reference(ref_id)
+        .is_some()
 }
 
 fn state_initializer_is_proxyable(call: &CallExpression<'_>) -> bool {
@@ -2467,6 +2674,14 @@ fn derived_emit(call: &CallExpression<'_>) -> DerivedEmit {
     } else {
         DerivedEmit::Sync
     }
+}
+
+fn derived_source_reference(call: &CallExpression<'_>) -> Option<ReferenceId> {
+    let arg = call.arguments.first()?.as_expression()?;
+    let Expression::Identifier(id) = arg.get_inner_expression() else {
+        return None;
+    };
+    id.reference_id.get()
 }
 
 fn pattern_binding_symbols(pattern: &BindingPattern<'_>) -> Vec<SymbolId> {

@@ -46,3 +46,32 @@ compiler_case!(
     legacy_reactive_let_text,
     "text_reactivity/legacy_reactive_let_text"
 );
+compiler_case!(call_local_fn, "text_reactivity/call_local_fn");
+compiler_case!(
+    call_literal_root_runes,
+    "text_reactivity/call_literal_root_runes"
+);
+compiler_case!(
+    call_global_root_guard,
+    "text_reactivity/call_global_root_guard"
+);
+compiler_case!(call_effect_tracking, "text_reactivity/call_effect_tracking");
+compiler_case!(tagged_template_call, "text_reactivity/tagged_template_call");
+compiler_case!(
+    call_reactive_arg_guard,
+    "text_reactivity/call_reactive_arg_guard"
+);
+compiler_case!(
+    array_local_not_defined,
+    "text_reactivity/array_local_not_defined"
+);
+compiler_case!(
+    string_local_defined_guard,
+    "text_reactivity/string_local_defined_guard"
+);
+compiler_case!(
+    logical_shortcircuit_call,
+    "text_reactivity/logical_shortcircuit_call"
+);
+compiler_case!(select_value_call, "text_reactivity/select_value_call");
+compiler_case!(call_literal_chain, "text_reactivity/call_literal_chain");

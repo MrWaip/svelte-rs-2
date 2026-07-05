@@ -38,10 +38,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Install just
+      - name: Install just and nextest
         uses: taiki-e/install-action@v2
         with:
-          tool: just
+          tool: just,nextest
 
       - name: Run tests
         run: just test-all --locked

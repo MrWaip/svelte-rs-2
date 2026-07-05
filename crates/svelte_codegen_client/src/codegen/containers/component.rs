@@ -107,6 +107,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
             };
 
+        let reserved_intermediate: Option<&'a str> =
+            if dynamic_anchor_name.is_some() && !is_svelte_component_legacy {
+                let base = cn_name.replace('.', "_");
+                let name = self.ctx.state.gen_ident(&base);
+                Some(self.ctx.b.alloc_str(&name))
+            } else {
+                None
+            };
+
         let snippet_children =
             self.build_component_snippet_children(&snippet_ids, &mut props.items)?;
 
@@ -195,6 +204,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     props.validate_binding_stmts,
                     span_start,
                     anchor_node,
+                    reserved_intermediate,
                 );
             }
             Some(Volatility::Static) | None => {}
@@ -227,18 +237,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .b
             .call_expr_callee(callee_expr, [Arg::Expr(anchor_expr), Arg::Expr(props_expr)]);
 
-        let final_expr = if let Some(bind_id) = props.bind_this {
+        let (final_expr, bind_this_validate) = if let Some(bind_id) = props.bind_this {
             self.build_bind_this_call(el_id, bind_id, component_call)?
         } else {
-            component_call
+            (component_call, None)
         };
 
-        let component_stmt = if is_svelte_self {
+        let component_stmt = if self.ctx.has_component_css_props(el_id) {
             self.ctx.b.expr_stmt(final_expr)
         } else {
+            let component_tag = if is_svelte_self {
+                "svelte:self"
+            } else {
+                cn_name.as_str()
+            };
             let extra_obj = self.ctx.b.object_expr([ObjProp::KeyValue(
                 "componentTag",
-                self.ctx.b.str_expr(&cn_name),
+                self.ctx.b.str_expr(component_tag),
             )]);
             self.add_svelte_meta_with_extra(final_expr, span_start, "component", Some(extra_obj))
         };
@@ -250,6 +265,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             props.memo_decls
         };
+        if let Some(stmt) = bind_this_validate {
+            state.init.push(stmt);
+        }
         for stmt in props.validate_binding_stmts {
             state.init.push(stmt);
         }
@@ -279,7 +297,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 self.ctx.b.call_stmt(
                     "$$ownership_validator.binding",
                     [
-                        Arg::Str(b.name.clone()),
+                        Arg::Str(b.source_ident.to_string()),
                         Arg::Ident(comp_id),
                         Arg::Ident(b.source_ident),
                     ],
@@ -316,6 +334,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         validate_binding_stmts: Vec<Statement<'a>>,
         span_start: u32,
         anchor_node: String,
+        reserved_intermediate: Option<&'a str>,
     ) -> Result<String> {
         for stmt in bind_init_stmts {
             state.init.push(stmt);
@@ -337,21 +356,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 };
                 ("$$component", self.ctx.b.thunk(this_expr))
             } else {
-                let intermediate = cn_name.replace('.', "_");
-                let intermediate_name = self.ctx.state.gen_ident(&intermediate);
-                let intermediate_ref: &str = self.ctx.b.alloc_str(&intermediate_name);
+                let Some(name) = reserved_intermediate else {
+                    return CodegenError::unexpected_node(
+                        el_id,
+                        "dynamic component missing pre-reserved intermediate name",
+                    );
+                };
                 let component_ref = self.build_dynamic_component_ref(el_id)?;
-                (intermediate_ref, self.ctx.b.thunk(component_ref))
+                (name, self.ctx.b.thunk(component_ref))
             };
 
         let inner_call = self.ctx.b.call_expr(
             intermediate_ref,
             [Arg::Ident("$$anchor"), Arg::Expr(props_expr)],
         );
-        let inner_final = if let Some(bind_id) = bind_this_info {
+        let (inner_final, inner_validate) = if let Some(bind_id) = bind_this_info {
             self.build_bind_this_call(el_id, bind_id, inner_call)?
         } else {
-            inner_call
+            (inner_call, None)
         };
         let mut inner_body: Vec<Statement<'a>> =
             self.build_ownership_binding_stmts(&ownership_bindings, intermediate_ref);
@@ -381,6 +403,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some(extra_obj),
         );
 
+        if let Some(stmt) = inner_validate {
+            state.init.push(stmt);
+        }
         if snippet_decls.is_empty() && memo_decls.is_empty() {
             state.init.push(component_stmt);
         } else {

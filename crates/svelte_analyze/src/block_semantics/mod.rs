@@ -8,7 +8,7 @@ pub use data::{
     EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
     EachKeyKind, HtmlTagNamespace, HtmlTagSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics,
     IfBranch, IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind,
-    RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
+    RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
 };
 
 use crate::scope::SymbolId;
@@ -57,10 +57,10 @@ impl BlockSemanticsStore {
         self.each_index_sym_to_block.contains_key(&sym)
     }
 
-    pub(crate) fn set_snippet_hoistable(&mut self, id: NodeId, value: bool) {
+    pub(crate) fn set_snippet_placement(&mut self, id: NodeId, placement: SnippetPlacement) {
         let idx = id.0 as usize;
         if let Some(BlockSemantics::Snippet(sem)) = self.entries.get_mut(idx) {
-            sem.hoistable = value;
+            sem.placement = placement;
         }
     }
 }

@@ -222,16 +222,19 @@ fn classify_reference_semantics(
             let is_signal_source = data.script.is_state_source(
                 data.scoping.is_mutated(sym) || data.scoping.is_reexported_specifier_local(sym),
             );
+            let store_unsub = data.reactivity.store_shadow_of_internal(sym);
             if is_write && is_read {
                 Some(ReferenceFacts::SignalUpdate {
                     kind: state.kind,
                     safe: state.var_declared,
                     proxy: false,
+                    store_unsub,
                 })
             } else if is_write {
                 Some(ReferenceFacts::SignalWrite {
                     kind: state.kind,
                     proxy: false,
+                    store_unsub,
                 })
             } else if is_read && is_signal_source {
                 Some(ReferenceFacts::SignalRead {
@@ -243,14 +246,14 @@ fn classify_reference_semantics(
             }
         }
         BindingFacts::Derived(derived) | BindingFacts::OptimizedDerived(derived) => {
-            if is_write && !is_read {
-                Some(ReferenceFacts::DerivedWrite)
+            if is_write && is_read {
+                Some(ReferenceFacts::DerivedUpdate)
             } else if is_write {
-                Some(ReferenceFacts::IllegalWrite)
+                Some(ReferenceFacts::DerivedWrite)
             } else if is_read {
                 Some(ReferenceFacts::SignalRead {
                     kind: SignalReferenceKind::Derived(derived.decl.kind),
-                    safe: false,
+                    safe: derived.decl.var_declared,
                 })
             } else {
                 None

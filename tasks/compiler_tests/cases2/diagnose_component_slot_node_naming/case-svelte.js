@@ -1,9 +1,9 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<span>a</span>`);
+var root = $.from_html(`<span>a</span>`);
 var root_1 = $.from_html(`<!> <p>tail</p>`, 1);
-var root = $.from_html(`<div><!></div>`);
+var root_2 = $.from_html(`<div><!></div>`);
 export default function App($$anchor, $$props) {
-	var div = root();
+	var div = root_2();
 	var node = $.child(div);
 	Cmp(node, {
 		children: ($$anchor, $$slotProps) => {
@@ -11,7 +11,7 @@ export default function App($$anchor, $$props) {
 			var node_1 = $.first_child(fragment);
 			{
 				var consequent = ($$anchor) => {
-					var span = root_2();
+					var span = root();
 					$.append($$anchor, span);
 				};
 				$.if(node_1, ($$render) => {

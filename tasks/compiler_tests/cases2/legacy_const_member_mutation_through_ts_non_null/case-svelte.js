@@ -1,7 +1,7 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<button> </button>`);
-var root = $.from_html(`<!> <button>x</button>`, 1);
+var root = $.from_html(`<button> </button>`);
+var root_1 = $.from_html(`<!> <button>x</button>`, 1);
 export default function App($$anchor) {
 	function loader() {
 		return { data: { selected: null } };
@@ -14,11 +14,11 @@ export default function App($$anchor) {
 	function pick(value) {
 		$.mutate(state, $.get(state).data.selected = value);
 	}
-	var fragment = root();
+	var fragment = root_1();
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var button = root_1();
+			var button = root();
 			var text = $.child(button, true);
 			$.reset(button);
 			$.template_effect(() => $.set_text(text, ($.get(state), $.untrack(() => $.get(state).data.selected))));

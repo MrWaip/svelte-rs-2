@@ -10,21 +10,25 @@ creating the dir, writing `case.svelte`, or registering `compiler_case!` directl
 not allowed; go through these steps.
 
 Case dir: `cluster_cases/<cluster>/<case>/`. Holds `case.svelte`, generated
-`case-svelte.js` + `case-rust.js` (never hand-edit), optional `config.json`.
+`case-svelte.js` + `case-svelte.dev.js` (expected) and `case-rust.js` + `case-rust.dev.js`
+(actual, never hand-edit), optional `config.json`.
 
-## Two files, two mechanisms — never conflate
+## Four snapshots: expected vs actual × prod vs dev — never conflate
 
-This is the #1 mistake. The expected snapshot and the actual snapshot are produced by
-**different commands at different times**:
+Each case pins **both** compile modes, so it has four snapshot files. The #1 mistake is
+conflating expected (reference compiler) with actual (ours):
 
-| File | Written by | When |
-|---|---|---|
-| `case-svelte.js` (expected, reference compiler) | `just generate` | step 5 |
-| `case-rust.js` (actual, our compiler) | the **test run** (`assert_compiler`, `harness.rs`) | step 7, only if the test actually runs |
+| File | Mode | Written by | When |
+|---|---|---|---|
+| `case-svelte.js` (expected) | prod | `just generate` | step 5 |
+| `case-svelte.dev.js` (expected) | dev | `just generate` | step 5 |
+| `case-rust.js` (actual) | prod | the `<fn>::prod` test run (`assert_compiler_prod`, `harness.rs`) | step 7 |
+| `case-rust.dev.js` (actual) | dev | the `<fn>::dev` test run (`assert_compiler_dev`, `harness.rs`) | step 7 |
 
-`just generate` writes ONLY `case-svelte.js`. It does **not** create `case-rust.js` and
-does **not** register anything. Registration (step 6) is a manual edit to a `.rs` file —
-without that line the test does not exist, and `case-rust.js` is never produced.
+`compiler_case!(<fn>, "<path>")` expands to a module with **two** tests — `<fn>::prod` and
+`<fn>::dev`. Each `case-rust*.js` is materialized only once its test **runs**: `just
+generate` never writes them, and an unregistered or `#[ignore]`d test never runs — until
+then there is no actual snapshot to compare. This drives steps 5–7 and Red vs ignore below.
 
 ## Steps
 
@@ -44,19 +48,18 @@ without that line the test does not exist, and `case-rust.js` is never produced.
    the feature. Keys (`src/cases.rs`): `runes`, `dev`, `name`, `filename`, `namespace`,
    `customElement`, `rootDir`, `preserveComments`, `preserveWhitespace`, `experimental.async`.
 
-5. `just generate` — writes `case-svelte.js` (the reference snapshot) ONLY. Does not
-   register and does not write `case-rust.js`.
+5. `just generate` — writes the reference snapshots `case-svelte.js` + `case-svelte.dev.js`
+   only.
 
-6. **Register** in `clusters/<cluster>.rs` — this is the step `just generate` does NOT do:
-   `compiler_case!(<fn_name>, "<cluster>/<case>");`
-   Expected-red divergence you are NOT fixing now: add `, ignore = "<reason/tag>"` (see
-   Red vs ignore below).
+6. **Register** in `clusters/<cluster>.rs` — the step `just generate` does NOT do:
+   `compiler_case!(<fn_name>, "<cluster>/<case>");`. Divergence you are NOT fixing now → see
+   Red vs ignore below.
    New cluster → create `clusters/<cluster>.rs` with `use super::*;` and add
    `#[path = "clusters/<cluster>.rs"] mod <cluster>;` to `test_clusters.rs`.
 
-7. `just test-cluster <fn_name>` — runs the test (incl. `#[ignore]`, via
-   `--include-ignored`), writing `case-rust.js`. Red is normal test-first. Never edit
-   snapshots to pass.
+7. `just test-cluster <fn_name>` — runs both `::prod` and `::dev` (incl. `#[ignore]`, via
+   `--include-ignored`), writing `case-rust.js` + `case-rust.dev.js`. Red is normal
+   test-first. Never edit snapshots to pass.
 
 ## Naming
 
@@ -78,20 +81,19 @@ without that line the test does not exist, and `case-rust.js` is never produced.
 - The cluster file is `clusters/<first-path-segment>.rs` (e.g. cases under
   `cluster_cases/attribute/single_expr/…` register in `clusters/attribute_single_expr.rs`).
 
-## Red vs ignore — and why `#[ignore]` wastes your time if misused
+## Red vs ignore
 
-`case-rust.js` is materialized by the **test run**, not by `just generate`. A `#[ignore]`d
-test does not run, so it never writes `case-rust.js` and never checks parity. Crucially:
-`just test-compiler` is `cargo test` with **no** `--include-ignored`, so it **skips** every
-ignored case; only `just test-cluster <fn>` / `just test-case <fn>` pass `--include-ignored`
-and actually execute them.
+An `#[ignore]`d test never runs, so it never materializes its `case-rust*.js` and never
+checks parity (per the table above). The trap: `just test-compiler` runs `cargo nextest
+run`, which **skips** `#[ignore]`d tests by default, so ignored cases don't execute there;
+only `just test-cluster <fn>` / `just test-case <fn>` (plain `cargo test … --
+--include-ignored`) run them. The `<fn>` filter is a substring, so it matches both
+`<fn>::prod` and `<fn>::dev`.
 
 - **Test-first, fixing now** → register WITHOUT `ignore`. The case is red; iterate with
-  `just test-cluster <fn>` (it includes ignored and writes `case-rust.js`). When green it
-  joins the suite.
-- **Known divergence, not fixing now** → `ignore = "<reason>"` so the green suite
-  (`just test-compiler`) stays green. Remember the case does not execute until you remove
-  `ignore`.
-
-Anti-pattern: waiting for `case-rust.js` or a "green parity" from an `#[ignore]`d case, or
-expecting `just test-compiler` to exercise it. It won't — that is wasted time.
+  `just test-cluster <fn>` (includes ignored, materializes `case-rust.js` +
+  `case-rust.dev.js`). When both modes are green it joins the suite.
+- **Both modes diverge, not fixing now** → `ignore = "<reason>"` — ignores `::prod` and
+  `::dev` so the green suite (`just test-compiler`) stays green until you remove `ignore`.
+- **Only dev diverges** → `[prod, dev_todo]` keeps `::prod` in the suite and ignores just
+  `::dev` (or `[prod]` to drop dev entirely), so prod parity is enforced meanwhile.

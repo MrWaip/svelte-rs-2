@@ -1,0 +1,26 @@
+use super::*;
+
+compiler_case!(
+    dynamic_class_style_directives,
+    "attribute/svelte_element/dynamic_class_style_directives"
+);
+compiler_case!(
+    dynamic_class_directives_only,
+    "attribute/svelte_element/dynamic_class_directives_only"
+);
+compiler_case!(
+    dynamic_style_directives_only,
+    "attribute/svelte_element/dynamic_style_directives_only"
+);
+compiler_case!(
+    dynamic_spread_guard,
+    "attribute/svelte_element/dynamic_spread_guard"
+);
+compiler_case!(
+    static_element_class_style_guard,
+    "attribute/svelte_element/static_element_class_style_guard"
+);
+compiler_case!(
+    dynamic_class_reactive_guard,
+    "attribute/svelte_element/dynamic_class_reactive_guard"
+);

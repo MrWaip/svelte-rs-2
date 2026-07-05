@@ -1,0 +1,1 @@
+<svg>{#snippet s()}<a><text>Hello</text></a>{/snippet}{@render s()}</svg>

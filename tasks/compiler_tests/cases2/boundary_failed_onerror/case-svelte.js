@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p> </p>`);
-var root_2 = $.from_html(`<p>content</p>`);
+var root = $.from_html(`<p> </p>`);
+var root_1 = $.from_html(`<p>content</p>`);
 export default function App($$anchor) {
 	function handleError(error) {
 		console.error(error);
@@ -9,7 +9,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	{
 		const failed = ($$anchor, error = $.noop) => {
-			var p = root_1();
+			var p = root();
 			var text = $.child(p, true);
 			$.reset(p);
 			$.template_effect(() => $.set_text(text, error().message));
@@ -19,7 +19,7 @@ export default function App($$anchor) {
 			onerror: handleError,
 			failed
 		}, ($$anchor) => {
-			var p_1 = root_2();
+			var p_1 = root_1();
 			$.append($$anchor, p_1);
 		});
 	}

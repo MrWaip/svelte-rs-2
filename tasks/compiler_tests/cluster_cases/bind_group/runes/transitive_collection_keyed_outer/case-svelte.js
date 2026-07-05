@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_3 = $.from_html(`<input type="checkbox"/>`);
+var root = $.from_html(`<input type="checkbox"/>`);
 export default function App($$anchor) {
 	const binding_group = [];
 	let ops = $.proxy([{
@@ -21,7 +21,7 @@ export default function App($$anchor) {
 			var node_2 = $.first_child(fragment_2);
 			$.each(node_2, 17, () => $.get(arg).options, $.index, ($$anchor, $$item) => {
 				let value = () => $.get($$item).value;
-				var input = root_3();
+				var input = root();
 				$.remove_input_defaults(input);
 				var input_value;
 				$.template_effect(() => {

@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<label><span> </span> <input type="radio"/></label>`);
+var root = $.from_html(`<label><span> </span> <input type="radio"/></label>`);
 export default function App($$anchor, $$props) {
 	const binding_group = [];
 	let items = $.prop($$props, "items", 8);
@@ -8,7 +8,7 @@ export default function App($$anchor, $$props) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 1, items, (item) => item.value, ($$anchor, item) => {
-		var label = root_1();
+		var label = root();
 		var span = $.child(label);
 		var text = $.child(span, true);
 		$.reset(span);

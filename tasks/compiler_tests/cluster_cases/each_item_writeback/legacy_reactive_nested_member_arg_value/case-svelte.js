@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_3 = $.from_html(`<input type="radio"/>`);
+var root = $.from_html(`<input type="radio"/>`);
 export default function App($$anchor, $$props) {
 	const binding_group = [];
 	let pipelineOperations = $.prop($$props, "pipelineOperations", 24, () => []);
@@ -16,7 +16,7 @@ export default function App($$anchor, $$props) {
 			var node_2 = $.first_child(fragment_2);
 			$.each(node_2, 1, () => ($.get(arg), $.untrack(() => $.get(arg).options)), $.index, ($$anchor, $$item) => {
 				let value = () => $.get($$item).value;
-				var input = root_3();
+				var input = root();
 				$.remove_input_defaults(input);
 				var input_value;
 				$.template_effect(() => {

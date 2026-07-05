@@ -209,8 +209,13 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
                 self.semantics
                     .add_store_subscription_reference(sym_id, ref_id);
                 self.semantics.add_store_candidate_ref(sym_id, ref_id);
-            } else if let Some(current_level) = self.unresolved_stack.last_mut() {
-                current_level.push((CompactString::from(name), ref_id));
+            } else {
+                if self.semantics.find_binding(self.scope, base).is_some() {
+                    self.semantics.add_scoped_store_subscription_ref(ref_id);
+                }
+                if let Some(current_level) = self.unresolved_stack.last_mut() {
+                    current_level.push((CompactString::from(name), ref_id));
+                }
             }
         } else if let Some(current_level) = self.unresolved_stack.last_mut() {
             current_level.push((CompactString::from(name), ref_id));

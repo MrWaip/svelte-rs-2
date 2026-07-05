@@ -234,19 +234,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 .b
                 .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(fallback)]);
         }
+        if let Some(inner) = extract_dev_tracked_await(fallback) {
+            let call = self.build_await_fallback_call(expr, inner);
+            let mut awaited = self.b.await_expr(call);
+            self.rewrite_dev_await_tracking(&mut awaited);
+            return awaited;
+        }
         if let Expression::AwaitExpression(aw) = fallback {
-            if is_simple_expression(&aw.argument) {
-                let arg = aw.argument.clone_in(self.b.ast.allocator);
-                let call = self
-                    .b
-                    .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(arg)]);
-                return self.b.await_expr(call);
-            }
-            let thunk = self.b.thunk(aw.argument.clone_in(self.b.ast.allocator));
-            let call = self.b.call_expr(
-                "$.fallback",
-                [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
-            );
+            let call = self.build_await_fallback_call(expr, &aw.argument);
             return self.b.await_expr(call);
         }
         if is_expression_async(fallback) {
@@ -265,6 +260,46 @@ impl<'a> ComponentTransformer<'_, 'a> {
             [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
         )
     }
+
+    fn build_await_fallback_call<'w>(
+        &mut self,
+        expr: Expression<'a>,
+        arg: &Expression<'w>,
+    ) -> Expression<'a> {
+        if is_simple_expression(arg) {
+            let arg = arg.clone_in(self.b.ast.allocator);
+            return self
+                .b
+                .call_expr("$.fallback", [Arg::Expr(expr), Arg::Expr(arg)]);
+        }
+        let thunk = self.b.thunk(arg.clone_in(self.b.ast.allocator));
+        self.b.call_expr(
+            "$.fallback",
+            [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
+        )
+    }
+}
+
+fn extract_dev_tracked_await<'x, 'w>(expr: &'x Expression<'w>) -> Option<&'x Expression<'w>> {
+    let Expression::CallExpression(call) = expr else {
+        return None;
+    };
+    if !call.arguments.is_empty() {
+        return None;
+    }
+    let Expression::AwaitExpression(aw) = call.callee.get_inner_expression() else {
+        return None;
+    };
+    let Expression::CallExpression(track) = aw.argument.get_inner_expression() else {
+        return None;
+    };
+    let Expression::Identifier(callee) = track.callee.get_inner_expression() else {
+        return None;
+    };
+    if callee.name != "$.track_reactivity_loss" {
+        return None;
+    }
+    track.arguments.first().and_then(|arg| arg.as_expression())
 }
 
 pub(crate) fn is_destructure_assignment_lhs(node: &Expression<'_>) -> bool {

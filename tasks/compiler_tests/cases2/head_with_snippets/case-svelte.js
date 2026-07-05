@@ -1,19 +1,19 @@
 import * as $ from "svelte/internal/client";
 const badge = ($$anchor, text = $.noop) => {
-	var span = root_2();
+	var span = root_1();
 	var text_1 = $.child(span, true);
 	$.reset(span);
 	$.template_effect(() => $.set_text(text_1, text()));
 	$.append($$anchor, span);
 };
-var root_1 = $.from_html(`<meta name="description" content="test"/>`);
-var root_2 = $.from_html(`<span class="badge"> </span>`);
-var root = $.from_html(`<div><p></p> <!></div>`);
+var root = $.from_html(`<meta name="description" content="test"/>`);
+var root_1 = $.from_html(`<span class="badge"> </span>`);
+var root_2 = $.from_html(`<div><p></p> <!></div>`);
 export default function App($$anchor) {
 	let title = "hello";
-	var div = root();
+	var div = root_2();
 	$.head("q2w0q4", ($$anchor) => {
-		var meta = root_1();
+		var meta = root();
 		$.append($$anchor, meta);
 	});
 	var p = $.child(div);

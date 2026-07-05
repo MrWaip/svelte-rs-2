@@ -66,7 +66,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
     }
 
-    pub(crate) fn rewrite_static_member_expression(
+    pub(crate) fn rewrite_member_expression(
         &mut self,
         node: &mut Expression<'a>,
         ctx: &mut TraverseCtx<'a, ()>,

@@ -1,6 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p> </p>`);
-var root_2 = $.from_html(`<p> </p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	let items = $.proxy([
 		1,
@@ -12,7 +11,7 @@ export default function App($$anchor) {
 	{
 		const failed = ($$anchor, error = $.noop) => {
 			const x = $.derived(() => items.length);
-			var p = root_1();
+			var p = root();
 			var text = $.child(p);
 			$.reset(p);
 			$.template_effect(() => $.set_text(text, `${$.get(x) ?? ""}: ${error().message ?? ""}`));
@@ -20,7 +19,7 @@ export default function App($$anchor) {
 		};
 		$.boundary(node, { failed }, ($$anchor) => {
 			const x = $.derived(() => items.length);
-			var p_1 = root_2();
+			var p_1 = root();
 			var text_1 = $.child(p_1, true);
 			$.reset(p_1);
 			$.template_effect(() => $.set_text(text_1, $.get(x)));

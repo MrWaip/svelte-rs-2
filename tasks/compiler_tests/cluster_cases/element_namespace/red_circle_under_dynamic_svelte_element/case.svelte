@@ -1,0 +1,1 @@
+<svelte:element this={"svg"}><circle r="5"></circle></svelte:element>

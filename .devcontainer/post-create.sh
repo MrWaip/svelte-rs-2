@@ -22,7 +22,9 @@ EOF
   chmod 600 ~/.ssh/config
 fi
 
-if [ -f package.json ]; then
+if [ -f package-lock.json ]; then
+  npm ci
+elif [ -f package.json ]; then
   npm install
 fi
 

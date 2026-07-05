@@ -64,6 +64,18 @@ compiler_case!(
     "runes/state/proxy_flag/red_const_primitive_rhs"
 );
 compiler_case!(
+    proxy_flag_red_conditional_string_rhs,
+    "runes/state/proxy_flag/red_conditional_string_rhs"
+);
+compiler_case!(
+    proxy_flag_red_call_primitive_rhs,
+    "runes/state/proxy_flag/red_call_primitive_rhs"
+);
+compiler_case!(
+    proxy_flag_red_binary_opaque_rhs,
+    "runes/state/proxy_flag/red_binary_opaque_rhs"
+);
+compiler_case!(
     proxy_flag_red_private_field_opaque_rhs,
     "runes/state/proxy_flag/red_private_field_opaque_rhs"
 );
@@ -114,6 +126,58 @@ compiler_case!(
 compiler_case!(
     class_field_constructor_public_and_private,
     "runes/state/class_field/constructor_public_and_private"
+);
+compiler_case!(
+    class_field_member_alias_receiver,
+    "runes/state/class_field/member_alias_receiver"
+);
+compiler_case!(
+    class_field_member_other_instance,
+    "runes/state/class_field/member_other_instance"
+);
+compiler_case!(
+    class_field_derived_member_init_in_ctor,
+    "runes/state/class_field/derived_member_init_in_ctor"
+);
+compiler_case!(
+    class_field_compound_assign_private_in_ctor,
+    "runes/state/class_field/compound_assign_private_in_ctor"
+);
+compiler_case!(
+    class_field_compound_binary_operators,
+    "runes/state/class_field/compound_binary_operators"
+);
+compiler_case!(
+    class_field_compound_alias_receiver,
+    "runes/state/class_field/compound_alias_receiver"
+);
+compiler_case!(
+    class_field_compound_proxy_contrast,
+    "runes/state/class_field/compound_proxy_contrast"
+);
+compiler_case!(
+    class_field_public_field_reactive,
+    "runes/state/class_field/public_field_reactive"
+);
+compiler_case!(
+    class_field_typescript_private_field,
+    "runes/state/class_field/typescript_private_field"
+);
+compiler_case!(
+    class_field_numeric_keys,
+    "runes/state/class_field/numeric_keys"
+);
+compiler_case!(
+    class_field_string_literal_key,
+    "runes/state/class_field/string_literal_key"
+);
+compiler_case!(
+    class_field_numeric_key_ctor_computed,
+    "runes/state/class_field/numeric_key_ctor_computed"
+);
+compiler_case!(
+    class_field_private_method_collision,
+    "runes/state/class_field/private_method_collision"
 );
 compiler_case!(declaration_alias, "runes/state/declaration/alias");
 compiler_case!(declaration_array_hole, "runes/state/declaration/array_hole");

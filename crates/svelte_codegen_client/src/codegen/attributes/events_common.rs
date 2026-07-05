@@ -1,7 +1,7 @@
 use std::mem;
 use svelte_emit_builders::runes::rune_get;
 
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::{ArrowFunctionExpression, Expression, FormalParameters, Statement};
 use svelte_analyze::HandlerEmit;
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
@@ -69,13 +69,61 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(handler);
         }
         let Expression::ArrowFunctionExpression(arrow) = handler.into_inner_expression() else {
-            unreachable!()
+            return CodegenError::unexpected_node(attr_id, "event handler arrow expected");
         };
-        let arrow = arrow.unbox();
-        let mut body = arrow.body.unbox();
-        let mut stmts: Vec<Statement<'a>> = body.statements.drain(..).collect();
+        let mut traced = self.rewrite_handler_trace(attr_id, arrow.unbox())?;
 
-        let has_trace = stmts.first().is_some_and(|s| {
+        if traced.was_expression_body
+            && !traced.has_trace
+            && let Some(Statement::ExpressionStatement(_)) = traced.statements.last()
+            && let Some(Statement::ExpressionStatement(es)) = traced.statements.pop()
+        {
+            traced
+                .statements
+                .push(self.ctx.b.return_stmt(es.unbox().expression));
+        }
+
+        let fn_name = self.ctx.gen_ident(event_name);
+        let fn_name_ref = self.ctx.b.alloc_str(&fn_name);
+        Ok(self.ctx.b.named_function_expr(
+            fn_name_ref,
+            traced.params,
+            traced.statements,
+            traced.is_async,
+        ))
+    }
+
+    pub(in super::super) fn dev_component_event_handler(
+        &mut self,
+        attr_id: NodeId,
+        handler: Expression<'a>,
+    ) -> Result<Expression<'a>> {
+        if !self.ctx.state.dev || !arrow_starts_with_trace(&handler) {
+            return Ok(handler);
+        }
+        let Expression::ArrowFunctionExpression(arrow) = handler.into_inner_expression() else {
+            return CodegenError::unexpected_node(attr_id, "event handler arrow expected");
+        };
+        let traced = self.rewrite_handler_trace(attr_id, arrow.unbox())?;
+        Ok(self
+            .ctx
+            .b
+            .arrow_block_expr_async(traced.params, traced.statements, traced.is_async))
+    }
+
+    fn rewrite_handler_trace(
+        &mut self,
+        attr_id: NodeId,
+        arrow: ArrowFunctionExpression<'a>,
+    ) -> Result<TracedHandler<'a>> {
+        let was_expression_body = arrow.expression;
+        let is_async = arrow.r#async;
+        let span_start = arrow.span.start;
+        let params = arrow.params.unbox();
+        let mut body = arrow.body.unbox();
+        let mut statements: Vec<Statement<'a>> = body.statements.drain(..).collect();
+
+        let has_trace = statements.first().is_some_and(|s| {
             if let Statement::ExpressionStatement(es) = s {
                 is_inspect_trace_call(&es.expression)
             } else {
@@ -83,59 +131,87 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         });
 
-        if has_trace {
-            let trace_stmt = stmts.remove(0);
-            let Statement::ExpressionStatement(es) = trace_stmt else {
-                return CodegenError::unexpected_node(
-                    attr_id,
-                    "$inspect.trace guard reported true but first stmt is not ExpressionStatement",
-                );
-            };
-            let es = es.unbox();
-            let Expression::CallExpression(call) = es.expression else {
-                return CodegenError::unexpected_node(
-                    attr_id,
-                    "$inspect.trace guard reported true but expression is not CallExpression",
-                );
-            };
-            let mut call = call.unbox();
-
-            let label_expr = if !call.arguments.is_empty() {
-                let mut dummy = oxc_ast::ast::Argument::from(self.ctx.b.cheap_expr());
-                mem::swap(&mut call.arguments[0], &mut dummy);
-                dummy.into_expression()
-            } else {
-                let (line, col) = self.ctx.state.line_index.line_col(arrow.span.start);
-                let sanitized = sanitize_location(self.ctx.state.filename);
-                let label = format!("trace ({sanitized}:{line}:{col})");
-                self.ctx.b.str_expr(&label)
-            };
-            let label_thunk = self.ctx.b.thunk(label_expr);
-
-            let body_thunk = if arrow.r#async {
-                self.ctx.b.async_thunk_block(stmts)
-            } else {
-                self.ctx.b.thunk_block(stmts)
-            };
-
-            let trace_call = self
-                .ctx
-                .b
-                .call_expr("$.trace", [Arg::Expr(label_thunk), Arg::Expr(body_thunk)]);
-            let return_expr = if arrow.r#async {
-                self.ctx.b.await_expr(trace_call)
-            } else {
-                trace_call
-            };
-            stmts = vec![self.ctx.b.return_stmt(return_expr)];
-            self.ctx.state.has_tracing = true;
+        if !has_trace {
+            return Ok(TracedHandler {
+                params,
+                statements,
+                is_async,
+                has_trace,
+                was_expression_body,
+            });
         }
 
-        Ok(self
+        let trace_stmt = statements.remove(0);
+        let Statement::ExpressionStatement(es) = trace_stmt else {
+            return CodegenError::unexpected_node(
+                attr_id,
+                "$inspect.trace guard reported true but first stmt is not ExpressionStatement",
+            );
+        };
+        let es = es.unbox();
+        let Expression::CallExpression(call) = es.expression else {
+            return CodegenError::unexpected_node(
+                attr_id,
+                "$inspect.trace guard reported true but expression is not CallExpression",
+            );
+        };
+        let mut call = call.unbox();
+
+        let label_expr = if !call.arguments.is_empty() {
+            let mut dummy = oxc_ast::ast::Argument::from(self.ctx.b.cheap_expr());
+            mem::swap(&mut call.arguments[0], &mut dummy);
+            dummy.into_expression()
+        } else {
+            let (line, col) = self.ctx.state.line_index.line_col(span_start);
+            let sanitized = sanitize_location(self.ctx.state.filename);
+            let label = format!("trace ({sanitized}:{line}:{col})");
+            self.ctx.b.str_expr(&label)
+        };
+        let label_thunk = self.ctx.b.thunk(label_expr);
+
+        let body_thunk = if is_async {
+            self.ctx.b.async_thunk_block(statements)
+        } else {
+            self.ctx.b.thunk_block(statements)
+        };
+
+        let trace_call = self
             .ctx
             .b
-            .named_function_expr(event_name, arrow.params.unbox(), stmts, arrow.r#async))
+            .call_expr("$.trace", [Arg::Expr(label_thunk), Arg::Expr(body_thunk)]);
+        let return_expr = if is_async {
+            self.ctx.b.await_expr(trace_call)
+        } else {
+            trace_call
+        };
+        self.ctx.state.has_tracing = true;
+
+        Ok(TracedHandler {
+            params,
+            statements: vec![self.ctx.b.return_stmt(return_expr)],
+            is_async,
+            has_trace,
+            was_expression_body,
+        })
     }
+}
+
+struct TracedHandler<'a> {
+    params: FormalParameters<'a>,
+    statements: Vec<Statement<'a>>,
+    is_async: bool,
+    has_trace: bool,
+    was_expression_body: bool,
+}
+
+fn arrow_starts_with_trace(expr: &Expression<'_>) -> bool {
+    let Expression::ArrowFunctionExpression(arrow) = expr.get_inner_expression() else {
+        return false;
+    };
+    let Some(Statement::ExpressionStatement(es)) = arrow.body.statements.first() else {
+        return false;
+    };
+    is_inspect_trace_call(&es.expression)
 }
 
 fn remove_parens_hint(expr: &Expression<'_>) -> bool {
@@ -180,10 +256,9 @@ fn build_event_apply_wrapper<'a>(
         Arg::Expr(location),
     ];
 
+    let remove_parens = remove_parens && has_side_effects;
     if has_side_effects {
         args.push(Arg::Bool(true));
-    } else if remove_parens {
-        args.push(Arg::Expr(ctx.b.void_zero_expr()));
     }
     if remove_parens {
         args.push(Arg::Bool(true));

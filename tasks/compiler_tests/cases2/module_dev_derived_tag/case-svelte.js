@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
-let count = $.tag($.state(0), "count");
-const doubled = $.tag($.derived(() => $.get(count) * 2), "doubled");
+let count = $.state(0);
+const doubled = $.derived(() => $.get(count) * 2);
 export function getDoubled() {
 	return $.get(doubled);
 }

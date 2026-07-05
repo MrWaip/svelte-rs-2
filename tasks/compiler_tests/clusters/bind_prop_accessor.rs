@@ -1,0 +1,31 @@
+use super::*;
+
+compiler_case!(
+    runes_prop_input_value,
+    "bind_prop_accessor/runes_prop_input_value"
+);
+compiler_case!(
+    runes_prop_select_value,
+    "bind_prop_accessor/runes_prop_select_value"
+);
+compiler_case!(
+    runes_prop_input_checked,
+    "bind_prop_accessor/runes_prop_input_checked"
+);
+compiler_case!(
+    runes_prop_input_group,
+    "bind_prop_accessor/runes_prop_input_group"
+);
+compiler_case!(
+    runes_prop_input_value_dev,
+    "bind_prop_accessor/runes_prop_input_value_dev",
+    ignore = "dev prop bind must emit named get/set functions reading value(); separate gap that also affects $bindable props in dev"
+);
+compiler_case!(
+    runes_state_input_value_guard,
+    "bind_prop_accessor/runes_state_input_value_guard"
+);
+compiler_case!(
+    runes_member_input_value_guard,
+    "bind_prop_accessor/runes_member_input_value_guard"
+);

@@ -298,6 +298,9 @@ impl<'a> AnalysisData<'a> {
     pub fn binding_semantics(&self, sym: SymbolId) -> BindingSemantics {
         self.reactivity.binding_semantics(sym)
     }
+    pub fn console_call_contains_state(&self, call: OxcNodeId) -> bool {
+        self.value_evaluation.console_call_contains_state(call)
+    }
     pub fn declarator_semantics(&self, decl_node: OxcNodeId) -> DeclaratorSemantics {
         self.reactivity.declarator_semantics(decl_node)
     }
@@ -379,6 +382,12 @@ impl<'a> AnalysisData<'a> {
             .fragment_facts
             .lookup_by_id(id)
             .is_some_and(FragmentFactsEntry::has_direct_animate_child)
+    }
+    pub fn fragment_has_direct_snippet_child_by_id(&self, id: svelte_ast::FragmentId) -> bool {
+        self.template
+            .fragment_facts
+            .lookup_by_id(id)
+            .is_some_and(FragmentFactsEntry::has_direct_snippet_child)
     }
     pub fn fragment_has_rich_content_by_id(
         &self,

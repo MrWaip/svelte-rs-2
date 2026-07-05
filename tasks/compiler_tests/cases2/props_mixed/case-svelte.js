@@ -1,15 +1,16 @@
 import * as $ from "svelte/internal/client";
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy",
+	"a",
+	"b",
+	"c"
+]);
 var root = $.from_html(`<p> </p> <p> </p> <p> </p>`, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
-	let b = $.prop($$props, "b", 3, 10), rest = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy",
-		"a",
-		"b",
-		"c"
-	]);
+	let b = $.prop($$props, "b", 3, 10), rest = $.rest_props($$props, rest_excludes);
 	var fragment = root();
 	var p = $.first_child(fragment);
 	var text = $.child(p, true);

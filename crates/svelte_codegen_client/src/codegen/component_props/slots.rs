@@ -40,9 +40,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some((wrapper_id, inner)) => (wrapper_id, inner),
             None => (el_id, fragment),
         };
-        if wrapped.is_some() {
-            let _ = self.ctx.state.gen_ident("root");
-        }
         let let_stmts = self.emit_let_directive_legacy_stmts(let_owner)?;
 
         let inner_ctx = parent_ctx.child_of_block(

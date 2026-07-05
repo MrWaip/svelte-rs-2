@@ -206,9 +206,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ))
         };
 
-        if callback.is_some()
-            && let Some(void_tag) = dev_void_tag_clone
-        {
+        let has_child_nodes = self
+            .ctx
+            .query
+            .analysis
+            .fragment_has_children_by_id(svelte_el_fragment);
+        if has_child_nodes && let Some(void_tag) = dev_void_tag_clone {
             let void_thunk = self.ctx.b.thunk(void_tag);
             dev_stmts.push(
                 self.ctx

@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<li> </li>`);
+var root = $.from_html(`<li> </li>`);
 var root_1 = $.from_html(`<ul></ul>`);
 export default function App($$anchor) {
 	var fragment = $.comment();
@@ -7,7 +7,7 @@ export default function App($$anchor) {
 	$.await(node, () => items, null, ($$anchor, result) => {
 		var ul = root_1();
 		$.each(ul, 21, () => $.get(result), $.index, ($$anchor, item) => {
-			var li = root_2();
+			var li = root();
 			var text = $.child(li, true);
 			$.reset(li);
 			$.template_effect(() => $.set_text(text, $.get(item)));

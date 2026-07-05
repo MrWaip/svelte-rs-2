@@ -1,0 +1,46 @@
+import "svelte/internal/flags/async";
+App[$.FILENAME] = "(unknown)";
+import * as $ from "svelte/internal/client";
+var root = $.add_locations($.from_html(`<p>a</p>`), App[$.FILENAME], [[7, 1]]);
+var root_1 = $.add_locations($.from_html(`<p>b</p>`), App[$.FILENAME], [[9, 1]]);
+var root_2 = $.add_locations($.from_html(`<p>fallback</p>`), App[$.FILENAME], [[11, 1]]);
+export default function App($$anchor, $$props) {
+	$.check_target(new.target);
+	$.push($$props, true, App);
+	var a, b;
+	var $$promises = $.run([async () => a = (await $.track_reactivity_loss(first_fetch()))(), async () => b = (await $.track_reactivity_loss(second_fetch()))()]);
+	var $$exports = { ...$.legacy_api() };
+	var fragment = $.comment();
+	var node = $.first_child(fragment);
+	$.async(node, [$$promises[0]], void 0, (node) => {
+		var consequent = ($$anchor) => {
+			var p = root();
+			$.append($$anchor, p);
+		};
+		var alternate_1 = ($$anchor) => {
+			var fragment_1 = $.comment();
+			var node_1 = $.first_child(fragment_1);
+			$.async(node_1, [$$promises[1]], void 0, (node_1) => {
+				var consequent_1 = ($$anchor) => {
+					var p_1 = root_1();
+					$.append($$anchor, p_1);
+				};
+				var alternate = ($$anchor) => {
+					var p_2 = root_2();
+					$.append($$anchor, p_2);
+				};
+				$.add_svelte_meta(() => $.if(node_1, ($$render) => {
+					if (b) $$render(consequent_1);
+					else $$render(alternate, -1);
+				}, true), "if", App, 8, 0);
+			});
+			$.append($$anchor, fragment_1);
+		};
+		$.add_svelte_meta(() => $.if(node, ($$render) => {
+			if (a) $$render(consequent);
+			else $$render(alternate_1, -1);
+		}), "if", App, 6, 0);
+	});
+	$.append($$anchor, fragment);
+	return $.pop($$exports);
+}

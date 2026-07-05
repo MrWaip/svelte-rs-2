@@ -131,13 +131,13 @@ object-rest · array-rest · дефолт на листе · дефолт на �
 ## 5. Обход: walk_bindings
 
 Чтобы не катать `match` по дереву руками (и не забыть половину чеклиста выше), есть
-канонический хелпер `svelte_component_semantics::walk_bindings`. Он используется в ~36
-местах по analyze/transform/codegen — это де-факто единственный санкционированный
+канонический хелпер `svelte_component_semantics::walk_bindings`. Он используется в
+нескольких десятках мест по analyze/transform/codegen — это де-факто единственный санкционированный
 способ обойти `BindingPattern`.
 
   walk_bindings(pat, |v: BindingVisit| {
       v.symbol     SymbolId этого биндинга-листа
-      v.path       &[Step] — путь от корня: Access::Key{key, computed} | Access::Index(u32);
+      v.path       &[Step] — путь от корня: Access::Key{key, computed} | Access::Index{index, len, has_rest} | Access::Slice{from};
                    Step.default: Option<&Expression> — дефолт на этом шаге
       v.is_rest    это ...rest-биндинг
       v.excluded   для object-rest: ключи, исключённые из rest (&[&PropertyKey])

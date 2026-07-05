@@ -116,7 +116,7 @@ fn collect_fragment_namespaces_in(
             Node::Element(el) => {
                 collect_fragment_namespaces_in(el.fragment, Some(el.id), root_ns, store, data)
             }
-            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_) => {
                 if let Some(view) = store.get(id).as_component_like() {
                     collect_fragment_namespaces_in(
                         view.fragment,
@@ -125,7 +125,16 @@ fn collect_fragment_namespaces_in(
                         store,
                         data,
                     );
+                    for slot in view.legacy_slots {
+                        collect_fragment_namespaces_in(slot.fragment, None, root_ns, store, data);
+                    }
                 }
+            }
+            Node::SvelteFragmentLegacy(el) => {
+                collect_fragment_namespaces_in(el.fragment, None, root_ns, store, data)
+            }
+            Node::SlotElementLegacy(el) => {
+                collect_fragment_namespaces_in(el.fragment, parent_element, root_ns, store, data)
             }
             Node::IfBlock(block) => {
                 collect_fragment_namespaces_in(
@@ -176,6 +185,125 @@ fn collect_fragment_namespaces_in(
     }
 }
 
+pub(crate) fn promote_anchor_namespaces(
+    component: &svelte_ast::Component,
+    data: &mut AnalysisData,
+) {
+    promote_anchor_namespaces_in(
+        component.root,
+        false,
+        &component.store,
+        &component.source,
+        data,
+    );
+}
+
+fn promote_anchor_namespaces_in(
+    fragment_id: svelte_ast::FragmentId,
+    has_element_ancestor: bool,
+    store: &svelte_ast::AstStore,
+    source: &str,
+    data: &mut AnalysisData,
+) {
+    for id in store.fragment_nodes(fragment_id).to_vec() {
+        match store.get(id) {
+            Node::Element(el) => {
+                promote_anchor_namespaces_in(el.fragment, true, store, source, data);
+                if el.name == "a"
+                    && !has_element_ancestor
+                    && data.namespace(id) != Some(NamespaceKind::Svg)
+                    && anchor_has_svg_child(el.fragment, store, data)
+                {
+                    let facts = ElementFactsEntry::build(
+                        &el.attributes,
+                        source,
+                        NamespaceKind::Svg,
+                        Namespace::Svg,
+                        is_void(&el.name),
+                        el.name.contains('-'),
+                    );
+                    data.elements.facts.record_entry(id, facts);
+                }
+            }
+            Node::SvelteElement(el) => {
+                promote_anchor_namespaces_in(el.fragment, true, store, source, data)
+            }
+            Node::SvelteHead(head) => {
+                promote_anchor_namespaces_in(head.fragment, false, store, source, data)
+            }
+            Node::ComponentNode(cn) => {
+                promote_anchor_namespaces_in(cn.fragment, has_element_ancestor, store, source, data)
+            }
+            Node::SvelteComponentLegacy(cn) => {
+                promote_anchor_namespaces_in(cn.fragment, has_element_ancestor, store, source, data)
+            }
+            Node::SvelteSelf(cn) => {
+                promote_anchor_namespaces_in(cn.fragment, has_element_ancestor, store, source, data)
+            }
+            Node::SvelteFragmentLegacy(el) => {
+                promote_anchor_namespaces_in(el.fragment, has_element_ancestor, store, source, data)
+            }
+            Node::SlotElementLegacy(el) => {
+                promote_anchor_namespaces_in(el.fragment, has_element_ancestor, store, source, data)
+            }
+            Node::SvelteBoundary(b) => {
+                promote_anchor_namespaces_in(b.fragment, has_element_ancestor, store, source, data)
+            }
+            Node::SnippetBlock(block) => {
+                promote_anchor_namespaces_in(block.body, has_element_ancestor, store, source, data)
+            }
+            Node::KeyBlock(block) => promote_anchor_namespaces_in(
+                block.fragment,
+                has_element_ancestor,
+                store,
+                source,
+                data,
+            ),
+            Node::IfBlock(block) => {
+                promote_anchor_namespaces_in(
+                    block.consequent,
+                    has_element_ancestor,
+                    store,
+                    source,
+                    data,
+                );
+                if let Some(alt) = block.alternate {
+                    promote_anchor_namespaces_in(alt, has_element_ancestor, store, source, data);
+                }
+            }
+            Node::EachBlock(block) => {
+                promote_anchor_namespaces_in(block.body, has_element_ancestor, store, source, data);
+                if let Some(fb) = block.fallback {
+                    promote_anchor_namespaces_in(fb, has_element_ancestor, store, source, data);
+                }
+            }
+            Node::AwaitBlock(block) => {
+                if let Some(p) = block.pending {
+                    promote_anchor_namespaces_in(p, has_element_ancestor, store, source, data);
+                }
+                if let Some(t) = block.then {
+                    promote_anchor_namespaces_in(t, has_element_ancestor, store, source, data);
+                }
+                if let Some(c) = block.catch {
+                    promote_anchor_namespaces_in(c, has_element_ancestor, store, source, data);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn anchor_has_svg_child(
+    fragment_id: svelte_ast::FragmentId,
+    store: &svelte_ast::AstStore,
+    data: &AnalysisData,
+) -> bool {
+    store.fragment_nodes(fragment_id).iter().any(|&child_id| {
+        matches!(store.get(child_id), Node::Element(child) if child.name != "svg")
+            && data.namespace(child_id) == Some(NamespaceKind::Svg)
+    })
+}
+
 fn fragment_namespace_for(
     fragment_id: svelte_ast::FragmentId,
     parent_element: Option<svelte_ast::NodeId>,
@@ -185,6 +313,12 @@ fn fragment_namespace_for(
 ) -> svelte_ast::Namespace {
     use svelte_ast::FragmentRole;
     let role = store.fragment(fragment_id).role;
+    let inherited = || {
+        parent_element
+            .and_then(|el_id| data.namespace(el_id))
+            .map(NamespaceKind::as_namespace)
+            .unwrap_or(root_ns)
+    };
     match role {
         FragmentRole::Root => {
             infer_namespace_from_children(fragment_id, store, data).unwrap_or(root_ns)
@@ -194,10 +328,20 @@ fn fragment_namespace_for(
             infer_namespace_from_children(fragment_id, store, data)
                 .unwrap_or(svelte_ast::Namespace::Html)
         }
-        _ => parent_element
-            .and_then(|el_id| data.namespace(el_id))
-            .map(NamespaceKind::as_namespace)
-            .unwrap_or(root_ns),
+        FragmentRole::SvelteElementBody => inherited(),
+        FragmentRole::Element => {
+            let owner_is_element = store
+                .fragment(fragment_id)
+                .owner
+                .map(|oid| matches!(store.get(oid), Node::Element(_) | Node::SvelteElement(_)))
+                .unwrap_or(false);
+            if owner_is_element {
+                inherited()
+            } else {
+                infer_namespace_from_children(fragment_id, store, data).unwrap_or_else(inherited)
+            }
+        }
+        _ => infer_namespace_from_children(fragment_id, store, data).unwrap_or_else(inherited),
     }
 }
 

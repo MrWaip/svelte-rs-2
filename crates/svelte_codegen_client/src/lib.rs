@@ -22,7 +22,7 @@ use svelte_analyze::{
 use svelte_ast::Node;
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::{JsOutput, SourcemapKind};
-use svelte_transform::TransformData;
+use svelte_transform::{RestExcludeKey, TransformData};
 
 use context::Ctx;
 use svelte_analyze::types::data::binding_group_name;
@@ -56,6 +56,7 @@ fn export_reactive_read<'a>(
         | ReferenceSemantics::SignalWrite { .. }
         | ReferenceSemantics::SignalUpdate { .. }
         | ReferenceSemantics::DerivedWrite
+        | ReferenceSemantics::DerivedUpdate
         | ReferenceSemantics::StoreWrite { .. }
         | ReferenceSemantics::StoreUpdate { .. }
         | ReferenceSemantics::PropMutation { .. }
@@ -120,9 +121,11 @@ pub fn generate<'a>(
     let script_imports = script_output.imports;
     let script_body = script_output.body;
     let has_tracing = script_output.has_tracing;
-    let needs_ownership_validator =
-        script_output.needs_ownership_validator || analysis.output.needs_component_bind_ownership;
+    let needs_ownership_validator = script_output.needs_ownership_validator
+        || analysis.output.needs_component_bind_ownership
+        || ctx.transform_data.needs_ownership_validator;
     let mut script_comments = script_output.comments;
+    let script_rest_excludes = script_output.rest_excludes;
 
     let mut module_imports: Vec<Statement<'_>> = Vec::new();
     let mut module_body: Vec<Statement<'_>> = Vec::new();
@@ -136,6 +139,7 @@ pub fn generate<'a>(
             &analysis.scoping,
             &mut *ctx.state.ident_gen,
             ctx.state.line_index,
+            ctx.state.dev,
         );
 
         script_comments.extend(module_output.comments);
@@ -149,6 +153,23 @@ pub fn generate<'a>(
     let instance_snippets = codegen_result.instance_snippets;
     let hoistable_snippets = codegen_result.hoistable_snippets;
 
+    for re in script_rest_excludes {
+        let set_stmt = {
+            let keys: Vec<Arg<'_, '_>> = re
+                .keys
+                .iter()
+                .map(|k| match k {
+                    RestExcludeKey::Str(s) => Arg::StrRef(ctx.b.alloc_str(s)),
+                    RestExcludeKey::Num(n) => Arg::Num(*n),
+                })
+                .collect();
+            let arr = ctx.b.array_from_args(keys);
+            let new_set = ctx.b.new_expr("Set", [Arg::Expr(arr)]);
+            ctx.b.var_stmt(&re.name, new_set)
+        };
+        ctx.state.module_hoisted.push(set_stmt);
+    }
+
     let mut all_hoisted: Vec<Statement<'_>> = Vec::new();
     all_hoisted.append(&mut ctx.state.module_hoisted);
     all_hoisted.extend(hoisted);
@@ -161,6 +182,15 @@ pub fn generate<'a>(
         let name: &str = ctx.b.alloc_str(props_id_name);
         let call = ctx.b.call_expr("$.props_id", empty::<Arg<'_, '_>>());
         fn_body.push(ctx.b.const_stmt(name, call));
+    }
+
+    if ctx.state.dev {
+        fn_body.push(
+            ctx.b.expr_stmt(
+                ctx.b
+                    .call_expr("$.check_target", [Arg::Expr(ctx.b.new_target_expr())]),
+            ),
+        );
     }
 
     if ctx.query.needs_sanitized_legacy_slots() {
@@ -200,14 +230,6 @@ pub fn generate<'a>(
         ));
     }
 
-    if ctx.state.dev {
-        fn_body.push(
-            ctx.b.expr_stmt(
-                ctx.b
-                    .call_expr("$.check_target", [Arg::Expr(ctx.b.new_target_expr())]),
-            ),
-        );
-    }
     if runtime.needs_push {
         let mut push_args: Vec<Arg<'_, '_>> = vec![
             Arg::Ident("$$props"),

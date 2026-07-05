@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::iter;
 
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
-use oxc_ast::ast::{Expression, VariableDeclarationKind, VariableDeclarator};
+use oxc_ast::ast::{BindingPattern, Expression, VariableDeclarationKind, VariableDeclarator};
 use oxc_span::SPAN;
 
 use svelte_ast_builder::Arg;
@@ -11,12 +12,26 @@ use svelte_component_semantics::walk_bindings;
 use super::super::model::ComponentTransformer;
 
 impl<'a> ComponentTransformer<'_, 'a> {
+    fn tag_legacy_source(&self, call: Expression<'a>, name: &str) -> Expression<'a> {
+        if self.dev {
+            self.b
+                .call_expr("$.tag", [Arg::Expr(call), Arg::Str(name.to_string())])
+        } else {
+            call
+        }
+    }
+
     pub(super) fn rewrite_legacy_state(
         &mut self,
         decl_kind: VariableDeclarationKind,
         mut declarator: VariableDeclarator<'a>,
         out: &mut OxcVec<'a, VariableDeclarator<'a>>,
     ) {
+        if matches!(&declarator.id, BindingPattern::BindingIdentifier(_)) {
+            self.rewrite_single_identifier_legacy_state(declarator, out);
+            return;
+        }
+
         let init = declarator
             .init
             .take()
@@ -45,15 +60,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
             let is_reactive = self
                 .analysis
                 .is_some_and(|a| a.binding_semantics(v.symbol).is_legacy_state());
-            let value = if is_reactive {
-                self.b.call_expr("$.mutable_source", [Arg::Expr(expr)])
-            } else {
-                expr
-            };
-
             let name: &'a str = self
                 .b
                 .alloc_str(self.component_scoping.symbol_name(v.symbol));
+            let value = if is_reactive {
+                let call = self.b.call_expr("$.mutable_source", [Arg::Expr(expr)]);
+                self.tag_legacy_source(call, name)
+            } else {
+                expr
+            };
             leaf_declarators.push(
                 self.b.ast.variable_declarator(
                     SPAN,
@@ -71,6 +86,49 @@ impl<'a> ComponentTransformer<'_, 'a> {
         out.push(self.build_tmp_declarator(decl_kind, tmp_name_str, init));
         out.extend(carrier_declarators);
         out.extend(leaf_declarators);
+    }
+
+    pub(super) fn rewrite_single_identifier_legacy_state(
+        &mut self,
+        mut declarator: VariableDeclarator<'a>,
+        out: &mut OxcVec<'a, VariableDeclarator<'a>>,
+    ) {
+        let resolved = match &declarator.id {
+            BindingPattern::BindingIdentifier(binding) => binding
+                .symbol_id
+                .get()
+                .and_then(|sym| self.analysis.map(|a| a.binding_semantics(sym)))
+                .and_then(|sem| sem.legacy_state_immutable())
+                .map(|immutable| (immutable, binding.name.to_string())),
+            _ => None,
+        };
+
+        let Some((immutable, name)) = resolved else {
+            out.push(declarator);
+            return;
+        };
+
+        if let Some(init) = declarator.init.as_mut() {
+            let init_expr = self.b.move_expr(init);
+            let call = if immutable {
+                self.b
+                    .call_expr("$.mutable_source", [Arg::Expr(init_expr), Arg::Bool(true)])
+            } else {
+                self.b.call_expr("$.mutable_source", [Arg::Expr(init_expr)])
+            };
+            declarator.init = Some(self.tag_legacy_source(call, &name));
+        } else {
+            let call = if immutable {
+                self.b.call_expr(
+                    "$.mutable_source",
+                    [Arg::Expr(self.b.void_zero_expr()), Arg::Bool(true)],
+                )
+            } else {
+                self.b.call_expr("$.mutable_source", iter::empty::<Arg>())
+            };
+            declarator.init = Some(self.tag_legacy_source(call, &name));
+        }
+        out.push(declarator);
     }
 
     fn build_tmp_declarator(

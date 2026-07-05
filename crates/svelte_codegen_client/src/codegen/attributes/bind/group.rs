@@ -63,12 +63,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let val_expr = coarse_wrap(self.ctx, val_expr, data.as_ref());
             let val_stmt = self.ctx.b.expr_stmt(val_expr);
 
-            let Some(body_expr) =
-                svelte_ast_builder::Builder::try_extract_expression_stmt_expr(get_fn)
-            else {
+            let Some(body_expr) = extract_getter_binding_expr(get_fn) else {
                 return CodegenError::unexpected_node(
                     bind.id,
-                    "bind:group getter is not ArrowFunctionExpression with ExpressionStatement body",
+                    "bind:group getter has no extractable binding expression",
                 );
             };
             let return_stmt = self.ctx.b.return_stmt(body_expr);
@@ -244,5 +242,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let if_stmt = self.ctx.b.if_stmt(test, if_body, None);
 
         state.update.push(if_stmt);
+    }
+}
+
+fn extract_getter_binding_expr(get_fn: Expression<'_>) -> Option<Expression<'_>> {
+    let statements = match get_fn {
+        Expression::ArrowFunctionExpression(arrow) => arrow.unbox().body.unbox().statements,
+        Expression::FunctionExpression(func) => func.unbox().body?.unbox().statements,
+        _ => return None,
+    };
+    match statements.into_iter().next()? {
+        Statement::ExpressionStatement(es) => Some(es.unbox().expression),
+        Statement::ReturnStatement(rs) => rs.unbox().argument,
+        _ => None,
     }
 }

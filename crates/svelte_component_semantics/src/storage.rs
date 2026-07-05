@@ -26,7 +26,7 @@ pub enum OriginKind {
     Numeric,
 }
 
-fn format_numeric_origin(value: f64) -> String {
+pub(crate) fn format_numeric_origin(value: f64) -> String {
     if value.is_finite() && value.fract() == 0.0 {
         format!("{}", value as i64)
     } else {
@@ -137,6 +137,8 @@ pub struct ComponentSemantics<'a> {
 
     store_candidate_refs: Vec<(SymbolId, ReferenceId)>,
 
+    scoped_store_subscription_refs: Vec<ReferenceId>,
+
     fragment_scopes: Vec<Option<ScopeId>>,
 
     template_scope_set: FxHashSet<ScopeId>,
@@ -171,6 +173,7 @@ impl<'a> ComponentSemantics<'a> {
             template_reference_ids: FxHashSet::default(),
             root_unresolved_references: FxHashMap::default(),
             store_candidate_refs: Vec::new(),
+            scoped_store_subscription_refs: Vec::new(),
             fragment_scopes: Vec::new(),
             template_scope_set: FxHashSet::default(),
             reexported_specifier_locals: FxHashSet::default(),
@@ -634,6 +637,14 @@ impl<'a> ComponentSemantics<'a> {
 
     pub fn store_candidate_refs(&self) -> &[(SymbolId, ReferenceId)] {
         &self.store_candidate_refs
+    }
+
+    pub(crate) fn add_scoped_store_subscription_ref(&mut self, ref_id: ReferenceId) {
+        self.scoped_store_subscription_refs.push(ref_id);
+    }
+
+    pub fn scoped_store_subscription_refs(&self) -> &[ReferenceId] {
+        &self.scoped_store_subscription_refs
     }
 
     pub(crate) fn set_module_scope_id(&mut self, id: ScopeId) {

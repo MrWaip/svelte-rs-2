@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p></p>`);
+var root = $.from_html(`<p></p>`);
 export default function App($$anchor) {
 	let n = "world";
 	var fragment = $.comment();
@@ -8,7 +8,7 @@ export default function App($$anchor) {
 		var consequent = ($$anchor) => {
 			const bar = $.derived(() => n);
 			const foo = $.derived(() => $.get(bar));
-			var p = root_1();
+			var p = root();
 			p.textContent = $.get(foo);
 			$.append($$anchor, p);
 		};

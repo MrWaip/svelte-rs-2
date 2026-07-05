@@ -1,40 +1,24 @@
-import "svelte/internal/flags/tracing";
-App[$.FILENAME] = "(unknown)";
 import * as $ from "svelte/internal/client";
-var root = $.add_locations($.from_html(`<button>Click</button>`), App[$.FILENAME], [[28, 0]]);
-export default function App($$anchor, $$props) {
-	$.check_target(new.target);
-	$.push($$props, true, App);
-	let count = $.tag($.state(0), "count");
-	let data = $.tag($.state(null), "data");
+var root = $.from_html(`<button>Click</button>`);
+export default function App($$anchor) {
+	let count = $.state(0);
+	let data = $.state(null);
 	const handleArrow = () => {
-		return $.trace(() => "handleArrow ((unknown):5:21)", () => {
-			$.update(count);
-		});
+		$.update(count);
 	};
 	async function fetchData() {
-		return await $.trace(() => "fetchData ((unknown):10:1)", async () => {
-			$.set(data, (await $.track_reactivity_loss(fetch("/api")))(), true);
-		});
+		$.set(data, await fetch("/api"), true);
 	}
 	foo(() => {
-		return $.trace(() => "foo(...) ((unknown):15:5)", () => {
-			$.update(count);
-		});
+		$.update(count);
 	});
 	const obj = { handler() {
-		return $.trace(() => "handler ((unknown):21:9)", () => {
-			$.update(count);
-		});
+		$.update(count);
 	} };
-	var $$exports = { ...$.legacy_api() };
 	var button = root();
-	$.delegated("click", button, function click() {
-		return $.trace(() => "trace ((unknown):28:17)", () => {
-			$.update(count);
-		});
+	$.delegated("click", button, () => {
+		$.update(count);
 	});
 	$.append($$anchor, button);
-	return $.pop($$exports);
 }
 $.delegate(["click"]);

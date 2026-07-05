@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<div> </div>`);
+var root = $.from_html(`<div> </div>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
 	let data = $.prop($$props, "data", 24, () => [{ id: "1" }]);
@@ -10,7 +10,7 @@ export default function App($$anchor, $$props) {
 	var node = $.first_child(fragment);
 	$.each(node, 3, data, ({ id }) => id, ($$anchor, $$item, index) => {
 		let id = () => $.get($$item).id;
-		var div = root_1();
+		var div = root();
 		var text = $.child(div, true);
 		$.reset(div);
 		$.bind_this(div, ($$value, index) => refs(refs()[index] = $$value, true), (index) => refs()?.[index], () => [$.get(index)]);

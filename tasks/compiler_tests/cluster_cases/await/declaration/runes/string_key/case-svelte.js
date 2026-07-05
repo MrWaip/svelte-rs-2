@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<button> </button>`);
+var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
 	let p = $.proxy(Promise.resolve({
 		"a-b": 1,
@@ -17,7 +17,7 @@ export default function App($$anchor) {
 		});
 		var ab = $.derived(() => $.get($$value).ab);
 		var cd = $.derived(() => $.get($$value).cd);
-		var button = root_1();
+		var button = root();
 		var text = $.child(button);
 		$.reset(button);
 		$.template_effect(() => $.set_text(text, `${$.get(ab) ?? ""}${$.get(cd) ?? ""}`));

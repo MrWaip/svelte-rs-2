@@ -4,7 +4,7 @@
 
 **The Svelte 5 compiler, rewritten in Rust.**
 
-Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.55.5**) — same JS output, ~30× faster.
+Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.56.4**) — same JS output, ~30× faster.
 
 > ⚠️ **WIP / canary.** Built by a human with heavy AI assistance. Expect bugs, missing edge cases, and breaking changes. Not production-ready — please report what breaks.
 
@@ -31,11 +31,11 @@ Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.55.5**) — same
 | --- | --- |
 | Node | `^20.19 \|\| ^22.12 \|\| >=24` |
 | Platforms | macOS arm64/x64, Linux x64 glibc. Windows and Linux musl (Alpine) not yet. |
-| Peer | `svelte@5.55.5` — Vite plugin falls back to `svelte/compiler` for unsupported options. |
+| Peer | `svelte@5.56.4` — Vite plugin falls back to `svelte/compiler` for unsupported options. |
 
 ## What Works So Far?
 
-This is still a work in progress and is not yet at full feature parity with `svelte/compiler`. Parity target: **svelte@5.55.5**. Bugs may exist. Please check this list carefully before logging a new issue or assuming an intentional change.
+This is still a work in progress and is not yet at full feature parity with `svelte/compiler`. Parity target: **svelte@5.56.4**. Bugs may exist. Please check this list carefully before logging a new issue or assuming an intentional change.
 
 | Feature | Status | Notes |
 | --- | --- | --- |

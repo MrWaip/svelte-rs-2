@@ -13,13 +13,14 @@ use rustc_hash::FxHashSet;
 use svelte_ast::{RunesMode, RunesOption, is_rune_name};
 use svelte_parser::JsAst;
 
-use crate::scope::ComponentScoping;
+use crate::scope::{ComponentScoping, SymbolId};
 
 pub(crate) fn resolve(
     scoping: &ComponentScoping,
     parsed: &JsAst<'_>,
     inline: Option<bool>,
     compile: RunesOption,
+    svelte_store_rune_import: Option<SymbolId>,
 ) -> RunesMode {
     if let Some(true) = inline {
         return RunesMode::Runes;
@@ -32,7 +33,7 @@ pub(crate) fn resolve(
         RunesOption::Legacy => return RunesMode::HardLegacy,
         RunesOption::Auto => {}
     }
-    if resolves_to_runes_via_signals(scoping, parsed) {
+    if resolves_to_runes_via_signals(scoping, parsed, svelte_store_rune_import) {
         return RunesMode::Runes;
     }
     if has_legacy_signals(scoping, parsed) {
@@ -42,7 +43,11 @@ pub(crate) fn resolve(
     }
 }
 
-fn resolves_to_runes_via_signals(scoping: &ComponentScoping, parsed: &JsAst<'_>) -> bool {
+fn resolves_to_runes_via_signals(
+    scoping: &ComponentScoping,
+    parsed: &JsAst<'_>,
+    svelte_store_rune_import: Option<SymbolId>,
+) -> bool {
     let mut store_autosub_bases: FxHashSet<String> = FxHashSet::default();
     collect_top_level_non_rune_init_names(parsed.module_program.as_ref(), &mut store_autosub_bases);
     collect_top_level_non_rune_init_names(parsed.program.as_ref(), &mut store_autosub_bases);
@@ -51,7 +56,11 @@ fn resolves_to_runes_via_signals(scoping: &ComponentScoping, parsed: &JsAst<'_>)
         if !is_rune_name(name) {
             return false;
         }
-        !store_autosub_bases.contains(&name[1..])
+        let base = &name[1..];
+        if store_autosub_bases.contains(base) {
+            return false;
+        }
+        !base_is_import_store_base(scoping, base, svelte_store_rune_import)
     }) {
         return true;
     }
@@ -82,6 +91,17 @@ fn collect_top_level_non_rune_init_names(
             collect_pattern_name_strings(&declarator.id, out);
         }
     }
+}
+
+fn base_is_import_store_base(
+    scoping: &ComponentScoping,
+    base: &str,
+    svelte_store_rune_import: Option<SymbolId>,
+) -> bool {
+    let Some(sym) = scoping.find_binding(scoping.root_scope_id(), base) else {
+        return false;
+    };
+    scoping.is_import(sym) && Some(sym) != svelte_store_rune_import
 }
 
 fn init_is_rune_call(init: Option<&Expression<'_>>) -> bool {

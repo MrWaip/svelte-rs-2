@@ -1,17 +1,17 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<span>helper text</span>`);
-var root_2 = $.from_html(`<p> </p> <!>`, 1);
-var root_3 = $.from_html(`<p>content</p>`);
+var root = $.from_html(`<span>helper text</span>`);
+var root_1 = $.from_html(`<p> </p> <!>`, 1);
+var root_2 = $.from_html(`<p>content</p>`);
 export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	{
 		const helper = ($$anchor) => {
-			var span = root_1();
+			var span = root();
 			$.append($$anchor, span);
 		};
 		const failed = ($$anchor, error = $.noop) => {
-			var fragment_1 = root_2();
+			var fragment_1 = root_1();
 			var p = $.first_child(fragment_1);
 			var text = $.child(p, true);
 			$.reset(p);
@@ -21,7 +21,7 @@ export default function App($$anchor) {
 			$.append($$anchor, fragment_1);
 		};
 		$.boundary(node, { failed }, ($$anchor) => {
-			var p_1 = root_3();
+			var p_1 = root_2();
 			$.append($$anchor, p_1);
 		});
 	}

@@ -1,17 +1,17 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<option> </option>`);
-var root_2 = $.from_html(`<p> </p>`);
-var root = $.from_html(`<select></select> <label><input type="checkbox"/> </label> <!>`, 1);
+var root = $.from_html(`<option> </option>`);
+var root_1 = $.from_html(`<p> </p>`);
+var root_2 = $.from_html(`<select></select> <label><input type="checkbox"/> </label> <!>`, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
 	let selected = $.prop($$props, "selected", 12);
 	let tasks = $.prop($$props, "tasks", 8);
 	$.init();
-	var fragment = root();
+	var fragment = root_2();
 	var select = $.first_child(fragment);
 	$.each(select, 5, tasks, $.index, ($$anchor, task) => {
-		var option = root_1();
+		var option = root();
 		var text = $.child(option, true);
 		$.reset(option);
 		var option_value = {};
@@ -31,7 +31,7 @@ export default function App($$anchor, $$props) {
 	$.reset(label);
 	var node = $.sibling(label, 2);
 	$.each(node, 1, () => ($.deep_read_state(tasks()), $.untrack(() => tasks().filter((t) => !t.done))), $.index, ($$anchor, task) => {
-		var p = root_2();
+		var p = root_1();
 		var text_2 = $.child(p, true);
 		$.reset(p);
 		$.template_effect(() => $.set_text(text_2, ($.get(task), $.untrack(() => $.get(task).description))));

@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<h1></h1>`);
+var root = $.from_html(`<h1></h1>`);
 export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
@@ -9,7 +9,7 @@ export default function App($$anchor) {
 			const bar = $.derived_safe_equal(() => "world");
 			const foo = $.derived_safe_equal(() => $.get(bar));
 			const yoo = $.derived_safe_equal(() => $.get(foo));
-			var h1 = root_1();
+			var h1 = root();
 			h1.textContent = `Hello ${$.get(bar) ?? ""}${$.get(yoo) ?? ""}!`;
 			$.append($$anchor, h1);
 		};

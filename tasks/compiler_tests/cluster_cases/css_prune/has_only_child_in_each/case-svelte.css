@@ -1,0 +1,4 @@
+
+	.a.svelte-10ib7zp:has(.b:where(.svelte-10ib7zp):only-child) {
+		color: red;
+	}

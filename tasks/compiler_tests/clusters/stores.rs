@@ -43,3 +43,73 @@ compiler_case!(
 compiler_case!(assignment_object_rest, "stores/assignment/object_rest");
 compiler_case!(assignment_single_array, "stores/assignment/single_array");
 compiler_case!(assignment_string_key, "stores/assignment/string_key");
+
+compiler_case!(
+    runes_sub_state_held_unsub,
+    "stores/runes_sub/state_held_unsub"
+);
+compiler_case!(runes_sub_prop_update, "stores/runes_sub/prop_update");
+compiler_case!(
+    runes_sub_runelike_prop_name,
+    "stores/runes_sub/runelike_prop_name"
+);
+compiler_case!(
+    runes_sub_state_reassign_unsub,
+    "stores/runes_sub/state_reassign_unsub"
+);
+compiler_case!(
+    runes_sub_plain_import_guard,
+    "stores/runes_sub/plain_import_guard"
+);
+compiler_case!(
+    runes_sub_rune_state_no_store_guard,
+    "stores/runes_sub/rune_state_no_store_guard"
+);
+compiler_case!(
+    runes_sub_derived_store_import_guard,
+    "stores/runes_sub/derived_store_import_guard"
+);
+compiler_case!(
+    runes_sub_rune_shadowed_by_module_binding,
+    "stores/runes_sub/rune_shadowed_by_module_binding"
+);
+compiler_case!(
+    runes_sub_rune_shadowed_by_local_binding,
+    "stores/runes_sub/rune_shadowed_by_local_binding"
+);
+compiler_case!(
+    runes_sub_no_binding_guard,
+    "stores/runes_sub/no_binding_guard"
+);
+compiler_case!(
+    runes_sub_self_init_guard,
+    "stores/runes_sub/self_init_guard"
+);
+compiler_case!(
+    runes_sub_sole_rune_shadowed_legacy_guard,
+    "stores/runes_sub/sole_rune_shadowed_legacy_guard"
+);
+compiler_case!(
+    runes_sub_sole_rune_shadowed_by_local_import,
+    "stores/runes_sub/sole_rune_shadowed_by_local_import"
+);
+compiler_case!(
+    runes_sub_rune_shadowed_by_local_import_live_rune,
+    "stores/runes_sub/rune_shadowed_by_local_import_live_rune"
+);
+compiler_case!(
+    runes_sub_all_runes_shadowed_by_local_import,
+    "stores/runes_sub/all_runes_shadowed_by_local_import"
+);
+compiler_case!(
+    runes_sub_unrelated_local_import_guard,
+    "stores/runes_sub/unrelated_local_import_guard"
+);
+compiler_module_case!(
+    runes_sub_module_rune_shadowed_by_import,
+    "stores/runes_sub/module_rune_shadowed_by_import"
+);
+compiler_module_case!(
+    runes_sub_module_rune_no_shadow_guard,
+    "stores/runes_sub/module_rune_no_shadow_guard"
+);

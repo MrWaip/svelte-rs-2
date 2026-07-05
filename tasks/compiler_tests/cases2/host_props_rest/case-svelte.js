@@ -1,14 +1,15 @@
 import * as $ from "svelte/internal/client";
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy",
+	"$$host",
+	"answer"
+]);
 var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
-	let answer = $.prop($$props, "answer", 7), rest = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy",
-		"$$host",
-		"answer"
-	]);
+	let answer = $.prop($$props, "answer", 7), rest = $.rest_props($$props, rest_excludes);
 	let host = $$props.$$host;
 	var $$exports = {
 		get answer() {

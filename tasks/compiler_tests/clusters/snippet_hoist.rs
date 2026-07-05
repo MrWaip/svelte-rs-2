@@ -29,3 +29,12 @@ compiler_case!(
     autosub_legacy_state_shadow,
     "snippet_hoist/autosub_legacy_state_shadow"
 );
+compiler_case!(
+    ref_non_hoistable_snippet,
+    "snippet_hoist/ref_non_hoistable_snippet"
+);
+compiler_case!(
+    chain_non_hoistable_snippet,
+    "snippet_hoist/chain_non_hoistable_snippet"
+);
+compiler_case!(ref_hoistable_snippet, "snippet_hoist/ref_hoistable_snippet");

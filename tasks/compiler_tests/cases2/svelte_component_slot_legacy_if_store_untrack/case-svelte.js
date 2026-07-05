@@ -2,7 +2,7 @@ import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 import { writable } from "svelte/store";
 import Inner from "./Inner.svelte";
-var root_2 = $.from_html(`<div>hi</div>`);
+var root = $.from_html(`<div>hi</div>`);
 var root_1 = $.from_html(`<div slot="icon"><!></div>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
@@ -20,7 +20,7 @@ export default function App($$anchor, $$props) {
 			var node_1 = $.child(div);
 			{
 				var consequent = ($$anchor) => {
-					var div_1 = root_2();
+					var div_1 = root();
 					$.append($$anchor, div_1);
 				};
 				$.if(node_1, ($$render) => {

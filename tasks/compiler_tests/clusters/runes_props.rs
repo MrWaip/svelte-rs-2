@@ -42,3 +42,15 @@ compiler_case!(
 compiler_case!(declaration_rest, "runes/props/declaration/rest");
 compiler_case!(declaration_single, "runes/props/declaration/single");
 compiler_case!(declaration_string_key, "runes/props/declaration/string_key");
+compiler_case!(
+    optional_member_derived,
+    "runes/props/optional_member_derived"
+);
+compiler_case!(
+    optional_computed_member_guard,
+    "runes/props/optional_computed_member_guard"
+);
+compiler_case!(
+    static_member_derived_guard,
+    "runes/props/static_member_derived_guard"
+);

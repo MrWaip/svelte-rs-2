@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<span> </span>`);
+var root = $.from_html(`<span> </span>`);
 export default function App($$anchor, $$props) {
 	let id = $.prop($$props, "id", 8, 1);
 	async function fetchData(arg) {
@@ -9,7 +9,7 @@ export default function App($$anchor, $$props) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.await(node, () => ($.deep_read_state(id()), $.untrack(() => fetchData(id()))), null, ($$anchor, v) => {
-		var span = root_1();
+		var span = root();
 		var text = $.child(span, true);
 		$.reset(span);
 		$.template_effect(() => $.set_text(text, $.get(v)));

@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<div>x</div>`);
+var root = $.from_html(`<div>x</div>`);
 export default function App($$anchor) {
 	function onClick() {}
 	let show = true;
@@ -8,7 +8,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var div = root_1();
+			var div = root();
 			$.append($$anchor, div);
 		};
 		$.if(node, ($$render) => {

@@ -1,0 +1,14 @@
+App[$.FILENAME] = "(unknown)";
+import * as $ from "svelte/internal/client";
+var root = $.add_locations($.from_html(`<textarea></textarea>`), App[$.FILENAME], [[5, 0]]);
+export default function App($$anchor, $$props) {
+	$.check_target(new.target);
+	$.push($$props, true, App);
+	let extra = $.prop($$props, "extra", 19, () => ({}));
+	var $$exports = { ...$.legacy_api() };
+	var textarea = root();
+	$.remove_textarea_child(textarea);
+	$.attribute_effect(textarea, () => ({ ...extra() }));
+	$.append($$anchor, textarea);
+	return $.pop($$exports);
+}

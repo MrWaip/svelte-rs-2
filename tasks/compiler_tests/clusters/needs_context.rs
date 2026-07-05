@@ -23,3 +23,17 @@ compiler_case!(
     guard_instance_new_expression,
     "needs_context/guard_instance_new_expression"
 );
+
+compiler_case!(render_prop_member, "needs_context/render_prop_member");
+compiler_case!(
+    render_prop_identifier_guard,
+    "needs_context/render_prop_identifier_guard"
+);
+compiler_case!(
+    class_state_no_instance,
+    "needs_context/class_state_no_instance"
+);
+compiler_case!(
+    class_state_new_instance_guard,
+    "needs_context/class_state_new_instance_guard"
+);

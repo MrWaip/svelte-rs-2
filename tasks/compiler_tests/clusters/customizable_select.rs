@@ -20,3 +20,23 @@ compiler_case!(
     "customizable_select/plain_select_text_option"
 );
 compiler_case!(two_optgroups_rich, "customizable_select/two_optgroups_rich");
+
+compiler_case!(single_render_tag, "customizable_select/single_render_tag");
+compiler_case!(single_if_block, "customizable_select/single_if_block");
+compiler_case!(single_html_tag, "customizable_select/single_html_tag");
+compiler_case!(single_each_block, "customizable_select/single_each_block");
+compiler_case!(single_component, "customizable_select/single_component");
+compiler_case!(multi_first_block, "customizable_select/multi_first_block");
+compiler_case!(
+    optgroup_single_render,
+    "customizable_select/optgroup_single_render"
+);
+
+compiler_case!(
+    single_element_guard,
+    "customizable_select/single_element_guard"
+);
+compiler_case!(
+    multi_static_first_guard,
+    "customizable_select/multi_static_first_guard"
+);

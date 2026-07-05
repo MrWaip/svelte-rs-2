@@ -68,13 +68,10 @@ fn load_module_case(dir: PathBuf) -> (String, ModuleCompileOptions) {
         filename: default_filename,
         ..Default::default()
     };
-    if let Some(config) = read_config(&dir) {
-        if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
-            opts.dev = dev;
-        }
-        if let Some(filename) = config.get("filename").and_then(|v| v.as_str()) {
-            opts.filename = filename.to_string();
-        }
+    if let Some(config) = read_config(&dir)
+        && let Some(filename) = config.get("filename").and_then(|v| v.as_str())
+    {
+        opts.filename = filename.to_string();
     }
     (input, opts)
 }
@@ -106,9 +103,6 @@ fn load_case(base: &str, case: &str) -> (String, CompileOptions) {
         ..Default::default()
     };
     if let Some(config) = read_config(&dir) {
-        if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
-            opts.dev = dev;
-        }
         if let Some(runes_val) = config.get("runes") {
             opts.runes = match runes_val.as_bool() {
                 Some(true) => RunesOption::Runes,

@@ -1,13 +1,13 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<option> </option>`);
-var root = $.from_html(`<select></select>`);
+var root = $.from_html(`<option> </option>`);
+var root_1 = $.from_html(`<select></select>`);
 export default function App($$anchor, $$props) {
 	let selected = $.prop($$props, "selected", 12);
 	let items = $.prop($$props, "items", 8);
-	var select = root();
+	var select = root_1();
 	$.each(select, 5, items, $.index, ($$anchor, item) => {
-		var option = root_1();
+		var option = root();
 		var text = $.child(option, true);
 		$.reset(option);
 		var option_value = {};

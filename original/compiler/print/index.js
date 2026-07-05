@@ -247,7 +247,7 @@ const css_visitors = {
 	},
 
 	Percentage(node, context) {
-		context.write(`${node.value}%`);
+		context.write(node.value);
 	},
 
 	PseudoClassSelector(node, context) {
@@ -417,6 +417,7 @@ const svelte_visitors = (comments) => ({
 				const is_block_element =
 					child_node.type === 'RegularElement' ||
 					child_node.type === 'Component' ||
+					child_node.type === 'SvelteBody' ||
 					child_node.type === 'SvelteHead' ||
 					child_node.type === 'SvelteFragment' ||
 					child_node.type === 'SvelteBoundary' ||
@@ -597,6 +598,48 @@ const svelte_visitors = (comments) => ({
 		for (let i = 0; i < declarators.length; i++) {
 			if (i > 0) context.write(', ');
 			context.visit(declarators[i]);
+		}
+
+		context.write('}');
+	},
+
+	DeclarationTag(node, context) {
+		context.write('{');
+
+		// This is duplicated from esrap's handling of VariableDeclaration,
+		// which we need to do in order to omit the trailing semicolon that esrap would add.
+		const open = context.new();
+		const join = context.new();
+		const child_context = context.new();
+
+		context.append(child_context);
+
+		child_context.write(`${node.declaration.kind} `);
+		child_context.append(open);
+
+		const declarations = node.declaration.declarations;
+		let first = true;
+
+		for (const d of declarations) {
+			if (!first) child_context.append(join);
+			first = false;
+
+			child_context.visit(d);
+		}
+
+		const length = child_context.measure() + 2 * (declarations.length - 1);
+
+		const multiline = child_context.multiline || (declarations.length > 1 && length > 50);
+
+		if (multiline) {
+			context.multiline = true;
+
+			if (declarations.length > 1) open.indent();
+			join.write(',');
+			join.newline();
+			if (declarations.length > 1) context.dedent();
+		} else {
+			join.write(', ');
 		}
 
 		context.write('}');
@@ -819,6 +862,10 @@ const svelte_visitors = (comments) => ({
 		}
 
 		context.write('</style>');
+	},
+
+	SvelteBody(node, context) {
+		base_element(node, context, comments);
 	},
 
 	SvelteBoundary(node, context) {
