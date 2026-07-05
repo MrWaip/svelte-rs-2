@@ -14,12 +14,12 @@ impl<'a> ServerCodegen<'a> {
         element: &'a Element,
         preserve_whitespace: bool,
     ) -> Result<()> {
-        let open_tag = self.open_tag(element);
-
         if let Some(raw_content) = self.raw_text_content(element) {
-            let close_tag = format!("</{}>", element.name);
+            let name = element.name.clone();
             let raw_statements = self.child_statements(|codegen| {
-                codegen.push_text(&format!("{open_tag}{raw_content}{close_tag}"));
+                codegen.push_text(&format!("<{name}"));
+                codegen.emit_element_attributes(element)?;
+                codegen.push_text(&format!(">{raw_content}</{name}>"));
                 Ok(())
             })?;
             for stmt in raw_statements {
@@ -28,7 +28,13 @@ impl<'a> ServerCodegen<'a> {
             return Ok(());
         }
 
-        self.push_text(&open_tag);
+        self.push_text(&format!("<{}", element.name));
+        self.emit_element_attributes(element)?;
+        if is_void(&element.name) {
+            self.push_text("/>");
+        } else {
+            self.push_text(">");
+        }
 
         if self.dev {
             let push_element = self.push_element_stmt(element);
@@ -54,19 +60,6 @@ impl<'a> ServerCodegen<'a> {
             self.push_stmt(pop_element);
         }
         Ok(())
-    }
-
-    fn open_tag(&self, element: &Element) -> String {
-        let mut open_tag = format!("<{}", element.name);
-        for attribute in &element.attributes {
-            self.print_attribute(attribute, &mut open_tag);
-        }
-        if is_void(&element.name) {
-            open_tag.push_str("/>");
-        } else {
-            open_tag.push('>');
-        }
-        open_tag
     }
 
     fn raw_text_content(&self, element: &Element) -> Option<String> {

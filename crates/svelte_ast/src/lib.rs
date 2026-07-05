@@ -907,7 +907,7 @@ pub struct ConcatenationAttribute {
     pub parts: Vec<ConcatPart>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConcatPart {
     Static(String),
 
@@ -930,7 +930,7 @@ pub struct ClassDirective {
     pub shorthand: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StyleDirective {
     pub id: NodeId,
     pub span: Span,
@@ -942,7 +942,7 @@ pub struct StyleDirective {
     pub important: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StyleDirectiveValue {
     Expression,
 

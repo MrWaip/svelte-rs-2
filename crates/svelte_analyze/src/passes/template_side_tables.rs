@@ -221,6 +221,7 @@ fn promote_anchor_namespaces_in(
                         Namespace::Svg,
                         is_void(&el.name),
                         el.name.contains('-'),
+                        el.name == "input",
                     );
                     data.elements.facts.record_entry(id, facts);
                 }
@@ -928,6 +929,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             creation_namespace_for_element(&el.name, inherited),
             is_void(&el.name),
             el.name.contains('-'),
+            el.name == "input",
         );
         ctx.data.elements.facts.record_entry(el.id, facts);
         let facts = ctx
@@ -983,6 +985,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 inherited_namespace(self.component, ctx, ctx.nearest_element()).as_namespace(),
                 false,
                 false,
+                false,
             ),
         );
         record_component_snippets(cn.id, cn.fragment, ctx);
@@ -1007,6 +1010,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 inherited_namespace(self.component, ctx, ctx.nearest_element()).as_namespace(),
                 false,
                 false,
+                false,
             ),
         );
         record_component_snippets(cn.id, cn.fragment, ctx);
@@ -1025,6 +1029,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 ctx.source,
                 inherited_namespace(self.component, ctx, ctx.nearest_element()),
                 inherited_namespace(self.component, ctx, ctx.nearest_element()).as_namespace(),
+                false,
                 false,
                 false,
             ),
@@ -1048,6 +1053,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 ctx.source,
                 namespace,
                 namespace.as_namespace(),
+                false,
                 false,
                 false,
             ),
@@ -1078,6 +1084,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 Namespace::Html,
                 false,
                 false,
+                false,
             ),
         );
     }
@@ -1094,6 +1101,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 ctx.source,
                 NamespaceKind::Html,
                 Namespace::Html,
+                false,
                 false,
                 false,
             ),
@@ -1114,6 +1122,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 Namespace::Html,
                 false,
                 false,
+                false,
             ),
         );
     }
@@ -1130,6 +1139,7 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
                 ctx.source,
                 NamespaceKind::Html,
                 Namespace::Html,
+                false,
                 false,
                 false,
             ),

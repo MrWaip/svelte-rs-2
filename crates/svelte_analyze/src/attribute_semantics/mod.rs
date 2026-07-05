@@ -3,13 +3,13 @@ pub mod data;
 
 pub use builder::{BindingGroupTable, build};
 pub use data::{
-    AttributeSemantics, BoundaryPropSemantics, ComponentAttachEmit, ComponentAttachSemantics,
-    ComponentBindKind, ComponentBindSemantics, ComponentBindTarget, ComponentPropConcatSemantics,
-    ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
-    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
-    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
-    EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
-    SpecialValueKind, SpecialValueSemantics, StyleDirectivesSemantics,
+    AttributeSemantics, BoundaryPropSemantics, ClassSemantics, ComponentAttachEmit,
+    ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
+    ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
+    ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
+    DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics, ElementBindPropertyKind,
+    ElementBindSemantics, EventEmit, EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart,
+    HtmlConcatSemantics, SpecialValueKind, SpecialValueSemantics, StyleSemantics,
     SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 

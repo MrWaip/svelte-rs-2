@@ -1,6 +1,6 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{AttributeSemantics, HtmlConcatSemantics, Volatility};
+use svelte_analyze::{HtmlConcatSemantics, Volatility};
 use svelte_ast::{Attribute, NodeId, StyleDirectiveValue};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
@@ -55,10 +55,51 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         state: &mut EmitState<'a>,
         owner_id: NodeId,
+        owner_tag: &str,
         owner_var: &str,
-        style_attr_id: Option<NodeId>,
+        _style_attr_id: Option<NodeId>,
     ) -> Result<()> {
-        if !self.ctx.has_style_directives(owner_id) {
+        let Some((style_attr_id, style_static_attr, has_dirs, stateful)) =
+            self.ctx.style_semantics(owner_id).map(|s| {
+                (
+                    s.attr,
+                    s.static_attr,
+                    !s.directives.is_empty(),
+                    s.state_volatility.is_volatile(),
+                )
+            })
+        else {
+            return Ok(());
+        };
+
+        if !has_dirs {
+            if let Some(attr_id) = style_attr_id {
+                let attrs = self.ctx.node_attributes(owner_id).to_vec();
+                match self
+                    .ctx
+                    .attr_index(owner_id)
+                    .and_then(|index| index.find_by_id(&attrs, attr_id))
+                {
+                    Some(Attribute::ExpressionAttribute(a)) => {
+                        self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
+                    }
+                    Some(Attribute::ConcatenationAttribute(a)) => {
+                        self.emit_attr_concatenation(state, owner_id, owner_tag, owner_var, a)?;
+                    }
+                    _ => {}
+                }
+            } else if style_static_attr.is_some() {
+                let static_style = self.ctx.static_style(owner_id).unwrap_or("").to_string();
+                if self.ctx.query.view.is_custom_element(owner_id) {
+                    let style_call = self.ctx.b.call_expr(
+                        "$.set_style",
+                        [Arg::Ident(owner_var), Arg::Str(static_style)],
+                    );
+                    state.init.push(self.ctx.b.expr_stmt(style_call));
+                } else {
+                    state.template.set_attribute("style", Some(static_style));
+                }
+            }
             return Ok(());
         }
 
@@ -67,10 +108,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             None => None,
         };
         let static_style = self.ctx.static_style(owner_id).unwrap_or("").to_string();
-        let stateful = match self.ctx.query.analysis.attributes.get(owner_id) {
-            AttributeSemantics::StyleDirectives(s) => s.volatility.is_volatile(),
-            _ => false,
-        };
         let props = self.build_style_props(owner_id)?;
 
         let directives_expr = if props.important.is_empty() {
@@ -124,8 +161,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
         style_attr_id: NodeId,
     ) -> Result<(Expression<'a>, bool)> {
-        let el = self.ctx.element(owner_id);
-        let attributes = el.attributes.clone();
+        let attributes = self.ctx.node_attributes(owner_id).to_vec();
         let Some(attr) = self
             .ctx
             .attr_index(owner_id)
@@ -176,16 +212,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
             }
             Attribute::ConcatenationAttribute(a) => {
-                let semantics: HtmlConcatSemantics =
-                    match self.ctx.query.analysis.attributes.get(a.id) {
-                        AttributeSemantics::HtmlConcat(s) => s.clone(),
-                        _ => {
-                            return CodegenError::semantic_mismatch(
-                                a.id,
-                                "style ConcatenationAttribute requires HtmlConcat semantics",
-                            );
-                        }
-                    };
+                let semantics: HtmlConcatSemantics = match self
+                    .ctx
+                    .style_semantics(owner_id)
+                    .and_then(|s| s.attr_concat.clone())
+                {
+                    Some(semantics) => semantics,
+                    None => {
+                        return CodegenError::semantic_mismatch(
+                            a.id,
+                            "style ConcatenationAttribute requires attr_concat semantics",
+                        );
+                    }
+                };
                 let mut memo_deps = TemplateMemoState::default();
                 let expr = self.build_html_concat_expr(a, &semantics, &mut memo_deps)?;
                 let has_state =
@@ -220,7 +259,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
         dir_obj: Expression<'a>,
     ) -> Expression<'a> {
-        let volatility = self.ctx.query.view.style_directives_volatility(owner_id);
+        let volatility = self.ctx.style_directives_volatility(owner_id);
         super::hoist_directives_object(self.ctx, &mut state.shared_memo, volatility, dir_obj)
     }
 }

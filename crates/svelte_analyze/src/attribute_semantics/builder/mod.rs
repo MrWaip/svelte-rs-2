@@ -1,12 +1,12 @@
 use super::AttributeSemanticsStore;
 use super::data::{
-    AttributeSemantics, BoundaryPropSemantics, ComponentAttachEmit, ComponentAttachSemantics,
-    ComponentBindKind, ComponentBindSemantics, ComponentBindTarget, ComponentPropConcatSemantics,
-    ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
-    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
-    DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics, EventEmit,
-    EventSemantics, GroupBindValue, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
-    SpecialValueKind, SpecialValueSemantics, StyleDirectivesSemantics,
+    AttributeSemantics, BoundaryPropSemantics, ClassSemantics, ComponentAttachEmit,
+    ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
+    ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
+    ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
+    DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics, ElementBindPropertyKind,
+    ElementBindSemantics, EventEmit, EventSemantics, GroupBindValue, HandlerEmit, HtmlBindKind,
+    HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind, SpecialValueSemantics, StyleSemantics,
     SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 use crate::expression_semantics::{
@@ -21,9 +21,9 @@ use crate::reactivity_semantics::data::{
 use crate::scope::ComponentScoping;
 use crate::scope::SymbolId;
 use crate::types::data::{
-    BlockerData, ContentEditableKind, DocumentBindKind, ElementFacts, ElementSizeKind,
-    EventModifier, IgnoreData, ImageNaturalSizeKind, JsAst, MediaBindKind, NamespaceKind,
-    ResizeObserverKind, SnippetData, WindowBindKind,
+    BlockerData, ClassDirectiveInfo, ContentEditableKind, DocumentBindKind, ElementFacts,
+    ElementSizeKind, EventModifier, IgnoreData, ImageNaturalSizeKind, JsAst, MediaBindKind,
+    NamespaceKind, ResizeObserverKind, SnippetData, WindowBindKind,
 };
 use crate::utils::attributes::event_attribute;
 use crate::utils::events::{is_delegatable_event, is_passive_event, strip_capture_event};
@@ -31,6 +31,7 @@ use crate::utils::expression_calls_or_awaits;
 use crate::value_evaluation::{
     ReadContext, ValueEvaluation, ValueEvaluator, symbol_read_is_static,
 };
+use compact_str::CompactString;
 use oxc_ast::ast::{
     ArrayExpressionElement, ArrowFunctionExpression, AssignmentExpression, CallExpression,
     ChainElement, Expression, Function, ObjectPropertyKind, UpdateExpression,
@@ -40,8 +41,8 @@ use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 use svelte_ast::{
     AttachTag, Attribute, BindDirective, Component, ConcatPart, Element, ExpressionAttribute,
-    FragmentId, Node, NodeId, OnDirectiveLegacy, StyleDirective, SvelteBody, SvelteBoundary,
-    SvelteDocument, SvelteWindow,
+    FragmentId, Node, NodeId, OnDirectiveLegacy, OxcNodeId, StyleDirective, SvelteBody,
+    SvelteBoundary, SvelteDocument, SvelteWindow,
 };
 use svelte_component_semantics::{ComponentSemantics, SymbolFlags};
 
@@ -508,18 +509,6 @@ fn classify_element_attrs(
     store: &mut AttributeSemanticsStore,
     groups: &mut BindingGroupTable,
 ) {
-    if attrs
-        .iter()
-        .any(|attr| matches!(attr, Attribute::StyleDirective(_)))
-    {
-        store.set(
-            owner_id,
-            AttributeSemantics::StyleDirectives(StyleDirectivesSemantics {
-                volatility: style_set_volatility(ctx, attrs),
-            }),
-        );
-    }
-
     for attr in attrs {
         match attr {
             Attribute::BindDirective(d) => {
@@ -553,6 +542,7 @@ fn classify_element_attrs(
                     if matches!(property, ElementBindPropertyKind::Group) {
                         groups.assign(d.id, derive_group_key(ctx, state, d));
                     }
+                    let reflects_as_attribute = bind_reflects_as_attribute(ctx, el, property);
                     store.set(
                         d.id,
                         AttributeSemantics::ElementBind(ElementBindSemantics {
@@ -564,6 +554,7 @@ fn classify_element_attrs(
                             group_value,
                             group_id: None,
                             needs_binding_validation,
+                            reflects_as_attribute,
                         }),
                     );
                 }
@@ -634,7 +625,7 @@ fn classify_element_attrs(
             {
                 store.set(
                     a.id,
-                    AttributeSemantics::CannotBeStatic(default_attr_kind(ctx, el, &a.name)),
+                    AttributeSemantics::CannotBeStatic(default_attr_semantics(ctx, el, &a.name)),
                 );
             }
             Attribute::StringAttribute(a)
@@ -642,12 +633,212 @@ fn classify_element_attrs(
             {
                 store.set(
                     a.id,
-                    AttributeSemantics::CannotBeStatic(default_attr_kind(ctx, el, &a.name)),
+                    AttributeSemantics::CannotBeStatic(default_attr_semantics(ctx, el, &a.name)),
                 );
             }
             _ => {}
         }
     }
+
+    let (class, style) = derive_element_attributes(ctx, attrs);
+    if let Some(class) = class {
+        let members: SmallVec<[NodeId; 4]> = class_member_ids(&class).collect();
+        let primary = class.attr.or(class.static_attr);
+        set_primary_rest_skip(
+            store,
+            attrs,
+            &members,
+            primary,
+            AttributeSemantics::Class(class),
+        );
+    }
+    if let Some(style) = style {
+        let members: SmallVec<[NodeId; 4]> = style_member_ids(&style).collect();
+        let primary = style.attr.or(style.static_attr);
+        set_primary_rest_skip(
+            store,
+            attrs,
+            &members,
+            primary,
+            AttributeSemantics::Style(style),
+        );
+    }
+}
+
+fn set_primary_rest_skip(
+    store: &mut AttributeSemanticsStore,
+    attrs: &[Attribute],
+    member_ids: &[NodeId],
+    primary: Option<NodeId>,
+    data: AttributeSemantics,
+) {
+    let primary = primary.or_else(|| {
+        attrs
+            .iter()
+            .map(Attribute::id)
+            .find(|id| member_ids.contains(id))
+    });
+    for attr in attrs {
+        if !member_ids.contains(&attr.id()) {
+            continue;
+        }
+        if Some(attr.id()) == primary {
+            store.set(attr.id(), data.clone());
+        } else {
+            store.set(attr.id(), AttributeSemantics::Skip);
+        }
+    }
+}
+
+fn class_member_ids(class: &ClassSemantics) -> impl Iterator<Item = NodeId> + '_ {
+    class
+        .attr
+        .into_iter()
+        .chain(class.static_attr)
+        .chain(class.directives.iter().map(|directive| directive.id))
+}
+
+fn style_member_ids(style: &StyleSemantics) -> impl Iterator<Item = NodeId> + '_ {
+    style
+        .attr
+        .into_iter()
+        .chain(style.static_attr)
+        .chain(style.directives.iter().map(|directive| directive.id))
+}
+
+fn derive_element_attributes(
+    ctx: &Ctx<'_, '_>,
+    attrs: &[Attribute],
+) -> (Option<ClassSemantics>, Option<StyleSemantics>) {
+    let has_spread = attrs
+        .iter()
+        .any(|attr| matches!(attr, Attribute::SpreadAttribute(_)));
+    let source = ctx.component.source.as_str();
+
+    let mut class_attr: Option<NodeId> = None;
+    let mut class_static_attr: Option<NodeId> = None;
+    let mut class_attr_concat: Option<HtmlConcatSemantics> = None;
+    let mut class_static: Option<CompactString> = None;
+    let mut class_needs_clsx = false;
+    let mut class_attr_volatility = Volatility::Static;
+    let mut class_directives: Vec<ClassDirectiveInfo> = Vec::new();
+    let mut class_directives_volatility = Volatility::Static;
+
+    let mut style_attr: Option<NodeId> = None;
+    let mut style_static_attr: Option<NodeId> = None;
+    let mut style_attr_concat: Option<HtmlConcatSemantics> = None;
+    let mut style_static: Option<CompactString> = None;
+    let mut style_directives: Vec<StyleDirective> = Vec::new();
+    let mut style_directives_volatility = Volatility::Static;
+
+    for attr in attrs {
+        match attr {
+            Attribute::StringAttribute(sa) if sa.name == "class" => {
+                class_static_attr = Some(sa.id);
+                class_static = Some(sa.raw_value(source).into());
+            }
+            Attribute::StringAttribute(sa) if sa.name == "style" => {
+                style_static_attr = Some(sa.id);
+                style_static = Some(sa.raw_value(source).into());
+            }
+            Attribute::ExpressionAttribute(ea) if ea.name == "class" => {
+                class_attr = Some(ea.id);
+                class_attr_volatility = attr_expression_volatility(ctx, ea.id);
+                class_needs_clsx = class_expression_needs_clsx(ctx, ea.expression.id());
+            }
+            Attribute::ExpressionAttribute(ea) if ea.name == "style" => {
+                style_attr = Some(ea.id);
+            }
+            Attribute::ConcatenationAttribute(ca) if ca.name == "class" => {
+                class_attr = Some(ca.id);
+                class_attr_volatility = attr_expression_volatility(ctx, ca.id);
+                class_attr_concat = Some(derive_html_concat_semantics(ctx, ca));
+            }
+            Attribute::ConcatenationAttribute(ca) if ca.name == "style" => {
+                style_attr = Some(ca.id);
+                style_attr_concat = Some(derive_html_concat_semantics(ctx, ca));
+            }
+            Attribute::ClassDirective(cd) => {
+                class_directives.push(ClassDirectiveInfo {
+                    id: cd.id,
+                    name: cd.name.clone(),
+                    has_expression: true,
+                    expr_id: cd.expression.id(),
+                });
+                class_directives_volatility =
+                    class_directives_volatility.max(attr_expression_volatility(ctx, cd.id));
+            }
+            Attribute::StyleDirective(sd) => {
+                style_directives_volatility =
+                    style_directives_volatility.max(style_directive_volatility(ctx, sd));
+                style_directives.push(sd.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let has_class = class_attr.is_some() || class_static.is_some() || !class_directives.is_empty();
+    let has_style = style_attr.is_some() || style_static.is_some() || !style_directives.is_empty();
+
+    let class = has_class.then(|| {
+        let needs_base = !has_spread
+            && !class_directives.is_empty()
+            && class_attr.is_none()
+            && class_static.is_none();
+        ClassSemantics {
+            attr: class_attr,
+            static_attr: class_static_attr,
+            attr_concat: class_attr_concat,
+            static_base: class_static,
+            needs_clsx: class_needs_clsx,
+            needs_base,
+            state_volatility: class_attr_volatility.max(class_directives_volatility),
+            directives_volatility: class_directives_volatility,
+            directives: class_directives,
+        }
+    });
+
+    let style = has_style.then(|| {
+        let needs_base = !has_spread
+            && !style_directives.is_empty()
+            && style_attr.is_none()
+            && style_static.is_none();
+        StyleSemantics {
+            attr: style_attr,
+            static_attr: style_static_attr,
+            attr_concat: style_attr_concat,
+            static_base: style_static,
+            needs_base,
+            state_volatility: style_set_volatility(ctx, attrs),
+            directives_volatility: style_directives_volatility,
+            directives: style_directives,
+        }
+    });
+
+    (class, style)
+}
+
+fn attr_expression_volatility(ctx: &Ctx<'_, '_>, id: NodeId) -> Volatility {
+    ctx.expression_data(id)
+        .map(|data| data.volatility)
+        .unwrap_or(Volatility::Static)
+}
+
+fn class_expression_needs_clsx(ctx: &Ctx<'_, '_>, expr_id: OxcNodeId) -> bool {
+    let Some(expr) = ctx.parsed.expr(expr_id) else {
+        return false;
+    };
+    !matches!(
+        expr.get_inner_expression(),
+        Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::BigIntLiteral(_)
+            | Expression::RegExpLiteral(_)
+            | Expression::TemplateLiteral(_)
+            | Expression::BinaryExpression(_)
+    )
 }
 
 fn style_set_volatility(ctx: &Ctx<'_, '_>, attrs: &[Attribute]) -> Volatility {
@@ -777,6 +968,44 @@ fn each_collection_symbols(ctx: &Ctx<'_, '_>, each_id: NodeId) -> SmallVec<[Symb
         return SmallVec::new();
     };
     data.references.iter().copied().collect()
+}
+
+fn bind_reflects_as_attribute(
+    ctx: &Ctx<'_, '_>,
+    el: Option<&Element>,
+    property: ElementBindPropertyKind,
+) -> bool {
+    match property {
+        ElementBindPropertyKind::Checked => true,
+        ElementBindPropertyKind::Value => {
+            let Some(el) = el else {
+                return true;
+            };
+            !(el.name == "select" || el.name == "textarea" || is_file_input(ctx, el))
+        }
+        _ => false,
+    }
+}
+
+fn is_file_input(ctx: &Ctx<'_, '_>, el: &Element) -> bool {
+    if el.name != "input" {
+        return false;
+    }
+    let source = ctx.component.source.as_str();
+    el.attributes.iter().any(|attr| {
+        matches!(attr, Attribute::StringAttribute(a) if a.name == "type" && a.value(source) == "file")
+    })
+}
+
+fn default_attr_semantics(
+    ctx: &Ctx<'_, '_>,
+    el: Option<&Element>,
+    name: &str,
+) -> DefaultAttrSemantics {
+    DefaultAttrSemantics {
+        kind: default_attr_kind(ctx, el, name),
+        reflects_in_html: !matches!(name, "defaultValue" | "defaultChecked"),
+    }
 }
 
 fn default_attr_kind(ctx: &Ctx<'_, '_>, el: Option<&Element>, name: &str) -> DefaultAttrKind {

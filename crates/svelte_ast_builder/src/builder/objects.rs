@@ -2,6 +2,22 @@ use super::*;
 use oxc_syntax::identifier::is_identifier_name;
 
 impl<'a> Builder<'a> {
+    pub fn string_key_prop(&self, key: &str, value: Expression<'a>) -> ObjProp<'a> {
+        let key_node = ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(key)));
+        let obj_prop = self.ast.object_property(
+            SPAN,
+            ast::PropertyKind::Init,
+            key_node,
+            value,
+            false,
+            false,
+            false,
+        );
+        ObjProp::Raw(ast::ObjectPropertyKind::ObjectProperty(
+            self.alloc(obj_prop),
+        ))
+    }
+
     pub fn object_expr(&self, props: impl IntoIterator<Item = ObjProp<'a>>) -> Expression<'a> {
         let properties = props.into_iter().map(|p| self.obj_prop_to_ast(p));
         Expression::ObjectExpression(

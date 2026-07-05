@@ -26,6 +26,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let (semantics, special) = match self.ctx.query.analysis.attributes.get(attr.id) {
             AttributeSemantics::HtmlConcat(s) => (s.clone(), None),
+            AttributeSemantics::Style(s) => match &s.attr_concat {
+                Some(concat) => (concat.clone(), None),
+                None => {
+                    return CodegenError::semantic_mismatch(
+                        attr.id,
+                        "style ConcatenationAttribute requires attr_concat semantics",
+                    );
+                }
+            },
             AttributeSemantics::SpecialValueAttr(s) => {
                 let Some(concat) = s.concat.as_ref() else {
                     return CodegenError::semantic_mismatch(

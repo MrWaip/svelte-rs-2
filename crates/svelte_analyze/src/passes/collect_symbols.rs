@@ -10,13 +10,11 @@ use crate::walker::{TemplateVisitor, VisitContext};
 pub(crate) fn make_visitor(_scoping: ScopingBuilt) -> CollectSymbolsVisitor {
     CollectSymbolsVisitor {
         pending_shorthand: None,
-        pending_clsx: false,
     }
 }
 
 pub(crate) struct CollectSymbolsVisitor {
     pending_shorthand: Option<(NodeId, String)>,
-    pending_clsx: bool,
 }
 
 impl TemplateVisitor for CollectSymbolsVisitor {
@@ -33,13 +31,12 @@ impl TemplateVisitor for CollectSymbolsVisitor {
             ctx.data.output.needs_sanitized_legacy_slots = true;
         }
         classify_shorthand(node_id, expr, &mut self.pending_shorthand, ctx.data);
-        classify_clsx(node_id, expr, &mut self.pending_clsx, ctx.data);
     }
 
     fn visit_render_tag(&mut self, _tag: &RenderTag, _ctx: &mut VisitContext<'_, '_>) {}
 
     fn visit_attribute(&mut self, attr: &Attribute, _ctx: &mut VisitContext<'_, '_>) {
-        set_pending_flags(attr, &mut self.pending_shorthand, &mut self.pending_clsx);
+        set_pending_flags(attr, &mut self.pending_shorthand);
     }
 }
 
@@ -71,42 +68,10 @@ fn classify_shorthand(
     }
 }
 
-fn classify_clsx(
-    node_id: NodeId,
-    expr: &Expression<'_>,
-    pending: &mut bool,
-    data: &mut AnalysisData,
-) {
-    if !*pending {
-        return;
-    }
-    *pending = false;
-    if !matches!(
-        expr.get_inner_expression(),
-        Expression::StringLiteral(_)
-            | Expression::NumericLiteral(_)
-            | Expression::BooleanLiteral(_)
-            | Expression::NullLiteral(_)
-            | Expression::BigIntLiteral(_)
-            | Expression::RegExpLiteral(_)
-            | Expression::TemplateLiteral(_)
-            | Expression::BinaryExpression(_)
-    ) {
-        data.elements.flags.needs_clsx.insert(node_id);
-    }
-}
-
-fn set_pending_flags(
-    attr: &Attribute,
-    pending_shorthand: &mut Option<(NodeId, String)>,
-    pending_clsx: &mut bool,
-) {
+fn set_pending_flags(attr: &Attribute, pending_shorthand: &mut Option<(NodeId, String)>) {
     match attr {
         Attribute::ExpressionAttribute(ea) => {
             *pending_shorthand = Some((ea.id, ea.name.clone()));
-            if ea.name == "class" {
-                *pending_clsx = true;
-            }
         }
         Attribute::ClassDirective(cd) => {
             *pending_shorthand = Some((cd.id, cd.name.clone()));

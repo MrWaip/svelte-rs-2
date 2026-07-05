@@ -4,9 +4,7 @@ use crate::attribute_semantics::{
     data::{AttributeSemantics, ComponentPropMemo, ComponentPropSemantics},
 };
 use crate::block_semantics::{BlockSemantics, BlockSemanticsStore, EachIndexKind, EachItemKind};
-use crate::expression_semantics::{
-    ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, Volatility,
-};
+use crate::expression_semantics::{ExpressionData, ExpressionSemantics, ExpressionSemanticsStore};
 use crate::passes::fragment_topology::fragment_items;
 use crate::types::data::template_topology::Ancestors;
 use crate::types::data::{ClassFieldSemantics, DeclaratorSemantics};
@@ -222,25 +220,6 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn blocker_data(&self) -> &BlockerData {
         &self.script.blocker_data
-    }
-    pub fn class_state_volatility(&self, element_id: NodeId) -> Volatility {
-        let mut volatility = self
-            .elements
-            .flags
-            .class_attr_id(element_id)
-            .and_then(|attr_id| self.expression_data(attr_id))
-            .map(|d| d.volatility)
-            .unwrap_or(Volatility::Static);
-        if let Some(directives) = self.elements.flags.class_directive_info(element_id) {
-            for directive in directives {
-                let directive_volatility = self
-                    .expression_data(directive.id)
-                    .map(|d| d.volatility)
-                    .unwrap_or(Volatility::Static);
-                volatility = volatility.max(directive_volatility);
-            }
-        }
-        volatility
     }
     pub fn component_name(&self) -> &str {
         &self.output.component_name
@@ -491,6 +470,9 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn is_custom_element(&self, id: NodeId) -> bool {
         self.elements.facts.is_custom_element(id)
+    }
+    pub fn is_input(&self, id: NodeId) -> bool {
+        self.elements.facts.is_input(id)
     }
     pub fn parent(&self, id: NodeId) -> Option<ParentRef> {
         self.template.template_topology.parent(id)

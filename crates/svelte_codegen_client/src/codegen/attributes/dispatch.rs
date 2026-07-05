@@ -122,13 +122,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let has_class_directives = self.ctx.has_class_directives(owner_id);
         let has_class_attribute = self.ctx.has_class_attribute(owner_id);
-        let has_style_directives = self.ctx.has_style_directives(owner_id);
         let is_scoped = self.ctx.is_css_scoped(owner_id);
         let css_hash = self.ctx.css_hash().to_string();
 
-        let mut emitted_class = false;
-        let mut emitted_style_directives = false;
-        let mut wrote_class_attr = false;
         let mut deferred_bind_group_value: Option<&ExpressionAttribute> = None;
 
         let saved_after_update = mem::take(&mut state.after_update);
@@ -184,25 +180,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             "HtmlConcat requires ConcatenationAttribute",
                         );
                     };
-                    if a.name == "class" && (has_class_directives || has_class_attribute) {
-                        if !emitted_class {
-                            self.emit_class_attribute_and_directives(
-                                state, owner_id, owner_var, is_html,
-                            )?;
-                            emitted_class = true;
-                        }
-                        continue;
-                    }
-                    if a.name == "style" && has_style_directives {
-                        self.emit_style_directives_aggregate(
-                            state,
-                            owner_id,
-                            owner_var,
-                            Some(a.id),
-                        )?;
-                        emitted_style_directives = true;
-                        continue;
-                    }
                     self.emit_attr_concatenation(state, owner_id, owner_tag, owner_var, a)?;
                 }
                 AttributeSemantics::SpecialValueAttr(s) => match attr {
@@ -229,7 +206,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         state.template.set_attribute(&a.name, Some(val));
                     }
                 }
-                AttributeSemantics::CannotBeStatic(kind) => {
+                AttributeSemantics::CannotBeStatic(sem) => {
+                    let kind = &sem.kind;
                     let property = attr.name().unwrap_or_default().to_string();
                     let value_expr = match attr {
                         Attribute::BooleanAttribute(_) => self.ctx.b.bool_expr(true),
@@ -292,30 +270,50 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             .call_stmt("$.autofocus", [Arg::Ident(owner_var), Arg::Expr(value)]),
                     );
                 }
-                AttributeSemantics::StyleDirectives(_) => {}
+                AttributeSemantics::Class(_) => {
+                    if !self.ctx.class_is_directives_only(owner_id) {
+                        if has_class_directives || has_class_attribute {
+                            self.emit_class_attribute_and_directives(
+                                state, owner_id, owner_var, is_html,
+                            )?;
+                        } else if let Some(base) =
+                            self.ctx.static_class(owner_id).map(str::to_string)
+                        {
+                            if self.ctx.query.view.is_custom_element(owner_id) {
+                                self.emit_custom_element_static_class(
+                                    state, owner_id, owner_var, &base, is_html,
+                                );
+                            } else {
+                                let full = if is_scoped && !css_hash.is_empty() {
+                                    if base.is_empty() {
+                                        css_hash.clone()
+                                    } else {
+                                        format!("{base} {css_hash}")
+                                    }
+                                } else {
+                                    base
+                                };
+                                if !full.is_empty() {
+                                    state.template.set_attribute("class", Some(full));
+                                }
+                            }
+                        }
+                    }
+                }
+                AttributeSemantics::Style(_) => {
+                    if !self.ctx.style_is_directives_only(owner_id) {
+                        self.emit_style_directives_aggregate(
+                            state, owner_id, owner_tag, owner_var, None,
+                        )?;
+                    }
+                }
+                AttributeSemantics::Skip => {}
                 AttributeSemantics::RuntimeBehavior => {}
                 AttributeSemantics::NonSpecial
                     if self.ctx.query.view.is_custom_element(owner_id) =>
                 {
                     match attr {
                         Attribute::StringAttribute(a) => {
-                            if a.name == "class" {
-                                let val = a.value(&self.ctx.query.component.source).to_string();
-                                self.emit_custom_element_static_class(
-                                    state, owner_id, owner_var, &val, is_html,
-                                );
-                                emitted_class = true;
-                                continue;
-                            }
-                            if a.name == "style" {
-                                let val = a.value(&self.ctx.query.component.source).to_string();
-                                let style_call = self.ctx.b.call_expr(
-                                    "$.set_style",
-                                    [Arg::Ident(owner_var), Arg::Str(val)],
-                                );
-                                state.init.push(self.ctx.b.expr_stmt(style_call));
-                                continue;
-                            }
                             let val = a.value(&self.ctx.query.component.source).to_string();
                             let value = self.ctx.b.str_expr(&val);
                             self.emit_custom_element_data(state, owner_var, &a.name, value, false);
@@ -325,31 +323,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             self.emit_custom_element_data(state, owner_var, &a.name, value, false);
                         }
                         Attribute::ExpressionAttribute(a) => {
-                            if a.name == "class" {
-                                if !emitted_class {
-                                    self.emit_class_attribute_and_directives(
-                                        state, owner_id, owner_var, is_html,
-                                    )?;
-                                    emitted_class = true;
-                                }
-                                continue;
-                            }
-                            if a.name == "style" {
-                                if has_style_directives {
-                                    self.emit_style_directives_aggregate(
-                                        state,
-                                        owner_id,
-                                        owner_var,
-                                        Some(a.id),
-                                    )?;
-                                    emitted_style_directives = true;
-                                } else {
-                                    self.emit_attr_expression(
-                                        state, owner_id, owner_tag, owner_var, a,
-                                    )?;
-                                }
-                                continue;
-                            }
                             let attr_id = a.id;
                             let value = self.take_attr_expr(attr_id, &a.expression)?;
                             let reactive =
@@ -392,29 +365,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 AttributeSemantics::NonSpecial => match attr {
                     Attribute::StringAttribute(a) => {
-                        if a.name == "class" {
-                            if has_class_directives || has_class_attribute {
-                                if !emitted_class {
-                                    self.emit_class_attribute_and_directives(
-                                        state, owner_id, owner_var, is_html,
-                                    )?;
-                                    emitted_class = true;
-                                }
-                                continue;
-                            }
-                            let val = a.value(&self.ctx.query.component.source);
-                            let full = if is_scoped {
-                                format!("{val} {css_hash}")
-                            } else {
-                                val.to_string()
-                            };
-                            if full.is_empty() {
-                                continue;
-                            }
-                            state.template.set_attribute("class", Some(full));
-                            wrote_class_attr = true;
-                            continue;
-                        }
                         if a.name == "value"
                             && (self.ctx.has_bind_group(owner_id) || owner_tag == "option")
                         {
@@ -426,11 +376,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             }
                             continue;
                         }
-                        if a.name == "style" && has_style_directives {
-                            self.emit_style_directives_aggregate(state, owner_id, owner_var, None)?;
-                            emitted_style_directives = true;
-                            continue;
-                        }
                         let val = a.value(&self.ctx.query.component.source);
                         state.template.set_attribute(&a.name, Some(val.to_string()));
                     }
@@ -438,25 +383,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         state.template.set_attribute(&a.name, Some(String::new()));
                     }
                     Attribute::ExpressionAttribute(a) => {
-                        if a.name == "class" && (has_class_directives || has_class_attribute) {
-                            if !emitted_class {
-                                self.emit_class_attribute_and_directives(
-                                    state, owner_id, owner_var, is_html,
-                                )?;
-                                emitted_class = true;
-                            }
-                            continue;
-                        }
-                        if a.name == "style" && has_style_directives {
-                            self.emit_style_directives_aggregate(
-                                state,
-                                owner_id,
-                                owner_var,
-                                Some(a.id),
-                            )?;
-                            emitted_style_directives = true;
-                            continue;
-                        }
                         if a.name == "value"
                             && owner_tag == "input"
                             && self.ctx.has_bind_group(owner_id)
@@ -493,7 +419,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        if !emitted_class && (has_class_directives || has_class_attribute) {
+        if self.ctx.class_is_directives_only(owner_id) {
             self.emit_class_attribute_and_directives(state, owner_id, owner_var, is_html)?;
         }
 
@@ -501,12 +427,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
         }
 
-        if is_scoped
-            && !emitted_class
-            && !wrote_class_attr
-            && !has_class_directives
-            && !has_class_attribute
-        {
+        if is_scoped && self.ctx.class_semantics(owner_id).is_none() {
             if self.ctx.query.view.is_custom_element(owner_id) {
                 if !css_hash.is_empty() {
                     let call = self.ctx.b.call_expr(
@@ -524,8 +445,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        if !emitted_style_directives {
-            self.emit_style_directives_aggregate(state, owner_id, owner_var, None)?;
+        if self.ctx.style_is_directives_only(owner_id) {
+            self.emit_style_directives_aggregate(state, owner_id, owner_tag, owner_var, None)?;
         }
 
         let scoped = mem::replace(&mut state.after_update, saved_after_update);

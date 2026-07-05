@@ -4,7 +4,7 @@ use crate::types::data::{
     BindTargetSemantics, BindingSemantics, ConstBindingSemantics, ParentKind,
 };
 use crate::{
-    AttributeSemantics, BlockSemantics, EachIndexStrategy, EachItemStrategy,
+    AttributeSemantics, BlockSemantics, ClassSemantics, EachIndexStrategy, EachItemStrategy,
     OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
     SnippetParamStrategy,
 };
@@ -1455,6 +1455,22 @@ fn assert_nth_element_needs_input_defaults(
     );
 }
 
+fn class_semantics_of<'a>(
+    data: &'a AnalysisData,
+    component: &Component,
+    el_id: NodeId,
+) -> Option<&'a ClassSemantics> {
+    component
+        .store
+        .get(el_id)
+        .attributes()
+        .iter()
+        .find_map(|attr| match data.attributes.get(attr.id()) {
+            AttributeSemantics::Class(c) => Some(c),
+            _ => None,
+        })
+}
+
 fn assert_class_state_volatile(
     data: &AnalysisData,
     component: &Component,
@@ -1464,7 +1480,10 @@ fn assert_class_state_volatile(
     use crate::expression_semantics::Volatility;
     let el = find_element(component.root, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
-    let volatile = match data.class_state_volatility(el.id) {
+    let volatility = class_semantics_of(data, component, el.id)
+        .map(|c| c.state_volatility)
+        .unwrap_or(Volatility::Static);
+    let volatile = match volatility {
         Volatility::Static => false,
         Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => true,
     };
@@ -1736,7 +1755,7 @@ fn concatenated_class_attr_is_registered_for_set_class() {
         .expect("no class attr on <div>");
 
     assert_eq!(
-        data.elements.flags.class_attr_id(el.id),
+        class_semantics_of(&data, &component, el.id).and_then(|c| c.attr),
         Some(class_attr_id)
     );
 }

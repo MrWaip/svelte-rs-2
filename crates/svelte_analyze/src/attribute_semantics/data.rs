@@ -1,12 +1,12 @@
 use crate::expression_semantics::{LegacyWrap, Volatility};
 use crate::scope::SymbolId;
 use crate::types::data::{
-    ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier, ImageNaturalSizeKind,
-    MediaBindKind, ResizeObserverKind, WindowBindKind,
+    ClassDirectiveInfo, ContentEditableKind, DocumentBindKind, ElementSizeKind, EventModifier,
+    ImageNaturalSizeKind, MediaBindKind, ResizeObserverKind, WindowBindKind,
 };
 use compact_str::CompactString;
 use smallvec::SmallVec;
-use svelte_ast::{NodeId, OxcNodeId};
+use svelte_ast::{NodeId, OxcNodeId, StyleDirective};
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum AttributeSemantics {
@@ -25,10 +25,12 @@ pub enum AttributeSemantics {
     ComponentAttach(ComponentAttachSemantics),
     BoundaryProp(BoundaryPropSemantics),
     HtmlConcat(HtmlConcatSemantics),
-    CannotBeStatic(DefaultAttrKind),
+    CannotBeStatic(DefaultAttrSemantics),
     StaticAttr,
     SpecialValueAttr(SpecialValueSemantics),
-    StyleDirectives(StyleDirectivesSemantics),
+    Class(ClassSemantics),
+    Style(StyleSemantics),
+    Skip,
     Autofocus,
     RuntimeBehavior,
 }
@@ -38,7 +40,14 @@ impl AttributeSemantics {
         match self {
             AttributeSemantics::NonSpecial
             | AttributeSemantics::StaticAttr
+            | AttributeSemantics::Skip
             | AttributeSemantics::RuntimeBehavior => false,
+            AttributeSemantics::Class(class) => {
+                class.attr.is_some() || !class.directives.is_empty()
+            }
+            AttributeSemantics::Style(style) => {
+                style.attr.is_some() || !style.directives.is_empty()
+            }
             AttributeSemantics::ElementBind(_)
             | AttributeSemantics::WindowBind(_)
             | AttributeSemantics::DocumentBind(_)
@@ -52,21 +61,46 @@ impl AttributeSemantics {
             | AttributeSemantics::HtmlConcat(_)
             | AttributeSemantics::CannotBeStatic(_)
             | AttributeSemantics::SpecialValueAttr(_)
-            | AttributeSemantics::StyleDirectives(_)
             | AttributeSemantics::Autofocus => true,
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClassSemantics {
+    pub attr: Option<NodeId>,
+    pub static_attr: Option<NodeId>,
+    pub attr_concat: Option<HtmlConcatSemantics>,
+    pub static_base: Option<CompactString>,
+    pub needs_clsx: bool,
+    pub needs_base: bool,
+    pub directives: Vec<ClassDirectiveInfo>,
+    pub directives_volatility: Volatility,
+    pub state_volatility: Volatility,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StyleSemantics {
+    pub attr: Option<NodeId>,
+    pub static_attr: Option<NodeId>,
+    pub attr_concat: Option<HtmlConcatSemantics>,
+    pub static_base: Option<CompactString>,
+    pub needs_base: bool,
+    pub directives: Vec<StyleDirective>,
+    pub directives_volatility: Volatility,
+    pub state_volatility: Volatility,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DefaultAttrSemantics {
+    pub kind: DefaultAttrKind,
+    pub reflects_in_html: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DefaultAttrKind {
     PlainProperty,
     ReconcileWithValue,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct StyleDirectivesSemantics {
-    pub volatility: Volatility,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -267,6 +301,7 @@ pub struct ElementBindSemantics {
     pub group_value: Option<GroupBindValue>,
     pub group_id: Option<u32>,
     pub needs_binding_validation: bool,
+    pub reflects_as_attribute: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
