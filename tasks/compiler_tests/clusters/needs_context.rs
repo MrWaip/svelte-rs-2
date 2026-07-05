@@ -17,7 +17,8 @@ compiler_case!(
 );
 compiler_case!(
     legacy_custom_element_over_emit,
-    "needs_context/legacy_custom_element_over_emit"
+    "needs_context/legacy_custom_element_over_emit",
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(

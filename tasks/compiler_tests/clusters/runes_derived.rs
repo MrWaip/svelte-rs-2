@@ -11,7 +11,8 @@ compiler_case!(
 );
 compiler_case!(
     declaration_nested_effect_root_sync,
-    "runes/derived/declaration/nested_effect_root_sync"
+    "runes/derived/declaration/nested_effect_root_sync",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_nested_function_derived_by,

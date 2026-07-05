@@ -111,7 +111,8 @@ compiler_case!(
 );
 compiler_case!(
     proxy_flag_guard_raw_bind_this_regular_element,
-    "runes/state/proxy_flag/guard_raw_bind_this_regular_element"
+    "runes/state/proxy_flag/guard_raw_bind_this_regular_element",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     proxy_flag_red_raw_component_bind_this,

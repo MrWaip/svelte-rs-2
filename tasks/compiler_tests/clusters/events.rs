@@ -87,7 +87,8 @@ compiler_case!(
 );
 compiler_case!(
     spread_order_runes_onclick_no_spread,
-    "events/spread_order_runes_onclick_no_spread"
+    "events/spread_order_runes_onclick_no_spread",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     spread_order_use_directive,

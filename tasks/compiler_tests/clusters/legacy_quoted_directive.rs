@@ -20,8 +20,16 @@ compiler_case!(
     "legacy/quoted_directive/use_quoted_single",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(bind_quoted, "legacy/quoted_directive/bind_quoted");
-compiler_case!(class_quoted, "legacy/quoted_directive/class_quoted");
+compiler_case!(
+    bind_quoted,
+    "legacy/quoted_directive/bind_quoted",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    class_quoted,
+    "legacy/quoted_directive/class_quoted",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     transition_quoted,
     "legacy/quoted_directive/transition_quoted"

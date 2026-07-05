@@ -1,7 +1,15 @@
 use super::*;
 
-compiler_case!(guard_runes_state, "bind_this/guard_runes_state");
-compiler_case!(guard_plain_local, "bind_this/guard_plain_local");
+compiler_case!(
+    guard_runes_state,
+    "bind_this/guard_runes_state",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    guard_plain_local,
+    "bind_this/guard_plain_local",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(prop_ident, "bind_this/prop_ident");
 compiler_case!(each_member, "bind_this/each_member");
 compiler_case!(
@@ -34,21 +42,30 @@ compiler_case!(
     document_fullscreen_prop,
     "bind_this/document_fullscreen_prop"
 );
-compiler_case!(guard_window_size_rune, "bind_this/guard_window_size_rune");
+compiler_case!(
+    guard_window_size_rune,
+    "bind_this/guard_window_size_rune",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     guard_window_size_legacy_reactive,
     "bind_this/guard_window_size_legacy_reactive"
 );
 compiler_case!(
     guard_window_size_member,
-    "bind_this/guard_window_size_member"
+    "bind_this/guard_window_size_member",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_each_collection_untrack,
     "bind_this/legacy_each_collection_untrack"
 );
 
-compiler_case!(seq_runes_state, "bind_this/seq_runes_state");
+compiler_case!(
+    seq_runes_state,
+    "bind_this/seq_runes_state",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     seq_component_runes_state,
     "bind_this/seq_component_runes_state"
@@ -60,5 +77,6 @@ compiler_case!(
 );
 compiler_case!(
     guard_value_seq_non_this,
-    "bind_this/guard_value_seq_non_this"
+    "bind_this/guard_value_seq_non_this",
+    [prod, dev, ssr, ssr_dev]
 );
