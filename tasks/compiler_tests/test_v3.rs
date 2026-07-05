@@ -8,7 +8,7 @@ use compiler_tests::compiler_case;
 use compiler_tests::sourcemap_invariants::assert_sourcemap_invariants;
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use svelte_compiler::{compile, compile_module};
+use svelte_compiler::{GenerateMode, compile, compile_module};
 use test_support::strip_reference_only_css_markers;
 
 fn normalize_css(s: &str) -> String {
@@ -69,6 +69,46 @@ fn assert_compiler_dev(case: &str) {
         .write_all(dev_js.as_bytes())
         .expect("test invariant");
     assert_eq!(dev_js, expected_dev_js, "[{case}] dev JS mismatch");
+}
+
+fn assert_compiler_ssr(case: &str) {
+    let dir = v3_case_dir(case);
+    let (input, opts) = load_v3_case(case);
+    let mut server_opts = opts.clone();
+    server_opts.generate = GenerateMode::Server;
+    let server_js = compile(&input, &server_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] server compile produced no JS"))
+        .code;
+    let expected_server_js =
+        read_to_string(dir.join("case-svelte.server.js")).expect("test invariant");
+    File::create(dir.join("case-rust.server.js"))
+        .expect("test invariant")
+        .write_all(server_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(server_js, expected_server_js, "[{case}] server JS mismatch");
+}
+
+fn assert_compiler_ssr_dev(case: &str) {
+    let dir = v3_case_dir(case);
+    let (input, opts) = load_v3_case(case);
+    let mut server_opts = opts.clone();
+    server_opts.generate = GenerateMode::Server;
+    server_opts.dev = true;
+    let server_js = compile(&input, &server_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] server dev compile produced no JS"))
+        .code;
+    let expected_server_js =
+        read_to_string(dir.join("case-svelte.server.dev.js")).expect("test invariant");
+    File::create(dir.join("case-rust.server.dev.js"))
+        .expect("test invariant")
+        .write_all(server_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(
+        server_js, expected_server_js,
+        "[{case}] server dev JS mismatch"
+    );
 }
 
 compiler_case!(legacy_const_each_bind_member_chain);

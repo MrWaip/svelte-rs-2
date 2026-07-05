@@ -1,0 +1,8 @@
+import * as $ from "svelte/internal/server";
+import { fade } from "svelte/transition";
+export default function App($$renderer) {
+	let tag = "div";
+	$.element($$renderer, tag, void 0, () => {
+		$$renderer.push(`x`);
+	});
+}

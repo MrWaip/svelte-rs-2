@@ -1,0 +1,32 @@
+import * as $ from "svelte/internal/server";
+export default function App($$renderer, $$props) {
+	$$renderer.component(($$renderer) => {
+		class Box {
+			#total;
+			get total() {
+				return this.#total();
+			}
+			set total($$value) {
+				return this.#total($$value);
+			}
+			width = 2;
+			height = 3;
+			#area = $.derived(() => this.width * this.height);
+			get area() {
+				return this.#area();
+			}
+			set area($$value) {
+				return this.#area($$value);
+			}
+			#double = $.derived(() => this.area * 2);
+			constructor() {
+				this.#total = $.derived(() => this.area + 1);
+			}
+			get double() {
+				return this.#double();
+			}
+		}
+		let box = new Box();
+		$$renderer.push(`<p>${$.escape(box.area)},${$.escape(box.double)},${$.escape(box.total)}</p>`);
+	});
+}

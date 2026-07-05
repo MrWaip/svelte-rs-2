@@ -120,6 +120,6 @@ build-native:
     cargo build -p napi_compiler --release
     node packages/svelte-rs2/scripts/stage-native-dev.mjs
 
-# Build the native addon, install the workspace from root, and run the sweep against a pathname (extra flags: --dry-run --dev --print-diffs)
+# Build the native addon, install the workspace from root, and run the sweep against a pathname (extra flags: --dry-run --dev --ssr --print-diffs)
 sweep-run pathname *flags: build-native
     node packages/svelte-rs2-sweep/cli.mjs {{pathname}} {{flags}}

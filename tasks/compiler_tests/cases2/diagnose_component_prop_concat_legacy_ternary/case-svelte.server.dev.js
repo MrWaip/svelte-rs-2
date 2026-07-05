@@ -1,0 +1,14 @@
+App[$.FILENAME] = "(unknown)";
+import * as $ from "svelte/internal/server";
+import Comp from "./Comp.svelte";
+function App($$renderer, $$props) {
+	$$renderer.component(($$renderer) => {
+		let toggle = $.fallback($$props["toggle"], false);
+		Comp($$renderer, { description: `prefix ${toggle ? "A" : "B"}` });
+		$.bind_props($$props, { toggle });
+	}, App);
+}
+App.render = function() {
+	throw new Error("Component.render(...) is no longer valid in Svelte 5. See https://svelte.dev/docs/svelte/v5-migration-guide#Components-are-no-longer-classes for more information");
+};
+export default App;

@@ -1,6 +1,6 @@
 use compiler_tests::harness::{
     assert_compiler_dev, assert_compiler_module_dev, assert_compiler_module_prod,
-    assert_compiler_prod,
+    assert_compiler_prod, assert_compiler_ssr, assert_compiler_ssr_dev,
 };
 use compiler_tests::{compiler_case, compiler_module_case};
 
