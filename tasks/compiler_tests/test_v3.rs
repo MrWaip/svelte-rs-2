@@ -284,15 +284,15 @@ compiler_case!(head_position_with_body);
 
 compiler_case!(special_elements_all);
 
-compiler_case!(empty);
+compiler_case!(empty, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(simple, "hello_state");
+compiler_case!(simple, "hello_state", [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(single_text_node);
+compiler_case!(single_text_node, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(single_element);
+compiler_case!(single_element, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(single_interpolation);
+compiler_case!(single_interpolation, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(text_entity_decoding);
 
@@ -372,11 +372,11 @@ compiler_case!(each_legacy_shadow_with_script_array_assign);
 
 compiler_case!(bind_directives);
 
-compiler_case!(nested_elements);
+compiler_case!(nested_elements, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(nested_resets);
 
-compiler_case!(single_concatenation);
+compiler_case!(single_concatenation, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(elements_childs);
 
@@ -398,7 +398,7 @@ compiler_case!(spread_class_directive);
 
 compiler_case!(spread_style_directive);
 
-compiler_case!(utf8);
+compiler_case!(utf8, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(smoke);
 
@@ -438,7 +438,7 @@ compiler_case!(rune_update);
 
 compiler_case!(assign_in_template);
 
-compiler_case!(only_script);
+compiler_case!(only_script, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(hoist_imports);
 
@@ -446,7 +446,7 @@ compiler_case!(bind_directives_extended);
 
 compiler_case!(mutated_state_rune);
 
-compiler_case!(static_interpolation);
+compiler_case!(static_interpolation, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(props_basic);
 
@@ -554,7 +554,7 @@ compiler_case!(derived_write_assignment);
 
 compiler_case!(unmutated_state_optimization);
 
-compiler_case!(effect_runes);
+compiler_case!(effect_runes, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(effect_root_basic);
 
@@ -704,11 +704,11 @@ compiler_case!(use_action_in_each);
 
 compiler_case!(use_action_with_children);
 
-compiler_case!(void_elements);
+compiler_case!(void_elements, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(non_void_self_closing);
 
-compiler_case!(mixed_html_elements);
+compiler_case!(mixed_html_elements, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_basic);
 

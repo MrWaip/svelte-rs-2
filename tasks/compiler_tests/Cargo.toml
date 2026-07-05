@@ -21,6 +21,10 @@ path = "test_clusters.rs"
 name = "compiler_tests_sourcemap"
 path = "test_sourcemap.rs"
 
+[[test]]
+name = "compiler_tests_ssr_smoke"
+path = "test_ssr_smoke.rs"
+
 [dependencies]
 svelte_compiler = { workspace = true }
 svelte_sourcemap = { workspace = true }

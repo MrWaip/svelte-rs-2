@@ -1,5 +1,36 @@
 use super::*;
 
+fn compile_server(source: &str, dev: bool) -> String {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        runes: RunesOption::Runes,
+        generate: GenerateMode::Server,
+        dev,
+        ..Default::default()
+    };
+    compile(source, &opts)
+        .js
+        .unwrap_or_else(|| panic!("server compile produced no JS"))
+        .code
+}
+
+#[track_caller]
+fn assert_server_render_skeleton(js: &str, name: &str) {
+    assert!(
+        js.contains("svelte/internal/server"),
+        "expected import of svelte/internal/server, got:\n{js}"
+    );
+    assert!(
+        !js.contains("svelte/internal/client"),
+        "server output must not import svelte/internal/client, got:\n{js}"
+    );
+    let render_fn = format!("export default function {name}($$renderer)");
+    assert!(
+        js.contains(&render_fn),
+        "expected `{render_fn}`, got:\n{js}"
+    );
+}
+
 fn check(source: &str, expected: &str) {
     let opts = CompileOptions {
         name: Some("App".into()),
@@ -883,4 +914,22 @@ fn attribute_invalid_event_handler_string_value() {
         "expected attribute_invalid_event_handler, got: {:?}",
         result.diagnostics
     );
+}
+
+#[test]
+fn server_target_emits_render_function_skeleton() {
+    let js = compile_server(
+        "<script>let count = $state(0);</script><p>{count}</p>",
+        false,
+    );
+    assert_server_render_skeleton(&js, "App");
+}
+
+#[test]
+fn server_target_dev_emits_render_function_skeleton() {
+    let js = compile_server(
+        "<script>let count = $state(0);</script><p>{count}</p>",
+        true,
+    );
+    assert_server_render_skeleton(&js, "App");
 }

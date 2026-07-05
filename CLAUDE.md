@@ -16,7 +16,7 @@ Codebase map — crates, entry points, files holding the main structures: `docs/
 
 Invariants of the touched cluster's root PRD are hard constraints. Full map: `docs/context.md`.
 
-Per-layer root PRDs live in `docs/`: `ast`, `parser`, `analyze`, `component-semantics`, `reactivity-semantics` (child `state-rune`), `expression-semantics`, `attribute-semantics`, `block-semantics`, `transform`, `codegen`, `compiler`, `supporting-crates`.
+Per-layer root PRDs live in `docs/`: `ast`, `parser`, `analyze`, `component-semantics`, `reactivity-semantics` (child `state-rune`), `expression-semantics`, `attribute-semantics`, `block-semantics`, `transform`, `transform-server`, `codegen`, `codegen-server`, `compiler`, `supporting-crates`.
 
 Design PRDs (via `/design`) live in `docs/designs/`. Read only if scope overlaps.
 

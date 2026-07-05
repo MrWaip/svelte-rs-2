@@ -1,5 +1,5 @@
 [package]
-name = "svelte_transform"
+name = "svelte_transform_client"
 version = "0.1.0"
 edition = "2024"
 

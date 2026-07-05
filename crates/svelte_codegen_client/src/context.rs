@@ -9,7 +9,7 @@ use svelte_ast::{
     AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId, RenderTag,
     SvelteBoundary, SvelteElement,
 };
-use svelte_transform::TransformData;
+use svelte_transform_client::TransformData;
 
 use svelte_ast_builder::Builder;
 

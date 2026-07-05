@@ -46,7 +46,7 @@ fn no_diagnostics_for_valid_each() {
 
 ## 4. distinct execute, transform before→after (target)
 
-When the action is the point of the test, execute stays on its own line. The 14-line `crates/svelte_transform/src/lib.rs:541` arrange/act block folds into a factory + execute, raw checks move inside the assert:
+When the action is the point of the test, execute stays on its own line. The 14-line `crates/svelte_transform_client/src/lib.rs:541` arrange/act block folds into a factory + execute, raw checks move inside the assert:
 
 ```rust
 #[test]
