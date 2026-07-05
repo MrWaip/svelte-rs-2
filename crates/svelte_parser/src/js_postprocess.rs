@@ -4,12 +4,12 @@ use std::mem;
 use oxc_allocator::{Allocator, Box as OxcBox};
 use oxc_ast::ast::{
     AccessorProperty, ArrowFunctionExpression, AssignmentTarget, BindingPattern, BlockStatement,
-    CallExpression, CatchParameter, ChainElement, Class, ClassBody, ClassElement, DoWhileStatement,
-    EmptyStatement, Expression, ForInStatement, ForOfStatement, ForStatement, FormalParameter,
-    FormalParameterRest, FormalParameters, Function, FunctionBody, IfStatement,
-    ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionType, NewExpression, NullLiteral,
-    Program, PropertyDefinition, PropertyDefinitionType, SimpleAssignmentTarget, Statement,
-    StaticBlock, TSModuleBlock, TSModuleDeclaration, TSType, TSTypeAnnotation,
+    CallExpression, CatchParameter, ChainElement, ChainExpression, Class, ClassBody, ClassElement,
+    DoWhileStatement, EmptyStatement, Expression, ForInStatement, ForOfStatement, ForStatement,
+    FormalParameter, FormalParameterRest, FormalParameters, Function, FunctionBody, FunctionType,
+    IfStatement, ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionType, NewExpression,
+    NullLiteral, Program, PropertyDefinition, PropertyDefinitionType, SimpleAssignmentTarget,
+    Statement, StaticBlock, TSModuleBlock, TSModuleDeclaration, TSType, TSTypeAnnotation,
     TSTypeParameterDeclaration, TSTypeParameterInstantiation, TaggedTemplateExpression,
     VariableDeclarator, WhileStatement, match_member_expression,
 };
@@ -97,6 +97,32 @@ impl<'a> JsPostprocessor<'a> {
         }
     }
 
+    fn flatten_chain_spine(&self, element: &mut ChainElement<'a>) {
+        match element {
+            ChainElement::StaticMemberExpression(m) => self.flatten_chain_object(&mut m.object),
+            ChainElement::ComputedMemberExpression(m) => self.flatten_chain_object(&mut m.object),
+            ChainElement::PrivateFieldExpression(m) => self.flatten_chain_object(&mut m.object),
+            ChainElement::CallExpression(c) => self.flatten_chain_object(&mut c.callee),
+            ChainElement::TSNonNullExpression(_) => {}
+        }
+    }
+
+    fn flatten_chain_object(&self, expr: &mut Expression<'a>) {
+        if let Expression::ParenthesizedExpression(paren) = expr
+            && matches!(paren.expression, Expression::ChainExpression(_))
+        {
+            let inner = self.take_expr(&mut paren.expression);
+            *expr = inner;
+        }
+        match expr {
+            Expression::StaticMemberExpression(m) => self.flatten_chain_object(&mut m.object),
+            Expression::ComputedMemberExpression(m) => self.flatten_chain_object(&mut m.object),
+            Expression::PrivateFieldExpression(m) => self.flatten_chain_object(&mut m.object),
+            Expression::CallExpression(c) => self.flatten_chain_object(&mut c.callee),
+            _ => {}
+        }
+    }
+
     fn strip_simple_assignment_target(&self, node: &mut SimpleAssignmentTarget<'a>) {
         let Some(expr) = node.get_expression_mut() else {
             return;
@@ -171,6 +197,9 @@ impl<'a> JsPostprocessor<'a> {
                     import.specifiers.as_ref().is_none_or(|s| !s.is_empty())
                 }
                 Statement::ExportNamedDeclaration(export) => {
+                    if export.export_kind.is_type() {
+                        return false;
+                    }
                     export.declaration.is_some() || !export.specifiers.is_empty()
                 }
                 _ => true,
@@ -190,7 +219,7 @@ fn is_pure_ts_type_statement(stmt: &Statement<'_>) -> bool {
         Statement::TSModuleDeclaration(m) => !ts_module_has_runtime_node(m),
         Statement::TSGlobalDeclaration(g) => !ts_module_block_has_runtime_node(&g.body),
         Statement::VariableDeclaration(d) => d.declare,
-        Statement::FunctionDeclaration(f) => f.declare,
+        Statement::FunctionDeclaration(f) => is_pure_ts_function(f),
         Statement::ClassDeclaration(c) => c.declare,
         Statement::ExportNamedDeclaration(e) => match &e.declaration {
             Some(Declaration::TSTypeAliasDeclaration(_))
@@ -199,12 +228,16 @@ fn is_pure_ts_type_statement(stmt: &Statement<'_>) -> bool {
             Some(Declaration::TSModuleDeclaration(m)) => !ts_module_has_runtime_node(m),
             Some(Declaration::TSGlobalDeclaration(g)) => !ts_module_block_has_runtime_node(&g.body),
             Some(Declaration::VariableDeclaration(v)) => v.declare,
-            Some(Declaration::FunctionDeclaration(f)) => f.declare,
+            Some(Declaration::FunctionDeclaration(f)) => is_pure_ts_function(f),
             Some(Declaration::ClassDeclaration(c)) => c.declare,
             _ => false,
         },
         _ => false,
     }
+}
+
+fn is_pure_ts_function(func: &Function<'_>) -> bool {
+    func.declare || func.r#type == FunctionType::TSDeclareFunction
 }
 
 fn ts_module_has_runtime_node(decl: &TSModuleDeclaration<'_>) -> bool {
@@ -273,6 +306,11 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
             self.strip_chain_element_wrappers(it);
         }
         walk_mut::walk_chain_element(self, it);
+    }
+
+    fn visit_chain_expression(&mut self, it: &mut ChainExpression<'a>) {
+        walk_mut::walk_chain_expression(self, it);
+        self.flatten_chain_spine(&mut it.expression);
     }
 
     fn visit_simple_assignment_target(&mut self, it: &mut SimpleAssignmentTarget<'a>) {

@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<input type="radio"/>`);
+var root = $.from_html(`<input type="radio"/>`);
 export default function App($$anchor, $$props) {
 	const binding_group = [];
 	let active = $.prop($$props, "active", 12);
@@ -11,7 +11,7 @@ export default function App($$anchor, $$props) {
 		2,
 		3
 	], $.index, ($$anchor, _, index) => {
-		var input = root_1();
+		var input = root();
 		$.remove_input_defaults(input);
 		input.value = input.__value = index;
 		$.bind_group(binding_group, [], input, () => {

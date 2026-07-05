@@ -1,12 +1,12 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p>ok</p> <!>`, 1);
+var root = $.from_html(`<p>ok</p> <!>`, 1);
 export default function App($$anchor) {
 	let items = [1, 2];
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 1, () => items, $.index, ($$anchor, item) => {
-		var fragment_1 = root_1();
+		var fragment_1 = root();
 		var node_1 = $.sibling($.first_child(fragment_1), 2);
 		App(node_1, { get value() {
 			return $.get(item);

@@ -1,16 +1,10 @@
-App[$.FILENAME] = "(unknown)";
 import * as $ from "svelte/internal/client";
 import { obj, count } from "./stores";
-var root = $.add_locations($.from_html(`<p> </p> <p> </p> <button>go</button>`, 1), App[$.FILENAME], [
-	[10, 0],
-	[11, 0],
-	[12, 0]
-]);
+var root = $.from_html(`<p> </p> <p> </p> <button>go</button>`, 1);
 export default function App($$anchor, $$props) {
-	$.check_target(new.target);
-	$.push($$props, true, App);
-	const $count = () => ($.validate_store(count, "count"), $.store_get(count, "$count", $$stores));
-	const $obj = () => ($.validate_store(obj, "obj"), $.store_get(obj, "$obj", $$stores));
+	$.push($$props, true);
+	const $count = () => $.store_get(count, "$count", $$stores);
+	const $obj = () => $.store_get(obj, "$obj", $$stores);
 	const [$$stores, $$cleanup] = $.setup_stores();
 	function go() {
 		$.store_set(count, 1);
@@ -18,7 +12,6 @@ export default function App($$anchor, $$props) {
 		$.store_mutate(obj, $.untrack($obj).x = 1, $.untrack($obj));
 		$.store_mutate(obj, $.untrack($obj).x++, $.untrack($obj));
 	}
-	var $$exports = { ...$.legacy_api() };
 	var fragment = root();
 	var p = $.first_child(fragment);
 	var text = $.child(p, true);
@@ -33,8 +26,7 @@ export default function App($$anchor, $$props) {
 	});
 	$.delegated("click", button, go);
 	$.append($$anchor, fragment);
-	var $$pop = $.pop($$exports);
+	$.pop();
 	$$cleanup();
-	return $$pop;
 }
 $.delegate(["click"]);

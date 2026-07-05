@@ -7,14 +7,14 @@ pub mod reactivity_semantics;
 pub mod value_evaluation;
 
 pub use attribute_semantics::{
-    AttributeSemantics, AttributeSemanticsStore, BoundaryPropEmit, BoundaryPropSemantics,
-    ComponentAttachEmit, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
-    ComponentBindTarget, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
-    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
-    ConcatPartEmit, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
+    AttributeSemantics, AttributeSemanticsStore, BoundaryPropSemantics, ComponentAttachEmit,
+    ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
+    ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
+    ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
+    DefaultAttrKind, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
     EventEmit, EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
-    MustBePropertySemantics, MustBePropertyValue, SpecialValueKind, SpecialValueSemantics,
-    StyleDirectivesSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
+    SpecialValueKind, SpecialValueSemantics, StyleDirectivesSemantics,
+    SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 pub use expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, KnownValue,
@@ -34,7 +34,7 @@ pub use block_semantics::{
     EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
     EachKeyKind, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
     KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
-    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
+    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{
@@ -44,11 +44,11 @@ pub use types::data::{
     CodegenView, ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
     ComponentPropKind, ConstBindingSemantics, ContentEditableKind, ContextualBindingSemantics,
     ContextualReadKind, ContextualReadSemantics, CssAnalysis, DeclaratorGroup, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DocumentBindKind, EachIndexStrategy,
-    EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags,
-    ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry,
-    IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDefaultSlot,
-    LegacyDependency, LegacyInit, LegacySummary, MediaBindKind, NamespaceKind,
+    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DerivedSource, DocumentBindKind,
+    EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry,
+    ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts,
+    FragmentFactsEntry, IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics,
+    LegacyDefaultSlot, LegacyDependency, LegacyInit, LegacySummary, MediaBindKind, NamespaceKind,
     OptimizedRuneSemantics, OutputData, ParentKind, ParentRef, PickledAwaits, PropBindingKind,
     PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics, PropsSummary,
     ReactivitySemantics, ReactivitySummary, ReferenceSemantics, ResizeObserverKind,
@@ -76,9 +76,10 @@ pub const PROPS_IS_BINDABLE: u32 = PropsFlags::BINDABLE.bits();
 pub const PROPS_IS_LAZY_INITIAL: u32 = PropsFlags::LAZY_INITIAL.bits();
 pub use utils::{IdentGen, IdentGenSnapshot};
 pub use utils::{
-    expression_calls_or_awaits, is_capture_event, is_delegatable_event, is_let_or_var,
-    is_passive_event, is_regular_dom_property, is_simple_expression, is_simple_identifier,
-    normalize_regular_attribute_name, property_key_static_name, strip_capture_event,
+    concat_single_dynamic_expr, event_attribute, expression_calls_or_awaits, is_capture_event,
+    is_delegatable_event, is_let_or_var, is_passive_event, is_regular_dom_property,
+    is_simple_expression, is_simple_identifier, normalize_regular_attribute_name,
+    property_key_static_name, strip_capture_event,
 };
 
 use svelte_ast::Component;
@@ -217,11 +218,21 @@ pub fn analyze_module<'a>(
             reactivity_semantics::finalize_proxy(
                 &parsed,
                 &mut data.reactivity,
-                &data.scoping,
-                &data.template.snippets,
                 data.scoping.semantics(),
-                dev,
             );
+
+            data.script.dev = dev;
+            if dev {
+                data.value_evaluation = value_evaluation::build_module_console_calls(
+                    &parsed,
+                    &data.scoping,
+                    data.scoping.semantics(),
+                );
+            }
+
+            if let Some(program) = parsed.program.as_ref() {
+                validate::validate_module_experimental_async(&data, program, &mut diags);
+            }
         }
         Err(errs) => diags.extend(errs),
     }

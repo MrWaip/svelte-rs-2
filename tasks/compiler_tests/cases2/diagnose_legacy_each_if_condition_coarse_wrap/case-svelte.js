@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<p>ok</p>`);
+var root = $.from_html(`<p>ok</p>`);
 export default function App($$anchor, $$props) {
 	let rows = $.prop($$props, "rows", 8);
 	function check(key) {
@@ -13,7 +13,7 @@ export default function App($$anchor, $$props) {
 		var node_1 = $.first_child(fragment_1);
 		{
 			var consequent = ($$anchor) => {
-				var p = root_2();
+				var p = root();
 				$.append($$anchor, p);
 			};
 			var d = $.derived(() => ($.get(row), $.untrack(() => check($.get(row).key))));

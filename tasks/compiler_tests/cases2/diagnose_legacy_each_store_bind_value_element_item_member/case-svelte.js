@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<input/>`);
+var root = $.from_html(`<input/>`);
 export default function App($$anchor, $$props) {
 	const $store = () => $.store_get(store(), "$store", $$stores);
 	const [$$stores, $$cleanup] = $.setup_stores();
@@ -12,7 +12,7 @@ export default function App($$anchor, $$props) {
 		var node_1 = $.first_child(fragment_1);
 		{
 			var consequent = ($$anchor) => {
-				var input = root_2();
+				var input = root();
 				$.remove_input_defaults(input);
 				$.bind_value(input, () => $.get(item).value, ($$value) => ($.get(item).value = $$value, $.invalidate_inner_signals(() => $store()), $.invalidate_store($$stores, "$store")));
 				$.append($$anchor, input);

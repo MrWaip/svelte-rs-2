@@ -30,12 +30,12 @@ pub use crate::reactivity_semantics::data::{
     BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics, ClassFieldSemantics,
     ClassFieldStateSemantics, ConstBindingSemantics, ContextualBindingSemantics,
     ContextualReadKind, ContextualReadSemantics, DeclaratorGroup, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, EachIndexStrategy, EachItemStrategy,
-    LegacyBindablePropSemantics, LegacyDependency, LegacySummary, OptimizedRuneSemantics,
-    PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics,
-    PropsSummary, ReactivitySemantics, ReactivitySummary, ReferenceSemantics, RuntimeRuneKind,
-    SignalReferenceKind, SnippetParamStrategy, StateDeclarationSemantics, StateKind,
-    StoreBindingSemantics,
+    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DerivedSource, EachIndexStrategy,
+    EachItemStrategy, LegacyBindablePropSemantics, LegacyDependency, LegacySummary,
+    OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
+    PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
+    ReferenceSemantics, RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy,
+    StateDeclarationSemantics, StateKind, StoreBindingSemantics,
 };
 pub use analysis::{
     AnalysisData, ApiExport, BlockAnalysis, ElementAnalysis, OutputData, ScriptAnalysis,

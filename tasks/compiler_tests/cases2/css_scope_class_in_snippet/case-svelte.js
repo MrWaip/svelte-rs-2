@@ -1,8 +1,8 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<span> </span>`);
+var root = $.from_html(`<span> </span>`);
 export default function App($$anchor) {
 	const badge = ($$anchor, text = $.noop) => {
-		var span = root_1();
+		var span = root();
 		$.set_class(span, 1, "badge svelte-yczv4j", null, {}, { primary: variant === "primary" });
 		var text_1 = $.child(span, true);
 		$.reset(span);

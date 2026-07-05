@@ -1,46 +1,42 @@
 ---
 name: profile
-description: Профайлинг компилятора и анализ горячих точек. Только по явному вызову `/profile`.
+description: Compiler profiling and hotspot analysis.
 argument-hint: "[fresh]"
 allowed-tools: Bash, Read, Grep, Glob, mcp__narsil-mcp__*
 disable-model-invocation: true
 ---
 
-# Задача
+# `./profile/` layout
 
-Провести профайлинг компилятора
+`./profile/all/` — all cases × prod/dev (`just bench-flame-all`):
+- `aggregate.top.txt` — aggregated top across all cases
+- `<slug>_<mode>/top.txt` — top of a single case
+- `<slug>_<mode>/profile.folded` — folded stacks (can be up to 6 MB; do NOT read whole, only `Grep` by function name)
+- `<slug>_<mode>/profile.json`, `profile.json.syms.json` — raw dumps, do NOT read whole; work through `jq`/`grep` surgically
 
-# Структура `./profile/`
+`./profile/one/` — a single case (`just bench-flame <path> [--dev]`):
+- same artifacts as in `<slug>_<mode>/` above
 
-`./profile/all/` — все кейсы × prod/dev (`just bench-flame-all`):
-- `aggregate.top.txt` — агрегированный top по всем кейсам
-- `<slug>_<mode>/top.txt` — top одного кейса
-- `<slug>_<mode>/profile.folded` — folded stacks (может весить до 6 мб; НЕ читать целиком, только `Grep` по имени функции)
-- `<slug>_<mode>/profile.json`, `profile.json.syms.json` — сырые дампы, НЕ читать целиком; работай через `jq`/`grep` точечно
-
-`./profile/one/` — один кейс (`just bench-flame <path> [--dev]`):
-- те же артефакты что в `<slug>_<mode>/` выше
-
-`slug` = путь из `tasks/benchmark/benches/compiler/` с `/` → `_`, без `.svelte`/`.svelte.js`.
+`slug` = path from `tasks/benchmark/benches/compiler/` with `/` → `_`, without `.svelte`/`.svelte.js`.
 `mode` = `prod` | `dev`.
 
-## Шаг 1
+## Step 1
 
-Если `$ARGUMENTS == "fresh"` — запусти `just bench-flame-all`. Скажи пользователю что прогон занимает ~4 мин и сразу запускай, не спрашивая подтверждения. После прогона — прочитай `./profile/all/aggregate.top.txt`.
+If `$ARGUMENTS == "fresh"` — run `just bench-flame-all`. Tell the user the run takes ~4 min and start immediately, without asking for confirmation. After the run — read `./profile/all/aggregate.top.txt`.
 
-Иначе — прочитай существующий `./profile/all/aggregate.top.txt`. Если файла нет — скажи пользователю запустить `/profile fresh` или `just bench-flame-all` вручную и остановись.
+Otherwise — read the existing `./profile/all/aggregate.top.txt`. If the file is missing — tell the user to run `/profile fresh` or `just bench-flame-all` manually and stop.
 
-## Шаг 2
+## Step 2
 
-Проанализируй `./profile/all/`.
-Для каждого кандидатного hotspot из `aggregate.top.txt` найди heaviest case — сравни `<slug>_<mode>/top.txt` подкаталогов и выбери где self-% этой функции максимален. Это driver-кейс.
+Analyze `./profile/all/`. Work through the top-5 hotspots from `aggregate.top.txt` — every one, not just the first.
+For each, find the driver-case: compare `<slug>_<mode>/top.txt` across subdirectories and pick where this function's self-% is highest.
 
-## Шаг 3
+## Step 3
 
-Расскажи про горячие точки: что горячее, почему и что с этим делать.
+Report on the hotspots: what's hot, why, and what to do about it.
 
-## Дальше в сессии
+## Later in the session
 
-Когда пользователь выберет опцию — углубись в driver-кейс этого hotspot и предложи конкретные изменения.
+When the user picks an option — dig into the driver-case of that hotspot and propose concrete changes.
 
-Профайлить один кейс отдельно: `just bench-flame <path> [--dev]` → результат в `./profile/one/<slug>_<mode>/`.
+To profile a single case in isolation — `just bench-flame <path> [--dev]` (artifacts in `./profile/one/`, see above).

@@ -1,4 +1,9 @@
 import * as $ from "svelte/internal/client";
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy"
+]);
 export default function App($$anchor, $$props) {
 	const foo = ($$anchor) => {
 		var fragment = $.comment();
@@ -8,9 +13,5 @@ export default function App($$anchor, $$props) {
 		});
 		$.append($$anchor, fragment);
 	};
-	let props = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy"
-	]);
+	let props = $.rest_props($$props, rest_excludes);
 }

@@ -42,10 +42,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         );
         let mut inner_state = EmitState::new();
 
-        if self.ctx.is_svelte_fragment_slot(slot_el_id) {
-            let _ = self.ctx.state.gen_ident("root");
-        }
-
         match node {
             Node::Element(_) => {
                 let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
@@ -57,7 +53,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 self.emit_fragment(&mut inner_state, &inner_ctx, el.fragment)?;
             }
             Node::SlotElementLegacy(_) => {
-                let _ = self.ctx.state.gen_ident("root");
                 self.emit_legacy_slot_like(&mut inner_state, &inner_ctx, slot_el_id, None)?;
             }
             Node::SvelteElement(_) => {
@@ -81,12 +76,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             )?;
                         } else {
                             let _ = self.ctx.state.gen_ident("fragment");
-                            let _ = self.ctx.state.gen_ident("root");
                             self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
                         }
                     }
                     _ => {
-                        let _ = self.ctx.state.gen_ident("root");
                         self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
                     }
                 }
@@ -148,7 +141,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         slot_el_id: NodeId,
         let_stmts: Vec<Statement<'a>>,
     ) -> Result<()> {
-        let tpl_name = self.ctx.state.gen_ident("root");
         let init_len_before = state.init.len();
         state.legacy_slot_const_tag_start = None;
         state.legacy_slot_const_tag_end = None;
@@ -172,17 +164,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Node::SvelteFragmentLegacy(el) => el.fragment,
             _ => return Ok(()),
         };
-        self.finalize_slot_root_template(
-            state,
-            ctx,
-            after_const_tags,
-            tpl_name,
-            slot_el_id,
-            slot_fragment,
-        )?;
-        let insert_pos = after_const_tags + 1;
+        self.finalize_slot_root_template(state, ctx, after_const_tags, slot_el_id, slot_fragment)?;
         for (i, stmt) in let_stmts.into_iter().enumerate() {
-            state.init.insert(insert_pos + i, stmt);
+            state.init.insert(init_len_before + i, stmt);
         }
         Ok(())
     }

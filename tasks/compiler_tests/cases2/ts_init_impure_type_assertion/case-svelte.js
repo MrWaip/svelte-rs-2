@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p> </p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	let count = 0;
 	function tick() {
@@ -13,7 +13,7 @@ export default function App($$anchor) {
 	{
 		var consequent = ($$anchor) => {
 			const value = $.derived_safe_equal(() => $.untrack(tick));
-			var p = root_1();
+			var p = root();
 			var text = $.child(p, true);
 			$.reset(p);
 			$.template_effect(() => $.set_text(text, $.get(value)));

@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
 import { cond } from "./stores";
-var root_1 = $.from_html(`<p>visible</p>`);
+var root = $.from_html(`<p>visible</p>`);
 export default function App($$anchor) {
 	const $cond = () => $.store_get(cond, "$cond", $$stores);
 	const [$$stores, $$cleanup] = $.setup_stores();
@@ -8,7 +8,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var p = root_1();
+			var p = root();
 			$.append($$anchor, p);
 		};
 		$.if(node, ($$render) => {

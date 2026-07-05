@@ -373,12 +373,12 @@ fn run_reference_compiler(
     cli: &CliOptions,
 ) -> Result<ReferenceOutput, String> {
     let generate_mjs = workspace_root.join("tasks/generate_test_cases/generate.mjs");
-    let node_modules = workspace_root.join("tasks/generate_test_cases/node_modules");
+    let node_modules = workspace_root.join("node_modules");
 
     if !node_modules.exists() {
         return Err(format!(
-            "reference deps not installed. Run: cd {} && npm install",
-            workspace_root.join("tasks/generate_test_cases").display()
+            "reference deps not installed. Run: npm install (from {})",
+            workspace_root.display()
         ));
     }
 
@@ -390,9 +390,7 @@ fn run_reference_compiler(
     fs::write(&tmp_input, input_json).map_err(|e| format!("write temp input: {e}"))?;
 
     let mut cmd = Command::new("node");
-    cmd.arg(&generate_mjs)
-        .env("INPUT_FILE", &tmp_input)
-        .env("NODE_PATH", &node_modules);
+    cmd.arg(&generate_mjs).env("INPUT_FILE", &tmp_input);
     if let Some(cfg) = reference_config_json(cli) {
         cmd.env("QUICK_CHECK_CONFIG", cfg);
     }

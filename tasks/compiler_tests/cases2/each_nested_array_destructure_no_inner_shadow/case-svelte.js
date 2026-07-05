@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<a> </a>`);
+var root = $.from_html(`<a> </a>`);
 var root_1 = $.from_html(`<div> <!></div>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
@@ -23,7 +23,7 @@ export default function App($$anchor, $$props) {
 		$.each(node_1, 17, links, $.index, ($$anchor, $$item) => {
 			let name = () => $.get($$item).name;
 			let href = () => $.get($$item).href;
-			var a = root_2();
+			var a = root();
 			var text_1 = $.child(a, true);
 			$.reset(a);
 			$.template_effect(() => {

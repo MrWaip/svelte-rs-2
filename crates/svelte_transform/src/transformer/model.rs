@@ -1,49 +1,45 @@
 use oxc_ast::ast::Expression;
 use oxc_semantic::SymbolId;
+use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::scope::ScopeId;
 
 use crate::data::TransformData;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::{Component, NodeId as SvelteNodeId};
 
-use svelte_analyze::{
-    AnalysisData, BindingSemantics, ComponentScoping, DeclaratorSemantics, IdentGen, JsAst,
-};
+use svelte_analyze::{AnalysisData, BindingSemantics, ComponentScoping, IdentGen, JsAst};
 
 use svelte_ast_builder::Builder;
 
 pub(crate) struct PendingPropMutationValidation<'a> {
-    pub(crate) prop_alias: String,
+    pub(crate) prop_alias: Option<String>,
     pub(crate) root_name: String,
     pub(crate) segments: Vec<Expression<'a>>,
+    pub(crate) loc_span_start: u32,
+    pub(crate) bindable_source_root_name: Option<String>,
 }
 
 pub(crate) struct FunctionInfo {
     pub(crate) is_async: bool,
     pub(crate) name: Option<String>,
     pub(crate) span_start: u32,
-    pub(crate) in_constructor: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AsyncDerivedMode {
-    Await,
-    Save,
-}
-
-pub(crate) struct ClassStateField {
-    pub(crate) public_name: Option<String>,
-    pub(crate) private_name: String,
-    pub(crate) declarator: DeclaratorSemantics,
 }
 
 #[derive(Default)]
 pub(crate) struct ClassStateInfo {
-    pub(crate) fields: Vec<ClassStateField>,
+    pub(crate) backing: FxHashMap<OxcNodeId, String>,
 
-    pub(crate) ctor_synth_names: FxHashSet<String>,
+    pub(crate) ctor_synth_nodes: Vec<OxcNodeId>,
 
     pub(crate) ctor_placeholder_names: FxHashSet<String>,
+
+    pub(crate) has_rune_field: bool,
+}
+
+impl ClassStateInfo {
+    pub(crate) fn is_empty(&self) -> bool {
+        !self.has_rune_field
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -85,9 +81,6 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) runes: bool,
     pub(crate) accessors: bool,
     pub(crate) immutable: bool,
-    pub(crate) derived_pending: FxHashSet<SymbolId>,
-
-    pub(crate) async_derived_pending: FxHashMap<SymbolId, AsyncDerivedMode>,
     pub(crate) strip_exports: bool,
     pub(crate) dev: bool,
     pub(crate) function_info_stack: Vec<FunctionInfo>,

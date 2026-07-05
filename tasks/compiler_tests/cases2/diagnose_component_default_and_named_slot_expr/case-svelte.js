@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
 import Inner from "./Inner.svelte";
-var root_2 = $.from_html(`<div slot="footer"></div>`);
+var root = $.from_html(`<div slot="footer"></div>`);
 export default function App($$anchor) {
 	let counter = 0;
 	Inner($$anchor, {
@@ -12,7 +12,7 @@ export default function App($$anchor) {
 		$$slots: {
 			default: true,
 			footer: ($$anchor, $$slotProps) => {
-				var div = root_2();
+				var div = root();
 				div.textContent = "Footer: 0";
 				$.append($$anchor, div);
 			}

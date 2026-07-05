@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<button> </button>`);
+var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
 	let p = Promise.resolve([{ fav: false }]);
 	var fragment = $.comment();
@@ -9,7 +9,7 @@ export default function App($$anchor) {
 		var fragment_1 = $.comment();
 		var node_1 = $.first_child(fragment_1);
 		$.each(node_1, 1, () => ($.deep_read_state($.get(cards)), $.untrack(() => $.get(cards).filter((c) => !c.fav))), $.index, ($$anchor, card, $$index) => {
-			var button = root_2();
+			var button = root();
 			var text = $.child(button, true);
 			$.reset(button);
 			$.template_effect(() => $.set_text(text, ($.get(card), $.untrack(() => $.get(card).fav))));

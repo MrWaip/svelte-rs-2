@@ -4,7 +4,7 @@ use oxc_ast::ast::{Program, Statement};
 use svelte_analyze::{AnalysisData, ComponentScoping, IdentGen};
 
 use svelte_ast_builder::Builder;
-use svelte_transform::{IgnoreQuery, transform_script};
+use svelte_transform::{IgnoreQuery, RestExcludes, transform_script};
 
 use crate::context::Ctx;
 
@@ -16,6 +16,7 @@ pub struct ScriptOutput<'a> {
     pub comments: Vec<Comment>,
     pub source_text: &'a str,
     pub program_span_end: u32,
+    pub rest_excludes: Vec<RestExcludes>,
 }
 
 fn empty_script_output<'a>() -> ScriptOutput<'a> {
@@ -27,6 +28,7 @@ fn empty_script_output<'a>() -> ScriptOutput<'a> {
         comments: vec![],
         source_text: "",
         program_span_end: 0,
+        rest_excludes: vec![],
     }
 }
 
@@ -108,6 +110,7 @@ pub fn transform_component_module_program<'a, 'b>(
     component_scoping: &'b ComponentScoping<'a>,
     ident_gen: &'b mut IdentGen,
     line_index: &'b svelte_span::LineIndex,
+    dev: bool,
 ) -> ScriptOutput<'a> {
     run_transform(
         allocator,
@@ -116,7 +119,7 @@ pub fn transform_component_module_program<'a, 'b>(
         component_scoping,
         ident_gen,
         false,
-        false,
+        dev,
         "",
         line_index,
         "(unknown)",
@@ -198,5 +201,6 @@ fn run_transform<'a, 'b>(
         comments,
         source_text,
         program_span_end,
+        rest_excludes: out.rest_excludes,
     }
 }

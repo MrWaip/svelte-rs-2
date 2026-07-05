@@ -14,11 +14,9 @@ snake_case. Stop if `tasks/diagnostic_tests/cases/<name>/` exists.
 
 ## 2) Create a minimal case
 
-Add `tasks/diagnostic_tests/cases/<name>/case.svelte` with smallest component isolating one diagnostic behavior.
+Add `tasks/diagnostic_tests/cases/<name>/case.svelte` — the smallest component isolating one diagnostic behavior. Extend an existing case instead only when it already covers the same diagnostic code or syntax family and its `case.svelte` stays small.
 
-Keep focused. Extend existing case instead of new one only when same diagnostic code or syntax family already covered and existing `case.svelte` still small.
-
-Add `config.json` only when diagnostic depends on compile options.
+Add `config.json` only when the diagnostic depends on compile options.
 
 ## 3) Generate reference snapshots
 

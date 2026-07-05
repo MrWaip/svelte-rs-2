@@ -220,30 +220,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
         dir_obj: Expression<'a>,
     ) -> Expression<'a> {
-        let dir_ids: Vec<NodeId> = self
-            .ctx
-            .style_directives(owner_id)
-            .iter()
-            .map(|sd| sd.id)
-            .collect();
-        let Some(_) =
-            dir_ids.iter().find(
-                |&&id| match self.ctx.expression_data(id).map(|d| d.volatility) {
-                    Some(Volatility::Heavy) => true,
-                    Some(Volatility::Static | Volatility::Reactive | Volatility::Asynchronous)
-                    | None => false,
-                },
-            )
-        else {
-            return dir_obj;
-        };
-        for &id in &dir_ids {
-            if let Some(data) = self.ctx.expression_data(id) {
-                state.shared_memo.push_expression_data(self.ctx, data);
-            }
-        }
-        let idx = state.shared_memo.sync_values_push(dir_obj);
-        state.shared_memo.sync_param_expr(self.ctx, idx)
+        let volatility = self.ctx.query.view.style_directives_volatility(owner_id);
+        super::hoist_directives_object(self.ctx, &mut state.shared_memo, volatility, dir_obj)
     }
 }
 

@@ -1,6 +1,6 @@
 import "svelte/internal/flags/async";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p> </p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	var data;
 	var $$promises = $.run([async () => data = await fetch("/api")]);
@@ -17,7 +17,7 @@ export default function App($$anchor) {
 				() => b = $.derived(() => $.get(a) * 2),
 				() => c = $.derived(() => $.get(b) + 1)
 			]);
-			var p = root_1();
+			var p = root();
 			var text = $.child(p, true);
 			$.reset(p);
 			$.template_effect(() => $.set_text(text, $.get(c)), void 0, void 0, [promises[3]]);

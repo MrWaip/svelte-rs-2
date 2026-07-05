@@ -606,6 +606,14 @@ mod attributes {
         svelte_element_attribute_unquoted_sequence_errors,
         "attributes/svelte_element_attribute_unquoted_sequence_errors"
     );
+    diagnostic_case!(
+        event_handler_string_value_errors,
+        "attributes/event_handler_string_value_errors"
+    );
+    diagnostic_case!(
+        event_handler_concat_value_errors,
+        "attributes/event_handler_concat_value_errors"
+    );
 }
 
 mod css {
@@ -1321,6 +1329,10 @@ mod runes {
         "runes/validate_derived_rune_allowed_in_runes_mode"
     );
     diagnostic_case!(
+        state_rune_shadowed_by_param,
+        "runes/state_rune_shadowed_by_param"
+    );
+    diagnostic_case!(
         validate_derived_invalid_export,
         "runes/validate_derived_invalid_export"
     );
@@ -1560,6 +1572,18 @@ mod stores {
         "stores/validate_store_invalid_scoped_subscription"
     );
     diagnostic_case!(
+        scoped_sub_rune_state_nested_decl,
+        "stores/scoped_sub_rune_state_nested_decl"
+    );
+    diagnostic_case!(
+        scoped_sub_rune_state_toplevel_base_nested,
+        "stores/scoped_sub_rune_state_toplevel_base_nested"
+    );
+    diagnostic_case!(
+        scoped_sub_store_sibling_scope_not_flagged,
+        "stores/scoped_sub_store_sibling_scope_not_flagged"
+    );
+    diagnostic_case!(
         validate_store_invalid_subscription_in_module,
         "stores/validate_store_invalid_subscription_in_module"
     );
@@ -1583,6 +1607,7 @@ mod stores {
         global_ref_explicit_legacy_no_error,
         "stores/global_ref_explicit_legacy_no_error"
     );
+    diagnostic_case!(not_actual_runes, "stores/not_actual_runes");
 }
 
 mod host {
@@ -1616,6 +1641,14 @@ mod special {
     diagnostic_case!(
         svelte_window_illegal_attribute_spread,
         "special/svelte_window_illegal_attribute_spread"
+    );
+    diagnostic_case!(
+        svelte_window_illegal_attribute_single_expr,
+        "special/svelte_window_illegal_attribute_single_expr"
+    );
+    diagnostic_case!(
+        svelte_window_illegal_attribute_concat_handler,
+        "special/svelte_window_illegal_attribute_concat_handler"
     );
     diagnostic_case!(
         svelte_document_illegal_attribute_class,
@@ -1926,6 +1959,11 @@ mod snippets {
     use super::*;
 
     diagnostic_case!(
+        snippet_name_duplicate_instance_binding,
+        "snippets/snippet_name_duplicate_instance_binding",
+        ignore = "snippet duplicate declaration check added in svelte 5.56.4"
+    );
+    diagnostic_case!(
         validate_snippet_parameter_assignment,
         "snippets/validate_snippet_parameter_assignment"
     );
@@ -2029,6 +2067,61 @@ mod template {
     diagnostic_case!(
         validate_expression_tag_invalid_placement,
         "template/validate_expression_tag_invalid_placement"
+    );
+    diagnostic_case!(
+        expression_tag_js_parse_error_let_declaration,
+        "template/expression_tag_js_parse_error_let_declaration"
+    );
+    diagnostic_case!(
+        expression_tag_js_parse_error_const_declaration,
+        "template/expression_tag_js_parse_error_const_declaration"
+    );
+    diagnostic_case!(
+        expression_tag_js_parse_error_let_multiple_declarators,
+        "template/expression_tag_js_parse_error_let_multiple_declarators"
+    );
+    diagnostic_case!(
+        expression_tag_valid_no_diagnostic,
+        "template/expression_tag_valid_no_diagnostic"
+    );
+    diagnostic_case!(
+        expression_tag_const_tag_still_ok,
+        "template/expression_tag_const_tag_still_ok"
+    );
+    diagnostic_case!(
+        declaration_tag_invalid_type_var,
+        "template/declaration_tag_invalid_type_var",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_invalid_type_interface,
+        "template/declaration_tag_invalid_type_interface",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_invalid_type_ts_alias,
+        "template/declaration_tag_invalid_type_ts_alias",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_no_legacy_mode,
+        "template/declaration_tag_no_legacy_mode",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_duplicate,
+        "template/declaration_tag_duplicate",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_await_no_experimental,
+        "template/declaration_tag_await_no_experimental",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+    );
+    diagnostic_case!(
+        declaration_tag_type_nonts_parse_error,
+        "template/declaration_tag_type_nonts_parse_error",
+        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
     );
     diagnostic_case!(
         node_invalid_placement_ssr_in_if_block,

@@ -26,7 +26,8 @@
 Справочники и дизайны:
 
 - `bindings-and-references.md` — система идентификаторов: биндинг/ссылка, `SymbolId`/`ReferenceId`, дерево `BindingPattern`, `walk_bindings`, OXC API.
-- `designs/binding-pattern-routing.md`, `designs/destructure-patterns.md`, `designs/props-destructure-alias.md` — утверждённые дизайны (через `/design`); читать, если scope пересекается.
+- `destructuring.md` — дочерний PRD `reactivity-semantics`: обход паттернов (`walk_bindings` / `walk_assignment_targets`), разворот объявлений, деструктур-присваивание, формы ключа `$props()`.
+- `designs/analyze-js-visitor-bundle.md` — дизайн (через `/design`) fan-out одного обхода JS-AST в слое `analyze`; читать, если scope пересекается.
 
 Догмы, банлист имён, правила взаимодействия — `../../CLAUDE.md`. Оригинал (JS-референс) — `../../original/compiler/`, источник истины для соответствия выходного JS; используется понять **что** портировать, не **как**.
 
@@ -43,7 +44,7 @@
 
 ## Догмы
 
-- **smart analyzer / dumb codegen.** Анализ заранее вычисляет каждое решение; трансформ и кодген остаются линейными и тупыми — один запрос к анализу на одно однозначное решение, без пересборки фактов и `&&`-цепочек.
+- **smart analyzer / dumb codegen.** Анализ заранее вычисляет каждое решение; трансформ и кодген остаются линейными и тупыми — один запрос к анализу на одно однозначное решение, без пересборки фактов и `&&`-цепочек. Анализ **codegen/transform-agnostic**: несёт доменный вердикт, не форму печати/runtime-вызова — правило «вердикт → форма» живёт в кодгене/трансформе (см. «Codegen-агностичность анализа»).
 - **Анализ** — read-only над AST, единственный источник истины для семантики.
 - **Трансформ** — мутирует JS AST под рантайм Svelte; новых данных анализа не производит.
 - **Кодген** — берёт анализ + AST и печатает выходной JS; не пере-walk'ает AST за смыслом.
@@ -55,9 +56,9 @@
 
 Конвенции, сквозные через слои (детали — в `analyze.md`, `compiler.md`, `supporting-crates.md`):
 
-- **Диагностики.** Единый тип `Diagnostic` (`Severity` Error / Warning / Info), crate `svelte_diagnostics`. Производители — только парсер (синтаксис) и анализ (семантика + валидация). Трансформ / кодген / transform-css / compiler entry диагностик не производят. `AnalyzeOptions::warning_filter` — единственное место подавления warning'ов после сбора; compiler entry агрегирует и возвращает единый `Vec<Diagnostic>`.
+- **Диагностики.** Единый тип `Diagnostic` (`Severity` Error / Warning), crate `svelte_diagnostics`. Производители — только парсер (синтаксис) и анализ (семантика + валидация). Трансформ / кодген / transform-css / compiler entry диагностик не производят. `AnalyzeOptions::warning_filter` — единственное место подавления warning'ов после сбора; compiler entry агрегирует и возвращает единый `Vec<Diagnostic>`.
 - **Standalone-модули** (`.svelte.js` / `.svelte.ts`). Вход `svelte_compiler::compile_module` → `svelte_analyze::analyze_module`. Строит dummy-`Component` (без шаблона, пустой `AstStore`, исходник сохранён). Пайплайн пропускает walking шаблона, CSS, fragment-prepare; крутится только JS-скоупинг + rune-трансформы. Код component-path **нельзя** переиспользовать как есть — другие инварианты (нет template-фрагмента, нет `<script>`-различия).
-- **IdentGen.** `svelte_analyze::utils::IdentGen` (+ `IdentGenSnapshot`) — единственный источник свежих JS-идентификаторов через анализ / трансформ / кодген. `gen("prefix")` возвращает имя, не коллидящее ни с одним биндингом из `ComponentSemantics` и ранее сгенерированным. `snapshot` / `restore` для backtracking emit-веток. Анти-паттерн: `format!("__name_{}", counter)` ad-hoc.
+- **IdentGen.** `svelte_analyze::utils::IdentGen` (+ `IdentGenSnapshot`) — единственный источник свежих JS-идентификаторов через анализ / трансформ / кодген. `generate("prefix")` возвращает имя, не коллидящее ни с одним биндингом из `ComponentSemantics` и ранее сгенерированным. `snapshot` / `restore` для backtracking emit-веток. Анти-паттерн: `format!("__name_{}", counter)` ad-hoc.
 - **Тест-харнес.** Компиляторные кейсы — `tasks/compiler_tests/cases2/<name>` (input `.svelte` + reference output). Диагностические — `tasks/diagnostic_tests/cases/<name>`. Файлы `case-*.json` / `case-*.js` генерит `just generate` — руками **не править**. Гейты после задачи: `just test-compiler`, `just test-diagnostics`, `just clippy-strict` — все зелёные. Регистрация кейсов — через skill-флоу (`add-test`, `port`, `diagnose`, `audit`, `quick-check`).
 
 ---
@@ -168,6 +169,9 @@ _Avoid_: метаданные, analysis, семантический анализ
 **Сырые факты** *(en: raw facts)* — атомарные признаки на узле (`has_call`, `has_rune_call`, `is_legacy_wrap`, …), требующие сборки `&&`-цепочкой. Соседние анти-паттерны границы фаз — **Эмит-форма семантики** и **Анализ в кодгене**.
 _Avoid_: сырые данные, сырой анализ, raw data.
 
+**Codegen-агностичность анализа** *(en: codegen/transform-agnostic analysis)* — принцип: анализ производит доменную интерпретацию единицы Svelte и ничего не знает про кодген/трансформ — не несёт форму runtime-вызова или печати (getter vs свойство, какой `$.`-вызов, какой DOM-API). Семантика отвечает на доменный вопрос; *выбор* формы — дело кодгена/трансформа, и правило «вердикт → форма» живёт там (образец — `MemoForm`: анализ несёт `Volatility`, форму выбирает кодген). Литмус: подмени целевой рантайм/способ печати — значение семантики не меняется; если меняется (имя или множество значений поля/варианта перечисляет формы печати или runtime-функции) — это форма, не домен, рефакторить в доменный вердикт. Без исключений: и на варианте `*Semantics` форму нести нельзя. Нарушение этого принципа в представлении — анти-паттерн **Эмит-форма семантики**.
+_Avoid_: codegen hint, допустимая emit-форма на варианте, runtime-form.
+
 **Эмит-форма семантики** *(en: emit-shaped semantics)* — анти-паттерн представления: в `*Semantics` хранится не доменная интерпретация, а уже выбранная форма runtime-вызова (`needs_safe_equal_wrap: bool`, `runtime_fn: "store_get"`, `template_arg_index: usize`). Граница: «выкинь рантайм Svelte, замени на другой реактивный — нужно ли менять анализ?». Если да — это эмит-форма, рефакторить в доменную категорию. Признаки в коде: имя поля/варианта повторяет идентификатор из `svelte/internal/client`, поле описывает «как эмитить», а не «что это».
 _Avoid_: codegen hint, runtime-shape, emit metadata, runtime-form.
 
@@ -202,7 +206,7 @@ _Avoid_: reactive value (про выражение), предикат реакт
 **OptimizedDerived** *(en: optimized derived; вариант `BindingSemantics`)* — `$derived`, значение которого статически известно (deps не реактивны и свёртываются), демотированный в голое значение — как **OptimizedRune** для немутируемого `$state`. Реактивным источником **не является**, чтение статично. Разводит единственную двусмысленность варианта `Derived` (живой сигнал `$derived(s+1)` vs константа `$derived(5)`) на уровне типа, без флагов `reactive`/`value_known`.
 _Avoid_: folded derived, const derived, static derived.
 
-**Изменчивость** *(en: volatility; enum `ExpressionData.volatility`)* — единый доменный вердикт **выражения шаблона на его месте**: `Volatility { Static, Reactive, Heavy, Asynchronous }` (тотальный порядок по возрастанию «силы»). `Static` — значение доказуемо постоянно, инлайнится; `Reactive` — изменчиво, простое чтение под `template_effect`; `Heavy` — содержит динамический вызов; `Asynchronous` — содержит `await`. Изменчивость как булев факт — это `volatility.is_volatile()` (всё, кроме `Static`); собирается фасадом `ExpressionSemantics` из реактивного-источника ссылок и известности значения. Консервативно: не «значение точно меняется», а «анализ не может гарантировать постоянство» (`load()` непрозрачен → не `Static`). Прежние отдельные поля `volatile`/`heavy`/`asynchronous` слиты в этот enum: `Heavy`/`Asynchronous` всегда изменчивы, поэтому держать `volatile` отдельным булем — дубль. Агрегат конкатенации — `max` по enum.
+**Изменчивость** *(en: volatility; enum `ExpressionData.volatility`)* — единый доменный вердикт **выражения шаблона на его месте**: `Volatility { Static, Reactive, Heavy, Asynchronous }` (тотальный порядок по возрастанию «силы»). `Static` — значение доказуемо постоянно, инлайнится; `Reactive` — изменчиво, простое чтение под `template_effect`; `Heavy` — содержит динамический вызов; `Asynchronous` — содержит `await`. Изменчивость как булев факт — это `volatility.is_volatile()` (всё, кроме `Static`); собирается фасадом `ExpressionSemantics` из реактивного-источника ссылок и известности значения. Консервативно: не «значение точно меняется», а «анализ не может гарантировать постоянство» (`load()` непрозрачен → не `Static`). Прежние отдельные поля `volatile`/`heavy`/`asynchronous` слиты в этот enum: `Heavy`/`Asynchronous` всегда изменчивы, поэтому держать `volatile` отдельным булем — дубль. Агрегат конкатенации — `max` по enum. Это наш носитель `has_state` Оригинала — единый ответ на вопрос «наблюдает ли вычисление выражения реактивный state», общий для динамизма шаблона и передачи пропсов. Поэтому отдельной «реактивности пропса» в системе нет: этот вопрос и есть изменчивость, и неверная форма передачи означает ошибку здесь, а не нехватку отдельного флага. Замыкания на вердикт не влияют — он о значении, которое выражение *производит*, а значение функции постоянно независимо от захваченного.
 _Avoid_: dynamic, needs_effect, reactive (для выражения), needs-update, отдельный `volatile`-bool.
 
 **Известность значения** *(en: value evaluation; `Evaluation`, слой `value_evaluation`)* — рекурсивная константная свёртка выражения в `Evaluation` (`Known` / `Defined` / `MaybeNullish`), исполняемая **после** классификации реактивности (reactivity-first) и **потребляющая** её по биндингу: на идентификаторе резолвит `ReferenceId → SymbolId` и читает `binding_semantics(sym)` (prop/store/import/contextual → непрозрачно) + `is_mutated(sym)`, разворачивает руну синтаксически и рекурсивно сворачивает init с cycle-guard от циклов derived (форк `original/compiler/phases/scope.js`). Не переизобретает реактивность и не зависит от метки `OptimizedDerived` (она — relabel вниз по потоку, потребляющий ту же `Evaluation`).
@@ -254,7 +258,7 @@ _Avoid_: одиночное «модуль» / «module» без квалифи�
 - **`Template`-struct в `svelte_codegen_client`** — собранная HTML-строка для эмита, не сам **шаблон**.
 - **`module`** — **module-script** (`<script module>`/`<script context="module">`-блок внутри `.svelte`, код один раз на импорт) vs standalone **`.svelte.js`/`.svelte.ts`-модуль** (отдельный файл с поддержкой рун, компилируется `compile_module`/`generate_module`).
 - **`tag`** — **@-тег** (`{@...}`, в AST `*Tag`) vs HTML-маркер `<...>` (это **элемент**, не тег); в проектной речи всегда конкретно.
-- **`shadow`** — **shadowing** в скоупах vs Shadow DOM в custom-elements (`CeShadowMode`).
+- **`shadow`** — **shadowing** в скоупах vs Shadow DOM в custom-elements (`CeDomMode`).
 - **«синтетический биндинг»** — два источника: парсер (`{@const ...}` представлен как JS-декларация) и анализ (store-sub `$count` для store `count` в legacy-режиме); оба легитимны, контекст уточняется по фазе.
 - **«фрагмент»** — наш **Фрагмент** (`Fragment`-узел) vs `<svelte:fragment slot="…">` в legacy-слотах (это **элемент** под именем `SvelteFragment`).
 - **«компонент»** — единица компиляции `.svelte`-файла (определение) vs use-site в шаблоне `<MyButton />` или `<svelte:component this={…} />` (AST-узел `Component`, категория **элемента**); в проектной речи при риске смешения уточнять «компонент-определение» / «компонент-вызов».

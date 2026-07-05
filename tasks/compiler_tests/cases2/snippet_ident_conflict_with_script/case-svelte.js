@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
 const card = ($$anchor, heading = $.noop) => {
-	var div = root_1();
+	var div = root();
 	var h3 = $.child(div);
 	var text = $.child(h3, true);
 	$.reset(h3);
@@ -10,7 +10,7 @@ const card = ($$anchor, heading = $.noop) => {
 	$.template_effect(() => $.set_text(text, heading()));
 	$.append($$anchor, div);
 };
-var root_1 = $.from_html(`<div><h3> </h3> <!></div>`);
+var root = $.from_html(`<div><h3> </h3> <!></div>`);
 export default function App($$anchor) {
 	function action(node, arg) {
 		return { destroy() {} };

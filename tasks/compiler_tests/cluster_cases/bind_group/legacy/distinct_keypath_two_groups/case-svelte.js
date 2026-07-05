@@ -1,7 +1,7 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<input type="checkbox"/>`);
-var root = $.from_html(`<input type="radio"/> <input type="radio"/> <!>`, 1);
+var root = $.from_html(`<input type="checkbox"/>`);
+var root_1 = $.from_html(`<input type="radio"/> <input type="radio"/> <!>`, 1);
 export default function App($$anchor) {
 	const binding_group = [];
 	const binding_group_1 = [];
@@ -10,7 +10,7 @@ export default function App($$anchor) {
 		b: []
 	});
 	let items = ["x", "y"];
-	var fragment = root();
+	var fragment = root_1();
 	var input = $.first_child(fragment);
 	$.remove_input_defaults(input);
 	input.value = input.__value = 1;
@@ -19,7 +19,7 @@ export default function App($$anchor) {
 	input_1.value = input_1.__value = 2;
 	var node = $.sibling(input_1, 2);
 	$.each(node, 1, () => items, $.index, ($$anchor, item) => {
-		var input_2 = root_1();
+		var input_2 = root();
 		$.remove_input_defaults(input_2);
 		var input_2_value;
 		$.template_effect(() => {

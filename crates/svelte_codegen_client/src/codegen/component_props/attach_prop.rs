@@ -1,3 +1,4 @@
+use oxc_ast::ast::Expression;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::ComponentAttachEmit;
 use svelte_ast::NodeId;
@@ -18,19 +19,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(attr_id);
         };
-        match emit {
-            ComponentAttachEmit::Wrapped => {
-                let call = self.ctx.b.call_expr_callee(expr, [Arg::Ident("$$node")]);
-                let wrapper = self
-                    .ctx
-                    .b
-                    .arrow_expr(self.ctx.b.params(["$$node"]), [self.ctx.b.expr_stmt(call)]);
-                items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, wrapper)));
+        let value = match emit {
+            ComponentAttachEmit::Inline => expr,
+            ComponentAttachEmit::Wrapped => self.wrap_attach_callee(expr),
+            ComponentAttachEmit::WrappedFallback => {
+                let guarded = self.ctx.b.logical_or(expr, self.ctx.b.rid_expr("$.noop"));
+                self.wrap_attach_callee(guarded)
             }
-            ComponentAttachEmit::Inline => {
-                items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, expr)));
-            }
-        }
+        };
+        items.push(PropOrSpread::Prop(ObjProp::Computed(key_expr, value)));
         Ok(())
+    }
+
+    fn wrap_attach_callee(&self, callee: Expression<'a>) -> Expression<'a> {
+        let call = self.ctx.b.call_expr_callee(callee, [Arg::Ident("$$node")]);
+        self.ctx
+            .b
+            .arrow_expr(self.ctx.b.params(["$$node"]), [self.ctx.b.expr_stmt(call)])
     }
 }

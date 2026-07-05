@@ -1,12 +1,12 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<meta name="description" content="A"/>`);
-var root = $.from_html(`<span>x</span> `, 1);
+var root = $.from_html(`<meta name="description" content="A"/>`);
+var root_1 = $.from_html(`<span>x</span> `, 1);
 export default function App($$anchor, $$props) {
 	let foo = $.prop($$props, "foo", 8);
-	var fragment = root();
+	var fragment = root_1();
 	$.head("q2w0q4", ($$anchor) => {
-		var meta = root_1();
+		var meta = root();
 		$.append($$anchor, meta);
 	});
 	var text = $.sibling($.first_child(fragment));

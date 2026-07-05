@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<input type="checkbox"/>`);
+var root = $.from_html(`<input type="checkbox"/>`);
 export default function App($$anchor, $$props) {
 	const binding_group = [];
 	let selected = $.prop($$props, "selected", 12);
@@ -8,7 +8,7 @@ export default function App($$anchor, $$props) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 1, values, $.index, ($$anchor, value) => {
-		var input = root_1();
+		var input = root();
 		$.remove_input_defaults(input);
 		var input_value;
 		$.template_effect(() => {

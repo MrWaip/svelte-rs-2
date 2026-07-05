@@ -209,45 +209,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Expression::CallExpression(call) = node else {
             return None;
         };
+        let analysis = self.analysis?;
+        if !analysis.console_call_contains_state(call.node_id()) {
+            return None;
+        }
         let Expression::StaticMemberExpression(member) = &call.callee else {
             return None;
         };
-        let Expression::Identifier(console_id) = &member.object else {
-            return None;
-        };
-        if console_id.name != "console" {
-            return None;
-        }
-        let method_name = member.property.name.as_str();
-        if !matches!(
-            method_name,
-            "debug"
-                | "dir"
-                | "error"
-                | "group"
-                | "groupCollapsed"
-                | "info"
-                | "log"
-                | "trace"
-                | "warn"
-        ) {
-            return None;
-        }
-
-        let has_potential_state = call.arguments.iter().any(|arg| {
-            !matches!(
-                arg,
-                Argument::StringLiteral(_)
-                    | Argument::NumericLiteral(_)
-                    | Argument::BooleanLiteral(_)
-                    | Argument::NullLiteral(_)
-            )
-        });
-        if !has_potential_state {
-            return None;
-        }
-
-        let method_str = method_name.to_string();
+        let method_str = member.property.name.to_string();
         let Expression::CallExpression(call) = node else {
             unreachable!()
         };

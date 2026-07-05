@@ -71,6 +71,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 Attribute::StringAttribute(a) => {
                     let val = a.value(&self.ctx.query.component.source).to_string();
+                    if matches!(
+                        self.ctx.query.analysis.attributes.get(a.id),
+                        AttributeSemantics::StaticAttr
+                    ) {
+                        state.template.set_attribute(&a.name, Some(val));
+                        continue;
+                    }
                     let name_alloc = self.ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::KeyValue(name_alloc, self.ctx.b.str_expr(&val)));
                 }
@@ -145,6 +152,36 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
                 Attribute::ConcatenationAttribute(a) => {
+                    if let Some(concat_expr) = svelte_analyze::concat_single_dynamic_expr(a)
+                        && a.name.strip_prefix("on").is_some()
+                        && matches!(
+                            self.ctx.query.analysis.attributes.get(attr_id),
+                            AttributeSemantics::Event(_)
+                        )
+                    {
+                        let expr = self.take_attr_expr(attr_id, concat_expr)?;
+                        let expr = {
+                            let data = self.ctx.expression_data(attr_id).cloned();
+                            coarse_wrap(self.ctx, expr, data.as_ref())
+                        };
+                        let is_fn = matches!(
+                            expr.get_inner_expression(),
+                            Expression::ArrowFunctionExpression(_)
+                                | Expression::FunctionExpression(_)
+                        );
+                        let name_alloc = self.ctx.b.alloc_str(&a.name);
+                        if is_fn {
+                            let handler_name = self.ctx.state.gen_ident("event_handler");
+                            state.init.push(self.ctx.b.var_stmt(&handler_name, expr));
+                            props.push(ObjProp::KeyValue(
+                                name_alloc,
+                                self.ctx.b.rid_expr(&handler_name),
+                            ));
+                        } else {
+                            props.push(ObjProp::KeyValue(name_alloc, expr));
+                        }
+                        continue;
+                    }
                     let semantics = match self.ctx.query.analysis.attributes.get(attr_id) {
                         AttributeSemantics::HtmlConcat(s) => s.clone(),
                         _ => {
@@ -205,6 +242,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         if let Some(class_obj) = class_directives_obj {
+            let volatility = self.ctx.query.view.class_directives_volatility(owner_id);
+            let class_obj =
+                super::hoist_directives_object(self.ctx, &mut memo, volatility, class_obj);
             let class_key_expr = self
                 .ctx
                 .b
@@ -223,6 +263,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .b
                     .array_from_args([Arg::Expr(normal_obj), Arg::Expr(important_obj)])
             };
+            let volatility = self.ctx.query.view.style_directives_volatility(owner_id);
+            let style_obj =
+                super::hoist_directives_object(self.ctx, &mut memo, volatility, style_obj);
             let style_key_expr = self
                 .ctx
                 .b

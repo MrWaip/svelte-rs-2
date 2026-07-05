@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.from_html(`<meta name="a" content="b"/>`);
-var root_3 = $.from_html(`<button>x</button>`);
+var root = $.from_html(`<meta name="a" content="b"/>`);
+var root_1 = $.from_html(`<button>x</button>`);
 export default function App($$anchor, $$props) {
 	let cond = $.prop($$props, "cond", 3, true), show = $.prop($$props, "show", 3, true);
 	var fragment_1 = $.comment();
@@ -9,7 +9,7 @@ export default function App($$anchor, $$props) {
 		var node = $.first_child(fragment);
 		{
 			var consequent = ($$anchor) => {
-				var meta = root_2();
+				var meta = root();
 				$.append($$anchor, meta);
 			};
 			$.if(node, ($$render) => {
@@ -21,7 +21,7 @@ export default function App($$anchor, $$props) {
 	var node_1 = $.first_child(fragment_1);
 	{
 		var consequent_1 = ($$anchor) => {
-			var button = root_3();
+			var button = root_1();
 			$.append($$anchor, button);
 		};
 		$.if(node_1, ($$render) => {

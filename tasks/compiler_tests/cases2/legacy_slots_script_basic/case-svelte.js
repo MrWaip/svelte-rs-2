@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p>has description</p>`);
+var root = $.from_html(`<p>has description</p>`);
 export default function App($$anchor, $$props) {
 	const $$slots = $.sanitize_slots($$props);
 	const has_description = !!$$slots.description;
@@ -7,7 +7,7 @@ export default function App($$anchor, $$props) {
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var p = root_1();
+			var p = root();
 			$.append($$anchor, p);
 		};
 		$.if(node, ($$render) => {

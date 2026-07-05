@@ -14,8 +14,8 @@ use crate::types::data::{
     RichContentParentKind,
 };
 use crate::utils::{
-    expression_calls_or_awaits, is_delegatable_event, is_passive_event, is_simple_identifier,
-    strip_capture_event,
+    concat_single_dynamic_expr, expression_calls_or_awaits, is_delegatable_event, is_passive_event,
+    is_simple_identifier, strip_capture_event,
 };
 use crate::walker::{TemplateVisitor, VisitContext};
 use svelte_component_semantics::OxcNodeId;
@@ -248,9 +248,13 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     .insert(el_id, self.source_text(sa.value_span).to_string());
             }
             Attribute::ClassDirective(cd) => {
-                ctx.data
-                    .elements
-                    .flags
+                let volatility = ctx
+                    .data
+                    .expression_data(cd.id)
+                    .map(|data| data.volatility)
+                    .unwrap_or(Volatility::Static);
+                let flags = &mut ctx.data.elements.flags;
+                flags
                     .class_directive_info
                     .get_or_default(el_id)
                     .push(ClassDirectiveInfo {
@@ -259,14 +263,34 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                         has_expression: true,
                         expr_id: cd.expression.id(),
                     });
+                let accumulated = flags
+                    .class_directives_volatility
+                    .get(el_id)
+                    .copied()
+                    .unwrap_or(Volatility::Static);
+                flags
+                    .class_directives_volatility
+                    .insert(el_id, accumulated.max(volatility));
             }
             Attribute::StyleDirective(sd) => {
-                ctx.data
-                    .elements
-                    .flags
+                let volatility = ctx
+                    .data
+                    .expression_data(sd.id)
+                    .map(|data| data.volatility)
+                    .unwrap_or(Volatility::Static);
+                let flags = &mut ctx.data.elements.flags;
+                flags
                     .style_directives
                     .get_or_default(el_id)
                     .push(sd.clone());
+                let accumulated = flags
+                    .style_directives_volatility
+                    .get(el_id)
+                    .copied()
+                    .unwrap_or(Volatility::Static);
+                flags
+                    .style_directives_volatility
+                    .insert(el_id, accumulated.max(volatility));
             }
             Attribute::ExpressionAttribute(ea) => {
                 if ea.name == "class" {
@@ -306,6 +330,26 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     && !Self::skip_input_defaults_gate(ctx, el_id)
                 {
                     ctx.data.elements.flags.needs_input_defaults.insert(el_id);
+                }
+                if concat_single_dynamic_expr(attr).is_some()
+                    && let Some(raw) = attr.name.strip_prefix("on")
+                {
+                    let (name, capture) = if let Some(base) = strip_capture_event(raw) {
+                        (base, true)
+                    } else {
+                        (raw, false)
+                    };
+                    let passive = is_passive_event(name);
+                    let mode = if !capture && is_delegatable_event(name) {
+                        EventHandlerMode::Delegated { passive }
+                    } else {
+                        EventHandlerMode::Direct { capture, passive }
+                    };
+                    ctx.data
+                        .elements
+                        .flags
+                        .event_handler_mode
+                        .insert(attr.id, mode);
                 }
             }
             Attribute::BooleanAttribute(ba) => {

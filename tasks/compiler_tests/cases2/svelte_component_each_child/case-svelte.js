@@ -1,7 +1,7 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
 import A from "./A.svelte";
-var root_2 = $.from_html(`<span> </span>`);
+var root = $.from_html(`<span> </span>`);
 export default function App($$anchor) {
 	let current = A;
 	let items = [
@@ -17,7 +17,7 @@ export default function App($$anchor) {
 				var fragment_1 = $.comment();
 				var node_1 = $.first_child(fragment_1);
 				$.each(node_1, 1, () => items, $.index, ($$anchor, item) => {
-					var span = root_2();
+					var span = root();
 					var text = $.child(span, true);
 					$.reset(span);
 					$.template_effect(() => $.set_text(text, $.get(item)));

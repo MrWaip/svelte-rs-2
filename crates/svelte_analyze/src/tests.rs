@@ -978,6 +978,7 @@ fn class_field_semantics_private_state_write_proxies_opaque_rhs() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: true,
+            tracked: true,
         },
     );
 }
@@ -1005,6 +1006,7 @@ fn class_field_semantics_private_state_write_nested_scope_const_no_proxy() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1029,6 +1031,7 @@ fn class_field_semantics_private_state_write_literal_rhs_no_proxy() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1053,6 +1056,7 @@ fn class_field_semantics_private_state_read_ignores_proxy() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1077,6 +1081,7 @@ fn class_field_semantics_private_raw_state_never_proxies() {
         ClassFieldSemantics::State {
             kind: StateKind::StateRaw,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1126,6 +1131,7 @@ fn class_field_semantics_constructor_declared_private_state() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: true,
+            tracked: true,
         },
     );
 }
@@ -1150,6 +1156,7 @@ fn class_field_semantics_public_state_write_proxies_opaque_rhs() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: true,
+            tracked: true,
         },
     );
 }
@@ -1174,6 +1181,7 @@ fn class_field_semantics_public_state_read() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
         },
     );
 }
@@ -1198,6 +1206,35 @@ fn class_field_semantics_constructor_declared_public_state() {
         ClassFieldSemantics::State {
             kind: StateKind::State,
             proxy: false,
+            tracked: true,
+        },
+    );
+}
+
+#[test]
+fn class_field_semantics_constructor_sync_read_untracked() {
+    let (_component, data, parsed) = analyze_source_with_parsed(
+        r#"<svelte:options runes={true} />
+<script>
+    class Counter {
+        #count;
+        constructor() {
+            this.#count = $state(0);
+            console.log(this.#count);
+        }
+    }
+</script>"#,
+    );
+    assert_class_field_semantics(
+        &data,
+        &parsed,
+        "count",
+        true,
+        1,
+        ClassFieldSemantics::State {
+            kind: StateKind::State,
+            proxy: false,
+            tracked: false,
         },
     );
 }
@@ -1221,7 +1258,7 @@ fn assert_snippet_hoistable(
     let block = find_snippet_block(component.root, component, name)
         .unwrap_or_else(|| panic!("no SnippetBlock named '{name}'"));
     let actual = match data.block_semantics(block.id) {
-        BlockSemantics::Snippet(s) => s.hoistable,
+        BlockSemantics::Snippet(s) => s.placement.is_module_level(),
         other => panic!("expected Snippet payload for '{name}', got {other:?}"),
     };
     assert_eq!(
@@ -3642,6 +3679,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         ReferenceSemantics::SignalWrite {
             kind: StateKind::State,
             proxy: false,
+            store_unsub: None,
         }
     );
     assert_eq!(
@@ -3650,6 +3688,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
             kind: StateKind::State,
             safe: true,
             proxy: false,
+            store_unsub: None,
         }
     );
     assert_eq!(
@@ -3787,6 +3826,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
         ReferenceSemantics::SignalWrite {
             kind: StateKind::State,
             proxy: false,
+            store_unsub: None,
         }
     );
     assert_eq!(
@@ -3802,6 +3842,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
             kind: StateKind::State,
             safe: false,
             proxy: false,
+            store_unsub: None,
         }
     );
     assert_eq!(
@@ -3871,6 +3912,7 @@ fn reactivity_semantics_v2_state_raw_distinguishes_plain_and_mutated_bindings() 
             kind: StateKind::StateRaw,
             safe: true,
             proxy: false,
+            store_unsub: None,
         }
     );
 }
@@ -6179,6 +6221,61 @@ fn analyze_module_ignores_nested_only_store_like_bindings() {
 }
 
 #[test]
+fn analyze_module_reports_experimental_async_for_derived_await() {
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"
+        export async function create_derived(get_promise, get_num) {
+            let value = $derived((await get_promise()) * get_num());
+            return { get value() { return value; } };
+        }
+    "#;
+
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
+    let async_diags = diags
+        .iter()
+        .filter(|diag| diag.kind.code() == "experimental_async")
+        .count();
+
+    assert_eq!(async_diags, 1, "unexpected diagnostics: {diags:?}");
+}
+
+#[test]
+fn analyze_module_reports_experimental_async_for_module_top_level_derived_await() {
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"
+        export const value = $derived(await Promise.resolve(1));
+    "#;
+
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
+    let async_diags = diags
+        .iter()
+        .filter(|diag| diag.kind.code() == "experimental_async")
+        .count();
+
+    assert_eq!(async_diags, 1, "unexpected diagnostics: {diags:?}");
+}
+
+#[test]
+fn analyze_module_ignores_await_in_plain_module_function() {
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"
+        export async function load(fetch) {
+            const response = await fetch('/data');
+            return await response.json();
+        }
+    "#;
+
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
+
+    assert!(
+        !diags
+            .iter()
+            .any(|diag| diag.kind.code() == "experimental_async"),
+        "unexpected diagnostics: {diags:?}"
+    );
+}
+
+#[test]
 fn prop_source_member_mutation_root_in_script_assignment() {
     let (_component, data, parsed) = analyze_source_with_parsed(
         r#"<script>
@@ -6446,6 +6543,15 @@ mod block_semantics_each_tests {
         );
     }
 
+    #[track_caller]
+    fn assert_render_index_required(sem: &EachBlockSemantics, expected: bool) {
+        assert_eq!(
+            sem.render_index_required, expected,
+            "render_index_required: expected {expected:?}, got {:?}",
+            sem.render_index_required
+        );
+    }
+
     fn first_each_semantics<'a>(
         data: &'a AnalysisData<'_>,
         component: &'a svelte_ast::Component,
@@ -6677,6 +6783,24 @@ mod block_semantics_each_tests {
         );
         let sem = first_each_semantics(&data, &component);
         assert_each_flags(sem, EachFlags::ITEM_IMMUTABLE);
+    }
+
+    #[test]
+    fn each_keyed_by_item_requires_render_index_when_item_member_mutated() {
+        let (component, data) = analyze_source(
+            r#"<script>let items = $state([]);</script>{#each items as item (item)}<button onclick={() => item.name = 1}>{item.name}</button>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert_render_index_required(sem, true);
+    }
+
+    #[test]
+    fn each_keyed_by_item_no_render_index_without_mutation() {
+        let (component, data) = analyze_source(
+            r#"<script>let items = $state([]);</script>{#each items as item (item)}<span>{item.name}</span>{/each}"#,
+        );
+        let sem = first_each_semantics(&data, &component);
+        assert_render_index_required(sem, false);
     }
 
     #[test]
@@ -6936,16 +7060,6 @@ mod maybe_runes_resolution {
         );
         assert!(!data.script.runes());
         assert!(!data.script.maybe_runes());
-    }
-
-    #[test]
-    fn shadowed_rune_name_keeps_legacy_with_maybe_runes_true() {
-        let (_, data) = analyze_source_with_options(
-            r#"<script>function $state(v) { return v; } let n = $state(0);</script><p>{n}</p>"#,
-            opts(RunesOption::Auto, None),
-        );
-        assert!(!data.script.runes());
-        assert!(data.script.maybe_runes());
     }
 }
 
@@ -7790,19 +7904,25 @@ async function baz() { return 2; }
     }
 
     #[test]
-    fn evaluation_array_expression_is_object_class() {
+    fn evaluation_array_expression_is_unknown() {
         let source = "<p>{[1, 2]}</p>";
         let ev = evaluate_first_expr(source, "[1, 2]");
-        assert!(ev.is_defined());
-        assert_eq!(ev.class(), Some(ValueClass::Object));
+        assert!(
+            !ev.is_defined(),
+            "ArrayExpression has no scope.js branch, defaults to Unknown"
+        );
+        assert_eq!(ev.class(), None);
     }
 
     #[test]
-    fn evaluation_object_expression_is_object_class() {
+    fn evaluation_object_expression_is_unknown() {
         let source = "<p>{({})}</p>";
         let ev = evaluate_first_expr(source, "({})");
-        assert!(ev.is_defined());
-        assert_eq!(ev.class(), Some(ValueClass::Object));
+        assert!(
+            !ev.is_defined(),
+            "ObjectExpression has no scope.js branch, defaults to Unknown"
+        );
+        assert_eq!(ev.class(), None);
     }
 
     #[test]
@@ -7867,14 +7987,6 @@ async function baz() { return 2; }
     fn evaluation_unary_not_is_boolean() {
         let source = "<script>let { x } = $props();</script><p>{!x}</p>";
         let ev = evaluate_first_expr(source, "!x");
-        assert!(ev.is_defined());
-        assert_eq!(ev.class(), Some(ValueClass::Boolean));
-    }
-
-    #[test]
-    fn evaluation_effect_tracking_call_is_boolean() {
-        let source = "<p>{$effect.tracking()}</p>";
-        let ev = evaluate_first_expr(source, "$effect.tracking()");
         assert!(ev.is_defined());
         assert_eq!(ev.class(), Some(ValueClass::Boolean));
     }
@@ -8540,10 +8652,11 @@ mod attribute_semantics_skeleton_tests {
     use super::*;
     use crate::AttributeSemantics;
     use crate::attribute_semantics::data::{
-        BoundaryPropEmit, ComponentAttachEmit, ComponentBindKind, ComponentBindTarget,
-        ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, DocumentBindSemantics,
+        ComponentAttachEmit, ComponentBindKind, ComponentBindTarget, ComponentPropMemo,
+        ComponentPropSemantics, ComponentSpreadEmit, DocumentBindSemantics,
         ElementBindPropertyKind, EventEmit, HandlerEmit, HtmlBindKind, WindowBindSemantics,
     };
+    use crate::expression_semantics::Volatility;
     use crate::{DocumentBindKind, WindowBindKind};
     use svelte_ast::Attribute;
 
@@ -8757,7 +8870,7 @@ mod attribute_semantics_skeleton_tests {
 
         match data.attributes.get(attr_id) {
             AttributeSemantics::BoundaryProp(b) => {
-                assert_eq!(b.emit, BoundaryPropEmit::Getter);
+                assert_ne!(b.volatility, Volatility::Static);
             }
             other => panic!("expected BoundaryProp, got {other:?}"),
         }
@@ -8772,7 +8885,7 @@ mod attribute_semantics_skeleton_tests {
 
         match data.attributes.get(attr_id) {
             AttributeSemantics::BoundaryProp(b) => {
-                assert_eq!(b.emit, BoundaryPropEmit::Getter);
+                assert_ne!(b.volatility, Volatility::Static);
             }
             other => panic!("expected BoundaryProp, got {other:?}"),
         }

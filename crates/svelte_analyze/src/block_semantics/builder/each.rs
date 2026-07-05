@@ -160,6 +160,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
         EachFlavor::Regular
     };
 
+    let render_index_required = requires_render_index(ctx, index, item_sym, shadows_outer, flavor);
+
     ctx.store.set(
         block.id,
         BlockSemantics::Each(EachBlockSemantics {
@@ -169,10 +171,52 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
             flavor,
             each_flags,
             shadows_outer,
+            render_index_required,
             async_kind,
             collection: EachCollection { source },
         }),
     );
+}
+
+fn requires_render_index(
+    ctx: &Ctx<'_, '_>,
+    index: EachIndexKind,
+    item_sym: Option<SymbolId>,
+    shadows_outer: bool,
+    flavor: EachFlavor,
+) -> bool {
+    let index_used_by_body = match index {
+        EachIndexKind::Declared { used_in_body, .. } => used_in_body,
+        EachIndexKind::Absent => false,
+    };
+    if index_used_by_body {
+        return true;
+    }
+
+    let legacy_writeback_no_user_index = match index {
+        EachIndexKind::Absent => item_sym.is_some_and(|sym| {
+            ctx.reactivity
+                .binding_semantics(sym)
+                .is_each_item_indexed_legacy()
+        }),
+        EachIndexKind::Declared { .. } => false,
+    };
+    if legacy_writeback_no_user_index {
+        return true;
+    }
+
+    if item_sym.is_some_and(|sym| ctx.semantics.is_member_mutated(sym)) {
+        return true;
+    }
+
+    if shadows_outer {
+        return true;
+    }
+
+    match flavor {
+        EachFlavor::BindGroup => true,
+        EachFlavor::Regular => false,
+    }
 }
 
 fn compute_each_flags(

@@ -1,6 +1,22 @@
 use super::*;
 
 compiler_case!(
+    declaration_nested_function_sync,
+    "runes/derived/declaration/nested_function_sync"
+);
+compiler_case!(
+    declaration_nested_effect_sync,
+    "runes/derived/declaration/nested_effect_sync"
+);
+compiler_case!(
+    declaration_nested_effect_root_sync,
+    "runes/derived/declaration/nested_effect_root_sync"
+);
+compiler_case!(
+    declaration_nested_function_derived_by,
+    "runes/derived/declaration/nested_function_derived_by"
+);
+compiler_case!(
     declaration_array_with_object,
     "runes/derived/declaration/array_with_object"
 );
@@ -43,4 +59,52 @@ compiler_case!(
 compiler_case!(
     declaration_string_key,
     "runes/derived/declaration/string_key"
+);
+
+compiler_case!(
+    write_update_postfix_inc,
+    "runes/derived/write/update_postfix_inc"
+);
+compiler_case!(
+    write_update_postfix_dec,
+    "runes/derived/write/update_postfix_dec"
+);
+compiler_case!(
+    write_update_prefix_inc,
+    "runes/derived/write/update_prefix_inc"
+);
+compiler_case!(
+    write_update_prefix_dec,
+    "runes/derived/write/update_prefix_dec"
+);
+compiler_case!(write_compound_assign, "runes/derived/write/compound_assign");
+compiler_case!(write_bind_value, "runes/derived/write/bind_value");
+compiler_case!(
+    write_plain_assign_guard,
+    "runes/derived/write/plain_assign_guard"
+);
+compiler_case!(
+    write_state_update_guard,
+    "runes/derived/write/state_update_guard"
+);
+compiler_case!(
+    write_derived_read_guard,
+    "runes/derived/write/derived_read_guard"
+);
+
+compiler_case!(
+    read_var_declared_safe_get,
+    "runes/derived/read/var_declared_safe_get"
+);
+compiler_case!(
+    read_derived_by_var_declared_safe_get,
+    "runes/derived/read/derived_by_var_declared_safe_get"
+);
+compiler_case!(
+    read_let_declared_get_guard,
+    "runes/derived/read/let_declared_get_guard"
+);
+compiler_case!(
+    read_const_declared_get_guard,
+    "runes/derived/read/const_declared_get_guard"
 );

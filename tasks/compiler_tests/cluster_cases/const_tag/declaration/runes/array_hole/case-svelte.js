@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<button> </button>`);
+var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
 	let pairs = $.proxy([
 		1,
@@ -17,7 +17,7 @@ export default function App($$anchor) {
 					c
 				};
 			});
-			var button = root_1();
+			var button = root();
 			var text = $.child(button);
 			$.reset(button);
 			$.template_effect(() => $.set_text(text, `${$.get(computed_const).a ?? ""}${$.get(computed_const).c ?? ""}`));

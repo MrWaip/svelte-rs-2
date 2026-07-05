@@ -17,3 +17,24 @@ mod transition_directive;
 mod use_directive;
 
 pub(super) use dispatch::AttributeOwnerKind;
+
+use oxc_ast::ast::Expression;
+use svelte_analyze::Volatility;
+
+use super::data_structures::TemplateMemoState;
+use crate::context::Ctx;
+
+fn hoist_directives_object<'a>(
+    ctx: &Ctx<'a>,
+    memo: &mut TemplateMemoState<'a>,
+    volatility: Volatility,
+    obj: Expression<'a>,
+) -> Expression<'a> {
+    match volatility {
+        Volatility::Heavy => {
+            let index = memo.sync_values_push(obj);
+            memo.sync_param_expr(ctx, index)
+        }
+        Volatility::Static | Volatility::Reactive | Volatility::Asynchronous => obj,
+    }
+}

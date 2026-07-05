@@ -12,6 +12,8 @@ use svelte_analyze::{BindingSemantics, PropBindingKind, PropDefaultKind, PropEmi
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{OriginKind, SymbolId, walk_bindings};
 
+use crate::data::{RestExcludeKey, RestExcludes};
+
 use super::super::model::ComponentTransformer;
 use super::super::{
     PROPS_IS_BINDABLE, PROPS_IS_IMMUTABLE, PROPS_IS_LAZY_INITIAL, PROPS_IS_RUNES, PROPS_IS_UPDATED,
@@ -23,10 +25,10 @@ enum ExcludedKey {
 }
 
 impl ExcludedKey {
-    fn into_arg<'a, 'short>(self) -> Arg<'a, 'short> {
+    fn into_rest_key(self) -> RestExcludeKey {
         match self {
-            ExcludedKey::Str(s) => Arg::Str(s),
-            ExcludedKey::Num(n) => Arg::Num(n),
+            ExcludedKey::Str(s) => RestExcludeKey::Str(s),
+            ExcludedKey::Num(n) => RestExcludeKey::Num(n),
         }
     }
 }
@@ -104,6 +106,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
     }
 
+    fn record_rest_excludes(&mut self, keys: Vec<RestExcludeKey>) -> &'a str {
+        let name = self.ident_gen.generate("rest_excludes");
+        let name_ref: &'a str = self.b.alloc_str(&name);
+        self.transform_data
+            .rest_excludes
+            .push(RestExcludes { name, keys });
+        name_ref
+    }
+
     fn rewrite_props_identifier(
         &mut self,
         decl_kind: VariableDeclarationKind,
@@ -122,13 +133,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let BindingSemantics::Prop(prop) = analysis.binding_semantics(sym) else {
             return;
         };
-        let arr_expr = self.b.array_from_args(
-            base_rest_excluded(prop.emit_mode)
-                .into_iter()
-                .map(Arg::Str)
-                .collect::<Vec<_>>(),
-        );
-        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$props"), Arg::Expr(arr_expr)];
+        let keys: Vec<RestExcludeKey> = base_rest_excluded(prop.emit_mode)
+            .into_iter()
+            .map(RestExcludeKey::Str)
+            .collect();
+        let excludes_ref = self.record_rest_excludes(keys);
+        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$props"), Arg::Ident(excludes_ref)];
         if self.dev {
             args.push(Arg::Str(id.name.to_string()));
         }
@@ -159,16 +169,16 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
         walk_bindings(&declarator.id, |v| {
             if v.is_rest {
-                let arr_expr = self.b.array_from_args(
-                    mem::take(&mut excluded)
-                        .into_iter()
-                        .map(ExcludedKey::into_arg)
-                        .collect::<Vec<_>>(),
-                );
+                let keys: Vec<RestExcludeKey> = mem::take(&mut excluded)
+                    .into_iter()
+                    .map(ExcludedKey::into_rest_key)
+                    .collect();
+                let excludes_ref = self.record_rest_excludes(keys);
                 let name: &'a str = self
                     .b
                     .alloc_str(self.component_scoping.symbol_name(v.symbol));
-                let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$props"), Arg::Expr(arr_expr)];
+                let mut args: Vec<Arg<'a, '_>> =
+                    vec![Arg::Ident("$$props"), Arg::Ident(excludes_ref)];
                 if self.dev {
                     args.push(Arg::Str(name.to_string()));
                 }
@@ -263,7 +273,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                             {
                                 default_expr
                             } else {
-                                let lazy = super::super::derived::wrap_lazy(self.b, default_expr);
+                                let lazy = super::derived::wrap_lazy(self.b, default_expr);
                                 self.b.seed_arrow_scope(&lazy, self.gen_arrow_scope);
                                 lazy
                             };

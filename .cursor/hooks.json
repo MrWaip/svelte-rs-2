@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": ".cursor/hooks/block-line-comments.js",
+        "matcher": "Write|StrReplace|EditNotebook",
+        "failClosed": true
+      }
+    ]
+  }
+}

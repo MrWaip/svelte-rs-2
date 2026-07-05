@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<li> </li>`);
-var root = $.from_html(`<button> </button> <p></p> <ul></ul>`, 1);
+var root = $.from_html(`<li> </li>`);
+var root_1 = $.from_html(`<button> </button> <p></p> <ul></ul>`, 1);
 export default function App($$anchor) {
 	let count = $.state(0);
 	let label = "hello";
@@ -12,7 +12,7 @@ export default function App($$anchor) {
 	function increment() {
 		$.set(count, $.get(count) + 1);
 	}
-	var fragment = root();
+	var fragment = root_1();
 	var button = $.first_child(fragment);
 	var text = $.child(button, true);
 	$.reset(button);
@@ -20,7 +20,7 @@ export default function App($$anchor) {
 	p.textContent = "hello";
 	var ul = $.sibling(p, 2);
 	$.each(ul, 21, () => items, $.index, ($$anchor, item) => {
-		var li = root_1();
+		var li = root();
 		var text_1 = $.child(li, true);
 		$.reset(li);
 		$.template_effect(() => $.set_text(text_1, $.get(item)));

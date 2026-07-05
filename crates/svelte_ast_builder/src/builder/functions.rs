@@ -120,6 +120,23 @@ impl<'a> Builder<'a> {
         Expression::ArrowFunctionExpression(self.alloc(self.arrow(params, statements)))
     }
 
+    pub fn arrow_block_expr_async(
+        &self,
+        params: FormalParameters<'a>,
+        statements: impl IntoIterator<Item = Statement<'a>>,
+        is_async: bool,
+    ) -> Expression<'a> {
+        let body = self
+            .ast
+            .function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(statements));
+        Expression::ArrowFunctionExpression(
+            self.alloc(
+                self.ast
+                    .arrow_function_expression(SPAN, false, is_async, NONE, params, NONE, body),
+            ),
+        )
+    }
+
     pub fn thunk(&self, expr: Expression<'a>) -> Expression<'a> {
         if let Expression::CallExpression(call) = &expr
             && call.arguments.is_empty()
@@ -191,6 +208,14 @@ impl<'a> Builder<'a> {
             let inner = await_node.unbox().argument;
             return self.thunk(inner);
         }
+        if let Expression::CallExpression(call) = &expr
+            && matches!(
+                call.callee.get_inner_expression(),
+                Expression::AwaitExpression(_)
+            )
+        {
+            return self.async_arrow_expr_body(expr);
+        }
         let await_expr = self.await_expr(expr);
         let body = self.ast.function_body(
             SPAN,
@@ -248,6 +273,11 @@ impl<'a> Builder<'a> {
     pub fn logical_coalesce(&self, left: Expression<'a>, right: Expression<'a>) -> Expression<'a> {
         self.ast
             .expression_logical(SPAN, left, ast::LogicalOperator::Coalesce, right)
+    }
+
+    pub fn logical_or(&self, left: Expression<'a>, right: Expression<'a>) -> Expression<'a> {
+        self.ast
+            .expression_logical(SPAN, left, ast::LogicalOperator::Or, right)
     }
 
     pub fn function_decl(

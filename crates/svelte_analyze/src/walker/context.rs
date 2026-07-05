@@ -15,7 +15,8 @@ pub(crate) struct VisitContext<'d, 'a> {
     component_name: &'d str,
     filename_basename: &'d str,
     ignore_current: FxHashSet<String>,
-    ignore_stack: Vec<FxHashSet<String>>,
+    ignore_current_idx: Option<u32>,
+    ignore_stack: Vec<(FxHashSet<String>, Option<u32>)>,
     warnings: Vec<Diagnostic>,
     current_fragment_id: Option<svelte_ast::FragmentId>,
 }
@@ -43,6 +44,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
             component_name,
             filename_basename,
             ignore_current: FxHashSet::default(),
+            ignore_current_idx: None,
             ignore_stack: Vec::new(),
             warnings: Vec::new(),
             current_fragment_id: None,
@@ -101,8 +103,9 @@ impl<'d, 'a> VisitContext<'d, 'a> {
         let prev = mem::take(&mut self.ignore_current);
         let mut next = prev.clone();
         next.extend(codes);
-        self.ignore_stack.push(prev);
+        self.ignore_stack.push((prev, self.ignore_current_idx));
         self.ignore_current = next;
+        self.ignore_current_idx = None;
     }
 
     pub(crate) fn child_scope_by_id(
@@ -115,20 +118,29 @@ impl<'d, 'a> VisitContext<'d, 'a> {
     }
 
     pub fn pop_ignore(&mut self) {
-        if let Some(prev) = self.ignore_stack.pop() {
+        if let Some((prev, prev_idx)) = self.ignore_stack.pop() {
             self.ignore_current = prev;
+            self.ignore_current_idx = prev_idx;
         }
     }
 
     pub fn record_ignore_for_node(&mut self, node_id: NodeId) {
-        if !self.ignore_current.is_empty() {
-            let idx = self
-                .data
-                .output
-                .ignore_data
-                .intern_snapshot(&self.ignore_current);
-            self.data.output.ignore_data.set_snapshot(node_id, idx);
+        if self.ignore_current.is_empty() {
+            return;
         }
+        let idx = match self.ignore_current_idx {
+            Some(idx) => idx,
+            None => {
+                let idx = self
+                    .data
+                    .output
+                    .ignore_data
+                    .intern_snapshot(&self.ignore_current);
+                self.ignore_current_idx = Some(idx);
+                idx
+            }
+        };
+        self.data.output.ignore_data.set_snapshot(node_id, idx);
     }
 
     pub fn take_warnings(&mut self) -> Vec<Diagnostic> {

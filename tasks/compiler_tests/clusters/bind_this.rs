@@ -4,6 +4,10 @@ compiler_case!(guard_runes_state, "bind_this/guard_runes_state");
 compiler_case!(guard_plain_local, "bind_this/guard_plain_local");
 compiler_case!(prop_ident, "bind_this/prop_ident");
 compiler_case!(each_member, "bind_this/each_member");
+compiler_case!(
+    runes_prop_each_member_writeback,
+    "bind_this/runes_prop_each_member_writeback"
+);
 compiler_case!(each_index_keyed, "bind_this/each_index_keyed");
 compiler_case!(member_prop_computed, "bind_this/member_prop_computed");
 compiler_case!(component_prop_ident, "bind_this/component_prop_ident");
@@ -42,4 +46,19 @@ compiler_case!(
 compiler_case!(
     legacy_each_collection_untrack,
     "bind_this/legacy_each_collection_untrack"
+);
+
+compiler_case!(seq_runes_state, "bind_this/seq_runes_state");
+compiler_case!(
+    seq_component_runes_state,
+    "bind_this/seq_component_runes_state"
+);
+compiler_case!(seq_each_member, "bind_this/seq_each_member");
+compiler_case!(
+    seq_snippet_param_member,
+    "bind_this/seq_snippet_param_member"
+);
+compiler_case!(
+    guard_value_seq_non_this,
+    "bind_this/guard_value_seq_non_this"
 );

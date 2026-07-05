@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::scope::SymbolId;
 use oxc_index::IndexVec;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -102,6 +104,26 @@ impl BindingSemantics {
             | BindingSemantics::OptimizedRune(_)
             | BindingSemantics::RuntimeRune { .. }
             | BindingSemantics::Const(_)
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_rune_backed(&self) -> bool {
+        match self {
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. } => true,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Store(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
             | BindingSemantics::Unresolved => false,
@@ -268,6 +290,26 @@ impl BindingSemantics {
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
             | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn legacy_state_immutable(&self) -> Option<bool> {
+        match self {
+            BindingSemantics::LegacyState(state) => Some(state.immutable),
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => None,
         }
     }
 
@@ -517,6 +559,7 @@ pub struct OptimizedRuneSemantics {
 pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
     pub emit: DerivedEmit,
+    pub var_declared: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -531,6 +574,14 @@ pub enum DerivedEmit {
     Sync,
 
     Async,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DerivedSource {
+    #[default]
+    Computed,
+
+    Passthrough,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -689,6 +740,7 @@ pub enum DeclaratorSemantics {
     RuneDerived {
         kind: DerivedKind,
         emit: DerivedEmit,
+        source: DerivedSource,
     },
 
     ConstTag {
@@ -858,8 +910,14 @@ pub struct ClassFieldStateSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClassFieldSemantics {
     None,
-    State { kind: StateKind, proxy: bool },
-    Derived { kind: DerivedKind },
+    State {
+        kind: StateKind,
+        proxy: bool,
+        tracked: bool,
+    },
+    Derived {
+        kind: DerivedKind,
+    },
 }
 
 impl ClassFieldSemantics {
@@ -891,15 +949,19 @@ pub enum ReferenceSemantics {
     SignalWrite {
         kind: StateKind,
         proxy: bool,
+        store_unsub: Option<SymbolId>,
     },
 
     SignalUpdate {
         kind: StateKind,
         safe: bool,
         proxy: bool,
+        store_unsub: Option<SymbolId>,
     },
 
     DerivedWrite,
+
+    DerivedUpdate,
 
     StoreRead {
         symbol: SymbolId,
@@ -1015,6 +1077,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::Proxy
             | ReferenceSemantics::SignalRead { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1047,6 +1110,15 @@ impl ReferenceSemantics {
         }
     }
 
+    pub(crate) fn store_symbol(&self) -> Option<SymbolId> {
+        match self {
+            ReferenceSemantics::StoreRead { symbol }
+            | ReferenceSemantics::StoreWrite { symbol }
+            | ReferenceSemantics::StoreUpdate { symbol } => Some(*symbol),
+            _ => None,
+        }
+    }
+
     pub fn is_store_subscription(&self) -> bool {
         match self {
             ReferenceSemantics::StoreRead { .. }
@@ -1060,6 +1132,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::PropRead(_)
             | ReferenceSemantics::PropMutation { .. }
             | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
@@ -1098,6 +1171,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1137,6 +1211,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1184,6 +1259,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1223,6 +1299,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1263,6 +1340,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1303,6 +1381,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
+            | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreRead { .. }
             | ReferenceSemantics::StoreWrite { .. }
             | ReferenceSemantics::StoreUpdate { .. }
@@ -1433,13 +1512,16 @@ pub(crate) enum ReferenceFacts {
     SignalWrite {
         kind: StateKind,
         proxy: bool,
+        store_unsub: Option<SymbolId>,
     },
     SignalUpdate {
         kind: StateKind,
         safe: bool,
         proxy: bool,
+        store_unsub: Option<SymbolId>,
     },
     DerivedWrite,
+    DerivedUpdate,
     StoreRead {
         symbol: SymbolId,
     },
@@ -1543,6 +1625,7 @@ impl ReferenceFacts {
             | ReferenceFacts::SignalWrite { .. }
             | ReferenceFacts::SignalUpdate { .. }
             | ReferenceFacts::DerivedWrite
+            | ReferenceFacts::DerivedUpdate
             | ReferenceFacts::PropRead(_)
             | ReferenceFacts::PropMutation { .. }
             | ReferenceFacts::PropSourceMemberMutationRoot { .. }
@@ -1581,6 +1664,10 @@ pub struct ReactivitySemantics {
     bindings: IndexVec<SymbolId, Option<BindingFacts>>,
 
     declarators: IndexVec<OxcNodeId, Option<DeclaratorSemantics>>,
+
+    declarator_node_by_symbol: FxHashMap<SymbolId, OxcNodeId>,
+
+    deferred_derived_sources: Vec<(OxcNodeId, ReferenceId)>,
 
     store_declaration_symbols: Vec<SymbolId>,
 
@@ -1626,6 +1713,8 @@ pub struct ReactivitySemantics {
 
     runes_mode: RunesMode,
 
+    svelte_store_rune_import: Option<SymbolId>,
+
     const_tag_order_legacy: Vec<SmallVec<[NodeId; 4]>>,
 
     const_tag_cycle_legacy: Option<ConstTagCycleFactLegacy>,
@@ -1641,6 +1730,8 @@ impl ReactivitySemantics {
         Self {
             bindings: IndexVec::new(),
             declarators,
+            declarator_node_by_symbol: FxHashMap::default(),
+            deferred_derived_sources: Vec::new(),
             store_declaration_symbols: Vec::new(),
             reference_facts: IndexVec::new(),
             class_field_semantics: FxHashMap::default(),
@@ -1663,6 +1754,7 @@ impl ReactivitySemantics {
             legacy_has_member_mutated: false,
             uses_runes: false,
             runes_mode: RunesMode::Runes,
+            svelte_store_rune_import: None,
             const_tag_order_legacy: Vec::new(),
             const_tag_cycle_legacy: None,
             legacy_reactive: super::legacy_reactive::LegacyReactivitySemantics::new(),
@@ -1759,6 +1851,61 @@ impl ReactivitySemantics {
             .and_then(|slot| slot.as_ref())
             .cloned()
             .unwrap_or(DeclaratorSemantics::None)
+    }
+
+    pub(crate) fn record_declarator_node_for_symbol(&mut self, sym: SymbolId, node: OxcNodeId) {
+        self.declarator_node_by_symbol.entry(sym).or_insert(node);
+    }
+
+    pub(crate) fn consolidate_legacy_state_declarators(&mut self) {
+        let pending: Vec<OxcNodeId> = self
+            .bindings
+            .iter_enumerated()
+            .filter_map(|(sym, facts)| {
+                if !matches!(facts, Some(BindingFacts::LegacyState(_))) {
+                    return None;
+                }
+                let node = self.declarator_node_by_symbol.get(&sym).copied()?;
+                self.declarators
+                    .get(node)
+                    .and_then(|slot| slot.as_ref())
+                    .is_none()
+                    .then_some(node)
+            })
+            .collect();
+        for node in pending {
+            self.write_declarator(node, DeclaratorSemantics::LegacyState);
+        }
+    }
+
+    pub(crate) fn record_deferred_derived_source(&mut self, node: OxcNodeId, source: ReferenceId) {
+        self.deferred_derived_sources.push((node, source));
+    }
+
+    pub(crate) fn classify_derived_sources(&mut self) {
+        let deferred = mem::take(&mut self.deferred_derived_sources);
+        for (node, ref_id) in deferred {
+            let is_passthrough = matches!(
+                self.reference_semantics(ref_id),
+                ReferenceSemantics::StoreRead { .. }
+                    | ReferenceSemantics::PropRead(PropReferenceSemantics::Source { .. })
+            );
+            if !is_passthrough {
+                continue;
+            }
+            if let DeclaratorSemantics::RuneDerived { kind, emit, .. } =
+                self.declarator_semantics(node)
+            {
+                self.write_declarator(
+                    node,
+                    DeclaratorSemantics::RuneDerived {
+                        kind,
+                        emit,
+                        source: DerivedSource::Passthrough,
+                    },
+                );
+            }
+        }
     }
 
     pub fn iter_store_bindings(
@@ -1885,18 +2032,28 @@ impl ReactivitySemantics {
                 kind: *kind,
                 safe: *safe,
             },
-            Some(ReferenceFacts::SignalWrite { kind, proxy }) => ReferenceSemantics::SignalWrite {
+            Some(ReferenceFacts::SignalWrite {
+                kind,
+                proxy,
+                store_unsub,
+            }) => ReferenceSemantics::SignalWrite {
                 kind: *kind,
                 proxy: *proxy,
+                store_unsub: *store_unsub,
             },
-            Some(ReferenceFacts::SignalUpdate { kind, safe, proxy }) => {
-                ReferenceSemantics::SignalUpdate {
-                    kind: *kind,
-                    safe: *safe,
-                    proxy: *proxy,
-                }
-            }
+            Some(ReferenceFacts::SignalUpdate {
+                kind,
+                safe,
+                proxy,
+                store_unsub,
+            }) => ReferenceSemantics::SignalUpdate {
+                kind: *kind,
+                safe: *safe,
+                proxy: *proxy,
+                store_unsub: *store_unsub,
+            },
             Some(ReferenceFacts::DerivedWrite) => ReferenceSemantics::DerivedWrite,
+            Some(ReferenceFacts::DerivedUpdate) => ReferenceSemantics::DerivedUpdate,
             Some(ReferenceFacts::StoreRead { symbol }) => {
                 ReferenceSemantics::StoreRead { symbol: *symbol }
             }
@@ -2030,6 +2187,14 @@ impl ReactivitySemantics {
         self.runes_mode = runes_mode;
     }
 
+    pub(crate) fn set_svelte_store_rune_import(&mut self, symbol: Option<SymbolId>) {
+        self.svelte_store_rune_import = symbol;
+    }
+
+    pub(crate) fn svelte_store_rune_import(&self) -> Option<SymbolId> {
+        self.svelte_store_rune_import
+    }
+
     pub(crate) fn set_const_tag_order_legacy(
         &mut self,
         order: Vec<SmallVec<[NodeId; 4]>>,
@@ -2056,6 +2221,15 @@ impl ReactivitySemantics {
 
     pub(crate) fn binding_facts_mut(&mut self, sym: SymbolId) -> Option<&mut BindingFacts> {
         self.bindings.get_mut(sym).and_then(|slot| slot.as_mut())
+    }
+
+    pub(crate) fn demote_store_shadowed_rune(&mut self, decl_node: OxcNodeId, symbol: SymbolId) {
+        if let Some(slot) = self.declarators.get_mut(decl_node) {
+            *slot = None;
+        }
+        if let Some(slot) = self.bindings.get_mut(symbol) {
+            *slot = None;
+        }
     }
 
     pub(crate) fn record_state_binding(
@@ -2334,6 +2508,12 @@ impl ReactivitySemantics {
             self.reference_facts.resize_with(idx + 1, || None);
         }
         self.reference_facts[ref_id] = Some(semantics);
+    }
+
+    pub(crate) fn clear_reference_semantics(&mut self, ref_id: ReferenceId) {
+        if let Some(slot) = self.reference_facts.get_mut(ref_id) {
+            *slot = None;
+        }
     }
 
     pub(crate) fn record_let_carrier_binding(

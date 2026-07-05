@@ -19,9 +19,9 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 - `binding_semantics(SymbolId) -> BindingSemantics`
 - `declarator_semantics(OxcNodeId) -> DeclaratorSemantics`
 - `reference_semantics(ReferenceId) -> ReferenceSemantics`
-- `class_field_semantics(OxcNodeId) -> ClassFieldSemantics` — семантика доступа к полю класса (`this.field` / `this.#field`) по узлу доступа. Тотальный (`None`-дефолт, `is_field()`); варианты `State { kind, proxy }`, `Derived { kind }`. Композиция: `field_access_target` (резолв в декларацию) + `declarator_semantics` (вид поля) + per-write `proxy`. Трансформ — один запрос, без строк и резолва на своей стороне.
+- `class_field_semantics(OxcNodeId) -> ClassFieldSemantics` — семантика доступа к полю класса (`this.field` / `this.#field`) по узлу доступа. Тотальный (`None`-дефолт, `is_field()`); варианты `State { kind, proxy, tracked }`, `Derived { kind }`. Композиция: `field_access_target` (резолв в декларацию) + `declarator_semantics` (вид поля) + per-write `proxy`. Трансформ — один запрос, без строк и резолва на своей стороне.
 
-**Per-write proxy.** Флаг для `$.set(source, value, should_proxy)` живёт в самом варианте: `ReferenceSemantics::SignalWrite/SignalUpdate { proxy }` (identifier-записи) и `ClassFieldSemantics::State { proxy }` (приватное поле). Init-proxy `$state`-инициализатора — на семантике декларации (`StateDeclarationSemantics.proxied` / `ClassFieldStateSemantics.proxied`), не в сайд-таблице. Считает `finalize_proxy` (в пассе после `BuildValueEvaluation`): `proxy ⟺ kind == State ∧ оператор не-coercive ∧ правая часть не доказуемо примитив`. Примитивность — через `ValueEvaluation`; one-level резолв `const`-инициализатора (`ValueEvaluation` видит только top-level биндинги) даёт карта `init_proxyable`, чей verdict тоже считается через `evaluate`. Деструктур-листья переиспользуют тот же `ReferenceId`. Трансформ читает готовый флаг.
+**Per-write proxy.** Флаг для `$.set(source, value, should_proxy)` живёт в самом варианте: `ReferenceSemantics::SignalWrite/SignalUpdate { proxy }` (identifier-записи) и `ClassFieldSemantics::State { proxy }` (приватное поле). Init-proxy `$state`-инициализатора — на семантике декларации (`StateDeclarationSemantics.proxied` / `ClassFieldStateSemantics.proxied`), не в сайд-таблице. Считает `finalize_proxy`: `proxy ⟺ kind == State ∧ оператор не-coercive ∧ правая часть проксируема`. Проксируемость — синтаксический `should_proxy` по типу AST-узла (порт Оригинала, не `ValueEvaluation`); для идентификатора — рекурсия по инициализатору через карту `init_proxyable`. Деструктур-листья переиспользуют тот же `ReferenceId`. Трансформ читает готовый флаг.
 
 Факты уровня компонента — одной пачкой, в доменном виде:
 
@@ -32,14 +32,14 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 - `is_rest_prop(SymbolId) -> bool` (crate) — биндинг объявлен `...rest` в `$props()`-паттерне.
 - `iter_runes_prop_symbols() -> impl Iterator<Item = SymbolId>` — runes-props в порядке объявления, без `Rest` и identifier-формы (`let props = $props()`); основа перечисления accessor-пропов (CE-метаданные, getter/setter `$$exports`). Имена потребитель резолвит сам: ключ — `binding_origin_key`, локальное имя — `symbol_name`.
 - `prop_default_span(SymbolId) -> Option<Span>` — положение default-выражения пропа в исходнике; кодген перепарсит слайс для setter-дефолта (`set x($$value = <default>)`).
-- `legacy_bindable_prop_symbols() / has_legacy_bindable_prop()` — `export let`-props (LEGACY(svelte4)).
+- `legacy_bindable_prop_symbols()` — `export let`-props (LEGACY(svelte4)); компонент-уровневый флаг наличия — `summary().legacy.has_bindable_prop`.
 - `legacy_bindable_prop_alias(SymbolId) -> Option<&str>` — exported-алиас `export { foo as bar }` для bindable-prop (LEGACY(svelte4)). Известное отступление от «identity by id» — хранит строку; кандидат на перенос источника в `ComponentSemantics`.
 
 Узкие предикаты — методы на самих енамах семантик, каждый с exhaustive match по всем вариантам (новый вариант — ошибка компиляции, никаких `_`-проваливаний). У потребителей `matches!` по этим енамам запрещён: либо метод енама, либо локальный exhaustive `match` для сайт-специфичного набора.
 
 `BindingSemantics`:
 
-- `is_reactive()` — биндинг есть **Реактивный источник** по глоссарию: чтение идёт через реактивную ячейку рантайма либо трактуется реактивно (state/derived/prop/legacy-state/store/contextual/maybe-reactive). False — статичные чтения: `OptimizedDerived`/`OptimizedRune` (демотированы в плоские значения), `RuntimeRune` (статичные runtime-значения), `Const`, `NonReactive`, `LegacyApiExport`, `Unresolved`.
+- `is_reactive()` — биндинг есть **Реактивный источник** по глоссарию: чтение идёт через реактивную ячейку рантайма либо трактуется реактивно (state/derived/prop/legacy-state/store/contextual/maybe-reactive). False — статичные чтения: `OptimizedDerived`/`OptimizedRune` (демотированы в плоские значения), `RuntimeRune` (статичные runtime-значения), `Const`, `NonReactive`, `LegacyApiExport`, `Unresolved`. `is_reactive() == false` — только про ось реактивного источника. Демотация (`OptimizedRune`/`OptimizedDerived`) оптимизирует *объявление* (убирает runtime-ячейку), но не делает чтение биндинга ненаблюдаемым; читать это как `Static`-изменчивость нельзя — чтение остаётся изменчивым, пока значение не свёрнуто в `Known`-константу, по той же причине, по которой Оригинал держит здесь `has_state`.
 - `is_store()` — биндинг стор-подписки (`Store(_)` пишется только на `$`-символ).
 - `is_props()` — проп любого вида: `$props()` или `export let` (LEGACY(svelte4)); `is_runes_prop()` / `is_legacy_prop()` — точные половины; `is_rest_props()` — `...rest` в `$props()`.
 - `is_derived()`, `is_optimized_rune()`, `is_maybe_reactive()`, `is_non_reactive()`, `is_legacy_state()`, `is_reactive_const_tag()` — точечные вопросы.
@@ -68,6 +68,7 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 8. **Ортогональные оси — раздельно** (уточнение границы #5). #5 требует завести вариант, когда потребитель собирает **один** доменный ответ из сырых полей на **одном** сайте. Но когда фактов **две независимые оси**, спрашиваемые в **разных** местах, их декартово произведение — **не** доменная категория:
    - (а) **Не плоди N×M вариантов.** Признак нарушения — имя варианта склеено из двух ортогональных прилагательных (`Destructured`+`Default`+`Legacy`). Каждая ось — свой запрос по id (`binding_semantics` / `reference_semantics`), потребитель комбинирует на месте.
    - (б) **Выводимое не храни.** Если ось выводится из другой оси + структуры AST (`walk_bindings`, форма bind-выражения identifier-vs-member), её не держат ни вариантом енама, ни side-table/методом по `SymbolId` — потребитель выводит на месте. Side-table законен только для **невыводимого** факта (как `each_rest_symbols`), не для «срезать угол».
+9. **Two-stage reactivity around evaluation.** Reactivity is built as syntactic stage 1 (`build_v2`) → `ValueEvaluation` → finalizing stage (`FinalizeReactivity`); the evaluation dependency belongs solely to `OptimizedDerived`, which needs the evaluated value of a `$derived` expression. `proxy` and `class_field_semantics` are finalized in the same stage but rest only on stage-1 facts plus the AST — not on evaluation — so they merely co-reside there.
 
 ## Карта реактивных фич (scope корневого PRD)
 
@@ -114,4 +115,4 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 - `context.md` §«Реактивность», §«Скоупы, биндинги, ссылки» — терминология.
 - `component-semantics.md` — scope-граф и `OxcNodeId`-биндинги, на которых строится классификация.
 - `bindings-and-references.md` — система идентификаторов под нашим API: биндинг/ссылка, `SymbolId`/`ReferenceId`, `BindingPattern`/`walk_bindings`, плоская семантика (контракт `binding_semantics`/`reference_semantics`).
-- Дочерние PRD: `state-rune.md`.
+- Дочерние PRD: `state-rune.md`, `destructuring.md`.

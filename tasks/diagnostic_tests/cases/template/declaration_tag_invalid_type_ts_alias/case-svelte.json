@@ -1,0 +1,8 @@
+[
+  {
+    "code": "declaration_tag_invalid_type",
+    "end": 45,
+    "severity": "error",
+    "start": 30
+  }
+]

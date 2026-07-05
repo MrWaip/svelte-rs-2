@@ -1,0 +1,19 @@
+import "svelte/internal/flags/legacy";
+App[$.FILENAME] = "(unknown)";
+import * as $ from "svelte/internal/client";
+var root = $.add_locations($.from_html(`<button> </button>`), App[$.FILENAME], [[5, 0]]);
+export default function App($$anchor, $$props) {
+	$.check_target(new.target);
+	$.push($$props, false, App);
+	let tmp = {
+		"a-b": 1,
+		"c d": 2
+	}, ab = $.prop($$props, "ab", 24, () => tmp["a-b"]), cd = $.prop($$props, "cd", 24, () => tmp["c d"]);
+	var $$exports = { ...$.legacy_api() };
+	var button = root();
+	var text = $.child(button);
+	$.reset(button);
+	$.template_effect(() => $.set_text(text, `${ab() ?? ""}${cd() ?? ""}`));
+	$.append($$anchor, button);
+	return $.pop($$exports);
+}

@@ -1,11 +1,12 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<button>x</button>`);
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy"
+]);
+var root = $.from_html(`<button>x</button>`);
 export default function App($$anchor, $$props) {
-	let props = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy"
-	]);
+	let props = $.rest_props($$props, rest_excludes);
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	{
@@ -14,7 +15,7 @@ export default function App($$anchor, $$props) {
 				const { onClick } = props;
 				return { onClick };
 			});
-			var button = root_1();
+			var button = root();
 			$.delegated("click", button, function(...$$args) {
 				$.get(computed_const).onClick?.apply(this, $$args);
 			});

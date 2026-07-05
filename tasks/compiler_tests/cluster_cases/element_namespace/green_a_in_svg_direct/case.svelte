@@ -1,0 +1,1 @@
+<svg><a><text>Hello</text></a></svg>

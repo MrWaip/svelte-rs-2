@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<div> </div>`);
+var root = $.from_html(`<div> </div>`);
 export default function App($$anchor) {
 	const items1 = $.mutable_source({});
 	let data = [{
@@ -10,7 +10,7 @@ export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 1, () => data, (item) => item.id, ($$anchor, item) => {
-		var div = root_1();
+		var div = root();
 		var text = $.child(div, true);
 		$.reset(div);
 		$.bind_this(div, ($$value, item) => $.mutate(items1, $.get(items1)[item.id] = $$value), (item) => $.get(items1)?.[item.id], () => [$.get(item)]);

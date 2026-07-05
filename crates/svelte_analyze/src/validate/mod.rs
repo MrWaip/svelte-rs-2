@@ -131,6 +131,14 @@ pub fn validate_standalone_module(
     typescript::validate(program, diags);
 }
 
+pub fn validate_module_experimental_async(
+    data: &AnalysisData,
+    program: &Program<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    experimental_async::validate_module_program(data, program, diags);
+}
+
 fn validate_perf_class_warnings(
     program: &Program<'_>,
     base_function_depth: u32,
@@ -256,7 +264,7 @@ fn validate_snippet_exports(
             let snippet = component.store.get(id).as_snippet_block()?;
             let hoistable = matches!(
                 data.block_semantics(id),
-                BlockSemantics::Snippet(sem) if sem.hoistable
+                BlockSemantics::Snippet(sem) if sem.placement.is_module_level()
             );
             Some((snippet.name(&component.source), hoistable))
         })

@@ -3,10 +3,13 @@ use std::mem;
 
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
-use oxc_ast::ast::{Argument, Expression, VariableDeclarationKind, VariableDeclarator};
+use oxc_ast::ast::{
+    Argument, BindingPattern, Expression, UnaryOperator, VariableDeclarationKind,
+    VariableDeclarator,
+};
 use oxc_span::SPAN;
 
-use svelte_analyze::StateKind;
+use svelte_analyze::{BindingSemantics, StateKind};
 
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{SymbolId, walk_bindings};
@@ -23,6 +26,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         state_kind: StateKind,
         out: &mut OxcVec<'a, VariableDeclarator<'a>>,
     ) {
+        if matches!(&declarator.id, BindingPattern::BindingIdentifier(_)) {
+            self.rewrite_single_identifier_state(declarator, state_kind, out);
+            return;
+        }
+
         let init = declarator
             .init
             .take()
@@ -75,6 +83,153 @@ impl<'a> ComponentTransformer<'_, 'a> {
         );
         out.extend(carrier_declarators);
         out.extend(leaf_declarators);
+    }
+
+    fn rewrite_single_identifier_state(
+        &mut self,
+        mut declarator: VariableDeclarator<'a>,
+        state_kind: StateKind,
+        out: &mut OxcVec<'a, VariableDeclarator<'a>>,
+    ) {
+        let BindingPattern::BindingIdentifier(binding) = &declarator.id else {
+            unreachable!("single-identifier state declarator");
+        };
+        let binding_name: &'a str = self.b.alloc_str(binding.name.as_str());
+        let sym = binding.symbol_id.get();
+        let semantics = match (self.analysis, sym) {
+            (Some(analysis), Some(sym)) => Some(analysis.binding_semantics(sym)),
+            _ => None,
+        };
+        match semantics {
+            Some(BindingSemantics::State(state)) => {
+                self.rewrite_state_binding_init(
+                    &mut declarator,
+                    binding_name,
+                    state_kind,
+                    state.is_signal_source,
+                    state.proxied,
+                );
+            }
+            Some(BindingSemantics::OptimizedRune(opt)) => {
+                self.rewrite_state_binding_init(
+                    &mut declarator,
+                    binding_name,
+                    state_kind,
+                    false,
+                    opt.proxy_init,
+                );
+            }
+            _ => {}
+        }
+        out.push(declarator);
+    }
+
+    fn rewrite_state_binding_init(
+        &mut self,
+        node: &mut VariableDeclarator<'a>,
+        binding_name: &'a str,
+        kind: StateKind,
+        is_signal_source: bool,
+        proxied: bool,
+    ) {
+        let Some(init) = node.init.as_mut() else {
+            return;
+        };
+        let init_expr = self.b.move_expr(init);
+
+        if matches!(kind, StateKind::StateEager) {
+            node.init = None;
+            return;
+        }
+
+        let Expression::CallExpression(mut call) = init_expr else {
+            return;
+        };
+        if is_signal_source {
+            call.callee = self.b.rid_expr("$.state");
+
+            if call.arguments.is_empty() {
+                let void_zero =
+                    self.b
+                        .ast
+                        .expression_unary(SPAN, UnaryOperator::Void, self.b.num_expr(0.0));
+                call.arguments.push(void_zero.into());
+            } else if matches!(kind, StateKind::State) {
+                let needs_proxy = proxied;
+                if needs_proxy {
+                    let mut dummy = Argument::from(self.b.cheap_expr());
+                    mem::swap(&mut call.arguments[0], &mut dummy);
+                    let inner = dummy.into_expression();
+                    let proxied = self.b.call_expr("$.proxy", [Arg::Expr(inner)]);
+                    call.arguments[0] = Argument::from(proxied);
+                }
+            }
+
+            let state_expr = Expression::CallExpression(call);
+            node.init = if self.dev {
+                Some(
+                    self.b
+                        .call_expr("$.tag", [Arg::Expr(state_expr), Arg::StrRef(binding_name)]),
+                )
+            } else {
+                Some(state_expr)
+            };
+        } else {
+            let value = if call.arguments.is_empty() {
+                self.b
+                    .ast
+                    .expression_unary(SPAN, UnaryOperator::Void, self.b.num_expr(0.0))
+            } else {
+                let mut dummy = Argument::from(self.b.cheap_expr());
+                mem::swap(&mut call.arguments[0], &mut dummy);
+                dummy.into_expression().into_inner_expression()
+            };
+            let is_proxy = matches!(kind, StateKind::State) && proxied;
+            let value = if is_proxy {
+                self.b.call_expr("$.proxy", [Arg::Expr(value)])
+            } else {
+                value
+            };
+            let value = if self.dev && is_proxy {
+                self.b
+                    .call_expr("$.tag_proxy", [Arg::Expr(value), Arg::StrRef(binding_name)])
+            } else {
+                value
+            };
+            node.init = Some(value);
+        }
+    }
+
+    fn wrap_state_value(
+        &self,
+        value: Expression<'a>,
+        state_kind: StateKind,
+        is_signal_source: bool,
+        proxied: bool,
+    ) -> Expression<'a> {
+        let value = value.into_inner_expression();
+        match state_kind {
+            StateKind::State => {
+                let proxied = if proxied {
+                    self.b.call_expr("$.proxy", [Arg::Expr(value)])
+                } else {
+                    value
+                };
+                if is_signal_source {
+                    self.b.call_expr("$.state", [Arg::Expr(proxied)])
+                } else {
+                    proxied
+                }
+            }
+            StateKind::StateRaw => {
+                if is_signal_source {
+                    self.b.call_expr("$.state", [Arg::Expr(value)])
+                } else {
+                    value
+                }
+            }
+            StateKind::StateEager => value,
+        }
     }
 
     fn take_state_init_value(&self, init: Expression<'a>) -> Expression<'a> {

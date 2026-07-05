@@ -91,7 +91,7 @@ pub fn make_store_mutate<'a>(
 
 pub fn make_store_update<'a>(
     b: &Builder<'a>,
-    base_name: &str,
+    base: Expression<'a>,
     dollar_name: &str,
     is_prefix: bool,
     is_increment: bool,
@@ -103,7 +103,7 @@ pub fn make_store_update<'a>(
         "update_store"
     };
     let callee = dollar_member(b, fn_name);
-    let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(base_name)));
+    let name_arg = Argument::from(base);
     let thunk_callee = ast.expression_identifier(SPAN, ast.atom(dollar_name));
     let thunk_call = ast.expression_call(SPAN, thunk_callee, NONE, ast.vec(), false);
     let thunk_arg = Argument::from(thunk_call);

@@ -1,12 +1,13 @@
 import * as $ from "svelte/internal/client";
+var rest_excludes = new Set([
+	"$$slots",
+	"$$events",
+	"$$legacy",
+	"x"
+]);
 var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
-	let rest = $.rest_props($$props, [
-		"$$slots",
-		"$$events",
-		"$$legacy",
-		"x"
-	]);
+	let rest = $.rest_props($$props, rest_excludes);
 	var p = root();
 	var text = $.child(p, true);
 	$.reset(p);

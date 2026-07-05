@@ -36,7 +36,6 @@ pub(in super::super) struct ComponentPropsOutput<'a> {
 }
 
 pub(in super::super) struct OwnershipBinding<'a> {
-    pub name: String,
     pub source_ident: &'a str,
 }
 

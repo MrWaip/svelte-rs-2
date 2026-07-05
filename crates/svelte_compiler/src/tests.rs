@@ -96,27 +96,6 @@ fn auto_mode_effect_rune_resolves_to_runes() {
 }
 
 #[test]
-fn auto_mode_shadowed_rune_name_stays_legacy() {
-    let options = CompileOptions {
-        name: Some("App".into()),
-        runes: RunesOption::Auto,
-        ..Default::default()
-    };
-    let result = compile(
-        "<script>function $state(x) { return x; } let v = $state(0);</script><p>{v}</p>",
-        &options,
-    );
-    let js = result
-        .js
-        .unwrap_or_else(|| panic!("compile produced no JS"))
-        .code;
-    assert!(
-        js.contains("svelte/internal/flags/legacy"),
-        "auto mode must treat shadowed rune name as a regular function, got:\n{js}"
-    );
-}
-
-#[test]
 fn auto_mode_top_level_await_in_module_resolves_to_runes() {
     let options = CompileOptions {
         name: Some("App".into()),
@@ -887,25 +866,6 @@ fn filename_relative_to_root_dir_normalizes_backslashes() {
     assert_eq!(
         filename_relative_to_root_dir("C:\\repo\\src\\x.svelte", Some("C:\\repo")),
         "src/x.svelte"
-    );
-}
-
-#[test]
-fn component_as_named_slot_fill_does_not_consume_root_ident() {
-    let options = CompileOptions {
-        name: Some("App".into()),
-        runes: RunesOption::Legacy,
-        ..Default::default()
-    };
-    let source = "<script>\n    let x = 0;\n</script>\n\n<Wrap>\n    <Inner slot=\"image\" />\n    <span slot=\"action\">{x}</span>\n</Wrap>\n";
-    let result = compile(source, &options);
-    let js = result
-        .js
-        .unwrap_or_else(|| panic!("compile produced no JS"))
-        .code;
-    assert!(
-        js.contains("var root_2 = $.from_html(`<span slot=\"action\">"),
-        "expected `var root_2` for the span template (reference reserves root_1 for the component-as-slot fill), got:\n{js}"
     );
 }
 

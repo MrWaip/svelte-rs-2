@@ -5,13 +5,13 @@ use crate::utils::expression_await::expression_has_await;
 use oxc_ast::ast::{
     ArrowFunctionExpression, AssignmentTargetPropertyIdentifier, CallExpression, ChainElement,
     Expression, Function, IdentifierReference, MemberExpression, NewExpression,
-    SimpleAssignmentTarget, SpreadElement, UpdateExpression,
+    SimpleAssignmentTarget, SpreadElement, TaggedTemplateExpression, UpdateExpression,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_call_expression, walk_function, walk_member_expression,
     walk_new_expression, walk_simple_assignment_target, walk_spread_element,
-    walk_update_expression,
+    walk_tagged_template_expression, walk_update_expression,
 };
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
@@ -29,7 +29,9 @@ pub(super) enum TopLevelForm {
 
 pub(super) struct ExprFacts {
     pub references: SmallVec<[SymbolId; 2]>,
+    pub top_level_reads: SmallVec<[SymbolId; 2]>,
     pub member_or_call_roots: SmallVec<[SymbolId; 2]>,
+    pub member_roots: SmallVec<[SymbolId; 2]>,
     pub top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
     pub has_await: bool,
     pub has_call: bool,
@@ -57,7 +59,9 @@ pub(super) fn collect<'a>(
         semantics,
         reactivity,
         references: SmallVec::new(),
+        top_level_reads: SmallVec::new(),
         member_or_call_roots: SmallVec::new(),
+        member_roots: SmallVec::new(),
         top_member_or_call_roots: SmallVec::new(),
         has_call: false,
         has_impure_call: false,
@@ -76,7 +80,9 @@ pub(super) fn collect<'a>(
     visitor.visit_expression(expr);
     ExprFacts {
         references: visitor.references,
+        top_level_reads: visitor.top_level_reads,
         member_or_call_roots: visitor.member_or_call_roots,
+        member_roots: visitor.member_roots,
         top_member_or_call_roots: visitor.top_member_or_call_roots,
         has_await: expression_has_await(expr),
         has_call: visitor.has_call,
@@ -96,19 +102,20 @@ pub(super) fn collect<'a>(
 }
 
 fn callee_is_pure(callee: &Expression<'_>) -> bool {
-    let mut node = callee;
+    let mut node = callee.get_inner_expression();
     loop {
         match node {
             Expression::Identifier(_) => return true,
-            Expression::StaticMemberExpression(m) => node = &m.object,
-            Expression::ComputedMemberExpression(m) => node = &m.object,
-            Expression::PrivateFieldExpression(m) => node = &m.object,
+            Expression::StaticMemberExpression(m) => node = m.object.get_inner_expression(),
+            Expression::ComputedMemberExpression(m) => node = m.object.get_inner_expression(),
+            Expression::PrivateFieldExpression(m) => node = m.object.get_inner_expression(),
+            Expression::CallExpression(c) => node = c.callee.get_inner_expression(),
             Expression::ChainExpression(c) => match &c.expression {
-                ChainElement::StaticMemberExpression(m) => node = &m.object,
-                ChainElement::ComputedMemberExpression(m) => node = &m.object,
-                ChainElement::PrivateFieldExpression(m) => node = &m.object,
-                ChainElement::CallExpression(_) => return false,
-                ChainElement::TSNonNullExpression(t) => node = &t.expression,
+                ChainElement::StaticMemberExpression(m) => node = m.object.get_inner_expression(),
+                ChainElement::ComputedMemberExpression(m) => node = m.object.get_inner_expression(),
+                ChainElement::PrivateFieldExpression(m) => node = m.object.get_inner_expression(),
+                ChainElement::CallExpression(c) => node = c.callee.get_inner_expression(),
+                ChainElement::TSNonNullExpression(t) => node = t.expression.get_inner_expression(),
             },
             Expression::StringLiteral(_)
             | Expression::NumericLiteral(_)
@@ -193,22 +200,9 @@ fn top_level_form_of(expr: &Expression<'_>) -> TopLevelForm {
     }
 }
 
-fn is_state_rune_call_fact(semantics: DeclaratorSemantics) -> bool {
+fn runtime_rune_kind(semantics: DeclaratorSemantics) -> Option<RuntimeRuneKind> {
     match semantics {
-        DeclaratorSemantics::RuntimeRuneCall { kind } => match kind {
-            RuntimeRuneKind::EffectPending | RuntimeRuneKind::StateEager => true,
-            RuntimeRuneKind::PropsId
-            | RuntimeRuneKind::EffectTracking
-            | RuntimeRuneKind::Host
-            | RuntimeRuneKind::InspectTrace
-            | RuntimeRuneKind::Effect
-            | RuntimeRuneKind::EffectPre
-            | RuntimeRuneKind::EffectRoot
-            | RuntimeRuneKind::Inspect
-            | RuntimeRuneKind::InspectWith
-            | RuntimeRuneKind::StateSnapshot
-            | RuntimeRuneKind::Bindable => false,
-        },
+        DeclaratorSemantics::RuntimeRuneCall { kind } => Some(kind),
         DeclaratorSemantics::None
         | DeclaratorSemantics::RuneProps
         | DeclaratorSemantics::LegacyProps
@@ -221,7 +215,48 @@ fn is_state_rune_call_fact(semantics: DeclaratorSemantics) -> bool {
         | DeclaratorSemantics::AwaitValue
         | DeclaratorSemantics::SnippetParam
         | DeclaratorSemantics::ClassFieldState(_)
-        | DeclaratorSemantics::ClassFieldDerived(_) => false,
+        | DeclaratorSemantics::ClassFieldDerived(_) => None,
+    }
+}
+
+fn is_state_rune_call_fact(semantics: DeclaratorSemantics) -> bool {
+    let Some(kind) = runtime_rune_kind(semantics) else {
+        return false;
+    };
+    match kind {
+        RuntimeRuneKind::EffectPending | RuntimeRuneKind::StateEager => true,
+        RuntimeRuneKind::PropsId
+        | RuntimeRuneKind::EffectTracking
+        | RuntimeRuneKind::Host
+        | RuntimeRuneKind::InspectTrace
+        | RuntimeRuneKind::Effect
+        | RuntimeRuneKind::EffectPre
+        | RuntimeRuneKind::EffectRoot
+        | RuntimeRuneKind::Inspect
+        | RuntimeRuneKind::InspectWith
+        | RuntimeRuneKind::StateSnapshot
+        | RuntimeRuneKind::Bindable => false,
+    }
+}
+
+fn rune_call_is_impure(semantics: DeclaratorSemantics) -> bool {
+    let Some(kind) = runtime_rune_kind(semantics) else {
+        return false;
+    };
+    match kind {
+        RuntimeRuneKind::EffectTracking => true,
+        RuntimeRuneKind::EffectPending
+        | RuntimeRuneKind::StateEager
+        | RuntimeRuneKind::PropsId
+        | RuntimeRuneKind::Host
+        | RuntimeRuneKind::InspectTrace
+        | RuntimeRuneKind::Effect
+        | RuntimeRuneKind::EffectPre
+        | RuntimeRuneKind::EffectRoot
+        | RuntimeRuneKind::Inspect
+        | RuntimeRuneKind::InspectWith
+        | RuntimeRuneKind::StateSnapshot
+        | RuntimeRuneKind::Bindable => false,
     }
 }
 
@@ -229,7 +264,9 @@ struct Collector<'c, 'a> {
     semantics: &'c ComponentSemantics<'a>,
     reactivity: &'c ReactivitySemantics,
     references: SmallVec<[SymbolId; 2]>,
+    top_level_reads: SmallVec<[SymbolId; 2]>,
     member_or_call_roots: SmallVec<[SymbolId; 2]>,
+    member_roots: SmallVec<[SymbolId; 2]>,
     top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
     has_call: bool,
     has_impure_call: bool,
@@ -357,6 +394,9 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
         if !self.references.contains(&sym) {
             self.references.push(sym);
         }
+        if self.fn_depth == 0 && !self.top_level_reads.contains(&sym) {
+            self.top_level_reads.push(sym);
+        }
     }
 
     fn visit_simple_assignment_target(&mut self, it: &SimpleAssignmentTarget<'a>) {
@@ -392,6 +432,9 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
                 if !self.member_or_call_roots.contains(&sym) {
                     self.member_or_call_roots.push(sym);
                 }
+                if !self.member_roots.contains(&sym) {
+                    self.member_roots.push(sym);
+                }
                 if self.fn_depth == 0 && !self.top_member_or_call_roots.contains(&sym) {
                     self.top_member_or_call_roots.push(sym);
                 }
@@ -413,7 +456,9 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
     fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
         if self.fn_depth == 0 {
             self.has_call = true;
-            if !callee_is_pure(&expr.callee) {
+            if !callee_is_pure(&expr.callee)
+                || rune_call_is_impure(self.reactivity.declarator_semantics(expr.node_id()))
+            {
                 self.has_impure_call = true;
             }
             if is_state_rune_call_fact(self.reactivity.declarator_semantics(expr.node_id())) {
@@ -432,6 +477,14 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             }
         }
         walk_call_expression(self, expr);
+    }
+
+    fn visit_tagged_template_expression(&mut self, expr: &TaggedTemplateExpression<'a>) {
+        if self.fn_depth == 0 {
+            self.has_call = true;
+            self.has_impure_call = true;
+        }
+        walk_tagged_template_expression(self, expr);
     }
 
     fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {

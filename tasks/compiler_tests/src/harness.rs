@@ -15,7 +15,7 @@ fn normalize_css(s: &str) -> String {
     stripped.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-pub fn assert_compiler_module(case: &str) {
+pub fn assert_compiler_module_prod(case: &str) {
     let dir = cluster_case_dir(case);
     let (input, opts) = load_cluster_module_case(case);
 
@@ -43,7 +43,29 @@ pub fn assert_compiler_module(case: &str) {
     }
 }
 
-pub fn assert_compiler(case: &str) {
+pub fn assert_compiler_module_dev(case: &str) {
+    let dir = cluster_case_dir(case);
+    let (input, opts) = load_cluster_module_case(case);
+
+    let mut dev_opts = opts.clone();
+    dev_opts.dev = true;
+    let dev_js = compile_module(&input, &dev_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] dev compile_module produced no JS"))
+        .code;
+    let expected_dev = read_to_string(dir.join("case-svelte.dev.js")).expect("test invariant");
+    File::create(dir.join("case-rust.dev.js"))
+        .expect("test invariant")
+        .write_all(dev_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(
+        strip_js_comments(&dev_js),
+        strip_js_comments(&expected_dev),
+        "[{case}] dev JS mismatch"
+    );
+}
+
+pub fn assert_compiler_prod(case: &str) {
     let dir = cluster_case_dir(case);
     let (input, opts) = load_cluster_case(case);
     let result = compile(&input, &opts);
@@ -83,4 +105,25 @@ pub fn assert_compiler(case: &str) {
             "[{case}] CSS mismatch"
         );
     }
+}
+
+pub fn assert_compiler_dev(case: &str) {
+    let dir = cluster_case_dir(case);
+    let (input, opts) = load_cluster_case(case);
+    let mut dev_opts = opts.clone();
+    dev_opts.dev = true;
+    let dev_js = compile(&input, &dev_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] dev compile produced no JS"))
+        .code;
+    let expected_dev_js = read_to_string(dir.join("case-svelte.dev.js")).expect("test invariant");
+    File::create(dir.join("case-rust.dev.js"))
+        .expect("test invariant")
+        .write_all(dev_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(
+        strip_js_comments(&dev_js),
+        strip_js_comments(&expected_dev_js),
+        "[{case}] dev JS mismatch"
+    );
 }

@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p> </p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor, $$props) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
@@ -12,7 +12,7 @@ export default function App($$anchor, $$props) {
 					label
 				};
 			});
-			var p = root_1();
+			var p = root();
 			var text = $.child(p);
 			$.reset(p);
 			$.template_effect(() => $.set_text(text, `${$.get(computed_const).name ?? ""} ${$.get(computed_const).label ?? ""}`));

@@ -30,3 +30,9 @@ compiler_case!(
     guard_static_style_set_style,
     "custom_element/guard_static_style_set_style"
 );
+compiler_case!(child_value_property, "custom_element/child_value_property");
+compiler_case!(child_scoped_class, "custom_element/child_scoped_class");
+compiler_case!(
+    is_attribute_static_under_spread,
+    "custom_element/is_attribute_static_under_spread"
+);

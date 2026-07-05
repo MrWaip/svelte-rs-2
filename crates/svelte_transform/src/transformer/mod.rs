@@ -2,7 +2,6 @@ mod assignments;
 mod async_check;
 mod binding_pattern;
 mod builders;
-mod derived;
 mod entry;
 mod equals;
 mod inspect;
@@ -33,7 +32,7 @@ pub(crate) use svelte_analyze::{
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
     ArrowFunctionExpression, CallExpression, Class, ClassBody, Expression, ForOfStatement,
-    Function, FunctionBody, MethodDefinitionKind, ObjectProperty, Statement, VariableDeclarator,
+    Function, FunctionBody, ObjectProperty, Statement, VariableDeclarator,
 };
 use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
@@ -47,38 +46,26 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         }
 
         let info = self.scan_class_state_fields(node);
-        if info.fields.is_empty() {
+        if info.is_empty() {
             return;
         }
         self.rewrite_class_body(node, &info);
     }
 
-    fn enter_function(&mut self, node: &mut Function<'a>, ctx: &mut TraverseCtx<'a, ()>) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
+    fn enter_function(&mut self, node: &mut Function<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         let name = node
             .id
             .as_ref()
             .map(|id| id.name.to_string())
             .or_else(|| self.next_arrow_name.take());
-        let in_constructor = matches!(
-            ctx.parent(),
-            Ancestor::MethodDefinitionValue(md)
-                if *md.kind() == MethodDefinitionKind::Constructor
-        );
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
             name,
             span_start: node.span.start,
-            in_constructor,
         });
     }
 
     fn exit_function(&mut self, _node: &mut Function<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
         self.function_info_stack.pop();
     }
 
@@ -87,15 +74,11 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         node: &mut ArrowFunctionExpression<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
         let name = self.next_arrow_name.take();
         self.function_info_stack.push(FunctionInfo {
             is_async: node.r#async,
             name,
             span_start: node.span.start,
-            in_constructor: false,
         });
     }
 
@@ -104,9 +87,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         _node: &mut ArrowFunctionExpression<'a>,
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
         self.function_info_stack.pop();
     }
 
@@ -123,6 +103,9 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
+            if !self.function_info_stack.is_empty() {
+                self.rewrite_binding_declarations(stmts, ctx);
+            }
             return;
         }
         if ctx.current_scope_id() == ctx.scoping().root_scope_id() {
@@ -137,6 +120,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         _ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
+            self.strip_inspect_trace_statements(stmts);
             return;
         }
         self.process_statement_block(stmts);
@@ -246,8 +230,8 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             Expression::AssignmentExpression(_) => self.transform_assignment(node, ctx),
             Expression::UpdateExpression(_) => self.transform_update(node, ctx),
             Expression::CallExpression(_) => self.rewrite_call_expression(node),
-            Expression::StaticMemberExpression(_) => {
-                self.rewrite_static_member_expression(node, ctx)
+            Expression::StaticMemberExpression(_) | Expression::ChainExpression(_) => {
+                self.rewrite_member_expression(node, ctx)
             }
             Expression::Identifier(_) => self.rewrite_identifier_expression(node),
             _ => {}

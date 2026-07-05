@@ -134,3 +134,15 @@ compiler_case!(
     declaration_string_key,
     "legacy/state/declaration/string_key"
 );
+compiler_case!(
+    const_member_mutated_handler_only,
+    "legacy/state/const_member_mutated_handler_only"
+);
+compiler_case!(
+    const_member_mutated_read_guard,
+    "legacy/state/const_member_mutated_read_guard"
+);
+compiler_case!(
+    let_member_mutated_read_guard,
+    "legacy/state/let_member_mutated_read_guard"
+);

@@ -1,10 +1,10 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(` <div> </div>`, 1);
+var root = $.from_html(` <div> </div>`, 1);
 export default function App($$anchor) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.await(node, () => promise, null, ($$anchor, result) => {
-		var fragment_1 = root_1();
+		var fragment_1 = root();
 		var text = $.first_child(fragment_1);
 		var div = $.sibling(text);
 		var text_1 = $.child(div, true);

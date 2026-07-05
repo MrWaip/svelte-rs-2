@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<span> </span>`);
+var root = $.from_html(`<span> </span>`);
 export default function App($$anchor, $$props) {
 	let items = $.prop($$props, "items", 24, () => []);
 	var fragment = $.comment();
@@ -9,7 +9,7 @@ export default function App($$anchor, $$props) {
 		var $$array = $.derived(() => $.to_array($.get($$item)));
 		let a = () => $.get($$array)[0];
 		let rest = () => $.get($$array).slice(1);
-		var span = root_1();
+		var span = root();
 		var text = $.child(span);
 		$.reset(span);
 		$.template_effect(() => $.set_text(text, `${a() ?? ""}${(rest(), $.untrack(() => rest()[0])) ?? ""}`));

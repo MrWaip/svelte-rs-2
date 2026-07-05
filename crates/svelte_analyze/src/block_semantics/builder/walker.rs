@@ -2,7 +2,7 @@ use crate::expression_semantics::{ExpressionSemantics, ExpressionSemanticsStore}
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::types::data::{FragmentNamespaces, IgnoreData, JsAst};
 
-use super::super::BlockSemanticsStore;
+use super::super::{BlockSemanticsStore, SnippetPlacement};
 use super::common::declarator_from_stmt;
 
 use oxc_ast::ast::IdentifierReference;
@@ -69,15 +69,20 @@ fn finalize_hoistable(
 
     let mut scope_to_block: rustc_hash::FxHashMap<ScopeId, (NodeId, bool)> =
         rustc_hash::FxHashMap::default();
+    let mut symbol_to_block: rustc_hash::FxHashMap<SymbolId, NodeId> =
+        rustc_hash::FxHashMap::default();
     for entry in snippet_scopes {
         scope_to_block.insert(entry.body_scope, (entry.block_id, entry.top_level));
+        symbol_to_block.insert(entry.name_symbol, entry.block_id);
     }
 
     let mut tainted: FxHashSet<NodeId> = FxHashSet::default();
+    let mut edges: Vec<(NodeId, NodeId)> = Vec::new();
 
     for idx in 0..semantics.references_len() {
         let ref_id = ReferenceId::from_usize(idx);
 
+        let mut referenced_snippet: Option<NodeId> = None;
         if !reactivity
             .reference_semantics(ref_id)
             .is_store_subscription()
@@ -88,9 +93,11 @@ fn finalize_hoistable(
 
             if let Some(sym) = semantics.get_reference(ref_id).symbol_id() {
                 if snippet_name_syms.contains(&sym) {
-                    continue;
-                }
-                if reactivity.binding_semantics(sym).is_maybe_reactive() {
+                    match symbol_to_block.get(&sym) {
+                        Some(&target) => referenced_snippet = Some(target),
+                        None => continue,
+                    }
+                } else if reactivity.binding_semantics(sym).is_maybe_reactive() {
                     continue;
                 }
             }
@@ -99,9 +106,25 @@ fn finalize_hoistable(
         let mut scope = Some(semantics.get_reference(ref_id).scope_id());
         while let Some(s) = scope {
             if let Some(&(block_id, _)) = scope_to_block.get(&s) {
-                tainted.insert(block_id);
+                match referenced_snippet {
+                    Some(target) if target != block_id => edges.push((block_id, target)),
+                    Some(_) => {}
+                    None => {
+                        tainted.insert(block_id);
+                    }
+                }
             }
             scope = semantics.scope_parent_id(s);
+        }
+    }
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for &(referrer, target) in &edges {
+            if tainted.contains(&target) && tainted.insert(referrer) {
+                changed = true;
+            }
         }
     }
 
@@ -109,15 +132,19 @@ fn finalize_hoistable(
         if !entry.top_level {
             continue;
         }
-        if !tainted.contains(&entry.block_id) {
-            store.set_snippet_hoistable(entry.block_id, true);
-        }
+        let placement = if tainted.contains(&entry.block_id) {
+            SnippetPlacement::InstanceLevel
+        } else {
+            SnippetPlacement::ModuleLevel
+        };
+        store.set_snippet_placement(entry.block_id, placement);
     }
 }
 
 #[derive(Copy, Clone)]
 pub(super) struct SnippetScope {
     pub(super) block_id: NodeId,
+    pub(super) name_symbol: SymbolId,
     pub(super) body_scope: ScopeId,
     pub(super) top_level: bool,
 }

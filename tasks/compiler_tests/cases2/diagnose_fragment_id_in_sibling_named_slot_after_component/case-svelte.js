@@ -2,7 +2,7 @@ import * as $ from "svelte/internal/client";
 import Outer from "./Outer.svelte";
 import Img from "./Img.svelte";
 import Btn from "./Btn.svelte";
-var root_4 = $.from_html(`<span>a</span>`);
+var root = $.from_html(`<span>a</span>`);
 export default function App($$anchor) {
 	let cond = true;
 	Outer($$anchor, { $$slots: {
@@ -17,7 +17,7 @@ export default function App($$anchor) {
 					var node = $.first_child(fragment_3);
 					{
 						var consequent = ($$anchor) => {
-							var span = root_4();
+							var span = root();
 							$.append($$anchor, span);
 						};
 						var alternate = ($$anchor) => {

@@ -3,13 +3,13 @@ const s = ($$anchor, $$arg0) => {
 	var $$array = $.derived(() => $.to_array($$arg0?.(), 3));
 	let a = () => $.get($$array)[0];
 	let c = () => $.get($$array)[2];
-	var button = root_1();
+	var button = root();
 	var text = $.child(button);
 	$.reset(button);
 	$.template_effect(() => $.set_text(text, `${a() ?? ""}${c() ?? ""}`));
 	$.append($$anchor, button);
 };
-var root_1 = $.from_html(`<button> </button>`);
+var root = $.from_html(`<button> </button>`);
 export default function App($$anchor) {
 	let v = $.proxy([
 		1,

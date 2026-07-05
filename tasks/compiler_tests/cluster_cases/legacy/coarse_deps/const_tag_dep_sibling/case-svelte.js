@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<span> </span>`);
+var root = $.from_html(`<span> </span>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, false);
 	let obj = $.prop($$props, "obj", 8);
@@ -11,7 +11,7 @@ export default function App($$anchor, $$props) {
 		var consequent = ($$anchor) => {
 			const name = $.derived_safe_equal(() => ($.deep_read_state(obj()), $.untrack(() => obj().name)));
 			const len = $.derived_safe_equal(() => ($.deep_read_state($.get(name)), $.untrack(() => $.get(name).length)));
-			var span = root_1();
+			var span = root();
 			var text = $.child(span);
 			$.reset(span);
 			$.template_effect(() => $.set_text(text, `${$.get(name) ?? ""}: ${$.get(len) ?? ""}`));

@@ -1,6 +1,6 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<input/> <input/>`, 1);
+var root = $.from_html(`<input/> <input/>`, 1);
 export default function App($$anchor, $$props) {
 	let people = $.prop($$props, "people", 8);
 	var fragment = $.comment();
@@ -8,7 +8,7 @@ export default function App($$anchor, $$props) {
 	$.each(node, 1, people, $.index, ($$anchor, $$item) => {
 		let f = () => $.get($$item).name.first;
 		let l = () => $.get($$item).name.last;
-		var fragment_1 = root_1();
+		var fragment_1 = root();
 		var input = $.first_child(fragment_1);
 		$.remove_input_defaults(input);
 		var input_1 = $.sibling(input, 2);

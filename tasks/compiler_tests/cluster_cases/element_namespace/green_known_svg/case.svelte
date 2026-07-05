@@ -1,0 +1,1 @@
+<svg><circle r="5"></circle></svg>

@@ -29,6 +29,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let obj = obj.unbox();
         if self.ctx.state.dev
+            && self.ctx.query.runes()
+            && !self.ctx.binding_property_non_reactive_ignored(directive.id)
             && let Some(stmt) = self.build_validate_binding_stmt(directive, bind, &obj.properties)
         {
             validate_binding_stmts.push(stmt);
@@ -200,7 +202,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 )));
                 if matches!(target, ComponentBindTarget::PropSourceOwned) {
                     ownership_bindings.push(OwnershipBinding {
-                        name: name.to_string(),
                         source_ident: source_ref,
                     });
                 }

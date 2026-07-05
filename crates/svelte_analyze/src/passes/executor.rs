@@ -107,6 +107,7 @@ pub(crate) fn execute_pass<'a>(
                 );
             }
             data.template.template_elements.finalize();
+            super::template_side_tables::promote_anchor_namespaces(component, data);
             super::template_side_tables::collect_fragment_namespaces(component, data);
 
             for (idx, slot) in bundle.take_title_buckets().into_iter().enumerate() {
@@ -165,10 +166,7 @@ pub(crate) fn execute_pass<'a>(
                 parsed,
                 &mut data.reactivity,
                 &data.value_evaluation,
-                &data.scoping,
-                &data.template.snippets,
                 data.scoping.semantics(),
-                data.script.dev,
             );
         }
         super::PassKey::BuildExpressionSemantics => {
@@ -195,6 +193,7 @@ pub(crate) fn execute_pass<'a>(
             let (attributes, binding_groups) = attribute_semantics::build(
                 component,
                 parsed,
+                &data.scoping,
                 data.scoping.semantics(),
                 &data.reactivity,
                 &data.expressions_v2,
@@ -202,6 +201,7 @@ pub(crate) fn execute_pass<'a>(
                 &data.value_evaluation,
                 &data.script.blocker_data,
                 &data.output.ignore_data,
+                &data.elements.facts,
                 options.dev,
                 component.node_count(),
             );

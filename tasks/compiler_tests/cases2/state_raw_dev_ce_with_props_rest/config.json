@@ -1,5 +1,1 @@
-{
-  "dev": true,
-  "runes": true,
-  "customElement": true
-}
+{"runes": true, "customElement": true}

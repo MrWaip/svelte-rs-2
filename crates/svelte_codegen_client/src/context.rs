@@ -96,6 +96,8 @@ pub struct CodegenState<'a> {
     pub(crate) const_tag_blockers: FxHashMap<SymbolId, (String, usize)>,
 
     pub(crate) each_item_writeback_places: Option<FxHashMap<SymbolId, Expression<'a>>>,
+
+    pub(crate) hoisted_templates: FxHashMap<String, String>,
 }
 
 impl<'a> CodegenState<'a> {
@@ -130,6 +132,7 @@ impl<'a> CodegenState<'a> {
             has_tracing: false,
             const_tag_blockers: FxHashMap::default(),
             each_item_writeback_places: None,
+            hoisted_templates: FxHashMap::default(),
         }
     }
 
@@ -279,14 +282,16 @@ impl<'a> Ctx<'a> {
     pub fn hydration_attribute_changed_ignored(&self, id: NodeId) -> bool {
         self.query.view.hydration_attribute_changed_ignored(id)
     }
+    pub fn binding_property_non_reactive_ignored(&self, id: NodeId) -> bool {
+        self.query
+            .view
+            .is_ignored(id, "binding_property_non_reactive")
+    }
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
         self.query.view.needs_textarea_value_lowering(id)
     }
     pub fn is_customizable_select(&self, id: NodeId) -> bool {
         self.query.view.is_customizable_select(id)
-    }
-    pub fn is_svelte_fragment_slot(&self, id: NodeId) -> bool {
-        self.query.view.is_svelte_fragment_slot(id)
     }
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.query.view.needs_var(id)
@@ -333,18 +338,6 @@ impl<'a> Ctx<'a> {
 
     pub fn debug_tag(&self, id: NodeId) -> &'a DebugTag {
         self.query.debug_tag(id)
-    }
-
-    pub fn fragment_references_any_symbol(
-        &self,
-        fragment_id: svelte_ast::FragmentId,
-        syms: &rustc_hash::FxHashSet<SymbolId>,
-    ) -> bool {
-        self.query.view.fragment_references_any_symbol(
-            &self.query.component.store,
-            fragment_id,
-            syms,
-        )
     }
 
     pub fn add_delegated_event(&mut self, event_name: String) {

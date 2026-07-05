@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<p> </p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	const promise = fetch("/api");
 	var fragment = $.comment();
@@ -14,7 +14,7 @@ export default function App($$anchor) {
 		});
 		var name = $.derived(() => $.get($$value).name);
 		var age = $.derived(() => $.get($$value).age);
-		var p = root_1();
+		var p = root();
 		var text = $.child(p);
 		$.reset(p);
 		$.template_effect(() => $.set_text(text, `${$.get(name) ?? ""} is ${$.get(age) ?? ""}`));

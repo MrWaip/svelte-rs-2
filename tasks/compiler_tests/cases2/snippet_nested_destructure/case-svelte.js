@@ -6,13 +6,13 @@ const view = ($$anchor, $$arg0) => {
 	let first = () => $.get($$array_1)[0];
 	let rest = () => $.get($$array_1).slice(1);
 	let tail = () => $.exclude_from_object($$arg0?.(), ["nested", "list"]);
-	var p = root_1();
+	var p = root();
 	var text = $.child(p);
 	$.reset(p);
 	$.template_effect(() => $.set_text(text, `${$.get(name) ?? ""} ${first() ?? ""} ${rest().length ?? ""} ${tail().meta.note ?? ""}`));
 	$.append($$anchor, p);
 };
-var root_1 = $.from_html(`<p> </p>`);
+var root = $.from_html(`<p> </p>`);
 export default function App($$anchor) {
 	let data = $.proxy({
 		nested: { name: "world" },

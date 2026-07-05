@@ -1391,6 +1391,14 @@ impl Diagnostic {
         Self::error(DiagnosticKind::InvalidExpression, span)
     }
 
+    pub fn js_parse_error(span: Span, message: String) -> Self {
+        Diagnostic {
+            kind: DiagnosticKind::JsParseError { message },
+            span,
+            severity: Severity::Error,
+        }
+    }
+
     pub fn only_single_top_level_script(span: Span) -> Self {
         Self::error(DiagnosticKind::OnlyOneTopLevelScript, span)
     }

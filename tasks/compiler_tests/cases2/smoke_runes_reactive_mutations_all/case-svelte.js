@@ -1,8 +1,8 @@
 import * as $ from "svelte/internal/client";
 import { writable } from "svelte/store";
-var root_1 = $.from_html(` <button>snippet</button>`, 1);
-var root_2 = $.from_html(` <button>each-row</button>`, 1);
-var root = $.from_html(` <!> <!> <!> <button>run</button>`, 1);
+var root = $.from_html(` <button>snippet</button>`, 1);
+var root_1 = $.from_html(` <button>each-row</button>`, 1);
+var root_2 = $.from_html(` <!> <!> <!> <button>run</button>`, 1);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	const $store = () => $.store_get(store, "$store", $$stores);
@@ -10,7 +10,7 @@ export default function App($$anchor, $$props) {
 	const [$$stores, $$cleanup] = $.setup_stores();
 	const card = ($$anchor, param = $.noop) => {
 		$.next();
-		var fragment = root_1();
+		var fragment = root();
 		var text = $.first_child(fragment);
 		var button = $.sibling(text);
 		$.template_effect(() => $.set_text(text, `${param() ?? ""}
@@ -197,12 +197,12 @@ export default function App($$anchor, $$props) {
 		$.store_mutate(objStore, ++$.untrack($objStore)[key], $.untrack($objStore));
 	}
 	$.next();
-	var fragment_1 = root();
+	var fragment_1 = root_2();
 	var text_1 = $.first_child(fragment_1);
 	var node = $.sibling(text_1);
 	$.each(node, 19, () => items, (item) => item.id, ($$anchor, item, i) => {
 		$.next();
-		var fragment_2 = root_2();
+		var fragment_2 = root_1();
 		var text_2 = $.first_child(fragment_2);
 		var button_1 = $.sibling(text_2);
 		$.template_effect(() => $.set_text(text_2, `${$.get(item) ?? ""}

@@ -43,7 +43,7 @@ pub(crate) fn rewrite_template_exit<'a>(
     it: &mut Expression<'a>,
     ctx: &mut TraverseCtx<'a, ()>,
 ) {
-    t.rewrite_shared_call(it, false);
+    t.rewrite_call_expression(it);
 
     let analysis = t.analysis.expect("Template mode requires analysis");
 

@@ -6,9 +6,9 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
-    ComponentNode, ConcatPart, ConstTag, DebugTag, EachBlock, Element, ExprRef,
-    ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy, Node,
-    NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT,
+    ComponentNode, ConcatPart, ConcatenationAttribute, ConstTag, DebugTag, EachBlock, Element,
+    ExprRef, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy,
+    Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT,
     SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW, SlotElementLegacy, SnippetBlock, SpreadAttribute,
     SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteHead,
     SvelteWindow, Text, TransitionDirection, TransitionDirective, UseDirective, is_svg,
@@ -25,7 +25,7 @@ use crate::types::data::{
 };
 use crate::utils::html_tree_validation::{is_tag_valid_with_ancestor, is_tag_valid_with_parent};
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
-use crate::{AnalysisData, EventModifier};
+use crate::{AnalysisData, EventModifier, concat_single_dynamic_expr, event_attribute};
 
 mod a11y;
 
@@ -790,6 +790,44 @@ impl TemplateValidationVisitor {
                 .push(Diagnostic::error(kind.illegal_attr_kind(), attr.span()));
         }
     }
+
+    fn check_event_handler_references(
+        &mut self,
+        name: &str,
+        expr: &ExprRef,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        if name.strip_prefix("on").is_none() {
+            return;
+        }
+
+        if let Some(Expression::Identifier(ident)) = ctx
+            .parsed()
+            .and_then(|p| p.expr(expr.id()))
+            .map(|e| e.get_inner_expression())
+            && ident.name.as_str() == name
+            && ctx
+                .data
+                .scoping
+                .find_binding(ctx.scope, ident.name.as_str())
+                .is_none()
+        {
+            ctx.warnings_mut().push(Diagnostic::warning(
+                DiagnosticKind::AttributeGlobalEventReference {
+                    name: name.to_string(),
+                },
+                expr.span,
+            ));
+        }
+
+        if ctx
+            .parent()
+            .is_some_and(|p| matches!(p.kind, ParentKind::Element | ParentKind::SvelteElement))
+            && let Some(state) = self.element_event_state.last_mut()
+        {
+            state.has_s5_events = true;
+        }
+    }
 }
 
 impl TemplateVisitor for TemplateValidationVisitor {
@@ -1238,33 +1276,16 @@ impl TemplateVisitor for TemplateValidationVisitor {
             emit_template_await_experimental(ctx, &attr.expression);
         }
 
-        if attr.event_name.is_some()
-            && let Some(Expression::Identifier(ident)) = ctx
-                .parsed()
-                .and_then(|p| p.expr(attr.expression.id()))
-                .map(|e| e.get_inner_expression())
-            && ident.name.as_str() == attr.name.as_str()
-            && ctx
-                .data
-                .scoping
-                .find_binding(ctx.scope, ident.name.as_str())
-                .is_none()
-        {
-            ctx.warnings_mut().push(Diagnostic::warning(
-                DiagnosticKind::AttributeGlobalEventReference {
-                    name: attr.name.clone(),
-                },
-                attr.expression.span,
-            ));
-        }
+        self.check_event_handler_references(&attr.name, &attr.expression, ctx);
+    }
 
-        if attr.event_name.is_some()
-            && ctx
-                .parent()
-                .is_some_and(|p| matches!(p.kind, ParentKind::Element | ParentKind::SvelteElement))
-            && let Some(state) = self.element_event_state.last_mut()
-        {
-            state.has_s5_events = true;
+    fn visit_concatenation_attribute(
+        &mut self,
+        attr: &ConcatenationAttribute,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        if let Some(expr) = concat_single_dynamic_expr(attr) {
+            self.check_event_handler_references(&attr.name, expr, ctx);
         }
     }
 
@@ -1529,6 +1550,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 
     fn visit_expression_tag(&mut self, tag: &ExpressionTag, ctx: &mut VisitContext<'_, '_>) {
+        if expression_tag_body_is_declaration(ctx, tag) {
+            return;
+        }
+
         if let Some(message) = invalid_text_parent_message(tag.id, ctx) {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::NodeInvalidPlacement { message },
@@ -2250,7 +2275,8 @@ impl SpecialElementKind {
 
     fn allows_attribute(self, attr: &Attribute) -> bool {
         match attr {
-            Attribute::ExpressionAttribute(attr) => attr.event_name.is_some(),
+            Attribute::ExpressionAttribute(ea) => ea.event_name.is_some(),
+            Attribute::ConcatenationAttribute(_) => event_attribute(attr).is_some(),
             Attribute::LetDirectiveLegacy(_) => true,
             Attribute::OnDirectiveLegacy(_) => true,
             Attribute::BindDirective(_) => matches!(self, Self::Window | Self::Document),
@@ -3326,6 +3352,11 @@ fn check_event_handler_value(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>
         ) {
             continue;
         }
+        if let Attribute::ConcatenationAttribute(ca) = attr
+            && concat_single_dynamic_expr(ca).is_some()
+        {
+            continue;
+        }
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::AttributeInvalidEventHandler,
             attr.span(),
@@ -3487,6 +3518,11 @@ fn emit_template_await_experimental(ctx: &mut VisitContext<'_, '_>, expression: 
     let span = first_await_span(ctx, expression).unwrap_or(expression.span);
     ctx.warnings_mut()
         .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
+}
+
+fn expression_tag_body_is_declaration(ctx: &VisitContext<'_, '_>, tag: &ExpressionTag) -> bool {
+    ctx.parsed()
+        .is_some_and(|parsed| parsed.pending_stmt(tag.expression.span.start).is_some())
 }
 
 fn first_await_span(ctx: &VisitContext<'_, '_>, expression: &ExprRef) -> Option<Span> {

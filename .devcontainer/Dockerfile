@@ -43,9 +43,16 @@ RUN curl -fsSL https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/
         cargo-sweep \
         cargo-nextest \
         samply \
-        wasm-pack \
-        cargo-dylint \
-        dylint-link
+        wasm-pack
+
+# dylint must be built from source: the prebuilt binstall binaries embed the
+# upstream CI driver path (/home/runner/work/dylint/dylint/driver), which is
+# absent here and breaks `cargo dylint`. Mirror the CI install in checks.yml.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,uid=1000,gid=1000 \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,uid=1000,gid=1000 \
+    --mount=type=cache,target=/tmp/cargo-target,sharing=locked,uid=1000,gid=1000 \
+    CARGO_TARGET_DIR=/tmp/cargo-target \
+    cargo install --locked cargo-dylint@6.0.1 dylint-link@6.0.1
 
 ARG TOOLS_CACHE_BUST=0
 RUN --mount=type=cache,target=/home/vscode/.npm,sharing=locked,uid=1000,gid=1000 \

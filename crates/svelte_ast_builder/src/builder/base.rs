@@ -93,6 +93,10 @@ impl<'a> Builder<'a> {
         expr.clone_in(self.ast.allocator)
     }
 
+    pub fn clone_key(&self, key: &ast::PropertyKey<'a>) -> ast::PropertyKey<'a> {
+        key.clone_in(self.ast.allocator)
+    }
+
     pub fn move_expr(&self, expr: &mut Expression<'a>) -> Expression<'a> {
         mem::replace(expr, self.cheap_expr())
     }

@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
 import Outer from "./Outer.svelte";
-var root_2 = $.from_html(`<div></div>`);
+var root = $.from_html(`<div></div>`);
 export default function App($$anchor, $$props) {
 	$.push($$props, true);
 	{
@@ -9,7 +9,7 @@ export default function App($$anchor, $$props) {
 			var node = $.first_child(fragment_1);
 			{
 				var consequent = ($$anchor) => {
-					var div = root_2();
+					var div = root();
 					{
 						const inner = ($$anchor) => {
 							$.next();

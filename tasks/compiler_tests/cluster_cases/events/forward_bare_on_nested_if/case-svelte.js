@@ -1,12 +1,12 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<input/>`);
+var root = $.from_html(`<input/>`);
 export default function App($$anchor, $$props) {
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var input = root_1();
+			var input = root();
 			$.event("click", input, function($$arg) {
 				$.bubble_event.call(this, $$props, $$arg);
 			});

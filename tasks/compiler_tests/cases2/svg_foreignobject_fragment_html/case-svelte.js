@@ -1,13 +1,13 @@
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(`<div>fallback html</div>`);
-var root = $.from_svg(`<foreignObject><!></foreignObject>`);
+var root = $.from_html(`<div>fallback html</div>`);
+var root_1 = $.from_svg(`<foreignObject><!></foreignObject>`);
 export default function App($$anchor) {
 	let shown = true;
-	var foreignObject = root();
+	var foreignObject = root_1();
 	var node = $.child(foreignObject);
 	{
 		var consequent = ($$anchor) => {
-			var div = root_1();
+			var div = root();
 			$.append($$anchor, div);
 		};
 		$.if(node, ($$render) => {

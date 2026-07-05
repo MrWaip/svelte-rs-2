@@ -1,5 +1,5 @@
 import * as $ from "svelte/internal/client";
-var root_2 = $.with_script($.from_html(`<script async=""><\/script><!>`, 1));
+var root = $.with_script($.from_html(`<script async=""><\/script><!>`, 1));
 export default function App($$anchor) {
 	let src = "";
 	let cond = false;
@@ -9,7 +9,7 @@ export default function App($$anchor) {
 		var node = $.first_child(fragment);
 		{
 			var consequent = ($$anchor) => {
-				var fragment_1 = root_2();
+				var fragment_1 = root();
 				var script = $.first_child(fragment_1);
 				$.set_attribute(script, "src", src);
 				var node_1 = $.sibling(script);

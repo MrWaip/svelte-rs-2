@@ -25,10 +25,40 @@ pub enum AttributeSemantics {
     ComponentAttach(ComponentAttachSemantics),
     BoundaryProp(BoundaryPropSemantics),
     HtmlConcat(HtmlConcatSemantics),
-    MustBeProperty(MustBePropertySemantics),
+    CannotBeStatic(DefaultAttrKind),
+    StaticAttr,
     SpecialValueAttr(SpecialValueSemantics),
     StyleDirectives(StyleDirectivesSemantics),
     Autofocus,
+}
+
+impl AttributeSemantics {
+    pub fn forces_runtime_reference(&self) -> bool {
+        match self {
+            AttributeSemantics::NonSpecial | AttributeSemantics::StaticAttr => false,
+            AttributeSemantics::ElementBind(_)
+            | AttributeSemantics::WindowBind(_)
+            | AttributeSemantics::DocumentBind(_)
+            | AttributeSemantics::ComponentBind(_)
+            | AttributeSemantics::Event(_)
+            | AttributeSemantics::ComponentProp(_)
+            | AttributeSemantics::SvelteComponentThis(_)
+            | AttributeSemantics::ComponentSpread(_)
+            | AttributeSemantics::ComponentAttach(_)
+            | AttributeSemantics::BoundaryProp(_)
+            | AttributeSemantics::HtmlConcat(_)
+            | AttributeSemantics::CannotBeStatic(_)
+            | AttributeSemantics::SpecialValueAttr(_)
+            | AttributeSemantics::StyleDirectives(_)
+            | AttributeSemantics::Autofocus => true,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DefaultAttrKind {
+    PlainProperty,
+    ReconcileWithValue,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,18 +80,6 @@ pub enum SpecialValueKind {
     Option,
     InputBindGroup,
     InputBindChecked,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MustBePropertySemantics {
-    pub property: CompactString,
-    pub value: MustBePropertyValue,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum MustBePropertyValue {
-    BoolTrue,
-    Str(CompactString),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,17 +138,12 @@ pub struct ComponentAttachSemantics {
 pub enum ComponentAttachEmit {
     Inline,
     Wrapped,
+    WrappedFallback,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BoundaryPropSemantics {
-    pub emit: BoundaryPropEmit,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BoundaryPropEmit {
-    KeyValue,
-    Getter,
+    pub volatility: Volatility,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,6 +263,7 @@ pub struct ElementBindSemantics {
     pub each_context_vars: SmallVec<[SymbolId; 4]>,
     pub group_value: Option<GroupBindValue>,
     pub group_id: Option<u32>,
+    pub needs_binding_validation: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 import * as $ from "svelte/internal/client";
 import { slide } from "svelte/transition";
-var root_1 = $.from_html(`<div><button>hi</button></div>`);
+var root = $.from_html(`<div><button>hi</button></div>`);
 export default function App($$anchor) {
 	let visible = true;
 	function k() {}
@@ -8,7 +8,7 @@ export default function App($$anchor) {
 	var node = $.first_child(fragment);
 	{
 		var consequent = ($$anchor) => {
-			var div = root_1();
+			var div = root();
 			var button = $.child(div);
 			$.reset(div);
 			$.delegated("click", button, k);

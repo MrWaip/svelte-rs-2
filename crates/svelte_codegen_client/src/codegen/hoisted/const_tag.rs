@@ -36,7 +36,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return CodegenError::unexpected_child("const tag derived", "statements");
         };
         state.init.push(self.ctx.b.const_stmt(d.target, d.derived));
-        if self.ctx.state.dev && d.simple {
+        if self.ctx.state.dev {
             state
                 .init
                 .push(self.ctx.b.call_stmt("$.get", [Arg::Ident(d.target)]));
@@ -72,33 +72,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let body = match &sem.async_kind {
                 ConstTagAsyncKind::Awaited { blockers } => {
                     build_blocker_thunks(self.ctx, blockers, &mut thunks);
-                    if self.ctx.state.dev && d.simple {
-                        let get_call = self.ctx.b.call_stmt("$.get", [Arg::Ident(d.target)]);
-                        let assign_stmt = self.ctx.b.expr_stmt(assignment);
-                        self.ctx.b.async_thunk_block(vec![assign_stmt, get_call])
-                    } else {
-                        self.ctx.b.async_thunk(assignment)
-                    }
+                    self.ctx.b.async_thunk(assignment)
                 }
                 ConstTagAsyncKind::Deferred { blockers } => {
                     build_blocker_thunks(self.ctx, blockers, &mut thunks);
-                    if self.ctx.state.dev && d.simple {
-                        let get_call = self.ctx.b.call_stmt("$.get", [Arg::Ident(d.target)]);
-                        let assign_stmt = self.ctx.b.expr_stmt(assignment);
-                        self.ctx.b.thunk_block(vec![assign_stmt, get_call])
-                    } else {
-                        self.ctx.b.thunk(assignment)
-                    }
+                    self.ctx.b.thunk(assignment)
                 }
-                ConstTagAsyncKind::Sync => {
-                    if self.ctx.state.dev && d.simple {
-                        let get_call = self.ctx.b.call_stmt("$.get", [Arg::Ident(d.target)]);
-                        let assign_stmt = self.ctx.b.expr_stmt(assignment);
-                        self.ctx.b.thunk_block(vec![assign_stmt, get_call])
-                    } else {
-                        self.ctx.b.thunk(assignment)
-                    }
-                }
+                ConstTagAsyncKind::Sync => self.ctx.b.thunk(assignment),
             };
             thunks.push(body);
             let thunk_idx = thunks.len() - 1;

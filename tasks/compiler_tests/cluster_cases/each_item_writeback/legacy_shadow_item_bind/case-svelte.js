@@ -1,13 +1,13 @@
 import "svelte/internal/flags/legacy";
 import * as $ from "svelte/internal/client";
-var root_1 = $.from_html(` <input/>`, 1);
+var root = $.from_html(` <input/>`, 1);
 export default function App($$anchor) {
 	let a = $.mutable_source(["Hello"]);
 	var fragment = $.comment();
 	var node = $.first_child(fragment);
 	$.each(node, 1, () => $.get(a), $.index, ($$anchor, a, $$index, $$array) => {
 		$.next();
-		var fragment_1 = root_1();
+		var fragment_1 = root();
 		var text = $.first_child(fragment_1);
 		var input = $.sibling(text);
 		$.remove_input_defaults(input);

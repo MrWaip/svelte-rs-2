@@ -4,7 +4,7 @@ Production-ready Svelte compiler in Rust, targeting large enterprise codebases.
 
 # Use narsil-mcp
 
-Use narsil-mcp whenever you can
+Use narsil-mcp whenever you can. An empty result is not a disconnect and not a reason to fall back to `grep` — escalate within narsil first (prose → `semantic_search`; exact symbol → `find_symbols`/`get_symbol_definition`; drop `file_pattern`, simplify the query). Full protocol: `docs/agents/narsil.md`.
 
 # Load Every Session
 

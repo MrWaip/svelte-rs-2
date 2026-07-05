@@ -3,7 +3,7 @@ use oxc_ast::ast::Program;
 use oxc_semantic::Scoping;
 use oxc_traverse::traverse_mut;
 
-use crate::data::TransformData;
+use crate::data::{RestExcludes, TransformData};
 
 use svelte_analyze::{AnalysisData, ComponentScoping, IdentGen};
 use svelte_ast_builder::Builder;
@@ -13,6 +13,7 @@ use super::model::{ComponentTransformer, IgnoreQuery, TransformMode};
 pub struct TransformScriptOutput {
     pub has_tracing: bool,
     pub needs_ownership_validator: bool,
+    pub rest_excludes: Vec<RestExcludes>,
 }
 
 pub fn transform_script<'a, 'b>(
@@ -42,8 +43,6 @@ pub fn transform_script<'a, 'b>(
         runes,
         accessors,
         immutable,
-        derived_pending: rustc_hash::FxHashSet::default(),
-        async_derived_pending: rustc_hash::FxHashMap::default(),
         strip_exports,
         dev,
         function_info_stack: Vec::new(),
@@ -74,23 +73,9 @@ pub fn transform_script<'a, 'b>(
         super::legacy_reactive::rewrite_legacy_reactive(b, program, analysis);
     }
 
-    if !transformer.derived_pending.is_empty() {
-        let dev_ctx = dev.then_some(super::derived::DevContext {
-            component_line_index,
-            filename,
-            ignore_query: transformer.ignore_query,
-        });
-        super::derived::wrap_derived_thunks(
-            b,
-            program,
-            &transformer.derived_pending,
-            &transformer.async_derived_pending,
-            dev_ctx.as_ref(),
-        );
-    }
-
     TransformScriptOutput {
         has_tracing: transformer.has_tracing,
         needs_ownership_validator: transformer.needs_ownership_validator,
+        rest_excludes: transformer.transform_data.rest_excludes,
     }
 }
