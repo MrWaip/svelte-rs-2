@@ -1299,6 +1299,7 @@ dependencies = [
 name = "svelte_codegen_server"
 version = "0.1.0"
 dependencies = [
+ "memchr",
  "oxc_ast",
  "oxc_codegen",
  "oxc_span",
@@ -1460,6 +1461,7 @@ version = "0.1.0"
 dependencies = [
  "oxc_allocator",
  "oxc_ast",
+ "oxc_ast_visit",
  "svelte_analyze",
  "svelte_ast_builder",
  "svelte_types",

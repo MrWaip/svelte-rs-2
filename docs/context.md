@@ -33,6 +33,8 @@
 
 Догмы, банлист имён, правила взаимодействия — `../../CLAUDE.md`. Оригинал (JS-референс) — `../../original/compiler/`, источник истины для соответствия выходного JS; используется понять **что** портировать, не **как**.
 
+Как писать, дополнять и ревьюить эти документы — скилл `writing-docs` (стандарт PRD: гейт «durable + load-bearing», single home, контракт `topics:`).
+
 ## Слои крэйтов (bottom-up)
 
 1. ast
@@ -224,6 +226,9 @@ _Avoid_: `await`-флаг (`has_await`), `async` (зарезервировано
 
 **Mode** *(en: mode)* — режим компиляции компонента: `runes` / `legacy` / `auto`.
 _Avoid_: «классический режим», «новый режим».
+
+**Target** *(en: target; `generate: client | server`)* — цель компиляции: `client` (браузерный рантайм `svelte/internal/client`) или `server` (SSR-рантайм `svelte/internal/server`). Ортогонален **Mode**. Пайплайн ветвится по target строго после анализа: одна target-агностичная `AnalysisData` питает два зеркальных backend'а (**трансформ** + **кодген** на сторону). Анализ target не знает (см. **Codegen-агностичность анализа**).
+_Avoid_: generate mode (терм оси `generate`, не отдельная сущность), платформа, environment.
 
 **Legacy** *(en: legacy; маркер `LEGACY(svelte4)`)* — совокупность синтаксиса и поведения Svelte 4: deprecated в Svelte 5, подлежит удалению в Svelte 6.
 _Avoid_: deprecated (статус, а не категория), Svelte 4-стиль.

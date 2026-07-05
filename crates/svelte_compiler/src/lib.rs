@@ -262,7 +262,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                         &mut compile_ctx,
                         &transform_options,
                     );
-                    svelte_codegen_server::generate(compile_ctx, &codegen_options)
+                    svelte_codegen_server::generate(compile_ctx, &codegen_options).ok()
                 }
                 GenerateMode::Client | GenerateMode::False => {
                     let transform_data = {
@@ -287,15 +287,15 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                         ident_gen: &mut ident_gen,
                         line_index: &line_index,
                     };
-                    svelte_codegen_client::generate(
+                    Some(svelte_codegen_client::generate(
                         compile_ctx,
                         &codegen_options,
                         transform_data,
                         injected_css_text.as_deref(),
-                    )
+                    ))
                 }
             };
-            (Some(js), css, analyze_diags)
+            (js, css, analyze_diags)
         }
     };
 

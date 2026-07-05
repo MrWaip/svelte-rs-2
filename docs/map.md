@@ -37,13 +37,13 @@
 
 **Трансформ** (client — `transform.md`, server — `transform-server.md`)
 - `svelte_transform_client` — мутация JS AST под `svelte/internal/client`. Вход `src/lib.rs`; пассы — `src/transformer/` (`runes.rs`, `state.rs`, `derived.rs`, `props.rs`, `legacy_reactive.rs`, `props_legacy.rs`, `assignments.rs`, `inspect.rs`, …).
-- `svelte_transform_server` — мутация JS AST под `svelte/internal/server`: стирание рун ($state-инициализаторы, statement-эффекты). Вход `src/lib.rs`.
+- `svelte_transform_server` — мутация JS AST под `svelte/internal/server`: один `VisitMut`-обход, `ServerTransform` в `src/model.rs`, обработчики по конструкциям (`src/state.rs`, `src/effect.rs`). Вход `src/lib.rs`.
 - `svelte_transform_css` — трансформ CSS (scoping) — `src/lib.rs`.
 - `svelte_emit_builders` — переиспользуемые JS-эмиттеры (`store.rs`, `binding.rs`, `runes.rs`, `legacy_wrap.rs`, `props.rs`).
 
 **Кодген** (client — `codegen.md`, server — `codegen-server.md`)
 - `svelte_codegen_client` — печать выходного JS (client). Вход `src/lib.rs`; контекст `src/context.rs`; визиторы — `src/codegen/` (`fragment/`, `blocks/`, `attributes/`, `expr.rs`, `effect.rs`, `hoisted/`, `component_props/`, `async_emit.rs`, `containers/`, `data_structures/`). Custom elements — `src/custom_element.rs`.
-- `svelte_codegen_server` — печать выходного JS (server): рендер-функция под `$$renderer`. Вход `src/lib.rs`; шаблонный аккумулятор `src/template.rs`, whitespace-подготовка `src/prepare.rs`, HTML-эскейп `src/escape.rs`.
+- `svelte_codegen_server` — печать выходного JS (server): рендер-функция под `$$renderer`. Вход `src/lib.rs`; `ServerCodegen` `src/model.rs`, аккумулятор и flush в `$$renderer.push` `src/renderer.rs`, сборка программы `src/program.rs`, визит фрагмента `src/fragment.rs`, элементы `src/element.rs`, атрибуты `src/attribute.rs`, текст/интерполяции `src/text.rs`, HTML-эскейп `src/escape.rs`.
 
 **Entry / supporting** (`compiler.md`, `supporting-crates.md`)
 - `svelte_compiler` — оркестрация + опции (`src/options.rs`), агрегация диагностик.
@@ -52,7 +52,7 @@
 
 ## Тесты и инструменты (`tasks/`)
 
-- `compiler_tests` — e2e-кейсы `cases2/<name>/` (`case.svelte`, `case-rust.js`, `case-svelte.js`, `config.json`).
+- `compiler_tests` — e2e-кейсы `cases2/<name>/` (`case.svelte`, `case-rust.js`, `case-svelte.js`, `config.json`); бинарь `ssr_flip_scan` (`just ssr-flip-scan`) — пары, чей серверный выход уже совпадает с референсами.
 - `diagnostic_tests` — кейсы `cases/<name>/`.
 - `quick_check` — разовая проверка парити (`just quick-check`).
 - `benchmark`, `generate_test_cases`, `generate_benchmark`, `test_support`.

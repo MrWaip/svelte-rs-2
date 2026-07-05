@@ -94,6 +94,10 @@ dump-ast expr:
 quick-check path *flags:
     cargo run -q -p quick_check -- {{path}} {{flags}}
 
+# List case pairs whose server output already matches the committed references (candidates to flip to live ssr/ssr_dev)
+ssr-flip-scan:
+    cargo run -q -p compiler_tests --bin ssr_flip_scan
+
 # Build WASM and serve the playground
 playground:
     wasm-pack build --target web ./crates/wasm_compiler -d ../../playground/compiler

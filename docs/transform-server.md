@@ -1,14 +1,20 @@
 # PRD: Серверный трансформ (корневой)
 
 label: transform-server
-topics: server transform, server target, SSR script mutation, rune erasure, svelte_transform_server
+topics: server transform, SSR, target, rune erasure, state, derived, effect, props, store, assignment, svelte_transform_server
 
 Корневой PRD для слоя серверного трансформа (`svelte_transform_server`) — script-половины backend'а `generate: server`. Клиентский аналог — `transform.md`.
 Догма: **dumb transform** — мутирует JS AST по готовым ответам анализа, новых данных анализа не производит.
 
 ## Назначение
 
-Мутирует JS instance/module-скрипта под рантайм `svelte/internal/server`: стирание рун в серверные формы (`$state(10)` → голое значение, `$effect` — удаление, `$derived` — одноразовое вычисление), пропсы, сторы, присваивания. Текущее состояние — первый vertical slice: стирание `$state`/`$state.raw`/`$state.eager`-инициализаторов (identifier-декларатор) и удаление statement-рун (`$effect`, `$effect.pre`, `$effect.root`, `$inspect.trace`) на top-level instance-скрипта; остальное наполняется следующими slice'ами по кейсам.
+Мутирует JS instance/module-скрипта под рантайм `svelte/internal/server`: стирание рун в серверные формы (`$state(10)` → голое значение, `$effect` — удаление, `$derived` — одноразовое вычисление), пропсы, сторы, присваивания.
+
+## Скелет обхода
+
+Один проход по программе через `oxc_ast_visit::VisitMut` — без `oxc_traverse`/`Scoping`: скоупы и имена резолвятся нашим `ComponentSemantics`, oxc-scoping не используется. Центральная структура `ServerTransform` реализует `VisitMut` только как тонкий диспатч «узел → обработчик»; вся логика — в `impl ServerTransform`-блоках модулей, по модулю на конструкцию. Новая серверная мутация скрипта = новый модуль с обработчиком + одна строка диспатча; второй проход по программе не заводится.
+
+Ошибки — паник нет нигде; собственного error-типа слой не заводит (зеркально клиентскому трансформу): расхождение формы узла с семантикой и нереализованные формы — guard-скип, узел остаётся нетронутым.
 
 ## Inputs / outputs
 

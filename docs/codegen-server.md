@@ -1,14 +1,25 @@
 # PRD: Серверный кодген (корневой)
 
 label: codegen-server
-topics: server codegen, server target, SSR emit, renderer, $$renderer, escape, static HTML accumulator, svelte_codegen_server
+topics: server codegen, SSR emit, target, renderer, $$renderer, escape, static HTML accumulator, element, attribute, text, interpolation, fragment, if, each, component, snippet, boundary, hoisted, svelte_codegen_server
 
 Корневой PRD для слоя серверного кодгена (`svelte_codegen_server`) — template-половины backend'а `generate: server`. Клиентский аналог — `codegen.md`.
 Догма: **dumb codegen** — один запрос к анализу на один use case → одно однозначное решение эмита.
 
 ## Назначение
 
-Печатает серверный JS: рендер-функция `function App($$renderer)` под рантайм `svelte/internal/server`. Целевая механика — линейный обход шаблона с аккумулятором статического HTML, который flush'ится в `$$renderer.push` на синтаксических границах (блок, компонент, boundary). Правила «вердикт → форма» (эскейпить через `$.escape` или нет, стрингификация атрибутов) живут здесь. Текущее состояние — первый vertical slice: статический HTML (элементы, статические строковые атрибуты), текст/интерполяции (свёртка `Known`-значений, `$.escape` для остальных), `<!---->`-маркер text-first фрагмента, whitespace-трим, prod/dev-формы рендер-функции (`$$renderer.component`-обёртка по `needs_context`/dev, `FILENAME`, `.render`-заглушка, `$.push_element`/`$.pop_element`); конструкции вне slice'а пропускаются и включаются следующими slice'ами по кейсам.
+Печатает серверный JS: рендер-функция `function App($$renderer)` под рантайм `svelte/internal/server`. Целевая механика — линейный обход шаблона с аккумулятором статического HTML, который flush'ится в `$$renderer.push` на синтаксических границах (блок, компонент, boundary). Правила «вердикт → форма» живут здесь; канонические: интерполяция со свёрнутым `Known`-значением печатается статическим текстом, остальные — через `$.escape`; фрагмент, начинающийся с текста/интерполяции, открывается маркером `<!---->`; `$$renderer.component`-обёртка эмитится по доменному вердикту потребности компонента в контексте (в dev — всегда).
+
+## Скелет обхода
+
+Одна рекурсия по дереву шаблона, без промежуточных представлений. Центральная структура `ServerCodegen` несёт контекст и аккумулятор (`TemplateItem`: текст / выражение / стейтмент), flush — в `$$renderer.push`. Обработчики узлов — `impl ServerCodegen`-блоками в модуле своего семейства; whitespace-очистка — локальный шаг визита фрагмента, не отдельная фаза. Новая конструкция = обработчик в модуле семейства + ветка в диспатче узлов; второй обход шаблона или буферное представление детей не заводятся.
+
+Опорные точки расширения (единственные законные механики, вторые экземпляры не заводятся):
+
+- **Вложенный statement-контекст** (тело блока `{#if}`/`{#each}`, script/style, boundary) — `ServerCodegen::child_statements`: временная подмена аккумулятора и свёртка в стейтменты. Параллельные буферы и ручное жонглирование `items` запрещены.
+- **Извлечение шаблонного выражения** — `ServerCodegen::take_expression` (ошибка `MissingExpression`, не тихий скип). Переписывание серверных форм чтения ссылок (store-чтение, derived-вызов) — правило «вердикт → форма» этого слоя: серверный трансформ шаблона не видит, выражения дорабатывает кодген при извлечении.
+- **Ошибки** — паник нет нигде: внутри крэйта `Result`/`CodegenError`, публичный `generate` возвращает `Result`, compiler entry маппит `Err` в `js = None` (см. `compiler.md`).
+- **Hoisted-узлы фрагмента** (сниппеты, `{@const}`, `{@debug}`, `<svelte:head/window/document/body>`) — маршрут внутри визита фрагмента, отдельная фаза не заводится.
 
 ## Inputs / outputs
 

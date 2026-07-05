@@ -21,9 +21,9 @@ path = "test_clusters.rs"
 name = "compiler_tests_sourcemap"
 path = "test_sourcemap.rs"
 
-[[test]]
-name = "compiler_tests_ssr_smoke"
-path = "test_ssr_smoke.rs"
+[[bin]]
+name = "ssr_flip_scan"
+path = "src/bin/ssr_flip_scan.rs"
 
 [dependencies]
 svelte_compiler = { workspace = true }
