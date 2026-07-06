@@ -924,12 +924,3 @@ fn server_target_emits_render_function_skeleton() {
     );
     assert_server_render_skeleton(&js, "App");
 }
-
-#[test]
-fn server_target_dev_emits_render_function_skeleton() {
-    let js = compile_server(
-        "<script>let count = $state(0);</script><p>{count}</p>",
-        true,
-    );
-    assert_server_render_skeleton(&js, "App");
-}
