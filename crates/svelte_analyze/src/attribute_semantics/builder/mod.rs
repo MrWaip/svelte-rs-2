@@ -575,6 +575,13 @@ fn classify_element_attrs(
                             concat: None,
                         }),
                     );
+                } else if matches!(ea.name.as_str(), "defaultValue" | "defaultChecked") {
+                    store.set(
+                        ea.id,
+                        AttributeSemantics::CannotBeStatic(default_attr_semantics(
+                            ctx, el, &ea.name,
+                        )),
+                    );
                 }
             }
             Attribute::ConcatenationAttribute(ca) => {
@@ -1013,23 +1020,31 @@ fn default_attr_kind(ctx: &Ctx<'_, '_>, el: Option<&Element>, name: &str) -> Def
     let Some(el) = el else {
         return DefaultAttrKind::PlainProperty;
     };
-    let reconcile = match name {
+    match name {
         "defaultValue" => {
-            el.attributes
+            let reconcile = el
+                .attributes
                 .iter()
                 .any(|a| matches!(a, Attribute::StringAttribute(s) if s.name == "value"))
-                || (el.name == "textarea" && !ctx.component.fragment_nodes(el.fragment).is_empty())
+                || (el.name == "textarea" && !ctx.component.fragment_nodes(el.fragment).is_empty());
+            if reconcile {
+                DefaultAttrKind::ReconcileValue
+            } else {
+                DefaultAttrKind::PlainProperty
+            }
         }
-        "defaultChecked" => el
-            .attributes
-            .iter()
-            .any(|a| matches!(a, Attribute::BooleanAttribute(b) if b.name == "checked")),
-        _ => false,
-    };
-    if reconcile {
-        DefaultAttrKind::ReconcileWithValue
-    } else {
-        DefaultAttrKind::PlainProperty
+        "defaultChecked" => {
+            let reconcile = el
+                .attributes
+                .iter()
+                .any(|a| matches!(a, Attribute::BooleanAttribute(b) if b.name == "checked"));
+            if reconcile {
+                DefaultAttrKind::ReconcileChecked
+            } else {
+                DefaultAttrKind::PlainProperty
+            }
+        }
+        _ => DefaultAttrKind::PlainProperty,
     }
 }
 

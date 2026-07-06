@@ -1,7 +1,7 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{Evaluation, KnownValue, NamespaceKind};
-use svelte_ast::{Attribute, Element, NodeId};
+use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
 use super::super::expr::evaluation_is_defined;
@@ -34,14 +34,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .unwrap_or_default()
     }
 
-    pub(super) fn regular_attr_update(
-        &self,
-        el_id: NodeId,
-        tag_name: &str,
-        attr_name: &str,
-    ) -> RegularAttrUpdate {
-        let el = self.ctx.element(el_id);
-
+    pub(super) fn regular_attr_update(&self, attr_name: &str) -> RegularAttrUpdate {
         if attr_name == "value" {
             return RegularAttrUpdate::Call {
                 setter_fn: "$.set_value",
@@ -59,31 +52,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if attr_name == "selected" {
             return RegularAttrUpdate::Call {
                 setter_fn: "$.set_selected",
-                attr_name: None,
-            };
-        }
-
-        if attr_name == "defaultValue"
-            && (has_static_text_attribute(el, "value")
-                || (tag_name == "textarea"
-                    && !self
-                        .ctx
-                        .query
-                        .component
-                        .store
-                        .fragment(el.fragment)
-                        .nodes
-                        .is_empty()))
-        {
-            return RegularAttrUpdate::Call {
-                setter_fn: "$.set_default_value",
-                attr_name: None,
-            };
-        }
-
-        if attr_name == "defaultChecked" && has_static_true_boolean_attribute(el, "checked") {
-            return RegularAttrUpdate::Call {
-                setter_fn: "$.set_default_checked",
                 attr_name: None,
             };
         }
@@ -220,18 +188,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         Ok(tpl_parts)
     }
-}
-
-fn has_static_text_attribute(el: &Element, name: &str) -> bool {
-    el.attributes
-        .iter()
-        .any(|attr| matches!(attr, Attribute::StringAttribute(sa) if sa.name == name))
-}
-
-fn has_static_true_boolean_attribute(el: &Element, name: &str) -> bool {
-    el.attributes
-        .iter()
-        .any(|attr| matches!(attr, Attribute::BooleanAttribute(ba) if ba.name == name))
 }
 
 fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {

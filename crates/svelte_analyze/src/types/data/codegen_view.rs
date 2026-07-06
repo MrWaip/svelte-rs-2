@@ -376,6 +376,9 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
         self.data.elements.flags.needs_textarea_value_lowering(id)
     }
+    pub fn needs_textarea_content_reset(&self, id: NodeId) -> bool {
+        self.data.elements.flags.needs_textarea_content_reset(id)
+    }
     pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
         self.data.elements.flags.option_synthetic_value_expr(id)
     }

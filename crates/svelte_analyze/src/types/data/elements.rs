@@ -106,6 +106,8 @@ pub struct ElementFlags {
 
     pub(crate) needs_textarea_value_lowering: NodeBitSet,
 
+    pub(crate) needs_textarea_content_reset: NodeBitSet,
+
     pub(crate) option_synthetic_value_expr: NodeTable<NodeId>,
 
     pub(crate) customizable_select: NodeBitSet,
@@ -133,6 +135,7 @@ impl ElementFlags {
             components_with_css_props: NodeBitSet::new(node_count),
             event_handler_mode: NodeTable::new(node_count),
             needs_textarea_value_lowering: NodeBitSet::new(node_count),
+            needs_textarea_content_reset: NodeBitSet::new(node_count),
             option_synthetic_value_expr: NodeTable::new(node_count),
             customizable_select: NodeBitSet::new(node_count),
             is_selectedcontent: NodeBitSet::new(node_count),
@@ -171,6 +174,9 @@ impl ElementFlags {
     }
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
         self.needs_textarea_value_lowering.contains(&id)
+    }
+    pub fn needs_textarea_content_reset(&self, id: NodeId) -> bool {
+        self.needs_textarea_content_reset.contains(&id)
     }
     pub fn option_synthetic_value_expr(&self, id: NodeId) -> Option<NodeId> {
         self.option_synthetic_value_expr.get(id).copied()

@@ -129,7 +129,8 @@ pub struct DefaultAttrSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DefaultAttrKind {
     PlainProperty,
-    ReconcileWithValue,
+    ReconcileValue,
+    ReconcileChecked,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

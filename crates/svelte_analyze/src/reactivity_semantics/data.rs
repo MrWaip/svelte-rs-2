@@ -483,6 +483,26 @@ impl BindingSemantics {
         }
     }
 
+    pub fn runtime_rune(&self) -> Option<RuntimeRuneKind> {
+        match self {
+            BindingSemantics::RuntimeRune { kind } => Some(*kind),
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => None,
+        }
+    }
+
     pub fn legacy_state(&self) -> Option<LegacyStateSemantics> {
         match self {
             BindingSemantics::LegacyState(state) => Some(*state),

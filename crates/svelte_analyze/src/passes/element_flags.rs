@@ -91,6 +91,23 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             }
         }
 
+        if el.name == "textarea" {
+            let needs_reset = ctx.data.has_spread(el.id)
+                || el.attributes.iter().any(|attr| match attr {
+                    Attribute::BindDirective(b) => b.name == "value",
+                    Attribute::ExpressionAttribute(a) => a.name == "value",
+                    Attribute::ConcatenationAttribute(a) => a.name == "value",
+                    _ => false,
+                });
+            if needs_reset {
+                ctx.data
+                    .elements
+                    .flags
+                    .needs_textarea_content_reset
+                    .insert(el.id);
+            }
+        }
+
         if el.name == "option"
             && !has_value_attr
             && let Some(child_id) = ctx.data.fragment_single_expression_child_by_id(fragment_id)
