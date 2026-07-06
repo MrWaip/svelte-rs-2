@@ -14,7 +14,7 @@ use util::{property_key_atom, simple_assignment_target_member_root_reference_id}
 
 use super::data::{
     BindingFacts, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
-    DeclaratorSemantics, DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DerivedSource,
+    DeclaratorSemantics, DerivedAsyncKind, DerivedDeclarationSemantics, DerivedKind, DerivedSource,
     OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
     ReactivitySemantics, ReferenceFacts, RuntimeRuneKind, StateDeclarationSemantics, StateKind,
 };
@@ -1040,12 +1040,12 @@ fn rune_call_fact(kind: RuneKind, call: &CallExpression<'_>) -> Option<Declarato
         }),
         RuneKind::Derived => Some(DeclaratorSemantics::RuneDerived {
             kind: DerivedKind::Derived,
-            emit: derived_emit(call),
+            async_kind: derived_async_kind(call),
             source: DerivedSource::Computed,
         }),
         RuneKind::DerivedBy => Some(DeclaratorSemantics::RuneDerived {
             kind: DerivedKind::DerivedBy,
-            emit: derived_emit(call),
+            async_kind: derived_async_kind(call),
             source: DerivedSource::Computed,
         }),
         RuneKind::Props => Some(DeclaratorSemantics::RuneProps),
@@ -1124,12 +1124,14 @@ fn compute_const_tag_reactivity<'a>(
             continue;
         }
 
-        let emit = match declarator.init.as_ref() {
-            Some(init) if expression_has_await(init) => DerivedEmit::Async,
-            _ => DerivedEmit::Sync,
+        let async_kind = match declarator.init.as_ref() {
+            Some(init) if expression_has_await(init) => DerivedAsyncKind::Async,
+            _ => DerivedAsyncKind::Sync,
         };
-        data.reactivity
-            .record_declarator_semantics(decl.node_id(), DeclaratorSemantics::ConstTag { emit });
+        data.reactivity.record_declarator_semantics(
+            decl.node_id(),
+            DeclaratorSemantics::ConstTag { async_kind },
+        );
 
         let mut refs: SmallVec<[ReferenceId; 4]> = SmallVec::new();
         let mut eager_rune = false;
@@ -1640,16 +1642,16 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 );
             }
             RuneKind::Derived => {
-                let emit = derived_emit(call);
+                let async_kind = derived_async_kind(call);
                 self.data.reactivity.record_declarator_semantics(
                     root_node,
                     DeclaratorSemantics::RuneDerived {
                         kind: DerivedKind::Derived,
-                        emit,
+                        async_kind,
                         source: DerivedSource::Computed,
                     },
                 );
-                if matches!(emit, DerivedEmit::Sync)
+                if matches!(async_kind, DerivedAsyncKind::Sync)
                     && matches!(&declarator.id, BindingPattern::BindingIdentifier(_))
                     && let Some(ref_id) = derived_source_reference(call)
                 {
@@ -1661,19 +1663,19 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     &declarator.id,
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::Derived,
-                        emit,
+                        async_kind,
                         var_declared,
                     },
                 );
                 self.collect_derived_init_refs(declarator, RuneKind::Derived);
             }
             RuneKind::DerivedBy => {
-                let emit = derived_emit(call);
+                let async_kind = derived_async_kind(call);
                 self.data.reactivity.record_declarator_semantics(
                     root_node,
                     DeclaratorSemantics::RuneDerived {
                         kind: DerivedKind::DerivedBy,
-                        emit,
+                        async_kind,
                         source: DerivedSource::Computed,
                     },
                 );
@@ -1681,7 +1683,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     &declarator.id,
                     DerivedDeclarationSemantics {
                         kind: DerivedKind::DerivedBy,
-                        emit,
+                        async_kind,
                         var_declared,
                     },
                 );
@@ -2509,13 +2511,13 @@ fn class_field_rune_semantics(
         RuneKind::Derived => Some(DeclaratorSemantics::ClassFieldDerived(
             ClassFieldDerivedSemantics {
                 kind: DerivedKind::Derived,
-                emit: derived_emit(call),
+                async_kind: derived_async_kind(call),
             },
         )),
         RuneKind::DerivedBy => Some(DeclaratorSemantics::ClassFieldDerived(
             ClassFieldDerivedSemantics {
                 kind: DerivedKind::DerivedBy,
-                emit: derived_emit(call),
+                async_kind: derived_async_kind(call),
             },
         )),
         _ => None,
@@ -2663,16 +2665,16 @@ fn is_simple_expression(expr: &Expression<'_>) -> bool {
     )
 }
 
-fn derived_emit(call: &CallExpression<'_>) -> DerivedEmit {
+fn derived_async_kind(call: &CallExpression<'_>) -> DerivedAsyncKind {
     let has_await = call
         .arguments
         .first()
         .and_then(|arg| arg.as_expression())
         .is_some_and(expression_has_await);
     if has_await {
-        DerivedEmit::Async
+        DerivedAsyncKind::Async
     } else {
-        DerivedEmit::Sync
+        DerivedAsyncKind::Sync
     }
 }
 

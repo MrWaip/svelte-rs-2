@@ -2,7 +2,7 @@ use std::mem;
 use svelte_emit_builders::runes::rune_get;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{NamespaceKind, SvelteElementTag};
+use svelte_analyze::{AttributeSemantics, NamespaceKind, SkipCause, SvelteElementTag};
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::Arg;
 
@@ -37,7 +37,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let attributes: Vec<Attribute> = el
             .attributes
             .iter()
-            .filter(|a| !a.is_svelte_element_this())
+            .filter(|a| {
+                !matches!(
+                    self.ctx.query.analysis.attributes.get(a.id()),
+                    AttributeSemantics::Skip(SkipCause::TagCarrier)
+                )
+            })
             .cloned()
             .collect();
 

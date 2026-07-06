@@ -8,8 +8,8 @@ use oxc_ast::ast::{
 use oxc_semantic::SymbolId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_analyze::{
-    BindingSemantics, BlockSemantics, ContextualBindingSemantics, DeclaratorSemantics, DerivedEmit,
-    EachFlags, SnippetParam,
+    BindingSemantics, BlockSemantics, ContextualBindingSemantics, DeclaratorSemantics,
+    DerivedAsyncKind, EachFlags, SnippetParam,
 };
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
@@ -91,7 +91,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let pattern_ref: &'a BindingPattern<'a> = self.ctx.b.ast.allocator.alloc(pattern);
                 Ok(Out::Statements(self.emit_await_value(pattern_ref)))
             }
-            DeclaratorSemantics::ConstTag { emit } => {
+            DeclaratorSemantics::ConstTag { async_kind } => {
                 let BindingPatternSource::ConstTag { id } = source else {
                     return CodegenError::unexpected_child(
                         "const tag source",
@@ -104,7 +104,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     id,
                     pattern_ref,
                     init,
-                    emit,
+                    async_kind,
                 )?))
             }
             DeclaratorSemantics::LetCarrier { carrier_symbol } => {
@@ -341,7 +341,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         id: NodeId,
         pattern: &'a BindingPattern<'a>,
         init: Expression<'a>,
-        emit: DerivedEmit,
+        async_kind: DerivedAsyncKind,
     ) -> Result<ConstTagDerived<'a>> {
         let init = coarse_wrap(self.ctx, init, self.ctx.expression_data(id));
 
@@ -357,11 +357,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 return CodegenError::unexpected_child("const tag binding", "empty bindings");
             };
             let target: &str = self.ctx.b.alloc_str(&name);
-            let value_thunk = match emit {
-                DerivedEmit::Async => self.ctx.b.async_thunk(init),
-                DerivedEmit::Sync => self.ctx.b.thunk(init),
+            let value_thunk = match async_kind {
+                DerivedAsyncKind::Async => self.ctx.b.async_thunk(init),
+                DerivedAsyncKind::Sync => self.ctx.b.thunk(init),
             };
-            let derived = self.build_derived(value_thunk, emit);
+            let derived = self.build_derived(value_thunk, async_kind);
             let derived = if self.ctx.state.dev {
                 self.ctx
                     .b
@@ -397,14 +397,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .map(|n| ObjProp::Shorthand(self.ctx.b.alloc_str(n)))
                 .collect();
             let ret = self.ctx.b.return_stmt(self.ctx.b.object_expr(props));
-            let value_thunk = match emit {
-                DerivedEmit::Async => self.ctx.b.async_thunk_block(vec![destruct_stmt, ret]),
-                DerivedEmit::Sync => self
+            let value_thunk = match async_kind {
+                DerivedAsyncKind::Async => self.ctx.b.async_thunk_block(vec![destruct_stmt, ret]),
+                DerivedAsyncKind::Sync => self
                     .ctx
                     .b
                     .arrow_block_expr(self.ctx.b.no_params(), [destruct_stmt, ret]),
             };
-            let derived = self.build_derived(value_thunk, emit);
+            let derived = self.build_derived(value_thunk, async_kind);
             let derived = if self.ctx.state.dev {
                 self.ctx
                     .b
@@ -420,13 +420,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
-    fn build_derived(&mut self, value_thunk: Expression<'a>, emit: DerivedEmit) -> Expression<'a> {
-        match emit {
-            DerivedEmit::Async => self
+    fn build_derived(
+        &mut self,
+        value_thunk: Expression<'a>,
+        async_kind: DerivedAsyncKind,
+    ) -> Expression<'a> {
+        match async_kind {
+            DerivedAsyncKind::Async => self
                 .ctx
                 .b
                 .call_expr("$.async_derived", [Arg::Expr(value_thunk)]),
-            DerivedEmit::Sync => {
+            DerivedAsyncKind::Sync => {
                 let helper = self.ctx.query.view.derived_helper();
                 self.ctx.b.call_expr(helper, [Arg::Expr(value_thunk)])
             }

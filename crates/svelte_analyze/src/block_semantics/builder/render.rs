@@ -90,14 +90,14 @@ fn callee_volatility(ctx: &Ctx<'_, '_>, callee_sym: Option<SymbolId>) -> Volatil
 fn derive_async_kind(ctx: &Ctx<'_, '_>, tag: &RenderTag) -> RenderAsyncKind {
     match ctx.expressions.get(tag.id) {
         ExpressionSemantics::Expression(d) => match d.volatility {
-            Volatility::Asynchronous => RenderAsyncKind::Async {
+            Volatility::Asynchronous => RenderAsyncKind::Awaited {
                 blockers: d.blockers.clone(),
             },
             Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
                 if d.blockers.is_empty() {
                     RenderAsyncKind::Sync
                 } else {
-                    RenderAsyncKind::Async {
+                    RenderAsyncKind::Deferred {
                         blockers: d.blockers.clone(),
                     }
                 }

@@ -1,7 +1,7 @@
 use std::iter::empty;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::SvelteElementTag;
+use svelte_analyze::{ElementSemantics, SvelteElementTag};
 use svelte_ast::SvelteElement;
 use svelte_ast_builder::Arg;
 
@@ -11,7 +11,10 @@ use crate::model::ServerCodegen;
 
 impl<'a> ServerCodegen<'a> {
     pub(crate) fn svelte_element_dev_init(&mut self, el: &'a SvelteElement) -> Result<()> {
-        let tag_expr = self.svelte_element_tag(el)?;
+        let mut tag_expr = self.svelte_element_tag(el)?;
+        if self.element_async_blockers(el.id).is_some() {
+            tag_expr = self.save_block_await(tag_expr);
+        }
         let ref_name = if let Expression::Identifier(id) = &tag_expr {
             id.name.to_string()
         } else {
@@ -46,9 +49,21 @@ impl<'a> ServerCodegen<'a> {
             cg.fragment(el.fragment, FragmentParent::SvelteElement, false)
         })?;
 
+        let async_blockers = self.element_async_blockers(el.id);
+
         if !self.dev {
-            let tag_expr = self.svelte_element_tag(el)?;
-            self.push_element_call(tag_expr, attrs_stmts, children_stmts);
+            let mut tag_expr = self.svelte_element_tag(el)?;
+            if async_blockers.is_some() {
+                tag_expr = self.save_block_await(tag_expr);
+            }
+            let call = self.build_element_call(tag_expr, attrs_stmts, children_stmts);
+            match async_blockers {
+                Some(blockers) => {
+                    let wrapped = self.wrap_async_block(vec![call], &blockers);
+                    self.push_stmt(wrapped);
+                }
+                None => self.push_stmt(call),
+            }
             return Ok(());
         }
 
@@ -68,22 +83,39 @@ impl<'a> ServerCodegen<'a> {
                 Arg::Num(col as f64),
             ],
         );
-        self.push_stmt(push_element);
 
         let tag_ref = self.b.rid_expr(&ref_name);
-        self.push_element_call(tag_ref, attrs_stmts, children_stmts);
-
+        let call = self.build_element_call(tag_ref, attrs_stmts, children_stmts);
         let pop_element = self.b.call_stmt("$.pop_element", empty::<Arg<'_, '_>>());
-        self.push_stmt(pop_element);
+
+        match async_blockers {
+            Some(blockers) => {
+                let wrapped =
+                    self.wrap_async_block(vec![push_element, call, pop_element], &blockers);
+                self.push_stmt(wrapped);
+            }
+            None => {
+                self.push_stmt(push_element);
+                self.push_stmt(call);
+                self.push_stmt(pop_element);
+            }
+        }
         Ok(())
     }
 
-    fn push_element_call(
+    fn element_async_blockers(&self, id: svelte_ast::NodeId) -> Option<Vec<u32>> {
+        match self.analysis.element_semantics.query(id) {
+            ElementSemantics::SvelteElement(sem) => Some(sem.async_kind.blockers().to_vec()),
+            _ => None,
+        }
+    }
+
+    fn build_element_call(
         &mut self,
         tag: Expression<'a>,
         attrs_stmts: Vec<Statement<'a>>,
         children_stmts: Vec<Statement<'a>>,
-    ) {
+    ) -> Statement<'a> {
         let attrs_arg = if attrs_stmts.is_empty() {
             None
         } else {
@@ -104,8 +136,7 @@ impl<'a> ServerCodegen<'a> {
             args.push(Arg::Expr(attrs));
         }
 
-        let call = self.b.call_stmt("$.element", args);
-        self.push_stmt(call);
+        self.b.call_stmt("$.element", args)
     }
 
     fn svelte_element_tag(&mut self, el: &'a SvelteElement) -> Result<Expression<'a>> {

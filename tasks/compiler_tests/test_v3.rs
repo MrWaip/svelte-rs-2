@@ -198,7 +198,7 @@ compiler_case!(
 
 compiler_case!(css_snippet_descendant_scope_boundary);
 
-compiler_case!(css_snippet_sibling_boundary);
+compiler_case!(css_snippet_sibling_boundary, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(diagnose_css_recursive_snippet_sibling_overflow);
 
@@ -622,11 +622,14 @@ compiler_case!(smoke_all);
 
 compiler_case!(derived_basic);
 
-compiler_case!(diagnose_derived_rune_with_ts_as_cast);
+compiler_case!(
+    diagnose_derived_rune_with_ts_as_cast,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(derived_by);
 
-compiler_case!(derived_dynamic);
+compiler_case!(derived_dynamic, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(derived_write_assignment);
 
@@ -913,7 +916,7 @@ compiler_case!(store_if_block_condition, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_key_block_expression, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(store_await_block_promise);
+compiler_case!(store_await_block_promise, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_render_tag_snippet, [prod, dev, ssr, ssr_dev]);
 
@@ -950,7 +953,7 @@ compiler_case!(
 
 compiler_case!(const_tag_key_block);
 
-compiler_case!(const_tag_await);
+compiler_case!(const_tag_await, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(const_tag_component);
 
@@ -1144,9 +1147,9 @@ compiler_case!(state_snapshot_not_ignored);
 
 compiler_case!(state_snapshot_ignored_return);
 
-compiler_case!(for_await_ignored);
+compiler_case!(for_await_ignored, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_reactivity_ignored);
+compiler_case!(await_reactivity_ignored, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(state_class_constructor_proxy);
 
@@ -1164,11 +1167,14 @@ compiler_case!(svg_inner_whitespace_trimming);
 
 compiler_case!(svg_inner_template_from_svg);
 
-compiler_case!(template_effect_call_deps);
+compiler_case!(template_effect_call_deps, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svg_text_preserves_whitespace);
 
-compiler_case!(template_effect_multiple_call_deps);
+compiler_case!(
+    template_effect_multiple_call_deps,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(template_effect_attr_before_text_order);
 
@@ -1481,7 +1487,7 @@ compiler_case!(runes_local_let_export_specifier);
 
 compiler_case!(runes_local_const_export_specifier);
 
-compiler_case!(runes_derived_export_specifier);
+compiler_case!(runes_derived_export_specifier, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(diagnose_legacy_export_const_init_order);
 
@@ -1614,7 +1620,7 @@ compiler_case!(smoke_legacy_rune_fallback_all, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(derived_non_runes_invalid_usage, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(smoke_runes_declarator_gaps_all);
+compiler_case!(smoke_runes_declarator_gaps_all, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(smoke_runes_state_eager_panic, [prod, dev, ssr, ssr_dev]);
 
@@ -1704,7 +1710,7 @@ compiler_case!(svelte_head_with_content, [prod, dev, ssr, ssr_dev]);
 // <title> in <svelte:head> tests
 compiler_case!(title_variants, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_title_basic);
+compiler_case!(async_title_basic, [prod, dev, ssr, ssr_dev]);
 
 // svelte:window tests
 compiler_case!(svelte_window_event_legacy, [prod, dev, ssr, ssr_dev]);
@@ -2047,10 +2053,13 @@ compiler_case!(
 
 compiler_case!(
     audit_svelte_element_async_tag_with_class_directive,
-    [prod, dev_todo]
+    [prod, dev_todo, ssr, ssr_dev]
 );
 
-compiler_case!(audit_svelte_element_async_tag_with_spread, [prod, dev_todo]);
+compiler_case!(
+    audit_svelte_element_async_tag_with_spread,
+    [prod, dev_todo, ssr, ssr_dev]
+);
 
 compiler_case!(
     audit_svelte_element_scoped_with_spread,
@@ -2114,59 +2123,65 @@ compiler_case!(svelte_body_action, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_body_combined, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_basic);
+compiler_case!(boundary_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_failed_snippet);
+compiler_case!(boundary_failed_snippet, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_onerror);
+compiler_case!(boundary_onerror, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_pending_snippet);
+compiler_case!(boundary_pending_snippet, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_failed_onerror);
+compiler_case!(boundary_failed_onerror, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_failed_attribute);
+compiler_case!(boundary_failed_attribute, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_all_three);
+compiler_case!(boundary_all_three, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_reactive_onerror);
+compiler_case!(boundary_reactive_onerror, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_nested);
+compiler_case!(boundary_nested, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_const_tag);
+compiler_case!(boundary_const_tag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_in_if);
+compiler_case!(boundary_in_if, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_other_snippets);
+compiler_case!(boundary_other_snippets, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_pending_attribute);
+compiler_case!(boundary_pending_attribute, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_pending_imported);
+compiler_case!(boundary_pending_imported, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_failed_attribute_override);
+compiler_case!(
+    boundary_failed_attribute_override,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(boundary_pending_attribute_override);
+compiler_case!(
+    boundary_pending_attribute_override,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(await_basic);
+compiler_case!(await_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_short_then);
+compiler_case!(await_short_then, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_short_catch);
+compiler_case!(await_short_catch, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_then_catch);
+compiler_case!(await_then_catch, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_no_bindings);
+compiler_case!(await_no_bindings, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_pending_only);
+compiler_case!(await_pending_only, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_destructured);
+compiler_case!(await_destructured, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_in_if);
+compiler_case!(await_in_if, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_in_each);
+compiler_case!(await_in_each, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_reactive);
+compiler_case!(await_reactive, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_nested_content);
+compiler_case!(await_nested_content, [prod, dev, ssr, ssr_dev]);
 
 // ---------------------------------------------------------------------------
 // Event attribute tests (Svelte 5)
@@ -2287,7 +2302,7 @@ compiler_case!(inspect_trace_contexts, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(inspect_trace_prod_strip, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(inspect_trace_reactive_contexts);
+compiler_case!(inspect_trace_reactive_contexts, [prod, dev, ssr, ssr_dev]);
 
 // ---------------------------------------------------------------------------
 // $props.id() rune tests
@@ -2350,9 +2365,9 @@ compiler_case!(svelte_element_dev_invalid_tag, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_element_dev_void_children, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_const_in_snippet);
+compiler_case!(boundary_const_in_snippet, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(boundary_imported_handler);
+compiler_case!(boundary_imported_handler, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(bind_this_sequence, [prod, dev, ssr, ssr_dev]);
 
@@ -2360,7 +2375,7 @@ compiler_case!(bind_this_sequence, [prod, dev, ssr, ssr_dev]);
 // Tier 2b — Template Tags
 // ---------------------------------------------------------------------------
 
-compiler_case!(await_array_destructured);
+compiler_case!(await_array_destructured, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(html_tag_controlled, [prod, dev, ssr, ssr_dev]);
 
@@ -2502,7 +2517,7 @@ compiler_case!(derived_shorthand_property);
 
 compiler_case!(state_inside_function);
 
-compiler_case!(derived_by_inside_function);
+compiler_case!(derived_by_inside_function, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_snippet_prop, [prod, dev, ssr, ssr_dev]);
 
@@ -2518,7 +2533,7 @@ compiler_case!(component_snippet_only, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(ts_type_import_comment);
 
-compiler_case!(rest_props_member_access);
+compiler_case!(rest_props_member_access, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_spread_props, [prod, dev, ssr, ssr_dev]);
 
@@ -2580,7 +2595,10 @@ compiler_case!(
     [prod, dev_todo]
 );
 
-compiler_case!(diagnose_component_prop_computed_member_getter);
+compiler_case!(
+    diagnose_component_prop_computed_member_getter,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_component_prop_hyphenated_key_derived,
@@ -2663,77 +2681,86 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(async_if_basic);
+compiler_case!(async_if_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_if_else_if_condition);
+compiler_case!(async_if_else_if_condition, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(if_elseif_new_blockers);
+compiler_case!(if_elseif_new_blockers, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_each_basic);
+compiler_case!(async_each_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_html_basic);
+compiler_case!(async_html_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_key_basic);
+compiler_case!(async_key_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_await_has_await);
+compiler_case!(async_await_has_await, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_flag_import);
+compiler_case!(async_flag_import, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_blockers_basic);
+compiler_case!(async_blockers_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_bind_basic);
+compiler_case!(async_bind_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(action_blockers);
+compiler_case!(action_blockers, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(attach_blockers);
+compiler_case!(attach_blockers, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(transition_blockers);
+compiler_case!(transition_blockers, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(animate_blockers);
+compiler_case!(animate_blockers, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_svelte_element, [prod, dev_todo]);
+compiler_case!(async_svelte_element, [prod, dev_todo, ssr, ssr_dev]);
 
-compiler_case!(async_const_tag);
+compiler_case!(async_const_tag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_derived_basic);
+compiler_case!(async_derived_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_derived_destructured);
+compiler_case!(async_derived_destructured, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_derived_dev);
+compiler_case!(async_derived_dev, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_derived_dev_ignored);
+compiler_case!(async_derived_dev_ignored, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_derived_dev_ignored_destructured);
+compiler_case!(
+    async_derived_dev_ignored_destructured,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(async_derived_nested_function);
+compiler_case!(async_derived_nested_function, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_derived_nested_function_destructured);
+compiler_case!(
+    async_derived_nested_function_destructured,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(async_for_await_dev);
+compiler_case!(async_for_await_dev, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(orthogonality_heavy_call, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(orthogonality_async_await);
+compiler_case!(orthogonality_async_await, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(orthogonality_heavy_async_await_call);
+compiler_case!(
+    orthogonality_heavy_async_await_call,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(inline_await_basic);
+compiler_case!(inline_await_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(inline_await_global_callee);
+compiler_case!(inline_await_global_callee, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(inline_await_text_concat);
+compiler_case!(inline_await_text_concat, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(inline_await_attr);
+compiler_case!(inline_await_attr, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_pickled_await_template);
+compiler_case!(async_pickled_await_template, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_render_tag);
+compiler_case!(async_render_tag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_render_tag_complex_args);
+compiler_case!(async_render_tag_complex_args, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(async_boundary_const);
 
-compiler_case!(async_const_derived_chain);
+compiler_case!(async_const_derived_chain, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(attach_on_component);
 
@@ -2743,19 +2770,19 @@ compiler_case!(attach_on_document, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(each_keyed_destructure);
 
-compiler_case!(await_then_text_before_element);
+compiler_case!(await_then_text_before_element, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_thunk_optimization);
+compiler_case!(await_thunk_optimization, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_each_nested);
+compiler_case!(await_each_nested, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_pending_then);
+compiler_case!(await_pending_then, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_pending_catch);
+compiler_case!(await_pending_catch, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_short_catch_no_binding);
+compiler_case!(await_short_catch_no_binding, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(await_nested_await);
+compiler_case!(await_nested_await, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(fragment_counter_with_nested_if, [prod, dev, ssr, ssr_dev]);
 
@@ -2769,7 +2796,7 @@ compiler_case!(event_mixed_delegation, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(props_identifier_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(props_identifier_await_expression);
+compiler_case!(props_identifier_await_expression, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(call_expr_local_method_dynamic, [prod, dev, ssr, ssr_dev]);
 
@@ -3009,7 +3036,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_button_single_dynamic_text);
+compiler_case!(
+    diagnose_button_single_dynamic_text,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_text_concat_import_uses_template_effect);
 
@@ -3276,7 +3306,7 @@ compiler_case!(ts_bindable_default_as);
 
 compiler_case!(ts_bindable_default_identifier_paren);
 
-compiler_case!(ts_derived_async_await_paren);
+compiler_case!(ts_derived_async_await_paren, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(ts_state_proxyable_paren_arrow, [prod, dev, ssr, ssr_dev]);
 
@@ -3420,9 +3450,9 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(legacy_await_member_chain_promise);
+compiler_case!(legacy_await_member_chain_promise, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_await_call_with_state_arg);
+compiler_case!(legacy_await_call_with_state_arg, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(diagnose_css_custom_prop_component_concat_literal_const_fold);
 

@@ -25,7 +25,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<()> {
         let (needs_async, blockers) = match &sem.async_kind {
             RenderAsyncKind::Sync => (false, Vec::new()),
-            RenderAsyncKind::Async { blockers } => (true, blockers.to_vec()),
+            RenderAsyncKind::Awaited { blockers } | RenderAsyncKind::Deferred { blockers } => {
+                (true, blockers.to_vec())
+            }
         };
 
         let is_static_shape = !sem.callee_volatility.is_volatile();

@@ -145,6 +145,10 @@ impl<'a> ServerCodegen<'a> {
             Node::KeyBlock(block) => return self.key_block(block, preserve_whitespace),
             Node::HtmlTag(tag) => return self.html_tag(tag),
             Node::SvelteElement(el) => return self.svelte_element(el),
+            Node::AwaitBlock(block) => return self.await_block(block, preserve_whitespace),
+            Node::SvelteBoundary(boundary) => {
+                return self.svelte_boundary(boundary, preserve_whitespace);
+            }
             Node::Text(_)
             | Node::SlotElementLegacy(_)
             | Node::SnippetBlock(_)
@@ -157,18 +161,13 @@ impl<'a> ServerCodegen<'a> {
             | Node::SvelteDocument(_)
             | Node::SvelteBody(_)
             | Node::SvelteSelf(_)
-            | Node::SvelteBoundary(_)
-            | Node::AwaitBlock(_)
             | Node::Error(_) => {}
         }
         Ok(())
     }
 
-    fn emit_fragment_hoisted(&mut self, id: FragmentId, preserve_whitespace: bool) -> Result<()> {
-        self.emit_fragment_titles(id, preserve_whitespace)?;
-
+    pub(crate) fn emit_fragment_const_tags(&mut self, id: FragmentId) -> Result<()> {
         let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
-
         let mut const_tags: Vec<(u32, NodeId)> = node_ids
             .iter()
             .copied()
@@ -180,6 +179,36 @@ impl<'a> ServerCodegen<'a> {
         const_tags.sort_by_key(|(rank, _)| *rank);
         for (_, nid) in const_tags {
             self.const_tag(nid)?;
+        }
+        Ok(())
+    }
+
+    fn emit_fragment_hoisted(&mut self, id: FragmentId, preserve_whitespace: bool) -> Result<()> {
+        self.emit_fragment_titles(id, preserve_whitespace)?;
+
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+
+        let mut const_tags: Vec<(u32, NodeId, bool)> = node_ids
+            .iter()
+            .copied()
+            .filter_map(|nid| match self.analysis.block_semantics(nid) {
+                BlockSemantics::ConstTag(sem) => {
+                    let is_async =
+                        !matches!(sem.async_kind, svelte_analyze::ConstTagAsyncKind::Sync);
+                    Some((sem.order_rank, nid, is_async))
+                }
+                _ => None,
+            })
+            .collect();
+        const_tags.sort_by_key(|(rank, _, _)| *rank);
+        let has_async = const_tags.iter().any(|(_, _, is_async)| *is_async);
+        if has_async {
+            let ordered: Vec<NodeId> = const_tags.iter().map(|(_, nid, _)| *nid).collect();
+            self.emit_const_tags_async(&ordered)?;
+        } else {
+            for (_, nid, _) in &const_tags {
+                self.const_tag(*nid)?;
+            }
         }
 
         for &nid in &node_ids {

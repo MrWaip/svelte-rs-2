@@ -1,9 +1,19 @@
 use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, Expression};
 use oxc_span::SPAN;
+use oxc_syntax::reference::ReferenceId;
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
-use svelte_analyze::{AnalysisData, BindingSemantics, ReferenceSemantics};
+use svelte_analyze::{AnalysisData, BindingSemantics, ReferenceSemantics, SignalReferenceKind};
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::SymbolId;
+
+fn reads_runtime_derived(analysis: &AnalysisData<'_>, ref_id: ReferenceId) -> bool {
+    analysis.symbol_for_reference(ref_id).is_some_and(|sym| {
+        matches!(
+            analysis.binding_semantics(sym),
+            BindingSemantics::Derived(_)
+        )
+    })
+}
 
 fn store_base_symbol(analysis: &AnalysisData<'_>, store_symbol: SymbolId) -> Option<SymbolId> {
     match analysis.binding_semantics(store_symbol) {
@@ -84,6 +94,15 @@ pub fn rewrite_identifier_read<'a>(
         } => {
             if let Some(read) = store_read_of_symbol(b, analysis, symbol) {
                 *expr = read;
+            }
+        }
+        ReferenceSemantics::SignalRead {
+            kind: SignalReferenceKind::Derived(_),
+            ..
+        } => {
+            if reads_runtime_derived(analysis, ref_id) {
+                let callee = b.rid_expr(id.name.as_str());
+                *expr = b.call_expr_callee(callee, []);
             }
         }
         _ => {}

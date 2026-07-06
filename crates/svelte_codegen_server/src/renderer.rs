@@ -30,6 +30,14 @@ impl<'a> ServerCodegen<'a> {
             .call_stmt("$$renderer.push", [Arg::Str(literal.to_string())])
     }
 
+    pub(crate) fn renderer_push_template_stmt(&self, text: &str) -> Statement<'a> {
+        let template = self
+            .b
+            .template_parts_expr(vec![TemplatePart::Str(text.to_string())]);
+        self.b
+            .expr_stmt(self.b.call_expr("$$renderer.push", [Arg::Expr(template)]))
+    }
+
     pub(crate) fn push_expr(&mut self, expression: Expression<'a>) {
         self.items.push(TemplateItem::Expr(expression));
     }

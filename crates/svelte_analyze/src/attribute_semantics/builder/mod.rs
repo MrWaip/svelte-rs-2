@@ -6,7 +6,7 @@ use super::data::{
     ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
     ConcatPartEmit, DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics,
     ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, GroupBindValue,
-    HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind,
+    HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SkipCause, SpecialValueKind,
     SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics, TemplateEffect,
     WindowBindSemantics, is_component_css_property,
 };
@@ -490,7 +490,7 @@ fn classify_svelte_element(
 ) {
     classify_element_attrs(ctx, state, el.id, &el.attributes, None, store, groups);
     if let Some(this) = el.attributes.iter().find(|a| a.is_svelte_element_this()) {
-        store.set(this.id(), AttributeSemantics::Skip);
+        store.set(this.id(), AttributeSemantics::Skip(SkipCause::TagCarrier));
     }
 }
 
@@ -696,7 +696,7 @@ fn set_primary_rest_skip(
         if Some(attr.id()) == primary {
             store.set(attr.id(), data.clone());
         } else {
-            store.set(attr.id(), AttributeSemantics::Skip);
+            store.set(attr.id(), AttributeSemantics::Skip(SkipCause::Member));
         }
     }
 }

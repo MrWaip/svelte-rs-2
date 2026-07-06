@@ -31,9 +31,15 @@ pub enum AttributeSemantics {
     SpecialValueAttr(SpecialValueSemantics),
     Class(ClassSemantics),
     Style(StyleSemantics),
-    Skip,
+    Skip(SkipCause),
     Autofocus,
     RuntimeBehavior,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SkipCause {
+    TagCarrier,
+    Member,
 }
 
 impl AttributeSemantics {
@@ -41,7 +47,7 @@ impl AttributeSemantics {
         match self {
             AttributeSemantics::NonSpecial
             | AttributeSemantics::StaticAttr
-            | AttributeSemantics::Skip
+            | AttributeSemantics::Skip(_)
             | AttributeSemantics::RuntimeBehavior => false,
             AttributeSemantics::Class(class) => {
                 class.attr.is_some() || !class.directives.is_empty()

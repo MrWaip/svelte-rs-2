@@ -1466,9 +1466,11 @@ dependencies = [
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
+ "oxc_semantic",
  "oxc_span",
  "svelte_analyze",
  "svelte_ast_builder",
+ "svelte_component_semantics",
  "svelte_emit_builders",
  "svelte_types",
 ]

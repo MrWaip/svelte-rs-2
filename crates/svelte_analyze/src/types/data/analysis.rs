@@ -4,6 +4,7 @@ use crate::attribute_semantics::{
     data::{AttributeSemantics, ComponentPropMemo, ComponentPropSemantics},
 };
 use crate::block_semantics::{BlockSemantics, BlockSemanticsStore, EachIndexKind, EachItemKind};
+use crate::element_semantics::ElementSemanticsStore;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics, ExpressionSemanticsStore};
 use crate::passes::fragment_topology::fragment_items;
 use crate::types::data::template_topology::Ancestors;
@@ -192,6 +193,7 @@ pub struct AnalysisData<'a> {
     pub output: OutputData,
     pub reactivity: ReactivitySemantics,
     pub(crate) block_semantics_store: BlockSemanticsStore,
+    pub element_semantics: ElementSemanticsStore,
     pub(crate) value_evaluation: ValueEvaluation,
 }
 
@@ -209,6 +211,7 @@ impl<'a> AnalysisData<'a> {
             output: OutputData::new(node_count),
             reactivity: ReactivitySemantics::new(node_count),
             block_semantics_store: BlockSemanticsStore::new(node_count),
+            element_semantics: ElementSemanticsStore::new(node_count),
             value_evaluation: ValueEvaluation::default(),
         }
     }

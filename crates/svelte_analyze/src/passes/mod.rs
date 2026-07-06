@@ -36,6 +36,7 @@ pub(crate) enum PassKey {
     BuildExpressionSemantics,
     BuildAttributeSemantics,
     BuildBlockSemantics,
+    BuildElementSemantics,
     ValidateTemplate,
     Validate,
 }
@@ -57,6 +58,7 @@ pub(crate) enum DataToken {
     ExpressionSemantics,
     AttributeSemantics,
     BlockSemantics,
+    ElementSemantics,
     FragmentTopology,
     TemplateClassification,
     TemplateValidation,
@@ -169,6 +171,11 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::BlockSemantics],
     },
     PassDescriptor {
+        key: PassKey::BuildElementSemantics,
+        requires: &[DataToken::BlockSemantics, DataToken::ExpressionSemantics],
+        produces: &[DataToken::ElementSemantics],
+    },
+    PassDescriptor {
         key: PassKey::ValidateTemplate,
         requires: &[DataToken::SymbolRefs],
         produces: &[DataToken::TemplateValidation],
@@ -204,6 +211,7 @@ pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
     PassKey::BuildFragmentTopology,
     PassKey::TemplateClassificationWalk,
     PassKey::BuildBlockSemantics,
+    PassKey::BuildElementSemantics,
 ];
 
 pub(crate) const VALIDATION_STAGE: &[PassKey] = &[PassKey::ValidateTemplate, PassKey::Validate];

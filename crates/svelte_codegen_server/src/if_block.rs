@@ -12,9 +12,11 @@ impl<'a> ServerCodegen<'a> {
             BlockSemantics::If(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(block.id, "if block")),
         };
-        if !matches!(sem.async_kind, IfAsyncKind::Sync) {
-            return Err(CodegenError::Unsupported(block.id, "async if block"));
-        }
+        let (async_blockers, block_is_async) = match &sem.async_kind {
+            IfAsyncKind::Sync => (None, false),
+            IfAsyncKind::Awaited { blockers } => (Some(blockers.clone()), true),
+            IfAsyncKind::Deferred { blockers } => (Some(blockers.clone()), false),
+        };
 
         let mut chain = self.build_if_alternate(&sem, preserve_whitespace)?;
 
@@ -23,7 +25,10 @@ impl<'a> ServerCodegen<'a> {
                 Node::IfBlock(inner) => (inner.consequent, inner.test.clone()),
                 _ => return Err(CodegenError::Unsupported(branch.block_id, "if branch")),
             };
-            let test = self.take_expression(branch.block_id, &test_ref)?;
+            let mut test = self.take_expression(branch.block_id, &test_ref)?;
+            if async_blockers.is_some() {
+                test = self.save_block_await(test);
+            }
             let mut body = self.child_statements(|cg| {
                 cg.fragment(consequent, FragmentParent::Block, preserve_whitespace)
             })?;
@@ -37,7 +42,14 @@ impl<'a> ServerCodegen<'a> {
             block.id,
             "if block without branches",
         ))?;
-        self.push_stmt(if_statement);
+        match async_blockers {
+            Some(blockers) => {
+                let wrapped =
+                    self.wrap_async_block_flagged(vec![if_statement], &blockers, block_is_async);
+                self.push_stmt(wrapped);
+            }
+            None => self.push_stmt(if_statement),
+        }
         self.push_text("<!--]-->");
         Ok(())
     }

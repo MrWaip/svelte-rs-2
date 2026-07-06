@@ -3407,7 +3407,7 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         symbol_declaration_semantics(&data, "total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            emit: DerivedEmit::Sync,
+            async_kind: DerivedAsyncKind::Sync,
             ..
         })
     ));
@@ -3564,7 +3564,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "sync_total"),
         BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            emit: DerivedEmit::Sync,
+            async_kind: DerivedAsyncKind::Sync,
             ..
         })
     ));
@@ -3572,7 +3572,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "async_total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            emit: DerivedEmit::Async,
+            async_kind: DerivedAsyncKind::Async,
             ..
         })
     ));
@@ -3580,7 +3580,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "mapped"),
         BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
             kind: DerivedKind::DerivedBy,
-            emit: DerivedEmit::Sync,
+            async_kind: DerivedAsyncKind::Sync,
             ..
         })
     ));
@@ -7184,8 +7184,8 @@ mod is_state_source_formula {
 mod class_field_rune_semantics {
     use super::*;
     use crate::reactivity_semantics::data::{
-        ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics, DerivedEmit,
-        DerivedKind, StateKind,
+        ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
+        DerivedAsyncKind, DerivedKind, StateKind,
     };
     use oxc_ast::ast::{
         AssignmentExpression, AssignmentTarget, Class, ClassElement, Expression,
@@ -7307,13 +7307,13 @@ class A {
         let semantics = data.declarator_semantics(prop_node_id);
         let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
             kind,
-            emit: lowering,
+            async_kind: lowering,
         }) = semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
         };
         assert_eq!(kind, DerivedKind::Derived);
-        assert_eq!(lowering, DerivedEmit::Sync);
+        assert_eq!(lowering, DerivedAsyncKind::Sync);
     }
 
     #[test]
@@ -7336,13 +7336,13 @@ class A {
         let semantics = data.declarator_semantics(prop_node_id);
         let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
             kind,
-            emit: lowering,
+            async_kind: lowering,
         }) = semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
         };
         assert_eq!(kind, DerivedKind::DerivedBy);
-        assert_eq!(lowering, DerivedEmit::Sync);
+        assert_eq!(lowering, DerivedAsyncKind::Sync);
     }
 
     fn find_ctor_assign_node_id(

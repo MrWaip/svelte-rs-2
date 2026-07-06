@@ -12,9 +12,11 @@ impl<'a> ServerCodegen<'a> {
             BlockSemantics::Render(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(tag.id, "render tag")),
         };
-        if matches!(sem.async_kind, RenderAsyncKind::Async { .. }) {
-            return Err(CodegenError::Unsupported(tag.id, "async render tag"));
-        }
+        let (async_blockers, awaited) = match &sem.async_kind {
+            RenderAsyncKind::Sync => (None, false),
+            RenderAsyncKind::Awaited { blockers } => (Some(blockers.clone()), true),
+            RenderAsyncKind::Deferred { blockers } => (Some(blockers.clone()), false),
+        };
 
         let expr = self.take_expression(tag.id, &tag.expression)?;
         let call = match expr.into_inner_expression() {
@@ -26,26 +28,40 @@ impl<'a> ServerCodegen<'a> {
             _ => return Err(CodegenError::Unsupported(tag.id, "render tag call")),
         };
 
-        let callee = call.callee;
-        let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$renderer")];
-        for argument in call.arguments {
-            match argument {
-                Argument::SpreadElement(spread) => {
-                    args.push(Arg::Spread(spread.unbox().argument));
+        let call_kind = sem.call_kind;
+        let (stmt, hoists) = self.with_promise_hoisting(|cg| {
+            let callee = call.callee;
+            let mut args: Vec<Arg<'a, '_>> = vec![Arg::Ident("$$renderer")];
+            for argument in call.arguments {
+                match argument {
+                    Argument::SpreadElement(spread) => {
+                        args.push(Arg::Spread(spread.unbox().argument));
+                    }
+                    other => {
+                        args.push(Arg::Expr(cg.hoist_awaited_arg(other.into_expression())));
+                    }
                 }
-                other => args.push(Arg::Expr(other.into_expression())),
             }
-        }
+            let final_call = match call_kind {
+                RenderCallKind::Plain => cg.b.call_expr_callee(callee, args),
+                RenderCallKind::OptionalChain => cg.b.maybe_call_expr(callee, args),
+            };
+            cg.b.expr_stmt(final_call)
+        });
 
-        let final_call = match sem.call_kind {
-            RenderCallKind::Plain => self.b.call_expr_callee(callee, args),
-            RenderCallKind::OptionalChain => self.b.maybe_call_expr(callee, args),
-        };
-        let stmt = self.b.expr_stmt(final_call);
-        self.push_stmt(stmt);
-
-        if !is_standalone {
-            self.push_text("<!---->");
+        match async_blockers {
+            Some(blockers) => {
+                let mut body = hoists;
+                body.push(stmt);
+                let wrapped = self.wrap_async_block_flagged(body, &blockers, awaited);
+                self.push_stmt(wrapped);
+            }
+            None => {
+                self.push_stmt(stmt);
+                if !is_standalone {
+                    self.push_text("<!---->");
+                }
+            }
         }
         Ok(())
     }

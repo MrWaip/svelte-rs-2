@@ -1,6 +1,7 @@
 pub mod attribute_semantics;
 pub mod block_semantics;
 pub(crate) mod css;
+pub mod element_semantics;
 pub mod expression_semantics;
 pub(crate) mod passes;
 pub mod reactivity_semantics;
@@ -14,8 +15,8 @@ pub use attribute_semantics::{
     ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
     DefaultAttrSemantics, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
     EventEmit, EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
-    SpecialValueKind, SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics,
-    TemplateEffect, WindowBindSemantics,
+    SkipCause, SpecialValueKind, SpecialValueSemantics, StyleSemantics,
+    SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 pub use expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, KnownValue,
@@ -39,6 +40,10 @@ pub use block_semantics::{
     RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
     SnippetSlotKey,
 };
+pub use element_semantics::{
+    BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementSemantics, ElementSemanticsStore,
+    RegularElementSemantics, SvelteElementSemantics,
+};
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
@@ -46,19 +51,19 @@ pub use types::data::{
     ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
     CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind, ContextualReadSemantics,
-    CssAnalysis, DeclaratorGroup, DeclaratorSemantics, DerivedDeclarationSemantics, DerivedEmit,
-    DerivedKind, DerivedSource, DocumentBindKind, EachIndexStrategy, EachItemStrategy,
-    ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags, ElementSizeKind,
-    EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry, IgnoreData,
-    ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDefaultSlot, LegacyDependency,
-    LegacyInit, LegacySummary, MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData,
-    ParentKind, ParentRef, PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind,
-    PropEmitMode, PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
-    ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
-    RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind,
-    SnippetData, SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
-    SvelteElementTag, TemplateAnalysis, TemplateElementEntry, TemplateElementIndex,
-    TemplateTopology, WindowBindKind,
+    CssAnalysis, DeclaratorGroup, DeclaratorSemantics, DerivedAsyncKind,
+    DerivedDeclarationSemantics, DerivedKind, DerivedSource, DocumentBindKind, EachIndexStrategy,
+    EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags,
+    ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry,
+    IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDefaultSlot,
+    LegacyDependency, LegacyInit, LegacySummary, MediaBindKind, NamespaceKind,
+    OptimizedRuneSemantics, OutputData, ParentKind, ParentRef, PickledAwaits, PropBindingKind,
+    PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics, PropsSummary,
+    ReactivitySemantics, ReactivitySummary, ReferenceSemantics, ResizeObserverKind,
+    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimeInfo, RuntimeRuneKind,
+    ScriptAnalysis, SignalReferenceKind, SnippetData, SnippetParamStrategy,
+    StateDeclarationSemantics, StateKind, StoreBindingSemantics, SvelteElementTag,
+    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 
 bitflags::bitflags! {

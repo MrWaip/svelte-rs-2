@@ -36,6 +36,8 @@ impl<'a> ServerCodegen<'a> {
             return Ok(());
         };
 
+        let prev_save = self.save_block_awaits;
+        self.save_block_awaits = true;
         let body = self.child_statements(|cg| {
             cg.push_text("<title>");
             cg.fragment(
@@ -45,7 +47,9 @@ impl<'a> ServerCodegen<'a> {
             )?;
             cg.push_text("</title>");
             Ok(())
-        })?;
+        });
+        self.save_block_awaits = prev_save;
+        let body = body?;
 
         let arrow = self.b.arrow_block_expr(self.b.params(["$$renderer"]), body);
         let call = self.b.call_stmt("$$renderer.title", [Arg::Expr(arrow)]);

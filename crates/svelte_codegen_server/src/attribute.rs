@@ -50,7 +50,7 @@ impl<'a> ServerCodegen<'a> {
                 AttributeSemantics::Style(style) => {
                     self.emit_style(owner_id, attributes, &style)?;
                 }
-                AttributeSemantics::Skip => {}
+                AttributeSemantics::Skip(_) => {}
                 AttributeSemantics::ElementBind(sem) => {
                     self.emit_bind_reflection(attr, &sem)?;
                 }
@@ -365,7 +365,7 @@ impl<'a> ServerCodegen<'a> {
         for attr in attributes {
             if matches!(
                 self.analysis.attributes.get(attr.id()),
-                AttributeSemantics::Skip
+                AttributeSemantics::Skip(_)
             ) {
                 continue;
             }
@@ -518,6 +518,7 @@ impl<'a> ServerCodegen<'a> {
             return Ok(AttrValue::Static(value));
         }
         let expr = self.take_expression(attr_id, expr_ref)?;
+        let expr = self.maybe_hoist_async_expr(attr_id, expr);
         Ok(AttrValue::Dynamic(expr))
     }
 

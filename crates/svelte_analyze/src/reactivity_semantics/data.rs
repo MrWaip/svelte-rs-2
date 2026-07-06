@@ -602,7 +602,7 @@ pub struct OptimizedRuneSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
-    pub emit: DerivedEmit,
+    pub async_kind: DerivedAsyncKind,
     pub var_declared: bool,
 }
 
@@ -614,7 +614,7 @@ pub enum DerivedKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DerivedEmit {
+pub enum DerivedAsyncKind {
     Sync,
 
     Async,
@@ -783,12 +783,12 @@ pub enum DeclaratorSemantics {
 
     RuneDerived {
         kind: DerivedKind,
-        emit: DerivedEmit,
+        async_kind: DerivedAsyncKind,
         source: DerivedSource,
     },
 
     ConstTag {
-        emit: DerivedEmit,
+        async_kind: DerivedAsyncKind,
     },
 
     LetCarrier {
@@ -976,7 +976,7 @@ impl ClassFieldSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClassFieldDerivedSemantics {
     pub kind: DerivedKind,
-    pub emit: DerivedEmit,
+    pub async_kind: DerivedAsyncKind,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1937,14 +1937,15 @@ impl ReactivitySemantics {
             if !is_passthrough {
                 continue;
             }
-            if let DeclaratorSemantics::RuneDerived { kind, emit, .. } =
-                self.declarator_semantics(node)
+            if let DeclaratorSemantics::RuneDerived {
+                kind, async_kind, ..
+            } = self.declarator_semantics(node)
             {
                 self.write_declarator(
                     node,
                     DeclaratorSemantics::RuneDerived {
                         kind,
-                        emit,
+                        async_kind,
                         source: DerivedSource::Passthrough,
                     },
                 );

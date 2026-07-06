@@ -1,6 +1,7 @@
 use std::iter::empty;
 
 use oxc_ast::ast::Statement;
+use svelte_analyze::ElementSemantics;
 use svelte_ast::{Element, Node, is_void};
 use svelte_ast_builder::Arg;
 
@@ -10,6 +11,33 @@ use crate::model::ServerCodegen;
 
 impl<'a> ServerCodegen<'a> {
     pub(crate) fn element(
+        &mut self,
+        element: &'a Element,
+        preserve_whitespace: bool,
+    ) -> Result<()> {
+        let (blockers, awaited) = match self.analysis.element_semantics.query(element.id) {
+            ElementSemantics::RegularElement(sem) => {
+                (sem.async_kind.blockers().to_vec(), sem.async_kind.awaited())
+            }
+            _ => return self.emit_element_inline(element, preserve_whitespace),
+        };
+
+        let (stmts, hoists) = self.with_promise_hoisting(|cg| {
+            cg.child_statements(|c| c.emit_element_inline(element, preserve_whitespace))
+        });
+        let stmts = stmts?;
+
+        let mut body = hoists;
+        body.extend(stmts);
+        let arrow = self
+            .b
+            .arrow_block_expr_async(self.b.params(["$$renderer"]), body, awaited);
+        let call = self.wrap_arrow(arrow, &blockers, "$$renderer.child", "$$renderer.async");
+        self.push_stmt(call);
+        Ok(())
+    }
+
+    fn emit_element_inline(
         &mut self,
         element: &'a Element,
         preserve_whitespace: bool,

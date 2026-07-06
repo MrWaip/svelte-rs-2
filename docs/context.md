@@ -16,6 +16,7 @@
   - ComponentSemantics — `component-semantics.md`
   - ReactivitySemantics — `reactivity-semantics.md` (дочерний: `state-rune.md`)
   - ExpressionSemantics — `expression-semantics.md`
+  - ElementSemantics — `element-semantics.md`
   - AttributeSemantics — `attribute-semantics.md`
   - BlockSemantics — `block-semantics.md`
 - Трансформ (client) — `transform.md`

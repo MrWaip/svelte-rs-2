@@ -1,4 +1,5 @@
 mod attribute;
+mod await_block;
 mod component;
 mod const_tag;
 mod debug_tag;
@@ -17,6 +18,7 @@ mod program;
 mod render;
 mod renderer;
 mod snippet;
+mod svelte_boundary;
 mod svelte_element;
 mod svelte_head;
 mod text;

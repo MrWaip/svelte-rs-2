@@ -20,7 +20,9 @@ impl<'a> ServerCodegen<'a> {
 
         let mut hoisted_imports: Vec<Statement<'a>> = Vec::new();
         let mut instance_body: Vec<Statement<'a>> = Vec::new();
+        let mut comments: Vec<oxc_ast::Comment> = Vec::new();
         if let Some(program) = self.js_arena.program.take() {
+            comments.extend(program.comments.iter().copied());
             for stmt in program.body {
                 if matches!(stmt, Statement::ImportDeclaration(_)) {
                     hoisted_imports.push(stmt);
@@ -31,6 +33,7 @@ impl<'a> ServerCodegen<'a> {
         }
         let mut module_body: Vec<Statement<'a>> = Vec::new();
         if let Some(program) = self.js_arena.module_program.take() {
+            comments.extend(program.comments.iter().copied());
             module_body.extend(program.body);
         }
 
@@ -91,6 +94,9 @@ impl<'a> ServerCodegen<'a> {
         let render_fn = b.function_decl(b.bid(name), component_block, params, Span::default());
 
         let mut program_body: Vec<Statement<'a>> = Vec::new();
+        if self.experimental_async {
+            program_body.push(b.bare_import("svelte/internal/flags/async"));
+        }
         if self.dev {
             let left = AssignLeft::ComputedMember(b.computed_member(
                 b.rid_expr(name),
@@ -117,7 +123,7 @@ impl<'a> ServerCodegen<'a> {
         }
 
         let source: &'a str = self.component.source.as_str();
-        let program = b.program(program_body, Vec::new(), source, source.len() as u32);
+        let program = b.program(program_body, comments, source, source.len() as u32);
         Ok(JsOutput {
             code: Codegen::default().build(&program).code,
             map: None,

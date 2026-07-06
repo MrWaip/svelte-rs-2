@@ -285,7 +285,9 @@ pub enum RenderArgKind {
 pub enum RenderAsyncKind {
     Sync,
 
-    Async { blockers: SmallVec<[u32; 2]> },
+    Awaited { blockers: SmallVec<[u32; 2]> },
+
+    Deferred { blockers: SmallVec<[u32; 2]> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

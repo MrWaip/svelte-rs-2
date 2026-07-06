@@ -5,7 +5,7 @@ use crate::reactivity_semantics::{ReactivityInputs, build_v2, finalize_reactivit
 use crate::types::markers::ScopingBuilt;
 use crate::utils::ce_config;
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
-use crate::{attribute_semantics, block_semantics, expression_semantics};
+use crate::{attribute_semantics, block_semantics, element_semantics, expression_semantics};
 
 use super::{bundles, finalize_component_name, fragment_topology, js_analyze};
 
@@ -210,7 +210,7 @@ pub(crate) fn execute_pass<'a>(
             data.template.bind_semantics.binding_group_count = binding_groups.count;
         }
         super::PassKey::BuildBlockSemantics => {
-            data.block_semantics_store = block_semantics::build(
+            let block_store = block_semantics::build(
                 component,
                 parsed,
                 data.scoping.semantics(),
@@ -219,6 +219,15 @@ pub(crate) fn execute_pass<'a>(
                 &data.template.fragment_namespaces,
                 &data.output.ignore_data,
                 data.script.dev,
+                component.node_count(),
+            );
+            data.block_semantics_store = block_store;
+        }
+        super::PassKey::BuildElementSemantics => {
+            data.element_semantics = element_semantics::build(
+                component,
+                parsed,
+                &data.expressions_v2,
                 component.node_count(),
             );
         }

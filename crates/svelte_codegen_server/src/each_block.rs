@@ -25,12 +25,25 @@ impl<'a> ServerCodegen<'a> {
             BlockSemantics::Each(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(block.id, "each block")),
         };
-        if !matches!(sem.async_kind, EachAsyncKind::Sync) {
-            return Err(CodegenError::Unsupported(block.id, "async each block"));
+        let async_blockers = match &sem.async_kind {
+            EachAsyncKind::Sync => None,
+            EachAsyncKind::Awaited { blockers } => Some(blockers.clone()),
+            EachAsyncKind::Deferred { .. } => {
+                return Err(CodegenError::Unsupported(block.id, "deferred each block"));
+            }
+        };
+        if async_blockers.is_some() && block.fallback.is_some() {
+            return Err(CodegenError::Unsupported(
+                block.id,
+                "async each with fallback",
+            ));
         }
 
         let array_name = self.gen_ident("each_array");
-        let collection = self.take_expression(block.id, &block.expression)?;
+        let mut collection = self.take_expression(block.id, &block.expression)?;
+        if async_blockers.is_some() {
+            collection = self.save_block_await(collection);
+        }
         let ensure = self
             .b
             .call_expr("$.ensure_array_like", [Arg::Expr(collection)]);
@@ -38,7 +51,11 @@ impl<'a> ServerCodegen<'a> {
 
         let for_loop = self.build_each_for_loop(block, &sem, &array_name, preserve_whitespace)?;
 
-        if block.fallback.is_some() {
+        if let Some(blockers) = async_blockers {
+            self.push_text("<!--[-->");
+            let wrapped = self.wrap_async_block(vec![array_decl, for_loop], &blockers);
+            self.push_stmt(wrapped);
+        } else if block.fallback.is_some() {
             let guard =
                 self.build_each_fallback(block, &array_name, for_loop, preserve_whitespace)?;
             self.push_stmt(array_decl);
