@@ -34,8 +34,32 @@ impl<'a> ServerCodegen<'a> {
         let b = &self.b;
         let name: &str = b.alloc_str(self.analysis.component_name());
 
+        let has_stores = self.analysis.output.runtime_plan.has_stores;
+        let has_runes_props = self.analysis.reactivity.summary().props.has_props;
+        let needs_sanitized_props = self.needs_sanitized_legacy_props();
+        let needs_rest_props = self.needs_legacy_rest_props();
+        let bind_props_object = self.legacy_bind_props_object();
+        let has_bind_props = bind_props_object.is_some();
+
+        let reactive_hoist = self.legacy_reactive_hoist();
+
         let mut component_block = instance_body;
         component_block.extend(template_body);
+
+        if let Some(hoist) = reactive_hoist {
+            component_block.insert(0, hoist);
+        }
+
+        if has_stores {
+            component_block.insert(0, b.var_uninit_stmt("$$store_subs"));
+            let unsubscribe = b.call_stmt("$.unsubscribe_stores", [Arg::Ident("$$store_subs")]);
+            component_block.push(b.if_stmt(b.rid_expr("$$store_subs"), unsubscribe, None));
+        }
+
+        if let Some(object) = bind_props_object {
+            component_block
+                .push(b.call_stmt("$.bind_props", [Arg::Ident("$$props"), Arg::Expr(object)]));
+        }
 
         let inject_context = self.dev || self.analysis.output.needs_context;
         if inject_context {
@@ -47,7 +71,16 @@ impl<'a> ServerCodegen<'a> {
             component_block = vec![b.expr_stmt(b.call_expr("$$renderer.component", args))];
         }
 
-        let params = if inject_context {
+        if needs_rest_props {
+            component_block.insert(0, self.rest_props_stmt());
+        }
+        if needs_sanitized_props {
+            component_block.insert(0, self.sanitized_props_stmt());
+        }
+
+        let needs_props_param =
+            inject_context || has_bind_props || has_runes_props || needs_sanitized_props;
+        let params = if needs_props_param {
             b.params(["$$renderer", "$$props"])
         } else {
             b.params(["$$renderer"])

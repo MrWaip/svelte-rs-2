@@ -1306,6 +1306,8 @@ dependencies = [
  "svelte_analyze",
  "svelte_ast",
  "svelte_ast_builder",
+ "svelte_component_semantics",
+ "svelte_emit_builders",
  "svelte_sourcemap",
  "svelte_span",
  "svelte_types",
@@ -1464,6 +1466,7 @@ dependencies = [
  "oxc_ast_visit",
  "svelte_analyze",
  "svelte_ast_builder",
+ "svelte_emit_builders",
  "svelte_types",
 ]
 

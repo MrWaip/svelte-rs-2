@@ -5,6 +5,8 @@ use oxc_syntax::scope::ScopeId;
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::{Access, Step};
 
+use crate::runtime::is_simple_expression;
+
 pub fn member_access<'a>(
     b: &Builder<'a>,
     object: Expression<'a>,
@@ -135,32 +137,5 @@ fn format_numeric_key(value: f64) -> String {
         format!("{}", value as i64)
     } else {
         format!("{value}")
-    }
-}
-
-fn is_simple_expression(expr: &Expression<'_>) -> bool {
-    match expr {
-        Expression::NumericLiteral(_)
-        | Expression::StringLiteral(_)
-        | Expression::BooleanLiteral(_)
-        | Expression::NullLiteral(_)
-        | Expression::BigIntLiteral(_)
-        | Expression::RegExpLiteral(_)
-        | Expression::Identifier(_)
-        | Expression::ArrowFunctionExpression(_)
-        | Expression::FunctionExpression(_) => true,
-        Expression::ParenthesizedExpression(inner) => is_simple_expression(&inner.expression),
-        Expression::ConditionalExpression(cond) => {
-            is_simple_expression(&cond.test)
-                && is_simple_expression(&cond.consequent)
-                && is_simple_expression(&cond.alternate)
-        }
-        Expression::BinaryExpression(bin) => {
-            is_simple_expression(&bin.left) && is_simple_expression(&bin.right)
-        }
-        Expression::LogicalExpression(log) => {
-            is_simple_expression(&log.left) && is_simple_expression(&log.right)
-        }
-        _ => false,
     }
 }

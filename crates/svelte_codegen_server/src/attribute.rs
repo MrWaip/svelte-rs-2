@@ -11,6 +11,7 @@ use svelte_ast::{
     StyleDirectiveValue,
 };
 use svelte_ast_builder::{Arg, ObjProp, TemplatePart};
+use svelte_emit_builders::server_refs;
 
 use crate::error::Result;
 use crate::escape::escape_attribute;
@@ -306,7 +307,8 @@ impl<'a> ServerCodegen<'a> {
     }
 
     fn bind_reflected_expr(&mut self, directive: &'a BindDirective) -> Result<Expression<'a>> {
-        let expr = self.take_expression(directive.id, &directive.expression)?;
+        let mut expr = self.take_expression(directive.id, &directive.expression)?;
+        server_refs::force_store_read(&self.b, self.analysis, &mut expr);
         if let Expression::SequenceExpression(seq) = expr {
             let seq = seq.unbox();
             if let Some(getter) = seq.expressions.into_iter().next() {

@@ -42,9 +42,8 @@ impl<'a> ServerCodegen<'a> {
         node_id: NodeId,
         expr_ref: &ExprRef,
     ) -> Result<Expression<'a>> {
-        match self.js_arena.take_expr(expr_ref.id()) {
-            Some(expression) => Ok(expression),
-            None => Err(CodegenError::MissingExpression(node_id)),
-        }
+        self.js_arena
+            .take_expr(expr_ref.id())
+            .ok_or(CodegenError::MissingExpression(node_id))
     }
 }

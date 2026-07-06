@@ -3,6 +3,8 @@ mod element;
 mod error;
 mod escape;
 mod fragment;
+mod legacy_props;
+mod legacy_reactive;
 mod model;
 mod program;
 mod renderer;
