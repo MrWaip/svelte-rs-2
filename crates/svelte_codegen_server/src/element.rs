@@ -18,7 +18,7 @@ impl<'a> ServerCodegen<'a> {
             let name = element.name.clone();
             let raw_statements = self.child_statements(|codegen| {
                 codegen.push_text(&format!("<{name}"));
-                codegen.emit_element_attributes(element)?;
+                codegen.emit_element_attributes(element.id, &element.attributes)?;
                 codegen.push_text(&format!(">{raw_content}</{name}>"));
                 Ok(())
             })?;
@@ -29,7 +29,7 @@ impl<'a> ServerCodegen<'a> {
         }
 
         self.push_text(&format!("<{}", element.name));
-        self.emit_element_attributes(element)?;
+        self.emit_element_attributes(element.id, &element.attributes)?;
         if is_void(&element.name) {
             self.push_text("/>");
         } else {

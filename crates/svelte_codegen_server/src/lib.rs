@@ -17,6 +17,8 @@ mod program;
 mod render;
 mod renderer;
 mod snippet;
+mod svelte_element;
+mod svelte_head;
 mod text;
 
 use svelte_sourcemap::JsOutput;

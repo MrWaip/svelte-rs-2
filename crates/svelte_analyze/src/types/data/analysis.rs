@@ -305,6 +305,12 @@ impl<'a> AnalysisData<'a> {
             .lookup_by_id(id)
             .is_some_and(FragmentFactsEntry::has_children)
     }
+    pub fn title_elements_for_fragment_by_id(
+        &self,
+        id: svelte_ast::FragmentId,
+    ) -> Option<&Vec<NodeId>> {
+        self.template.title_elements.by_fragment_id(id)
+    }
     pub fn fragment_child_count_by_id(&self, id: svelte_ast::FragmentId) -> u32 {
         self.template
             .fragment_facts
@@ -461,6 +467,9 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn legacy_default_slot(&self, id: NodeId) -> LegacyDefaultSlot {
         self.elements.flags.legacy_default_slot(id)
+    }
+    pub fn svelte_element_tag(&self, id: NodeId) -> Option<&SvelteElementTag> {
+        self.elements.flags.svelte_element_tag(id)
     }
     pub fn has_runtime_attrs(&self, id: NodeId) -> bool {
         self.elements.facts.has_runtime_attrs(id)

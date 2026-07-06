@@ -23,6 +23,17 @@ fn effective_hash_input<'a>(filename: &'a str, root_dir: Option<&str>, css: &'a 
     }
 }
 
+pub fn head_hash(filename: &str) -> String {
+    let mut h: u32 = 5381;
+    for &b in filename.as_bytes().iter().rev() {
+        if b == b'\r' {
+            continue;
+        }
+        h = h.wrapping_shl(5).wrapping_sub(h) ^ (b as u32);
+    }
+    to_base36(h)
+}
+
 fn to_base36(mut n: u32) -> String {
     const DIGITS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
     if n == 0 {

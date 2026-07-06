@@ -1,4 +1,6 @@
 use oxc_ast::ast::{Expression, Statement};
+use oxc_syntax::node::NodeId as OxcNodeId;
+use std::collections::HashMap;
 use svelte_analyze::{AnalysisData, IdentGen, JsAst};
 use svelte_ast::{Component, ExprRef, NodeId};
 use svelte_ast_builder::Builder;
@@ -18,6 +20,7 @@ pub(crate) struct ServerCodegen<'a> {
     pub filename: &'a str,
     pub items: Vec<TemplateItem<'a>>,
     pub hoisted: Vec<Statement<'a>>,
+    pub svelte_element_tag_refs: HashMap<NodeId, String>,
 }
 
 impl<'a> ServerCodegen<'a> {
@@ -38,6 +41,7 @@ impl<'a> ServerCodegen<'a> {
             filename,
             items: Vec::new(),
             hoisted: Vec::new(),
+            svelte_element_tag_refs: HashMap::new(),
         }
     }
 
@@ -50,8 +54,16 @@ impl<'a> ServerCodegen<'a> {
         node_id: NodeId,
         expr_ref: &ExprRef,
     ) -> Result<Expression<'a>> {
+        self.take_expr_by_oxc_id(node_id, expr_ref.id())
+    }
+
+    pub(crate) fn take_expr_by_oxc_id(
+        &mut self,
+        node_id: NodeId,
+        oxc_id: OxcNodeId,
+    ) -> Result<Expression<'a>> {
         self.js_arena
-            .take_expr(expr_ref.id())
+            .take_expr(oxc_id)
             .ok_or(CodegenError::MissingExpression(node_id))
     }
 

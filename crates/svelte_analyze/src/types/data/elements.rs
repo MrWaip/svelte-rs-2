@@ -92,6 +92,12 @@ pub enum LegacyDefaultSlot {
     SlotDefault,
 }
 
+#[derive(Debug, Clone)]
+pub enum SvelteElementTag {
+    Known(String),
+    Dynamic(OxcNodeId),
+}
+
 pub struct ElementFlags {
     pub(crate) needs_input_defaults: NodeBitSet,
     pub(crate) needs_var: NodeBitSet,
@@ -120,6 +126,8 @@ pub struct ElementFlags {
     pub(crate) legacy_slot_has_fallback: NodeBitSet,
 
     pub(crate) hydration_attribute_changed_ignored: NodeBitSet,
+
+    pub(crate) svelte_element_tag: NodeTable<SvelteElementTag>,
 }
 
 impl ElementFlags {
@@ -143,6 +151,7 @@ impl ElementFlags {
             legacy_default_slot: NodeTable::new(node_count),
             legacy_slot_has_fallback: NodeBitSet::new(node_count),
             hydration_attribute_changed_ignored: NodeBitSet::new(node_count),
+            svelte_element_tag: NodeTable::new(node_count),
         }
     }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool {
@@ -201,5 +210,8 @@ impl ElementFlags {
     }
     pub fn hydration_attribute_changed_ignored(&self, id: NodeId) -> bool {
         self.hydration_attribute_changed_ignored.contains(&id)
+    }
+    pub fn svelte_element_tag(&self, id: NodeId) -> Option<&SvelteElementTag> {
+        self.svelte_element_tag.get(id)
     }
 }

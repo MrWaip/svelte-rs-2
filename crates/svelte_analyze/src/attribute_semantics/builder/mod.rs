@@ -489,6 +489,9 @@ fn classify_svelte_element(
     groups: &mut BindingGroupTable,
 ) {
     classify_element_attrs(ctx, state, el.id, &el.attributes, None, store, groups);
+    if let Some(this) = el.attributes.iter().find(|a| a.is_svelte_element_this()) {
+        store.set(this.id(), AttributeSemantics::Skip);
+    }
 }
 
 fn classify_element(

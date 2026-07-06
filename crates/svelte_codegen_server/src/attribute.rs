@@ -8,7 +8,7 @@ use svelte_analyze::{
     emit_html_attribute_name, is_dom_boolean_attribute,
 };
 use svelte_ast::{
-    Attribute, BindDirective, ClassDirective, ConcatPart, Element, ExprRef, NodeId, StyleDirective,
+    Attribute, BindDirective, ClassDirective, ConcatPart, ExprRef, NodeId, StyleDirective,
     StyleDirectiveValue,
 };
 use svelte_ast_builder::{Arg, ObjProp, TemplatePart};
@@ -33,18 +33,22 @@ enum AttrValue<'a> {
 }
 
 impl<'a> ServerCodegen<'a> {
-    pub(crate) fn emit_element_attributes(&mut self, element: &'a Element) -> Result<()> {
-        if self.analysis.has_spread(element.id) {
-            return self.emit_spread_attributes(element);
+    pub(crate) fn emit_element_attributes(
+        &mut self,
+        owner_id: NodeId,
+        attributes: &'a [Attribute],
+    ) -> Result<()> {
+        if self.analysis.has_spread(owner_id) {
+            return self.emit_spread_attributes(owner_id, attributes);
         }
 
-        for attr in &element.attributes {
+        for attr in attributes {
             match self.analysis.attributes.get(attr.id()).clone() {
                 AttributeSemantics::Class(class) => {
-                    self.emit_class(element, &class)?;
+                    self.emit_class(owner_id, attributes, &class)?;
                 }
                 AttributeSemantics::Style(style) => {
-                    self.emit_style(element, &style)?;
+                    self.emit_style(owner_id, attributes, &style)?;
                 }
                 AttributeSemantics::Skip => {}
                 AttributeSemantics::ElementBind(sem) => {
@@ -52,14 +56,14 @@ impl<'a> ServerCodegen<'a> {
                 }
                 AttributeSemantics::CannotBeStatic(sem) => {
                     if sem.reflects_in_html {
-                        self.emit_plain_attribute(element, attr)?;
+                        self.emit_plain_attribute(owner_id, attr)?;
                     }
                 }
                 AttributeSemantics::NonSpecial
                 | AttributeSemantics::StaticAttr
                 | AttributeSemantics::Autofocus
                 | AttributeSemantics::HtmlConcat(_) => {
-                    self.emit_plain_attribute(element, attr)?;
+                    self.emit_plain_attribute(owner_id, attr)?;
                 }
                 AttributeSemantics::Event(_)
                 | AttributeSemantics::RuntimeBehavior
@@ -79,24 +83,24 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn emit_plain_attribute(&mut self, element: &'a Element, attr: &'a Attribute) -> Result<()> {
+    fn emit_plain_attribute(&mut self, owner_id: NodeId, attr: &'a Attribute) -> Result<()> {
         match attr {
             Attribute::StringAttribute(a) => {
-                let name = self.attribute_name(element, &a.name);
+                let name = self.attribute_name(owner_id, &a.name);
                 let value = a.value(self.component.source.as_str());
                 self.push_text(&format!(" {name}=\"{}\"", escape_attribute(value)));
             }
             Attribute::BooleanAttribute(a) => {
-                let name = self.attribute_name(element, &a.name);
+                let name = self.attribute_name(owner_id, &a.name);
                 self.push_text(&format!(" {name}=\"\""));
             }
             Attribute::ExpressionAttribute(a) => {
-                let name = self.attribute_name(element, &a.name);
+                let name = self.attribute_name(owner_id, &a.name);
                 let value = self.attr_value_single(a.id, &a.expression)?;
                 self.push_named_value(&name, value);
             }
             Attribute::ConcatenationAttribute(a) => {
-                let name = self.attribute_name(element, &a.name);
+                let name = self.attribute_name(owner_id, &a.name);
                 let value = self.attr_value_concat(&a.parts, false)?;
                 self.push_named_value(&name, value);
             }
@@ -116,13 +120,20 @@ impl<'a> ServerCodegen<'a> {
         }
     }
 
-    fn emit_class(&mut self, element: &'a Element, class: &ClassSemantics) -> Result<()> {
-        let owner_id = element.id;
+    fn emit_class(
+        &mut self,
+        owner_id: NodeId,
+        attributes: &'a [Attribute],
+        class: &ClassSemantics,
+    ) -> Result<()> {
         let has_dirs = !class.directives.is_empty();
         let scoped = self.analysis.is_css_scoped(owner_id);
         let hash = self.analysis.css_hash().to_string();
 
-        let value = match class.attr.and_then(|id| self.find_attribute(element, id)) {
+        let value = match class
+            .attr
+            .and_then(|id| self.find_attribute(attributes, id))
+        {
             Some(attr) => self.attr_value_of(attr, true)?,
             None => match &class.static_base {
                 Some(base) => AttrValue::Static(collapse_attribute_whitespace(base).into_owned()),
@@ -164,7 +175,7 @@ impl<'a> ServerCodegen<'a> {
         }
 
         let directives = if has_dirs {
-            Some(self.build_class_directives_object(element, &class.directives, true)?)
+            Some(self.build_class_directives_object(attributes, &class.directives, true)?)
         } else {
             None
         };
@@ -183,10 +194,18 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn emit_style(&mut self, element: &'a Element, style: &StyleSemantics) -> Result<()> {
+    fn emit_style(
+        &mut self,
+        _owner_id: NodeId,
+        attributes: &'a [Attribute],
+        style: &StyleSemantics,
+    ) -> Result<()> {
         let has_dirs = !style.directives.is_empty();
 
-        let value = match style.attr.and_then(|id| self.find_attribute(element, id)) {
+        let value = match style
+            .attr
+            .and_then(|id| self.find_attribute(attributes, id))
+        {
             Some(attr) => self.attr_value_of(attr, true)?,
             None => match &style.static_base {
                 Some(base) => AttrValue::Static(collapse_attribute_whitespace(base).into_owned()),
@@ -221,13 +240,13 @@ impl<'a> ServerCodegen<'a> {
 
     fn build_class_directives_object(
         &mut self,
-        element: &'a Element,
+        attributes: &'a [Attribute],
         directives: &[svelte_analyze::ClassDirectiveInfo],
         quoted: bool,
     ) -> Result<Expression<'a>> {
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         for directive in directives {
-            let value = match self.find_class_directive(element, directive.id) {
+            let value = match self.find_class_directive(attributes, directive.id) {
                 Some(cd) => self.take_expression(cd.id, &cd.expression)?,
                 None => self.b.rid_expr(&directive.name),
             };
@@ -335,19 +354,28 @@ impl<'a> ServerCodegen<'a> {
         self.push_expr(call);
     }
 
-    fn emit_spread_attributes(&mut self, element: &'a Element) -> Result<()> {
-        let owner_id = element.id;
+    fn emit_spread_attributes(
+        &mut self,
+        owner_id: NodeId,
+        attributes: &'a [Attribute],
+    ) -> Result<()> {
         let source = self.component.source.as_str();
         let mut props: Vec<ObjProp<'a>> = Vec::new();
 
-        for attr in &element.attributes {
+        for attr in attributes {
+            if matches!(
+                self.analysis.attributes.get(attr.id()),
+                AttributeSemantics::Skip
+            ) {
+                continue;
+            }
             match attr {
                 Attribute::SpreadAttribute(sa) => {
                     let expr = self.take_expression(sa.id, &sa.expression)?;
                     props.push(ObjProp::Spread(expr));
                 }
                 Attribute::StringAttribute(a) => {
-                    let name = self.attribute_name(element, &a.name);
+                    let name = self.attribute_name(owner_id, &a.name);
                     let raw = a.value(source);
                     let text = if is_whitespace_insensitive(&name) {
                         collapse_attribute_whitespace(raw).trim().to_string()
@@ -359,12 +387,12 @@ impl<'a> ServerCodegen<'a> {
                     props.push(ObjProp::KeyValue(key, value));
                 }
                 Attribute::BooleanAttribute(a) => {
-                    let name = self.attribute_name(element, &a.name);
+                    let name = self.attribute_name(owner_id, &a.name);
                     let key = self.b.alloc_str(&name);
                     props.push(ObjProp::KeyValue(key, self.b.bool_expr(true)));
                 }
                 Attribute::ExpressionAttribute(a) => {
-                    let name = self.attribute_name(element, &a.name);
+                    let name = self.attribute_name(owner_id, &a.name);
                     let expr = self.take_expression(a.id, &a.expression)?;
                     let key = self.b.alloc_str(&name);
                     if self.analysis.elements.flags.is_expression_shorthand(a.id)
@@ -376,7 +404,7 @@ impl<'a> ServerCodegen<'a> {
                     }
                 }
                 Attribute::ConcatenationAttribute(a) => {
-                    let name = self.attribute_name(element, &a.name);
+                    let name = self.attribute_name(owner_id, &a.name);
                     let value =
                         match self.attr_value_concat(&a.parts, is_whitespace_insensitive(&name))? {
                             AttrValue::Static(s) => self.b.str_expr(&s),
@@ -396,7 +424,7 @@ impl<'a> ServerCodegen<'a> {
                     ) {
                         continue;
                     }
-                    let name = self.attribute_name(element, &directive.name);
+                    let name = self.attribute_name(owner_id, &directive.name);
                     let expr = self.bind_reflected_expr(directive)?;
                     let key = self.b.alloc_str(&name);
                     props.push(ObjProp::KeyValue(key, expr));
@@ -407,11 +435,11 @@ impl<'a> ServerCodegen<'a> {
 
         let object = self.b.object_expr(props);
 
-        let class = self.find_class_semantics(element);
-        let style = self.find_style_semantics(element);
+        let class = self.find_class_semantics(attributes);
+        let style = self.find_style_semantics(attributes);
         let classes = match class.as_ref() {
             Some(class) if !class.directives.is_empty() => {
-                Some(self.build_class_directives_object(element, &class.directives, false)?)
+                Some(self.build_class_directives_object(attributes, &class.directives, false)?)
             }
             _ => None,
         };
@@ -429,7 +457,7 @@ impl<'a> ServerCodegen<'a> {
             None
         };
 
-        let flags = self.spread_flags(element);
+        let flags = self.spread_flags(owner_id);
         let flags_expr = if flags != 0 {
             Some(self.b.num_expr(flags as f64))
         } else {
@@ -453,8 +481,7 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn spread_flags(&self, element: &Element) -> u32 {
-        let owner_id = element.id;
+    fn spread_flags(&self, owner_id: NodeId) -> u32 {
         match self.analysis.namespace(owner_id) {
             Some(NamespaceKind::Svg) | Some(NamespaceKind::MathMl) => {
                 ELEMENT_IS_NAMESPACED | ELEMENT_PRESERVE_ATTRIBUTE_CASE
@@ -542,21 +569,20 @@ impl<'a> ServerCodegen<'a> {
         Ok(AttrValue::Dynamic(self.b.template_parts_expr(segments)))
     }
 
-    fn attribute_name(&self, element: &Element, raw: &str) -> String {
+    fn attribute_name(&self, owner_id: NodeId, raw: &str) -> String {
         let namespaced = matches!(
-            self.analysis.namespace(element.id),
+            self.analysis.namespace(owner_id),
             Some(NamespaceKind::Svg) | Some(NamespaceKind::MathMl)
         );
         emit_html_attribute_name(raw, namespaced).into_owned()
     }
 
-    fn find_attribute(&self, element: &'a Element, id: NodeId) -> Option<&'a Attribute> {
-        element.attributes.iter().find(|a| a.id() == id)
+    fn find_attribute(&self, attributes: &'a [Attribute], id: NodeId) -> Option<&'a Attribute> {
+        attributes.iter().find(|a| a.id() == id)
     }
 
-    fn find_class_semantics(&self, element: &Element) -> Option<ClassSemantics> {
-        element
-            .attributes
+    fn find_class_semantics(&self, attributes: &[Attribute]) -> Option<ClassSemantics> {
+        attributes
             .iter()
             .find_map(|a| match self.analysis.attributes.get(a.id()) {
                 AttributeSemantics::Class(class) => Some(class.clone()),
@@ -564,9 +590,8 @@ impl<'a> ServerCodegen<'a> {
             })
     }
 
-    fn find_style_semantics(&self, element: &Element) -> Option<StyleSemantics> {
-        element
-            .attributes
+    fn find_style_semantics(&self, attributes: &[Attribute]) -> Option<StyleSemantics> {
+        attributes
             .iter()
             .find_map(|a| match self.analysis.attributes.get(a.id()) {
                 AttributeSemantics::Style(style) => Some(style.clone()),
@@ -574,8 +599,12 @@ impl<'a> ServerCodegen<'a> {
             })
     }
 
-    fn find_class_directive(&self, element: &'a Element, id: NodeId) -> Option<&'a ClassDirective> {
-        element.attributes.iter().find_map(|a| match a {
+    fn find_class_directive(
+        &self,
+        attributes: &'a [Attribute],
+        id: NodeId,
+    ) -> Option<&'a ClassDirective> {
+        attributes.iter().find_map(|a| match a {
             Attribute::ClassDirective(cd) if cd.id == id => Some(cd),
             _ => None,
         })

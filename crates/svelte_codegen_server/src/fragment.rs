@@ -15,6 +15,8 @@ pub(crate) enum FragmentParent<'n> {
     Snippet,
     EachBlock,
     Block,
+    SvelteElement,
+    SvelteHead,
 }
 
 impl<'a> ServerCodegen<'a> {
@@ -48,14 +50,23 @@ impl<'a> ServerCodegen<'a> {
         let preserve_comments = self.analysis.script.preserve_comments;
 
         if emit_snippets {
-            self.emit_fragment_hoisted(id)?;
+            self.emit_fragment_hoisted(id, preserve_whitespace)?;
         }
+
+        let title_ids: Vec<NodeId> = self
+            .analysis
+            .title_elements_for_fragment_by_id(id)
+            .cloned()
+            .unwrap_or_default();
 
         let fragment = component.store.fragment(id);
         let mut kept: Vec<&'a Node> = Vec::with_capacity(fragment.nodes.len());
         for &node_id in &fragment.nodes {
             let node = component.store.get(node_id);
             if is_filtered_out(node, preserve_comments) {
+                continue;
+            }
+            if title_ids.contains(&node_id) {
                 continue;
             }
             kept.push(node);
@@ -133,6 +144,7 @@ impl<'a> ServerCodegen<'a> {
             Node::EachBlock(block) => return self.each_block(block, preserve_whitespace),
             Node::KeyBlock(block) => return self.key_block(block, preserve_whitespace),
             Node::HtmlTag(tag) => return self.html_tag(tag),
+            Node::SvelteElement(el) => return self.svelte_element(el),
             Node::Text(_)
             | Node::SlotElementLegacy(_)
             | Node::SnippetBlock(_)
@@ -141,7 +153,6 @@ impl<'a> ServerCodegen<'a> {
             | Node::SvelteHead(_)
             | Node::SvelteFragmentLegacy(_)
             | Node::SvelteComponentLegacy(_)
-            | Node::SvelteElement(_)
             | Node::SvelteWindow(_)
             | Node::SvelteDocument(_)
             | Node::SvelteBody(_)
@@ -153,7 +164,9 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn emit_fragment_hoisted(&mut self, id: FragmentId) -> Result<()> {
+    fn emit_fragment_hoisted(&mut self, id: FragmentId, preserve_whitespace: bool) -> Result<()> {
+        self.emit_fragment_titles(id, preserve_whitespace)?;
+
         let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
 
         let mut const_tags: Vec<(u32, NodeId)> = node_ids
@@ -182,6 +195,20 @@ impl<'a> ServerCodegen<'a> {
         for &nid in &node_ids {
             if matches!(self.component.store.get(nid), Node::DebugTag(_)) {
                 self.debug_tag(nid)?;
+            }
+        }
+
+        for &nid in &node_ids {
+            if matches!(self.component.store.get(nid), Node::SvelteHead(_)) {
+                self.svelte_head(nid, preserve_whitespace)?;
+            }
+        }
+
+        if self.dev {
+            for &nid in &node_ids {
+                if let Node::SvelteElement(el) = self.component.store.get(nid) {
+                    self.svelte_element_dev_init(el)?;
+                }
             }
         }
         Ok(())
@@ -270,7 +297,10 @@ fn is_text_first(parent: FragmentParent<'_>, window: &[&Node]) -> bool {
         | FragmentParent::Component
         | FragmentParent::Snippet
         | FragmentParent::EachBlock => {}
-        FragmentParent::Element(_) | FragmentParent::Block => return false,
+        FragmentParent::Element(_)
+        | FragmentParent::Block
+        | FragmentParent::SvelteElement
+        | FragmentParent::SvelteHead => return false,
     }
     let Some(first) = window.first() else {
         return false;

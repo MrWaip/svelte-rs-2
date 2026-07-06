@@ -22,6 +22,7 @@ pub use expression_semantics::{
     LegacyWrap, SyntheticPropsCarrier, ValueClass, Volatility,
 };
 
+pub use css::head_hash;
 pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
 pub mod types;
@@ -56,7 +57,8 @@ pub use types::data::{
     ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
     RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind,
     SnippetData, SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
-    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
+    SvelteElementTag, TemplateAnalysis, TemplateElementEntry, TemplateElementIndex,
+    TemplateTopology, WindowBindKind,
 };
 
 bitflags::bitflags! {

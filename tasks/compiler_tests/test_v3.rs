@@ -130,7 +130,7 @@ compiler_case!(
 
 compiler_case!(css_scope_class_in_snippet);
 
-compiler_case!(css_scope_svelte_element_class);
+compiler_case!(css_scope_svelte_element_class, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(css_scope_class_object, [prod, dev, ssr, ssr_dev]);
 
@@ -252,21 +252,27 @@ compiler_case!(diagnose_legacy_slot_prop_non_simple_stateful_shapes);
 
 compiler_case!(warn_script_context_deprecated, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(head_with_special_elements);
+compiler_case!(head_with_special_elements, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(head_with_snippets);
+compiler_case!(head_with_snippets, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(head_with_if_body);
+compiler_case!(head_with_if_body, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(head_with_render_and_component);
+compiler_case!(head_with_render_and_component, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(diagnose_head_script_in_if);
 
-compiler_case!(diagnose_head_inline_script_template_literal);
+compiler_case!(
+    diagnose_head_inline_script_template_literal,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(head_nested_if_with_body_if_id_order);
+compiler_case!(
+    head_nested_if_with_body_if_id_order,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(head_title_then_meta_effect_order);
+compiler_case!(head_title_then_meta_effect_order, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(push_binding_group_order);
 
@@ -322,9 +328,9 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(head_position_with_body);
+compiler_case!(head_position_with_body, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(special_elements_all);
+compiler_case!(special_elements_all, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(empty, [prod, dev, ssr, ssr_dev]);
 
@@ -340,7 +346,7 @@ compiler_case!(text_entity_decoding, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(text_entity_decoding_root, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(title_entity_decoding);
+compiler_case!(title_entity_decoding, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(single_if_block, [prod, dev, ssr, ssr_dev]);
 
@@ -644,29 +650,35 @@ compiler_case!(host_basic);
 
 compiler_case!(host_props_rest);
 
-compiler_case!(custom_element_props);
+compiler_case!(custom_element_props, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_props_config);
+compiler_case!(custom_element_props_config, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_boolean_default);
+compiler_case!(custom_element_boolean_default, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_exports);
+compiler_case!(custom_element_exports, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_shadow_none);
+compiler_case!(custom_element_shadow_none, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_object_full);
+compiler_case!(custom_element_object_full, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_shadow_open);
+compiler_case!(custom_element_shadow_open, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_extend);
+compiler_case!(custom_element_extend, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_no_tag);
+compiler_case!(custom_element_no_tag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_prop_alias);
+compiler_case!(custom_element_prop_alias, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_compile_option_default);
+compiler_case!(
+    custom_element_compile_option_default,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(custom_element_dev_exports_legacy_api);
+compiler_case!(
+    custom_element_dev_exports_legacy_api,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(custom_element_slots);
 
@@ -882,11 +894,20 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(legacy_dev_reactive_text_only_element);
+compiler_case!(
+    legacy_dev_reactive_text_only_element,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(legacy_dev_deferred_template_effect);
+compiler_case!(
+    legacy_dev_deferred_template_effect,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_head_title_store_deps_coarse_wrap);
+compiler_case!(
+    diagnose_legacy_head_title_store_deps_coarse_wrap,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(store_if_block_condition, [prod, dev, ssr, ssr_dev]);
 
@@ -1059,7 +1080,7 @@ compiler_case!(animate_dotted_name, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(animate_reactive_params, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(animate_svelte_element);
+compiler_case!(animate_svelte_element, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(animate_with_const_tag, [prod, dev, ssr, ssr_dev]);
 
@@ -1492,7 +1513,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_css_type_class_selector_on_svelte_element);
+compiler_case!(
+    diagnose_css_type_class_selector_on_svelte_element,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_legacy_component_bind_store_prop);
 
@@ -1671,14 +1695,14 @@ compiler_case!(preserve_comments_in_each, [prod, dev, ssr, ssr_dev]);
 // svelte:head tests
 // ---------------------------------------------------------------------------
 
-compiler_case!(svelte_head_basic);
+compiler_case!(svelte_head_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_head_reactive);
+compiler_case!(svelte_head_reactive, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_head_with_content);
+compiler_case!(svelte_head_with_content, [prod, dev, ssr, ssr_dev]);
 
 // <title> in <svelte:head> tests
-compiler_case!(title_variants);
+compiler_case!(title_variants, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(async_title_basic);
 
@@ -1711,11 +1735,20 @@ compiler_case!(svelte_document_action, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_window_event_attr, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_window_event_attr_props_handler);
+compiler_case!(
+    svelte_window_event_attr_props_handler,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(svelte_document_event_attr_props_handler);
+compiler_case!(
+    svelte_document_event_attr_props_handler,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(svelte_body_event_attr_props_handler);
+compiler_case!(
+    svelte_body_event_attr_props_handler,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(svelte_window_bind_scroll, [prod, dev, ssr, ssr_dev]);
 
@@ -1742,9 +1775,9 @@ compiler_case!(svelte_document_bubble, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_document_combined, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_basic);
+compiler_case!(svelte_element_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_self_closing);
+compiler_case!(svelte_element_self_closing, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_fragment_named_slot);
 
@@ -1764,109 +1797,253 @@ compiler_case!(svelte_fragment_explicit_default_slot_attribute_lowers_to_childre
 
 compiler_case!(svelte_fragment_named_slot_with_const_tag);
 
-compiler_case!(svelte_element_static_tag);
+compiler_case!(svelte_element_static_tag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_attributes);
+compiler_case!(svelte_element_attributes, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_spread);
+compiler_case!(svelte_element_spread, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_svelte_element_spread_with_class_directive);
+compiler_case!(
+    diagnose_svelte_element_spread_with_class_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_class_directive_with_dynamic_attr);
+compiler_case!(
+    diagnose_svelte_element_class_directive_with_dynamic_attr,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_spread_style_directive);
+compiler_case!(
+    diagnose_svelte_element_spread_style_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_spread_class_with_bind);
+compiler_case!(
+    diagnose_svelte_element_spread_class_with_bind,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_static_class_with_directive);
+compiler_case!(
+    diagnose_svelte_element_static_class_with_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_static_style_with_directive);
+compiler_case!(
+    diagnose_svelte_element_static_style_with_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_dynamic_class_attr_with_directive);
+compiler_case!(
+    diagnose_svelte_element_dynamic_class_attr_with_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_style_directive_with_dynamic_attr);
+compiler_case!(
+    diagnose_svelte_element_style_directive_with_dynamic_attr,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_class_and_style_directives);
+compiler_case!(
+    diagnose_svelte_element_class_and_style_directives,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_scoped_no_class);
+compiler_case!(
+    audit_svelte_element_scoped_no_class,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_scoped_class_directive);
+compiler_case!(
+    audit_svelte_element_scoped_class_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_scoped_static_class_with_directive);
+compiler_case!(
+    audit_svelte_element_scoped_static_class_with_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_scoped_dynamic_class_with_directive);
+compiler_case!(
+    audit_svelte_element_scoped_dynamic_class_with_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_dynamic_alone);
+compiler_case!(
+    audit_svelte_element_class_dynamic_alone,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_concat_alone);
+compiler_case!(
+    audit_svelte_element_class_concat_alone,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_concat_with_directive);
+compiler_case!(
+    audit_svelte_element_class_concat_with_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_array_alone);
+compiler_case!(
+    audit_svelte_element_class_array_alone,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_array_with_directive);
+compiler_case!(
+    audit_svelte_element_class_array_with_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_style_dynamic_alone);
+compiler_case!(
+    audit_svelte_element_style_dynamic_alone,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_style_concat_alone);
+compiler_case!(
+    audit_svelte_element_style_concat_alone,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_style_dynamic_with_directive);
+compiler_case!(
+    audit_svelte_element_style_dynamic_with_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_scoped_style_directive);
+compiler_case!(
+    audit_svelte_element_scoped_style_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_directive_with_bind);
+compiler_case!(
+    audit_svelte_element_class_directive_with_bind,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_directive_with_use);
+compiler_case!(
+    audit_svelte_element_class_directive_with_use,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_dynamic_attr_with_both_directives);
+compiler_case!(
+    audit_svelte_element_dynamic_attr_with_both_directives,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_xmlns_with_class_directive);
+compiler_case!(
+    audit_svelte_element_xmlns_with_class_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_static_class_with_style_directive);
+compiler_case!(
+    audit_svelte_element_static_class_with_style_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_static_class_with_both_directives);
+compiler_case!(
+    audit_svelte_element_static_class_with_both_directives,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_on_legacy_with_class_directive);
+compiler_case!(
+    audit_svelte_element_on_legacy_with_class_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_transition_only);
+compiler_case!(
+    audit_svelte_element_transition_only,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_spread_with_use);
+compiler_case!(
+    audit_svelte_element_spread_with_use,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_attribute_effect_call_value_memo);
+compiler_case!(
+    diagnose_svelte_element_attribute_effect_call_value_memo,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_element_use_action_with_on_event_legacy);
+compiler_case!(
+    diagnose_svelte_element_use_action_with_on_event_legacy,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_style_directive_with_bind);
+compiler_case!(
+    audit_svelte_element_style_directive_with_bind,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_directive_expression);
+compiler_case!(
+    audit_svelte_element_class_directive_expression,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_style_directive_important);
+compiler_case!(
+    audit_svelte_element_style_directive_important,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_style_directive_custom_prop);
+compiler_case!(
+    audit_svelte_element_style_directive_custom_prop,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_animate_in_each);
+compiler_case!(
+    audit_svelte_element_animate_in_each,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_bind_this_store);
+compiler_case!(
+    audit_svelte_element_bind_this_store,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_attach_tag);
+compiler_case!(audit_svelte_element_attach_tag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(audit_svelte_element_multiple_class_directives);
+compiler_case!(
+    audit_svelte_element_multiple_class_directives,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_multiple_style_directives);
+compiler_case!(
+    audit_svelte_element_multiple_style_directives,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_bind_this_member);
+compiler_case!(
+    audit_svelte_element_bind_this_member,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_multiple_spreads);
+compiler_case!(
+    audit_svelte_element_multiple_spreads,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_transition_with_params);
+compiler_case!(
+    audit_svelte_element_transition_with_params,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_transition_local);
+compiler_case!(
+    audit_svelte_element_transition_local,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_in_out_separate);
+compiler_case!(
+    audit_svelte_element_in_out_separate,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_use_action_with_params);
+compiler_case!(
+    audit_svelte_element_use_action_with_params,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_modern_event_handler);
+compiler_case!(
+    audit_svelte_element_modern_event_handler,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     audit_svelte_element_async_tag_with_class_directive,
@@ -1875,35 +2052,59 @@ compiler_case!(
 
 compiler_case!(audit_svelte_element_async_tag_with_spread, [prod, dev_todo]);
 
-compiler_case!(audit_svelte_element_scoped_with_spread);
+compiler_case!(
+    audit_svelte_element_scoped_with_spread,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_directive_with_call);
+compiler_case!(
+    audit_svelte_element_class_directive_with_call,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_dev_spread);
+compiler_case!(audit_svelte_element_dev_spread, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(audit_svelte_element_dev_class_directive);
+compiler_case!(
+    audit_svelte_element_dev_class_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_transition_in_with_params);
+compiler_case!(
+    audit_svelte_element_transition_in_with_params,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_transition_global);
+compiler_case!(
+    audit_svelte_element_transition_global,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_class_directive_with_each);
+compiler_case!(
+    audit_svelte_element_class_directive_with_each,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(audit_svelte_element_dev_static_class_with_directive);
+compiler_case!(
+    audit_svelte_element_dev_static_class_with_directive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(svelte_element_onclick);
+compiler_case!(svelte_element_onclick, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_bind);
+compiler_case!(svelte_element_bind, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_null_tag);
+compiler_case!(svelte_element_null_tag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_xmlns);
+compiler_case!(svelte_element_xmlns, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_dynamic_xmlns);
+compiler_case!(svelte_element_dynamic_xmlns, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_children_expr);
+compiler_case!(svelte_element_children_expr, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_body_multi_child_fragment);
+compiler_case!(
+    svelte_element_body_multi_child_fragment,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(svelte_body_event_attr, [prod, dev, ssr, ssr_dev]);
 
@@ -2139,15 +2340,15 @@ compiler_case!(svg_fragment_ambiguous_a, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svg_fragment_ambiguous_title, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_in_if);
+compiler_case!(svelte_element_in_if, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_class_directive);
+compiler_case!(svelte_element_class_directive, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_style_directive);
+compiler_case!(svelte_element_style_directive, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_dev_invalid_tag);
+compiler_case!(svelte_element_dev_invalid_tag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_dev_void_children);
+compiler_case!(svelte_element_dev_void_children, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(boundary_const_in_snippet);
 
@@ -2258,7 +2459,7 @@ compiler_case!(style_attr_dynamic, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(script_jsdoc_comment);
 
-compiler_case!(svelte_head_title_meta);
+compiler_case!(svelte_head_title_meta, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     snippet_ident_conflict_with_script,
@@ -2273,7 +2474,7 @@ compiler_case!(non_runes_simple_snapshot, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(animate_with_spread, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_element_static_class_attr);
+compiler_case!(svelte_element_static_class_attr, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(root_with_special_elements, [prod, dev, ssr, ssr_dev]);
 
@@ -2400,7 +2601,7 @@ compiler_case!(derived_in_nested_function);
 
 compiler_case!(derived_local_signal_get);
 
-compiler_case!(svelte_element_duplicate_naming);
+compiler_case!(svelte_element_duplicate_naming, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(each_block_no_item, [prod, dev, ssr, ssr_dev]);
 
@@ -2708,7 +2909,10 @@ compiler_case!(dev_filename_relative_to_root_dir);
 
 compiler_case!(dev_filename_root_dir_no_match);
 
-compiler_case!(add_locations_svelte_head_skips_hoisted_title);
+compiler_case!(
+    add_locations_svelte_head_skips_hoisted_title,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(add_locations_named_slot_wrapper);
 
@@ -2836,7 +3040,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_hoisted_snippet_module_order_with_sibling_template);
+compiler_case!(
+    diagnose_hoisted_snippet_module_order_with_sibling_template,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_snippet_store_autosub_not_hoistable,

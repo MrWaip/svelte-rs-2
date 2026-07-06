@@ -1,6 +1,7 @@
 use oxc_ast::ast::Expression;
 use svelte_ast::{
-    Attribute, ComponentNode, Element, Node, NodeId, SlotElementLegacy, is_mathml, is_svg, is_void,
+    Attribute, ComponentNode, ConcatPart, Element, Node, NodeId, SlotElementLegacy, is_mathml,
+    is_svg, is_void,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -10,7 +11,7 @@ use crate::expression_semantics::Volatility;
 use crate::types::data::{
     BindTargetSemantics, BindingSemantics, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
     EventHandlerMode, EventModifier, LegacyDefaultSlot, ParentKind, PropBindingKind,
-    PropBindingSemantics, RichContentParentKind,
+    PropBindingSemantics, RichContentParentKind, SvelteElementTag,
 };
 use crate::utils::{
     concat_single_dynamic_expr, is_delegatable_event, is_passive_event, is_simple_identifier,
@@ -184,6 +185,14 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         el: &svelte_ast::SvelteElement,
         ctx: &mut VisitContext<'_, '_>,
     ) {
+        if let Some(tag) = svelte_element_tag(el, self.source) {
+            ctx.data
+                .elements
+                .flags
+                .svelte_element_tag
+                .insert(el.id, tag);
+        }
+
         if ctx.data.script.dev
             && ctx
                 .data
@@ -584,5 +593,22 @@ impl<'src> ElementFlagsVisitor<'src> {
                 .get_or_default(cn_id)
                 .push(ComponentPropInfo { kind });
         }
+    }
+}
+
+fn svelte_element_tag(el: &svelte_ast::SvelteElement, source: &str) -> Option<SvelteElementTag> {
+    if el.static_tag {
+        return Some(SvelteElementTag::Known(
+            el.tag_span.source_text(source).to_string(),
+        ));
+    }
+    let this = el.attributes.iter().find(|a| a.is_svelte_element_this())?;
+    match this {
+        Attribute::ExpressionAttribute(a) => Some(SvelteElementTag::Dynamic(a.expression.id())),
+        Attribute::ConcatenationAttribute(a) => match a.parts.first()? {
+            ConcatPart::Static(value) => Some(SvelteElementTag::Known(value.clone())),
+            ConcatPart::Dynamic { expr, .. } => Some(SvelteElementTag::Dynamic(expr.id())),
+        },
+        _ => None,
     }
 }
