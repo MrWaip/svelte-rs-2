@@ -1,22 +1,30 @@
 use super::*;
 
-compiler_case!(overload_instance_fn, "typescript/overload/instance_fn");
+compiler_case!(
+    overload_instance_fn,
+    "typescript/overload/instance_fn",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     overload_module_export_fn,
-    "typescript/overload/module_export_fn"
+    "typescript/overload/module_export_fn",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     overload_normal_fn_guard,
-    "typescript/overload/normal_fn_guard"
+    "typescript/overload/normal_fn_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     overload_declare_fn_guard,
-    "typescript/overload/declare_fn_guard"
+    "typescript/overload/declare_fn_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
     template_expr_handler_plain_guard,
-    "typescript/template_expr/handler_plain_guard"
+    "typescript/template_expr/handler_plain_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     template_expr_handler_param_type,
@@ -70,18 +78,22 @@ compiler_case!(
 
 compiler_case!(
     lang_mode_instance_ts_guard,
-    "typescript/lang_mode/instance_ts_guard"
+    "typescript/lang_mode/instance_ts_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     lang_mode_module_ts_instance_plain,
-    "typescript/lang_mode/module_ts_instance_plain"
+    "typescript/lang_mode/module_ts_instance_plain",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     lang_mode_instance_ts_module_plain,
-    "typescript/lang_mode/instance_ts_module_plain"
+    "typescript/lang_mode/instance_ts_module_plain",
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
     module_export_export_type_only,
-    "typescript/module_export/export_type_only"
+    "typescript/module_export/export_type_only",
+    [prod, dev, ssr, ssr_dev]
 );

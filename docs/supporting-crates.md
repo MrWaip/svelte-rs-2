@@ -1,7 +1,7 @@
 # PRD: Поддерживающие крэйты (корневой)
 
 label: supporting-crates
-topics: svelte_ast_builder, svelte_emit_builders, svelte_transform_css, css scoping, IdentGen, emit builders (store/binding/runes/props/legacy_wrap)
+topics: svelte_ast_builder, svelte_emit_builders, svelte_transform_css, css scoping, IdentGen, emit builders (store/binding/runes/props/legacy_wrap/server_refs)
 
 Корневой PRD для поддерживающих крэйтов: `svelte_ast_builder`, `svelte_emit_builders`, `svelte_transform_css`.
 
@@ -15,7 +15,7 @@ topics: svelte_ast_builder, svelte_emit_builders, svelte_transform_css, css scop
 
 ## `svelte_emit_builders`
 
-Держит общие builder'ы Svelte runtime-вызовов, используемые трансформом и кодгеном: `build_store_base_read`, `make_store_set`, `make_store_mutate`, `make_store_update`.
+Держит общие builder'ы Svelte runtime-вызовов, используемые трансформом и кодгеном: `build_store_base_read`, `make_store_set`, `make_store_mutate`, `make_store_update`. Модуль `server_refs` — тот же единый источник истины для серверных (SSR) форм чтения ссылок: `$$props`-ссылка → `$$sanitized_props`, `$store`-чтение → `$.store_get($$store_subs ??= {}, "$name", base)`; форма выбирается по вердикту `ReferenceSemantics`. Это per-node форм-билдеры без собственного обхода дерева — обход держит потребитель (серверный трансформ, `transform-server.md`). Серверный base-read плоский там, где клиентский несёт `$.get` — legacy-state на сервере компилируется в обычный `let`.
 
 - **Назначение:** единый источник истины для формы `$.store_*` runtime-вызовов и выражения «прочитать base-биндинг store-автоподписки». Один match на `BindingSemantics(base_symbol)` живёт тут; трансформ и кодген только зовут внутрь.
 - **Инварианты:** зависит от `svelte_ast_builder` + `svelte_analyze` (+ `svelte_component_semantics`); обратной зависимости нет. Функции чистые: `(&Builder<'a>, &AnalysisData, …) -> Expression<'a>`. Новые общие runtime-call builder'ы (rune get/set, thunk call, dollar-member) приходят сюда, как только получают второго потребителя.

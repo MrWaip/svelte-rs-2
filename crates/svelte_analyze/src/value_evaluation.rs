@@ -86,6 +86,10 @@ impl Evaluation {
         }
     }
 
+    pub fn is_defined_string(&self) -> bool {
+        matches!(self.class(), Some(ValueClass::String)) && self.is_defined()
+    }
+
     pub fn has_unknown(&self) -> bool {
         matches!(self, Self::MaybeNullish { has_unknown: true })
     }

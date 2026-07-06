@@ -1,10 +1,10 @@
-# PRD: Трансформ (корневой)
+# PRD: Трансформ (корневой, client)
 
 label: transform
-topics: transform, JS AST mutation, dumb transform, transformer passes (runes/state/derived/props/assignments/legacy_reactive), writeback instrumentation
+topics: transform, client transform, JS AST mutation, dumb transform, transformer passes (runes/state/derived/props/assignments/legacy_reactive), writeback instrumentation
 
-Корневой PRD для слоя трансформа (`svelte_transform`).
-Догма: **dumb transform** — мутирует JS AST по готовым ответам анализа, новых данных анализа не производит.
+Корневой PRD для слоя клиентского трансформа (`svelte_transform_client`) — backend'а `generate: client`. Серверный аналог — `transform-server.md`.
+Принцип: **dumb transform** — мутирует JS AST по готовым ответам анализа, новых данных анализа не производит.
 
 ## Назначение
 
@@ -24,7 +24,7 @@ topics: transform, JS AST mutation, dumb transform, transformer passes (runes/st
 
 ## Reactive reference dispatchers
 
-Все мутации AST, driven by `ReferenceSemantics`, идут через пять централизованных диспетчеров в `crates/svelte_transform/src/transformer/rewrites.rs`:
+Все мутации AST, driven by `ReferenceSemantics`, идут через пять централизованных диспетчеров в `crates/svelte_transform_client/src/transformer/rewrites.rs`:
 
 - `dispatch_identifier_read` — identifier reads.
 - `dispatch_identifier_assignment` — `=` / `+=` / `&&=` / … на identifier-таргетах.
@@ -42,7 +42,7 @@ topics: transform, JS AST mutation, dumb transform, transformer passes (runes/st
 
 ## Связь с другими документами
 
-- `context.md` §«Догмы», §«Анализ в кодгене» (зеркальный анти-паттерн для трансформа).
+- `context.md` §«Принципы», §«Анализ в кодгене» (зеркальный анти-паттерн для трансформа).
 - `reactivity-semantics.md` — источник `ReferenceSemantics` для диспетчеров.
 - `analyze.md` — контракт «один запрос → одно решение».
 - `supporting-crates.md` — `svelte_ast_builder` (единственный конструктор oxc-узлов), `svelte_emit_builders` (формы `$.store_*`).

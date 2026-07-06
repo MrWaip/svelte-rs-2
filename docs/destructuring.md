@@ -43,7 +43,7 @@ parsers are gone.
 
 ### Two doors (one per stage)
 
-- **Transform** (`svelte_transform`): `rewrite_binding_declarations` — the sole public entry. Walks a
+- **Transform** (`svelte_transform_client`): `rewrite_binding_declarations` — the sole public entry. Walks a
   statement list and, per declaration, iterates all declarators and dispatches each by
   `declarator_semantics` to a private kind handler. Serves script kinds; template kinds → `unreachable!`.
 - **Codegen** (`svelte_codegen_client`): `emit_binding_pattern` — the sole public entry. Dispatches by

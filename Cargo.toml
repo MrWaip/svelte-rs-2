@@ -33,7 +33,9 @@ svelte_parser = { path = "crates/svelte_parser" }
 svelte_diagnostics = { path = "crates/svelte_diagnostics" }
 svelte_analyze = { path = "crates/svelte_analyze" }
 svelte_codegen_client = { path = "crates/svelte_codegen_client" }
-svelte_transform = { path = "crates/svelte_transform" }
+svelte_codegen_server = { path = "crates/svelte_codegen_server" }
+svelte_transform_client = { path = "crates/svelte_transform_client" }
+svelte_transform_server = { path = "crates/svelte_transform_server" }
 svelte_emit_builders = { path = "crates/svelte_emit_builders" }
 svelte_ast_builder = { path = "crates/svelte_ast_builder" }
 svelte_compiler = { path = "crates/svelte_compiler" }

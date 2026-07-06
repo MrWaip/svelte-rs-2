@@ -3,7 +3,7 @@ use std::cell::Cell;
 pub use oxc_syntax::node::NodeId as OxcNodeId;
 pub use svelte_span::Span;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExprRef {
     pub span: Span,
     pub oxc_id: Cell<OxcNodeId>,

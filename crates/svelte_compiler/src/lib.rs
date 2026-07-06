@@ -238,20 +238,6 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             } else {
                 svelte_span::LineIndex::empty()
             };
-            let transform_data = {
-                let mut compile_ctx = svelte_types::CompileContext {
-                    alloc: &js_alloc,
-                    component: &component,
-                    analysis: &analysis,
-                    js_arena: &mut parsed,
-                    ident_gen: &mut ident_gen,
-                    line_index: &line_index,
-                };
-                svelte_transform::transform_component(
-                    &mut compile_ctx,
-                    &svelte_types::TransformOptions { dev: options.dev },
-                )
-            };
             let codegen_options = svelte_types::CodegenOptions {
                 dev: options.dev,
                 experimental_async: options.experimental.async_,
@@ -261,21 +247,55 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 ),
                 sourcemap_kind: options.sourcemap_kind,
             };
-            let compile_ctx = svelte_types::CompileContext {
-                alloc: &js_alloc,
-                component: &component,
-                analysis: &analysis,
-                js_arena: &mut parsed,
-                ident_gen: &mut ident_gen,
-                line_index: &line_index,
+            let transform_options = svelte_types::TransformOptions { dev: options.dev };
+            let js = match options.generate {
+                GenerateMode::Server => {
+                    let mut compile_ctx = svelte_types::CompileContext {
+                        alloc: &js_alloc,
+                        component: &component,
+                        analysis: &analysis,
+                        js_arena: &mut parsed,
+                        ident_gen: &mut ident_gen,
+                        line_index: &line_index,
+                    };
+                    svelte_transform_server::transform_component(
+                        &mut compile_ctx,
+                        &transform_options,
+                    );
+                    svelte_codegen_server::generate(compile_ctx, &codegen_options).ok()
+                }
+                GenerateMode::Client | GenerateMode::False => {
+                    let transform_data = {
+                        let mut compile_ctx = svelte_types::CompileContext {
+                            alloc: &js_alloc,
+                            component: &component,
+                            analysis: &analysis,
+                            js_arena: &mut parsed,
+                            ident_gen: &mut ident_gen,
+                            line_index: &line_index,
+                        };
+                        svelte_transform_client::transform_component(
+                            &mut compile_ctx,
+                            &transform_options,
+                        )
+                    };
+                    let compile_ctx = svelte_types::CompileContext {
+                        alloc: &js_alloc,
+                        component: &component,
+                        analysis: &analysis,
+                        js_arena: &mut parsed,
+                        ident_gen: &mut ident_gen,
+                        line_index: &line_index,
+                    };
+                    Some(svelte_codegen_client::generate(
+                        compile_ctx,
+                        &codegen_options,
+                        transform_data,
+                        injected_css_text.as_deref(),
+                    ))
+                }
             };
-            let js = svelte_codegen_client::generate(
-                compile_ctx,
-                &codegen_options,
-                transform_data,
-                injected_css_text.as_deref(),
-            );
-            (Some(js), css, analyze_diags)
+            (js, css, analyze_diags)
         }
     };
 

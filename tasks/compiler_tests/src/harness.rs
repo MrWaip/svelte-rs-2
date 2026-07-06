@@ -4,7 +4,7 @@ use std::{
 };
 
 use pretty_assertions::assert_eq;
-use svelte_compiler::{compile, compile_module};
+use svelte_compiler::{GenerateMode, compile, compile_module};
 use test_support::{strip_js_comments, strip_reference_only_css_markers};
 
 use crate::cases::{cluster_case_dir, load_cluster_case, load_cluster_module_case};
@@ -125,5 +125,50 @@ pub fn assert_compiler_dev(case: &str) {
         strip_js_comments(&dev_js),
         strip_js_comments(&expected_dev_js),
         "[{case}] dev JS mismatch"
+    );
+}
+
+pub fn assert_compiler_ssr(case: &str) {
+    let dir = cluster_case_dir(case);
+    let (input, opts) = load_cluster_case(case);
+    let mut server_opts = opts.clone();
+    server_opts.generate = GenerateMode::Server;
+    let server_js = compile(&input, &server_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] server compile produced no JS"))
+        .code;
+    let expected_server_js =
+        read_to_string(dir.join("case-svelte.server.js")).expect("test invariant");
+    File::create(dir.join("case-rust.server.js"))
+        .expect("test invariant")
+        .write_all(server_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(
+        strip_js_comments(&server_js),
+        strip_js_comments(&expected_server_js),
+        "[{case}] server JS mismatch"
+    );
+}
+
+pub fn assert_compiler_ssr_dev(case: &str) {
+    let dir = cluster_case_dir(case);
+    let (input, opts) = load_cluster_case(case);
+    let mut server_opts = opts.clone();
+    server_opts.generate = GenerateMode::Server;
+    server_opts.dev = true;
+    let server_js = compile(&input, &server_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] server dev compile produced no JS"))
+        .code;
+    let expected_server_js =
+        read_to_string(dir.join("case-svelte.server.dev.js")).expect("test invariant");
+    File::create(dir.join("case-rust.server.dev.js"))
+        .expect("test invariant")
+        .write_all(server_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(
+        strip_js_comments(&server_js),
+        strip_js_comments(&expected_server_js),
+        "[{case}] server dev JS mismatch"
     );
 }

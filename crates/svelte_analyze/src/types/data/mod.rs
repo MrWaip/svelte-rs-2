@@ -1,6 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_ast::{ConcatPart, NodeId, StyleDirective};
+use svelte_ast::{ConcatPart, NodeId};
 use svelte_span::Span;
 
 use super::node_table::{NodeBitSet, NodeTable};

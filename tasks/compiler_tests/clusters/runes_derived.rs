@@ -6,15 +6,18 @@ compiler_case!(
 );
 compiler_case!(
     declaration_nested_effect_sync,
-    "runes/derived/declaration/nested_effect_sync"
+    "runes/derived/declaration/nested_effect_sync",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_nested_effect_root_sync,
-    "runes/derived/declaration/nested_effect_root_sync"
+    "runes/derived/declaration/nested_effect_root_sync",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_nested_function_derived_by,
-    "runes/derived/declaration/nested_function_derived_by"
+    "runes/derived/declaration/nested_function_derived_by",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_array_with_object,
@@ -85,7 +88,8 @@ compiler_case!(
 );
 compiler_case!(
     write_state_update_guard,
-    "runes/derived/write/state_update_guard"
+    "runes/derived/write/state_update_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     write_derived_read_guard,

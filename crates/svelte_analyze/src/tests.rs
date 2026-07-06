@@ -4,7 +4,7 @@ use crate::types::data::{
     BindTargetSemantics, BindingSemantics, ConstBindingSemantics, ParentKind,
 };
 use crate::{
-    AttributeSemantics, BlockSemantics, EachIndexStrategy, EachItemStrategy,
+    AttributeSemantics, BlockSemantics, ClassSemantics, EachIndexStrategy, EachItemStrategy,
     OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
     SnippetParamStrategy,
 };
@@ -620,6 +620,55 @@ fn find_snippet_block<'a>(
         }
     }
     None
+}
+
+fn collect_runtime_behavior_directives(
+    component: &Component,
+    fragment: FragmentId,
+    out: &mut Vec<(&'static str, NodeId)>,
+) {
+    for id in frag_nodes(component, fragment) {
+        match component.store.get(id) {
+            Node::Element(el) => {
+                for attr in &el.attributes {
+                    match attr {
+                        Attribute::UseDirective(d) => out.push(("use:", d.id)),
+                        Attribute::TransitionDirective(d) => out.push(("transition:", d.id)),
+                        Attribute::AnimateDirective(d) => out.push(("animate:", d.id)),
+                        Attribute::AttachTag(a) => out.push(("@attach", a.id)),
+                        _ => {}
+                    }
+                }
+                collect_runtime_behavior_directives(component, el.fragment, out);
+            }
+            Node::EachBlock(b) => collect_runtime_behavior_directives(component, b.body, out),
+            Node::IfBlock(b) => {
+                collect_runtime_behavior_directives(component, b.consequent, out);
+                if let Some(alt) = b.alternate {
+                    collect_runtime_behavior_directives(component, alt, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+#[track_caller]
+fn assert_runtime_behavior_directives(component: &Component, data: &AnalysisData<'_>) {
+    let mut ids = Vec::new();
+    collect_runtime_behavior_directives(component, component.root, &mut ids);
+    assert!(
+        !ids.is_empty(),
+        "fixture has no runtime-behavior directives to classify"
+    );
+    for (kind, id) in ids {
+        let semantics = data.attributes.get(id);
+        assert_eq!(
+            *semantics,
+            AttributeSemantics::RuntimeBehavior,
+            "{kind}: expected RuntimeBehavior, got {semantics:?}"
+        );
+    }
 }
 
 fn parent_each_blocks_from_payload(
@@ -1406,6 +1455,22 @@ fn assert_nth_element_needs_input_defaults(
     );
 }
 
+fn class_semantics_of<'a>(
+    data: &'a AnalysisData,
+    component: &Component,
+    el_id: NodeId,
+) -> Option<&'a ClassSemantics> {
+    component
+        .store
+        .get(el_id)
+        .attributes()
+        .iter()
+        .find_map(|attr| match data.attributes.get(attr.id()) {
+            AttributeSemantics::Class(c) => Some(c),
+            _ => None,
+        })
+}
+
 fn assert_class_state_volatile(
     data: &AnalysisData,
     component: &Component,
@@ -1415,7 +1480,10 @@ fn assert_class_state_volatile(
     use crate::expression_semantics::Volatility;
     let el = find_element(component.root, component, tag_name)
         .unwrap_or_else(|| panic!("no element <{tag_name}>"));
-    let volatile = match data.class_state_volatility(el.id) {
+    let volatility = class_semantics_of(data, component, el.id)
+        .map(|c| c.state_volatility)
+        .unwrap_or(Volatility::Static);
+    let volatile = match volatility {
         Volatility::Static => false,
         Volatility::Reactive | Volatility::Heavy | Volatility::Asynchronous => true,
     };
@@ -1687,7 +1755,7 @@ fn concatenated_class_attr_is_registered_for_set_class() {
         .expect("no class attr on <div>");
 
     assert_eq!(
-        data.elements.flags.class_attr_id(el.id),
+        class_semantics_of(&data, &component, el.id).and_then(|c| c.attr),
         Some(class_attr_id)
     );
 }
@@ -2225,6 +2293,23 @@ fn bind_group_marks_only_ancestor_each_blocks_referenced_by_expression() {
         parent_each_blocks_from_payload(&data, bind_id).as_slice(),
         &[outer_each.id]
     );
+}
+
+#[test]
+fn behavioral_directives_classify_as_runtime_behavior() {
+    let (component, data) = analyze_source(
+        r#"<script>
+    import { fade, flip } from 'svelte/transition';
+    function action(node) {}
+    function attach(node) {}
+    let items = $state([1, 2]);
+</script>
+{#each items as item (item)}
+    <div use:action transition:fade animate:flip {@attach attach}>{item}</div>
+{/each}
+<span in:fade out:fade></span>"#,
+    );
+    assert_runtime_behavior_directives(&component, &data);
 }
 
 #[test]

@@ -1291,7 +1291,25 @@ dependencies = [
  "svelte_parser",
  "svelte_sourcemap",
  "svelte_span",
- "svelte_transform",
+ "svelte_transform_client",
+ "svelte_types",
+]
+
+[[package]]
+name = "svelte_codegen_server"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "oxc_ast",
+ "oxc_codegen",
+ "oxc_span",
+ "svelte_analyze",
+ "svelte_ast",
+ "svelte_ast_builder",
+ "svelte_component_semantics",
+ "svelte_emit_builders",
+ "svelte_sourcemap",
+ "svelte_span",
  "svelte_types",
 ]
 
@@ -1306,12 +1324,14 @@ dependencies = [
  "svelte_analyze",
  "svelte_ast",
  "svelte_codegen_client",
+ "svelte_codegen_server",
  "svelte_diagnostics",
  "svelte_parser",
  "svelte_sourcemap",
  "svelte_span",
- "svelte_transform",
+ "svelte_transform_client",
  "svelte_transform_css",
+ "svelte_transform_server",
  "svelte_types",
 ]
 
@@ -1404,7 +1424,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "svelte_transform"
+name = "svelte_transform_client"
 version = "0.1.0"
 dependencies = [
  "oxc_allocator",
@@ -1435,6 +1455,19 @@ dependencies = [
  "svelte_css",
  "svelte_sourcemap",
  "svelte_span",
+]
+
+[[package]]
+name = "svelte_transform_server"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_ast_visit",
+ "svelte_analyze",
+ "svelte_ast_builder",
+ "svelte_emit_builders",
+ "svelte_types",
 ]
 
 [[package]]

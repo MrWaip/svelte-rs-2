@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use svelte_component_semantics::{OriginKind, OxcNodeId as SemOxcNodeId, ReferenceId};
 
 use super::*;
-use crate::expression_semantics::{ExpressionData, ExpressionSemantics, Volatility};
+use crate::expression_semantics::{ExpressionData, ExpressionSemantics};
 use crate::passes::fragment_topology::fragment_items;
 use crate::types::data::{
     ComponentCssProp, ComponentPropKind, DeclaratorSemantics, LegacyDefaultSlot,
@@ -326,59 +326,17 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn is_custom_element(&self, id: NodeId) -> bool {
         self.data.is_custom_element(id)
     }
-    pub fn has_class_directives(&self, id: NodeId) -> bool {
-        self.data.elements.flags.has_class_directives(id)
-    }
-    pub fn has_class_attribute(&self, id: NodeId) -> bool {
-        self.data.elements.flags.has_class_attribute(id)
-    }
-    pub fn needs_clsx(&self, id: NodeId) -> bool {
-        self.data.elements.flags.needs_clsx(id)
-    }
-    pub fn has_style_directives(&self, id: NodeId) -> bool {
-        self.data.elements.flags.has_style_directives(id)
-    }
-    pub fn needs_class_base(&self, id: NodeId) -> bool {
-        self.data.elements.flags.needs_class_base(id)
-    }
-    pub fn needs_style_base(&self, id: NodeId) -> bool {
-        self.data.elements.flags.needs_style_base(id)
-    }
-    pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] {
-        self.data.elements.flags.style_directives(id)
-    }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool {
         self.data.elements.flags.needs_input_defaults(id)
     }
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.data.elements.flags.needs_var(id)
     }
-    pub fn static_class(&self, id: NodeId) -> Option<&str> {
-        self.data.elements.flags.static_class(id)
-    }
-    pub fn static_style(&self, id: NodeId) -> Option<&str> {
-        self.data.elements.flags.static_style(id)
-    }
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_bound_contenteditable(id)
     }
     pub fn has_use_directive(&self, id: NodeId) -> bool {
         self.data.elements.flags.has_use_directive(id)
-    }
-    pub fn class_state_volatility(&self, id: NodeId) -> Volatility {
-        self.data.class_state_volatility(id)
-    }
-    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
-        self.data.elements.flags.class_attr_id(id)
-    }
-    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> {
-        self.data.elements.flags.class_directive_info(id)
-    }
-    pub fn class_directives_volatility(&self, id: NodeId) -> Volatility {
-        self.data.elements.flags.class_directives_volatility(id)
-    }
-    pub fn style_directives_volatility(&self, id: NodeId) -> Volatility {
-        self.data.elements.flags.style_directives_volatility(id)
     }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
         self.data.elements.flags.is_expression_shorthand(id)

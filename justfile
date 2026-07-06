@@ -94,6 +94,10 @@ dump-ast expr:
 quick-check path *flags:
     cargo run -q -p quick_check -- {{path}} {{flags}}
 
+# List case pairs whose server output already matches the committed references (candidates to flip to live ssr/ssr_dev)
+ssr-flip-scan:
+    cargo run -q -p compiler_tests --bin ssr_flip_scan
+
 # Build WASM and serve the playground
 playground:
     wasm-pack build --target web ./crates/wasm_compiler -d ../../playground/compiler
@@ -120,6 +124,6 @@ build-native:
     cargo build -p napi_compiler --release
     node packages/svelte-rs2/scripts/stage-native-dev.mjs
 
-# Build the native addon, install the workspace from root, and run the sweep against a pathname (extra flags: --dry-run --dev --print-diffs)
+# Build the native addon, install the workspace from root, and run the sweep against a pathname (extra flags: --dry-run --dev --ssr --print-diffs)
 sweep-run pathname *flags: build-native
     node packages/svelte-rs2-sweep/cli.mjs {{pathname}} {{flags}}

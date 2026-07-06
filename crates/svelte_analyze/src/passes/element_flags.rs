@@ -8,7 +8,7 @@ use svelte_span::Span;
 use crate::attribute_semantics::data::ComponentPropMemo;
 use crate::expression_semantics::Volatility;
 use crate::types::data::{
-    BindTargetSemantics, BindingSemantics, ClassDirectiveInfo, ComponentBindMode, ComponentCssProp,
+    BindTargetSemantics, BindingSemantics, ComponentBindMode, ComponentCssProp,
     ComponentCssPropValue, ComponentPropInfo, ComponentPropKind, EventHandlerMode, EventModifier,
     JsAst, LegacyDefaultSlot, ParentKind, PropBindingKind, PropBindingSemantics,
     RichContentParentKind,
@@ -182,47 +182,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 .hydration_attribute_changed_ignored
                 .insert(el.id);
         }
-
-        let mut has_spread = false;
-        let mut has_class_directive = false;
-        let mut has_style_directive = false;
-        let mut has_class_attr = false;
-        let mut has_style_attr = false;
-        for attr in &el.attributes {
-            match attr {
-                Attribute::SpreadAttribute(_) => has_spread = true,
-                Attribute::ClassDirective(_) => has_class_directive = true,
-                Attribute::StyleDirective(_) => has_style_directive = true,
-                Attribute::StringAttribute(a) => {
-                    if a.name == "class" {
-                        has_class_attr = true;
-                    } else if a.name == "style" {
-                        has_style_attr = true;
-                    }
-                }
-                Attribute::ExpressionAttribute(a) => {
-                    if a.name == "class" {
-                        has_class_attr = true;
-                    } else if a.name == "style" {
-                        has_style_attr = true;
-                    }
-                }
-                Attribute::ConcatenationAttribute(a) => {
-                    if a.name == "class" {
-                        has_class_attr = true;
-                    } else if a.name == "style" {
-                        has_style_attr = true;
-                    }
-                }
-                _ => {}
-            }
-        }
-        if !has_spread && has_class_directive && !has_class_attr {
-            ctx.data.elements.flags.needs_class_base.insert(el.id);
-        }
-        if !has_spread && has_style_directive && !has_style_attr {
-            ctx.data.elements.flags.needs_style_base.insert(el.id);
-        }
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
@@ -233,69 +192,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
             ctx.data.elements.flags.needs_ref.insert(el_id);
         }
         match attr {
-            Attribute::StringAttribute(sa) if sa.name == "class" => {
-                ctx.data
-                    .elements
-                    .flags
-                    .static_class
-                    .insert(el_id, self.source_text(sa.value_span).to_string());
-            }
-            Attribute::StringAttribute(sa) if sa.name == "style" => {
-                ctx.data
-                    .elements
-                    .flags
-                    .static_style
-                    .insert(el_id, self.source_text(sa.value_span).to_string());
-            }
-            Attribute::ClassDirective(cd) => {
-                let volatility = ctx
-                    .data
-                    .expression_data(cd.id)
-                    .map(|data| data.volatility)
-                    .unwrap_or(Volatility::Static);
-                let flags = &mut ctx.data.elements.flags;
-                flags
-                    .class_directive_info
-                    .get_or_default(el_id)
-                    .push(ClassDirectiveInfo {
-                        id: cd.id,
-                        name: cd.name.clone(),
-                        has_expression: true,
-                        expr_id: cd.expression.id(),
-                    });
-                let accumulated = flags
-                    .class_directives_volatility
-                    .get(el_id)
-                    .copied()
-                    .unwrap_or(Volatility::Static);
-                flags
-                    .class_directives_volatility
-                    .insert(el_id, accumulated.max(volatility));
-            }
-            Attribute::StyleDirective(sd) => {
-                let volatility = ctx
-                    .data
-                    .expression_data(sd.id)
-                    .map(|data| data.volatility)
-                    .unwrap_or(Volatility::Static);
-                let flags = &mut ctx.data.elements.flags;
-                flags
-                    .style_directives
-                    .get_or_default(el_id)
-                    .push(sd.clone());
-                let accumulated = flags
-                    .style_directives_volatility
-                    .get(el_id)
-                    .copied()
-                    .unwrap_or(Volatility::Static);
-                flags
-                    .style_directives_volatility
-                    .insert(el_id, accumulated.max(volatility));
-            }
             Attribute::ExpressionAttribute(ea) => {
-                if ea.name == "class" {
-                    ctx.data.elements.flags.class_attr_id.insert(el_id, ea.id);
-                }
                 if ctx.element_name() == Some("input")
                     && Self::marks_input_defaults(&ea.name)
                     && !Self::skip_input_defaults_gate(ctx, el_id)
@@ -322,9 +219,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 }
             }
             Attribute::ConcatenationAttribute(attr) => {
-                if attr.name == "class" {
-                    ctx.data.elements.flags.class_attr_id.insert(el_id, attr.id);
-                }
                 if ctx.element_name() == Some("input")
                     && Self::marks_input_defaults(&attr.name)
                     && !Self::skip_input_defaults_gate(ctx, el_id)

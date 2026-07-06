@@ -87,6 +87,14 @@ fn main() {
             write_formatted_js(&dir.join("case-svelte.dev.js"), js_dev_src);
         }
 
+        if let Some(js_server_src) = case.get("jsServer").and_then(|v| v.as_str()) {
+            write_formatted_js(&dir.join("case-svelte.server.js"), js_server_src);
+        }
+
+        if let Some(js_server_dev_src) = case.get("jsServerDev").and_then(|v| v.as_str()) {
+            write_formatted_js(&dir.join("case-svelte.server.dev.js"), js_server_dev_src);
+        }
+
         if let Some(css) = case["css"].as_str() {
             let css_path = dir.join("case-svelte.css");
             let css = strip_reference_only_css_markers(css);

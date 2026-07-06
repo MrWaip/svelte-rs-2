@@ -39,6 +39,7 @@ pub struct ElementFactsEntry {
     creation_namespace: Namespace,
     is_void: bool,
     is_custom_element: bool,
+    is_input: bool,
     static_id: Option<CompactString>,
     static_classes: SmallVec<[CompactString; 2]>,
     has_dynamic_id: bool,
@@ -53,6 +54,7 @@ impl ElementFactsEntry {
         creation_namespace: Namespace,
         is_void: bool,
         is_custom_element: bool,
+        is_input: bool,
     ) -> Self {
         let mut has_spread = false;
         let mut has_runtime_attrs = false;
@@ -125,6 +127,7 @@ impl ElementFactsEntry {
             creation_namespace,
             is_void,
             is_custom_element,
+            is_input,
             static_id,
             static_classes,
             has_dynamic_id,
@@ -158,6 +161,10 @@ impl ElementFactsEntry {
 
     pub fn is_custom_element(&self) -> bool {
         self.is_custom_element
+    }
+
+    pub fn is_input(&self) -> bool {
+        self.is_input
     }
 
     pub fn static_id(&self) -> Option<&str> {
@@ -228,6 +235,10 @@ impl ElementFacts {
     pub fn is_custom_element(&self, id: NodeId) -> bool {
         self.entry(id)
             .is_some_and(ElementFactsEntry::is_custom_element)
+    }
+
+    pub fn is_input(&self, id: NodeId) -> bool {
+        self.entry(id).is_some_and(ElementFactsEntry::is_input)
     }
 
     pub fn static_id(&self, id: NodeId) -> Option<&str> {

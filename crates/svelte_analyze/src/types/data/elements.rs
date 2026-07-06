@@ -1,6 +1,5 @@
 use super::*;
 use crate::attribute_semantics::data::ComponentPropMemo;
-use crate::expression_semantics::Volatility;
 use oxc_syntax::node::NodeId as OxcNodeId;
 
 #[derive(Clone)]
@@ -18,6 +17,7 @@ pub enum ComponentCssPropValue {
     Concatenation,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClassDirectiveInfo {
     pub id: NodeId,
     pub name: String,
@@ -109,14 +109,6 @@ pub enum LegacyDefaultSlot {
 }
 
 pub struct ElementFlags {
-    pub(crate) class_attr_id: NodeTable<NodeId>,
-    pub(crate) class_directive_info: NodeTable<Vec<ClassDirectiveInfo>>,
-    pub(crate) class_directives_volatility: NodeTable<Volatility>,
-    pub(crate) needs_clsx: NodeBitSet,
-    pub(crate) static_class: NodeTable<String>,
-    pub(crate) style_directives: NodeTable<Vec<StyleDirective>>,
-    pub(crate) style_directives_volatility: NodeTable<Volatility>,
-    pub(crate) static_style: NodeTable<String>,
     pub(crate) needs_input_defaults: NodeBitSet,
     pub(crate) needs_var: NodeBitSet,
     pub(crate) needs_ref: NodeBitSet,
@@ -142,22 +134,11 @@ pub struct ElementFlags {
     pub(crate) legacy_slot_has_fallback: NodeBitSet,
 
     pub(crate) hydration_attribute_changed_ignored: NodeBitSet,
-
-    pub(crate) needs_class_base: NodeBitSet,
-    pub(crate) needs_style_base: NodeBitSet,
 }
 
 impl ElementFlags {
     pub fn new(node_count: u32) -> Self {
         Self {
-            class_attr_id: NodeTable::new(node_count),
-            class_directive_info: NodeTable::new(node_count),
-            class_directives_volatility: NodeTable::new(node_count),
-            needs_clsx: NodeBitSet::new(node_count),
-            static_class: NodeTable::new(node_count),
-            style_directives: NodeTable::new(node_count),
-            style_directives_volatility: NodeTable::new(node_count),
-            static_style: NodeTable::new(node_count),
             needs_input_defaults: NodeBitSet::new(node_count),
             needs_var: NodeBitSet::new(node_count),
             needs_ref: NodeBitSet::new(node_count),
@@ -175,42 +156,7 @@ impl ElementFlags {
             legacy_default_slot: NodeTable::new(node_count),
             legacy_slot_has_fallback: NodeBitSet::new(node_count),
             hydration_attribute_changed_ignored: NodeBitSet::new(node_count),
-            needs_class_base: NodeBitSet::new(node_count),
-            needs_style_base: NodeBitSet::new(node_count),
         }
-    }
-    pub fn has_class_directives(&self, id: NodeId) -> bool {
-        self.class_directive_info.contains_key(id)
-    }
-    pub fn has_class_attribute(&self, id: NodeId) -> bool {
-        self.class_attr_id.contains_key(id)
-    }
-    pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
-        self.class_attr_id.get(id).copied()
-    }
-    pub fn class_directive_info(&self, id: NodeId) -> Option<&[ClassDirectiveInfo]> {
-        self.class_directive_info.get(id).map(|v| v.as_slice())
-    }
-    pub fn class_directives_volatility(&self, id: NodeId) -> Volatility {
-        self.class_directives_volatility
-            .get(id)
-            .copied()
-            .unwrap_or(Volatility::Static)
-    }
-    pub fn needs_clsx(&self, id: NodeId) -> bool {
-        self.needs_clsx.contains(&id)
-    }
-    pub fn has_style_directives(&self, id: NodeId) -> bool {
-        self.style_directives.contains_key(id)
-    }
-    pub fn style_directives(&self, id: NodeId) -> &[StyleDirective] {
-        self.style_directives.get(id).map_or(&[], |v| v.as_slice())
-    }
-    pub fn style_directives_volatility(&self, id: NodeId) -> Volatility {
-        self.style_directives_volatility
-            .get(id)
-            .copied()
-            .unwrap_or(Volatility::Static)
     }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool {
         self.needs_input_defaults.contains(&id)
@@ -220,12 +166,6 @@ impl ElementFlags {
     }
     pub fn needs_ref(&self, id: NodeId) -> bool {
         self.needs_ref.contains(&id)
-    }
-    pub fn static_class(&self, id: NodeId) -> Option<&str> {
-        self.static_class.get(id).map(|s| s.as_str())
-    }
-    pub fn static_style(&self, id: NodeId) -> Option<&str> {
-        self.static_style.get(id).map(|s| s.as_str())
     }
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool {
         self.bound_contenteditable.contains(&id)
@@ -276,11 +216,5 @@ impl ElementFlags {
     }
     pub fn hydration_attribute_changed_ignored(&self, id: NodeId) -> bool {
         self.hydration_attribute_changed_ignored.contains(&id)
-    }
-    pub fn needs_class_base(&self, id: NodeId) -> bool {
-        self.needs_class_base.contains(&id)
-    }
-    pub fn needs_style_base(&self, id: NodeId) -> bool {
-        self.needs_style_base.contains(&id)
     }
 }

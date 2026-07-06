@@ -11,7 +11,8 @@ pub(crate) mod simple_expression;
 pub(crate) mod var_decl_kind;
 
 pub use attributes::{
-    concat_single_dynamic_expr, event_attribute, is_regular_dom_property,
+    collapse_attribute_whitespace, concat_single_dynamic_expr, emit_html_attribute_name,
+    event_attribute, is_dom_boolean_attribute, is_regular_dom_property,
     normalize_regular_attribute_name,
 };
 pub use events::{
