@@ -1,5 +1,5 @@
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{AnalysisData, IdentGen, JsAst, Volatility};
+use svelte_analyze::{AnalysisData, IdentGen, JsAst};
 use svelte_ast::{Component, ExprRef, NodeId};
 use svelte_ast_builder::Builder;
 use svelte_span::LineIndex;
@@ -59,11 +59,5 @@ impl<'a> ServerCodegen<'a> {
         self.analysis
             .expression_data(node_id)
             .is_some_and(|data| data.volatility.is_volatile())
-    }
-
-    pub(crate) fn expression_is_async(&self, node_id: NodeId) -> bool {
-        self.analysis.expression_data(node_id).is_some_and(|data| {
-            matches!(data.volatility, Volatility::Asynchronous) || !data.blockers.is_empty()
-        })
     }
 }

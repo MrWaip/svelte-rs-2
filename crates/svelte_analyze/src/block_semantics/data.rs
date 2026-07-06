@@ -31,6 +31,16 @@ pub enum BlockSemantics {
 pub struct HtmlTagSemantics {
     pub parent_strategy: HtmlTagNamespace,
     pub hydration_html_changed_ignored: bool,
+    pub async_kind: HtmlTagAsyncKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HtmlTagAsyncKind {
+    Sync,
+
+    Awaited { blockers: SmallVec<[u32; 2]> },
+
+    Deferred { blockers: SmallVec<[u32; 2]> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

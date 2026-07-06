@@ -7603,10 +7603,15 @@ let a = new A();
 }
 
 mod block_semantics_html_tag_tests {
-    use super::{analyze_source, analyze_source_with_options, find_html_tag_id};
+    use super::{
+        analyze_source, analyze_source_experimental_async, analyze_source_with_options,
+        find_html_tag_id,
+    };
     use crate::AnalysisData;
     use crate::AnalyzeOptions;
-    use crate::block_semantics::{BlockSemantics, HtmlTagNamespace, HtmlTagSemantics};
+    use crate::block_semantics::{
+        BlockSemantics, HtmlTagAsyncKind, HtmlTagNamespace, HtmlTagSemantics,
+    };
 
     fn html_tag_semantics<'a>(
         component: &'a svelte_ast::Component,
@@ -7692,6 +7697,23 @@ mod block_semantics_html_tag_tests {
         );
         let sem = html_tag_semantics(&component, &data, "content");
         assert!(!sem.hydration_html_changed_ignored);
+    }
+
+    #[test]
+    fn sync_expression_yields_sync_async_kind() {
+        let (component, data) =
+            analyze_source(r#"<script>let content = '';</script><div>{@html content}</div>"#);
+        let sem = html_tag_semantics(&component, &data, "content");
+        assert!(matches!(sem.async_kind, HtmlTagAsyncKind::Sync));
+    }
+
+    #[test]
+    fn awaited_expression_yields_awaited_async_kind() {
+        let (component, data) = analyze_source_experimental_async(
+            r#"<script>async function load() { return ''; }</script><div>{@html await load()}</div>"#,
+        );
+        let sem = html_tag_semantics(&component, &data, "await load()");
+        assert!(matches!(sem.async_kind, HtmlTagAsyncKind::Awaited { .. }));
     }
 }
 

@@ -33,9 +33,10 @@ pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
     EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
-    EachKeyKind, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
-    KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
-    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement, SnippetSlotKey,
+    EachKeyKind, HtmlTagAsyncKind, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch,
+    IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind,
+    RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
+    SnippetSlotKey,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{
