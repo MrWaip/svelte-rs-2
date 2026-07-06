@@ -73,7 +73,8 @@ compiler_case!(clsx_call_clsx_guard, "attribute/clsx/call_clsx_guard");
 
 compiler_case!(
     concat_each_sequence,
-    "attribute/concat_sequence/each_class_sequence"
+    "attribute/concat_sequence/each_class_sequence",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     concat_plain_reactive_guard,

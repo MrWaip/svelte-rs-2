@@ -11,25 +11,40 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(prop_ident, "bind_this/prop_ident");
-compiler_case!(each_member, "bind_this/each_member");
+compiler_case!(
+    each_member,
+    "bind_this/each_member",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     runes_prop_each_member_writeback,
-    "bind_this/runes_prop_each_member_writeback"
+    "bind_this/runes_prop_each_member_writeback",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(each_index_keyed, "bind_this/each_index_keyed");
+compiler_case!(
+    each_index_keyed,
+    "bind_this/each_index_keyed",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(member_prop_computed, "bind_this/member_prop_computed");
 compiler_case!(component_prop_ident, "bind_this/component_prop_ident");
 compiler_case!(component_each_member, "bind_this/component_each_member");
 compiler_case!(component_runes_state, "bind_this/component_runes_state");
 compiler_case!(
     export_const_each_member,
-    "bind_this/export_const_each_member"
+    "bind_this/export_const_each_member",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     export_const_each_destructured,
-    "bind_this/export_const_each_destructured"
+    "bind_this/export_const_each_destructured",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(local_const_each_member, "bind_this/local_const_each_member");
+compiler_case!(
+    local_const_each_member,
+    "bind_this/local_const_each_member",
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(window_size_prop, "bind_this/window_size_prop");
 compiler_case!(window_scroll_prop, "bind_this/window_scroll_prop");
@@ -70,7 +85,11 @@ compiler_case!(
     seq_component_runes_state,
     "bind_this/seq_component_runes_state"
 );
-compiler_case!(seq_each_member, "bind_this/seq_each_member");
+compiler_case!(
+    seq_each_member,
+    "bind_this/seq_each_member",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     seq_snippet_param_member,
     "bind_this/seq_snippet_param_member"

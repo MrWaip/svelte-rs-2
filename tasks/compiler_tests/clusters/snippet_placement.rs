@@ -5,7 +5,11 @@ compiler_case!(
     "snippet_placement/element_render_sibling"
 );
 compiler_case!(element_each_render, "snippet_placement/element_each_render");
-compiler_case!(block_const_order, "snippet_placement/block_const_order");
+compiler_case!(
+    block_const_order,
+    "snippet_placement/block_const_order",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(element_bind_this, "snippet_placement/element_bind_this");
 compiler_case!(
     guard_toplevel_hoistable,

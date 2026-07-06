@@ -4,10 +4,15 @@ compiler_case!(
     effect_tracking_in_text,
     "template_runes/effect_tracking_in_text"
 );
-compiler_case!(effect_in_each_iife, "template_runes/effect_in_each_iife");
+compiler_case!(
+    effect_in_each_iife,
+    "template_runes/effect_in_each_iife",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     effect_pre_in_each_iife,
-    "template_runes/effect_pre_in_each_iife"
+    "template_runes/effect_pre_in_each_iife",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     effect_root_in_text_iife,

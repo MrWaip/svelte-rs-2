@@ -19,39 +19,56 @@ compiler_case!(text_only_guard, "special_element_order/text_only_guard");
 
 compiler_case!(
     debug_before_element,
-    "special_element_order/debug_before_element"
+    "special_element_order/debug_before_element",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     debug_bare_before_element,
-    "special_element_order/debug_bare_before_element"
+    "special_element_order/debug_bare_before_element",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(debug_before_text, "special_element_order/debug_before_text");
+compiler_case!(
+    debug_before_text,
+    "special_element_order/debug_before_text",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     debug_before_multi,
-    "special_element_order/debug_before_multi"
+    "special_element_order/debug_before_multi",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     debug_after_element,
-    "special_element_order/debug_after_element"
+    "special_element_order/debug_after_element",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     debug_before_element_legacy,
-    "special_element_order/debug_before_element_legacy"
+    "special_element_order/debug_before_element_legacy",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     debug_in_if_before_element,
-    "special_element_order/debug_in_if_before_element"
+    "special_element_order/debug_in_if_before_element",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     debug_in_each_before_element,
-    "special_element_order/debug_in_each_before_element"
+    "special_element_order/debug_in_each_before_element",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     debug_in_snippet_before_element,
-    "special_element_order/debug_in_snippet_before_element"
+    "special_element_order/debug_in_snippet_before_element",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     debug_before_component_guard,
-    "special_element_order/debug_before_component_guard"
+    "special_element_order/debug_before_component_guard",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(debug_only_guard, "special_element_order/debug_only_guard");
+compiler_case!(
+    debug_only_guard,
+    "special_element_order/debug_only_guard",
+    [prod, dev, ssr, ssr_dev]
+);

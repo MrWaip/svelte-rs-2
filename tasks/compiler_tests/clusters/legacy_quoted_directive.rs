@@ -32,14 +32,19 @@ compiler_case!(
 );
 compiler_case!(
     transition_quoted,
-    "legacy/quoted_directive/transition_quoted"
+    "legacy/quoted_directive/transition_quoted",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     on_quoted,
     "legacy/quoted_directive/on_quoted",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(animate_quoted, "legacy/quoted_directive/animate_quoted");
+compiler_case!(
+    animate_quoted,
+    "legacy/quoted_directive/animate_quoted",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(let_quoted, "legacy/quoted_directive/let_quoted");
 compiler_case!(
     style_quoted_expr,

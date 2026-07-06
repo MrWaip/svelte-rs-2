@@ -13,6 +13,8 @@ pub(crate) enum FragmentParent<'n> {
     Element(&'n Element),
     Component,
     Snippet,
+    EachBlock,
+    Block,
 }
 
 impl<'a> ServerCodegen<'a> {
@@ -46,7 +48,7 @@ impl<'a> ServerCodegen<'a> {
         let preserve_comments = self.analysis.script.preserve_comments;
 
         if emit_snippets {
-            self.emit_fragment_snippets(id)?;
+            self.emit_fragment_hoisted(id)?;
         }
 
         let fragment = component.store.fragment(id);
@@ -127,15 +129,15 @@ impl<'a> ServerCodegen<'a> {
                 return self.component_node(component, is_standalone);
             }
             Node::RenderTag(tag) => return self.render_tag(tag, is_standalone),
+            Node::IfBlock(block) => return self.if_block(block, preserve_whitespace),
+            Node::EachBlock(block) => return self.each_block(block, preserve_whitespace),
+            Node::KeyBlock(block) => return self.key_block(block, preserve_whitespace),
+            Node::HtmlTag(tag) => return self.html_tag(tag),
             Node::Text(_)
             | Node::SlotElementLegacy(_)
-            | Node::IfBlock(_)
-            | Node::EachBlock(_)
             | Node::SnippetBlock(_)
-            | Node::HtmlTag(_)
             | Node::ConstTag(_)
             | Node::DebugTag(_)
-            | Node::KeyBlock(_)
             | Node::SvelteHead(_)
             | Node::SvelteFragmentLegacy(_)
             | Node::SvelteComponentLegacy(_)
@@ -151,22 +153,35 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn emit_fragment_snippets(&mut self, id: FragmentId) -> Result<()> {
-        let node_ids: Vec<NodeId> = self
-            .component
-            .store
-            .fragment(id)
-            .nodes
+    fn emit_fragment_hoisted(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+
+        let mut const_tags: Vec<(u32, NodeId)> = node_ids
             .iter()
             .copied()
-            .filter(|nid| matches!(self.component.store.get(*nid), Node::SnippetBlock(_)))
+            .filter_map(|nid| match self.analysis.block_semantics(nid) {
+                BlockSemantics::ConstTag(sem) => Some((sem.order_rank, nid)),
+                _ => None,
+            })
             .collect();
+        const_tags.sort_by_key(|(rank, _)| *rank);
+        for (_, nid) in const_tags {
+            self.const_tag(nid)?;
+        }
 
-        for node_id in node_ids {
-            let mut local = Vec::new();
-            self.route_snippet(node_id, &mut local)?;
-            for decl in local {
-                self.push_stmt(decl);
+        for &nid in &node_ids {
+            if matches!(self.component.store.get(nid), Node::SnippetBlock(_)) {
+                let mut local = Vec::new();
+                self.route_snippet(nid, &mut local)?;
+                for decl in local {
+                    self.push_stmt(decl);
+                }
+            }
+        }
+
+        for &nid in &node_ids {
+            if matches!(self.component.store.get(nid), Node::DebugTag(_)) {
+                self.debug_tag(nid)?;
             }
         }
         Ok(())
@@ -251,8 +266,11 @@ fn is_filtered_out(node: &Node, preserve_comments: bool) -> bool {
 
 fn is_text_first(parent: FragmentParent<'_>, window: &[&Node]) -> bool {
     match parent {
-        FragmentParent::Root | FragmentParent::Component | FragmentParent::Snippet => {}
-        FragmentParent::Element(_) => return false,
+        FragmentParent::Root
+        | FragmentParent::Component
+        | FragmentParent::Snippet
+        | FragmentParent::EachBlock => {}
+        FragmentParent::Element(_) | FragmentParent::Block => return false,
     }
     let Some(first) = window.first() else {
         return false;

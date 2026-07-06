@@ -20,8 +20,8 @@ compiler_case!(
 );
 compiler_case!(await_value, "events/await_value");
 compiler_case!(await_error, "events/await_error");
-compiler_case!(each_item, "events/each_item");
-compiler_case!(each_index, "events/each_index");
+compiler_case!(each_item, "events/each_item", [prod, dev, ssr, ssr_dev]);
+compiler_case!(each_index, "events/each_index", [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     shorthand_event_delegatable,
@@ -48,7 +48,8 @@ compiler_case!(
 );
 compiler_case!(
     forward_bare_on_nested_if,
-    "events/forward_bare_on_nested_if"
+    "events/forward_bare_on_nested_if",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     forward_bare_on_handler_present,

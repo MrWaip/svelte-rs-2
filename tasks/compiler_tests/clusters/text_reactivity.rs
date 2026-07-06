@@ -45,7 +45,8 @@ compiler_case!(
 );
 compiler_case!(
     each_sequence_reactive_read,
-    "text_reactivity/each_sequence_reactive_read"
+    "text_reactivity/each_sequence_reactive_read",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_static_sequence,

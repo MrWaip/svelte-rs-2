@@ -25,6 +25,11 @@ impl<'a> ServerCodegen<'a> {
         self.items.push(TemplateItem::Stmt(stmt));
     }
 
+    pub(crate) fn renderer_push_string_stmt(&self, literal: &str) -> Statement<'a> {
+        self.b
+            .call_stmt("$$renderer.push", [Arg::Str(literal.to_string())])
+    }
+
     pub(crate) fn push_expr(&mut self, expression: Expression<'a>) {
         self.items.push(TemplateItem::Expr(expression));
     }

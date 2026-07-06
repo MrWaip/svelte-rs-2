@@ -10,4 +10,8 @@ compiler_case!(
     "template_element/element_child",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(html_tag, "template_element/html_tag");
+compiler_case!(
+    html_tag,
+    "template_element/html_tag",
+    [prod, dev, ssr, ssr_dev]
+);

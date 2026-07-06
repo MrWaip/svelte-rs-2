@@ -7,7 +7,8 @@ compiler_case!(
 );
 compiler_case!(
     leading_in_each_body,
-    "text_node_marker/leading_in_each_body"
+    "text_node_marker/leading_in_each_body",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     inside_element_guard,

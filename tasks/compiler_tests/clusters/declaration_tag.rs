@@ -51,12 +51,18 @@ compiler_case!(
     ignore = "declaration-tag: unimplemented async (svelte 5.56.4)"
 );
 
-compiler_case!(atconst_guard, "declaration_tag/atconst_guard");
+compiler_case!(
+    atconst_guard,
+    "declaration_tag/atconst_guard",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     identifier_prefix_guard,
-    "declaration_tag/identifier_prefix_guard"
+    "declaration_tag/identifier_prefix_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     identifier_type_keyword_guard,
-    "declaration_tag/identifier_type_keyword_guard"
+    "declaration_tag/identifier_type_keyword_guard",
+    [prod, dev, ssr, ssr_dev]
 );

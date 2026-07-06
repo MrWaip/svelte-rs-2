@@ -55,7 +55,8 @@ compiler_case!(
 );
 compiler_case!(
     runes_sub_state_reassign_unsub,
-    "stores/runes_sub/state_reassign_unsub"
+    "stores/runes_sub/state_reassign_unsub",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     runes_sub_plain_import_guard,
