@@ -1,7 +1,7 @@
 # PRD: AttributeSemantics (корневой)
 
 label: attribute-semantics
-topics: attribute, directive, bind/BindDirective, on/use/class/style/transition/animate, spread/rest, ComponentBind, prop passing
+topics: attribute, directive, bind/BindDirective, on/use/class/style/transition/animate, attach, spread/rest, ComponentBind, prop passing
 
 Корневой PRD для модуля `svelte_analyze::attribute_semantics` (3.A.4).
 Дочерний по слою: `analyze.md`. Зависит от `ComponentSemantics`, `ReactivitySemantics` (фаза 1), `ComponentScoping`, `ExpressionSemantics`.
@@ -26,6 +26,7 @@ topics: attribute, directive, bind/BindDirective, on/use/class/style/transition/
 - `BoundaryProp(BoundaryPropSemantics)` — prop на `<svelte:boundary>`; несёт `Volatility` значения, не emit-форму.
 - `HtmlConcat(HtmlConcatSemantics)` — concat-атрибут на обычном элементе.
 - `StyleDirectives(StyleDirectivesSemantics)` — агрегат style-директив элемента
+- `RuntimeBehavior` — директива-поведение без проекции в разметку: `use:`, `transition:`/`in:`/`out:`, `animate:`, element-level `{@attach}`.
 - `NonSpecial` — default.
 
 Вариант несёт доменный вердикт; кодген ветвится на варианте и выбирает форму, не комбинирует. Ряд существующих вариантов пока несёт выбранную emit-форму (`EventEmit`, `ComponentSpreadEmit`, `ComponentAttachEmit`, `ConcatPartEmit`, `ComponentPropMemo`, …) — это долг по §«Codegen-агностичность анализа», не норма.

@@ -1,10 +1,10 @@
-# PRD: Кодген (корневой)
+# PRD: Кодген (корневой, client)
 
 label: codegen
-topics: codegen, emit, dumb codegen, JS printing, template/from_html, hoisted, runtime calls $.*, fragment/blocks/attributes visitors
+topics: codegen, client codegen, emit, dumb codegen, JS printing, template/from_html, hoisted, runtime calls $.*, fragment/blocks/attributes visitors
 
-Корневой PRD для слоя кодгена (`svelte_codegen_client`).
-Догма: **dumb codegen** — один запрос к анализу на один use case → одно однозначное решение эмита.
+Корневой PRD для слоя клиентского кодгена (`svelte_codegen_client`) — backend'а `generate: client`. Серверный аналог — `codegen-server.md`.
+Принцип: **dumb codegen** — один запрос к анализу на один use case → одно однозначное решение эмита.
 
 ## Назначение
 
@@ -40,7 +40,7 @@ topics: codegen, emit, dumb codegen, JS printing, template/from_html, hoisted, r
 
 ## Связь с другими документами
 
-- `context.md` §«Догмы», §«Hoisting», §«Эмит-форма семантики», §«Анализ в кодгене».
+- `context.md` §«Принципы», §«Hoisting», §«Эмит-форма семантики», §«Анализ в кодгене».
 - `block-semantics.md`, `attribute-semantics.md`, `expression-semantics.md` — поставщики готовых emit-решений.
 - `transform.md` — даёт трансформированные `oxc::Program`-ы.
 - `supporting-crates.md` — `svelte_ast_builder`, `svelte_emit_builders`, `svelte_transform_css`.

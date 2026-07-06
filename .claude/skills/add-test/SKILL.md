@@ -9,26 +9,33 @@ Single sanctioned path for an e2e output-comparison case. Adding such a test by 
 creating the dir, writing `case.svelte`, or registering `compiler_case!` directly — is
 not allowed; go through these steps.
 
-Case dir: `cluster_cases/<cluster>/<case>/`. Holds `case.svelte`, generated
-`case-svelte.js` + `case-svelte.dev.js` (expected) and `case-rust.js` + `case-rust.dev.js`
-(actual, never hand-edit), optional `config.json`.
+Case dir: `cluster_cases/<cluster>/<case>/`. Holds `case.svelte`, optional `config.json`,
+and per **variant** an expected (`case-svelte.*`) + actual (`case-rust.*`, never hand-edit)
+snapshot pair — client (`.js` / `.dev.js`) and server (`.server.js` / `.server.dev.js`).
 
-## Four snapshots: expected vs actual × prod vs dev — never conflate
+## Eight snapshots: expected vs actual × client/server × prod/dev — never conflate
 
-Each case pins **both** compile modes, so it has four snapshot files. The #1 mistake is
-conflating expected (reference compiler) with actual (ours):
+Each case pins **four variants** — client (`prod` / `dev`) and server (`ssr` / `ssr_dev`) —
+so eight snapshot files. The #1 mistake is conflating expected (reference compiler) with
+actual (ours):
 
-| File | Mode | Written by | When |
+| File | Variant | Written by | When |
 |---|---|---|---|
-| `case-svelte.js` (expected) | prod | `just generate` | step 5 |
-| `case-svelte.dev.js` (expected) | dev | `just generate` | step 5 |
-| `case-rust.js` (actual) | prod | the `<fn>::prod` test run (`assert_compiler_prod`, `harness.rs`) | step 7 |
-| `case-rust.dev.js` (actual) | dev | the `<fn>::dev` test run (`assert_compiler_dev`, `harness.rs`) | step 7 |
+| `case-svelte.js` (expected) | client prod | `just generate` | step 5 |
+| `case-svelte.dev.js` (expected) | client dev | `just generate` | step 5 |
+| `case-svelte.server.js` (expected) | server prod | `just generate` | step 5 |
+| `case-svelte.server.dev.js` (expected) | server dev | `just generate` | step 5 |
+| `case-rust.js` (actual) | client prod | `<fn>::prod` (`assert_compiler_prod`, `harness.rs`) | step 7 |
+| `case-rust.dev.js` (actual) | client dev | `<fn>::dev` (`assert_compiler_dev`) | step 7 |
+| `case-rust.server.js` (actual) | server prod | `<fn>::ssr` (`assert_compiler_ssr`) | step 7 |
+| `case-rust.server.dev.js` (actual) | server dev | `<fn>::ssr_dev` (`assert_compiler_ssr_dev`) | step 7 |
 
-`compiler_case!(<fn>, "<path>")` expands to a module with **two** tests — `<fn>::prod` and
-`<fn>::dev`. Each `case-rust*.js` is materialized only once its test **runs**: `just
-generate` never writes them, and an unregistered or `#[ignore]`d test never runs — until
-then there is no actual snapshot to compare. This drives steps 5–7 and Red vs ignore below.
+`compiler_case!(<fn>, "<path>")` expands to **four** tests — `<fn>::prod` and `<fn>::dev`
+(client, active) plus `<fn>::ssr` and `<fn>::ssr_dev` (server, `#[ignore]`d by default:
+server parity is not yet reached project-wide). Each `case-rust*.js` is materialized only
+once its test **runs**: `just generate` never writes them, and an unregistered or
+`#[ignore]`d test never runs — so the two server actuals stay absent until you run them with
+`--include-ignored`. This drives steps 5–7 and Red vs ignore below.
 
 ## Steps
 
@@ -48,8 +55,8 @@ then there is no actual snapshot to compare. This drives steps 5–7 and Red vs 
    the feature. Keys (`src/cases.rs`): `runes`, `dev`, `name`, `filename`, `namespace`,
    `customElement`, `rootDir`, `preserveComments`, `preserveWhitespace`, `experimental.async`.
 
-5. `just generate` — writes the reference snapshots `case-svelte.js` + `case-svelte.dev.js`
-   only.
+5. `just generate` — writes the four **expected** reference snapshots only (`case-svelte.js`,
+   `.dev.js`, `.server.js`, `.server.dev.js`).
 
 6. **Register** in `clusters/<cluster>.rs` — the step `just generate` does NOT do:
    `compiler_case!(<fn_name>, "<cluster>/<case>");`. Divergence you are NOT fixing now → see
@@ -57,9 +64,10 @@ then there is no actual snapshot to compare. This drives steps 5–7 and Red vs 
    New cluster → create `clusters/<cluster>.rs` with `use super::*;` and add
    `#[path = "clusters/<cluster>.rs"] mod <cluster>;` to `test_clusters.rs`.
 
-7. `just test-cluster <fn_name>` — runs both `::prod` and `::dev` (incl. `#[ignore]`, via
-   `--include-ignored`), writing `case-rust.js` + `case-rust.dev.js`. Red is normal
-   test-first. Never edit snapshots to pass.
+7. `just test-cluster <fn_name>` — runs all four variants (incl. `#[ignore]`, via
+   `--include-ignored`), writing the `case-rust*.js` actuals. For a client-only case only
+   `::prod` + `::dev` gate — the server variants stay ignored/red (see Red vs ignore). Red is
+   normal test-first. Never edit snapshots to pass.
 
 ## Naming
 
@@ -87,13 +95,18 @@ An `#[ignore]`d test never runs, so it never materializes its `case-rust*.js` an
 checks parity (per the table above). The trap: `just test-compiler` runs `cargo nextest
 run`, which **skips** `#[ignore]`d tests by default, so ignored cases don't execute there;
 only `just test-cluster <fn>` / `just test-case <fn>` (plain `cargo test … --
---include-ignored`) run them. The `<fn>` filter is a substring, so it matches both
-`<fn>::prod` and `<fn>::dev`.
+--include-ignored`) run them. The `<fn>` filter is a substring, so it matches all of
+`<fn>::prod` / `::dev` / `::ssr` / `::ssr_dev`.
 
 - **Test-first, fixing now** → register WITHOUT `ignore`. The case is red; iterate with
   `just test-cluster <fn>` (includes ignored, materializes `case-rust.js` +
-  `case-rust.dev.js`). When both modes are green it joins the suite.
+  `case-rust.dev.js`). When both client modes are green it joins the suite.
 - **Both modes diverge, not fixing now** → `ignore = "<reason>"` — ignores `::prod` and
   `::dev` so the green suite (`just test-compiler`) stays green until you remove `ignore`.
 - **Only dev diverges** → `[prod, dev_todo]` keeps `::prod` in the suite and ignores just
   `::dev` (or `[prod]` to drop dev entirely), so prod parity is enforced meanwhile.
+- **Server (SSR) is default-ignored** → the default expansion ships `::ssr` / `::ssr_dev` as
+  `#[ignore]`d, so they never gate `just test-compiler`; under `--include-ignored` they run
+  and stay red until server codegen supports the construct — expected for a client-only case.
+  When you port SSR, flip to `[prod, dev, ssr, ssr_dev]` to enforce server parity (swap in
+  `ssr_dev_todo` if only server-prod is reached).

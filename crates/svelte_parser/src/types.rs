@@ -151,6 +151,10 @@ impl<'a> JsAst<'a> {
         self.exprs.iter().filter_map(Option::as_ref)
     }
 
+    pub fn iter_exprs_mut(&mut self) -> impl Iterator<Item = &mut Expression<'a>> {
+        self.exprs.iter_mut().filter_map(Option::as_mut)
+    }
+
     pub fn iter_stmts(&self) -> impl Iterator<Item = &Statement<'a>> {
         self.stmts.iter().filter_map(Option::as_ref)
     }

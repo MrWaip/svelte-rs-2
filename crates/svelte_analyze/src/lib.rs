@@ -7,14 +7,14 @@ pub mod reactivity_semantics;
 pub mod value_evaluation;
 
 pub use attribute_semantics::{
-    AttributeSemantics, AttributeSemanticsStore, BoundaryPropSemantics, ComponentAttachEmit,
-    ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
-    ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
-    ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
-    DefaultAttrKind, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
-    EventEmit, EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
-    SpecialValueKind, SpecialValueSemantics, StyleDirectivesSemantics,
-    SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
+    AttributeSemantics, AttributeSemanticsStore, BoundaryPropSemantics, ClassSemantics,
+    ComponentAttachEmit, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
+    ComponentBindTarget, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
+    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
+    ConcatPartEmit, DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics,
+    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, HandlerEmit,
+    HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind, SpecialValueSemantics,
+    StyleSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 pub use expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, KnownValue,
@@ -76,8 +76,9 @@ pub const PROPS_IS_BINDABLE: u32 = PropsFlags::BINDABLE.bits();
 pub const PROPS_IS_LAZY_INITIAL: u32 = PropsFlags::LAZY_INITIAL.bits();
 pub use utils::{IdentGen, IdentGenSnapshot};
 pub use utils::{
-    concat_single_dynamic_expr, event_attribute, expression_calls_or_awaits, is_capture_event,
-    is_delegatable_event, is_let_or_var, is_passive_event, is_regular_dom_property,
+    collapse_attribute_whitespace, concat_single_dynamic_expr, emit_html_attribute_name,
+    event_attribute, expression_calls_or_awaits, is_capture_event, is_delegatable_event,
+    is_dom_boolean_attribute, is_let_or_var, is_passive_event, is_regular_dom_property,
     is_simple_expression, is_simple_identifier, normalize_regular_attribute_name,
     property_key_static_name, strip_capture_event,
 };

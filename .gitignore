@@ -34,6 +34,8 @@ dev-debug.log
 *.njsproj
 *.sln
 *.sw?
+**/case-rust.server.dev.js
+**/case-rust.server.js
 **/case-rust.js
 **/case-rust.dev.js
 **/case-rust.css

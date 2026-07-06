@@ -12,14 +12,14 @@ Find the one place in the Original that caused a divergence, discover everything
 ## Read first (every time — don't skip because it's "already in session")
 
 - `docs/context.md` §«Language» — the real project vocabulary (Original, parser / analyze /
-  transform / codegen) and the layer dogmas (smart analyzer, dumb codegen).
+  transform / codegen) and the layer principles (smart analyzer, dumb codegen).
 - If the area belongs to a cluster with a root PRD (CLAUDE.md «Architectural root PRDs»),
   read it — its invariants may mean the fix is bigger than a local tweak.
 
 ## When not to use
 
 - One-off parity check on a scratch component, no persistent tests wanted → `/quick-check`.
-- Only the list of what mismatches, with no cluster to pin yet → `just sweep-run <dir> --dry-run`.
+- Only the list of what mismatches, with no cluster to pin yet → `just sweep-run <dir> --dry-run` (`--ssr` for server output).
 - A brand-new feature test with no Original divergence to chase → `/add-test` or
   `/add-diagnostic-test`.
 
@@ -31,18 +31,24 @@ Find the one place in the Original that caused a divergence, discover everything
    reference — the wrong JS, the panic, the missing/extra diagnostic, the CSS.
    - one file or inline source → `/quick-check`
    - only a directory in hand → `just sweep-run <dir>`, then `/quick-check` the file it flags.
+   - a **server (SSR) divergence** → hold the generate axis: `just sweep-run <dir> --ssr`,
+     then `/quick-check <file> --generate=server`.
    - **several divergences at once** (a sweep log, a directory) → before digging, pick ONE
      cluster: scan for a shared root across the mismatches, then take the one that covers the
      most. That file is your input.
 
    Build everything from the input FILE, not from the sample's name.
-   **Done when** you have both outputs in front of you and can say exactly what differs.
+   **Done when** you have both outputs in front of you in the divergence's generate mode and
+   can say exactly what differs.
 
 2. **Follow the divergence to the Original.** Find the ONE decision in `original/compiler/`
    whose logic produced the difference. The branch is not always an `if` / `switch` / early
    return — often it is a **strategy**: which function, visitor, or lambda gets selected,
    wrapped, nested, or substituted for this input is itself the branch. Read how that decision
    is composed, not just the line that fired.
+   For a **server (SSR) divergence** the deciding code lives in the Original's *server*
+   transform (`phases/3-transform/server/`), a visitor set wholly separate from the client one
+   — follow it there, not into the client transform.
    **Done when** you can paste the deciding code (`file:line` + the real body) and name the
    finite set of branches it chooses between — explicit conditionals or swapped strategies
    alike. Never conclude from a name or from memory.
@@ -61,7 +67,10 @@ Find the one place in the Original that caused a divergence, discover everything
    - compiler-output cases → `/add-test`
    - diagnostic cases → `/add-diagnostic-test`
 
-   Run each case in the same mode/options as the divergence, or its red/green means nothing.
+   Run each case in the same mode/options — including the **generate axis** (client vs
+   server) — as the divergence, or its red/green means nothing. A server divergence's red
+   lives in the `::ssr` / `::ssr_dev` variant, which `/add-test` ships `#[ignore]`d by default
+   — activate it there, or the red never shows and you misread it as "nothing to fix".
    Validate every green before trusting it: both sides non-empty, and the case actually
    exercises its branch — an input the compiler trivializes (a const-folded value, a
    statically-known condition, a binding that never updates) matches for the wrong reason.

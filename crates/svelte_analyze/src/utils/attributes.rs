@@ -1,4 +1,77 @@
+use std::borrow::Cow;
+
 use svelte_ast::{Attribute, ConcatPart, ConcatenationAttribute, ExprRef};
+
+pub fn is_dom_boolean_attribute(name: &str) -> bool {
+    matches!(
+        name,
+        "allowfullscreen"
+            | "async"
+            | "autofocus"
+            | "autoplay"
+            | "checked"
+            | "controls"
+            | "default"
+            | "disabled"
+            | "formnovalidate"
+            | "hidden"
+            | "indeterminate"
+            | "inert"
+            | "ismap"
+            | "loop"
+            | "multiple"
+            | "muted"
+            | "nomodule"
+            | "novalidate"
+            | "open"
+            | "playsinline"
+            | "readonly"
+            | "required"
+            | "reversed"
+            | "seamless"
+            | "selected"
+            | "webkitdirectory"
+            | "defer"
+            | "disablepictureinpicture"
+            | "disableremoteplayback"
+    )
+}
+
+pub fn emit_html_attribute_name(name: &str, namespaced: bool) -> Cow<'_, str> {
+    if namespaced || !name.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        Cow::Borrowed(name)
+    } else {
+        Cow::Owned(name.to_ascii_lowercase())
+    }
+}
+
+pub fn collapse_attribute_whitespace(value: &str) -> Cow<'_, str> {
+    let mut prev_ws = false;
+    let already_normalized = value.chars().all(|ch| {
+        let ws = ch.is_whitespace();
+        let ok = !ws || (ch == ' ' && !prev_ws);
+        prev_ws = ws;
+        ok
+    });
+    if already_normalized {
+        return Cow::Borrowed(value);
+    }
+
+    let mut out = String::with_capacity(value.len());
+    let mut in_ws = false;
+    for ch in value.chars() {
+        if ch.is_whitespace() {
+            if !in_ws {
+                out.push(' ');
+                in_ws = true;
+            }
+        } else {
+            out.push(ch);
+            in_ws = false;
+        }
+    }
+    Cow::Owned(out)
+}
 
 pub fn normalize_regular_attribute_name(name: &str, html_attr_namespace: bool) -> String {
     if !html_attr_namespace {

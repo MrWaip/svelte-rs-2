@@ -22,7 +22,7 @@ use svelte_analyze::{
 use svelte_ast::Node;
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::{JsOutput, SourcemapKind};
-use svelte_transform::{RestExcludeKey, TransformData};
+use svelte_transform_client::{RestExcludeKey, TransformData};
 
 use context::Ctx;
 use svelte_analyze::types::data::binding_group_name;

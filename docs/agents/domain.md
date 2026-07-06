@@ -6,7 +6,7 @@ This is a **single-context** repo, but its domain docs do not use the default `C
 
 ## Before exploring, read these
 
-- **`docs/context.md`** — the single entry point: architecture overview, dogmas, cross-cutting conventions, and the domain glossary (ubiquitous language). This plays the role of `CONTEXT.md`. Read it first.
+- **`docs/context.md`** — the single entry point: architecture overview, principles, cross-cutting conventions, and the domain glossary (ubiquitous language). This plays the role of `CONTEXT.md`. Read it first.
 - **`docs/map.md`** — codebase map: crates, entry points, files holding the main structures.
 - **Per-layer root PRDs in `docs/`** — `ast`, `parser`, `analyze`, `component-semantics`, `reactivity-semantics` (child `state-rune`), `expression-semantics`, `attribute-semantics`, `block-semantics`, `transform`, `codegen`, `compiler`, `supporting-crates`. Read the ones that touch the area you're about to work in. Their invariants are hard constraints.
 - **`docs/designs/`** — design PRDs (created via `/design`). Read only if scope overlaps.
@@ -19,7 +19,7 @@ If any of these don't exist, **proceed silently**. Don't flag their absence; don
 ```
 /
 ├── docs/
-│   ├── context.md        ← canonical domain doc (CONTEXT.md role): overview, dogmas, glossary
+│   ├── context.md        ← canonical domain doc (CONTEXT.md role): overview, principles, glossary
 │   ├── map.md            ← codebase map
 │   ├── ast.md  parser.md  analyze.md  ...   ← per-layer root PRDs (invariants)
 │   ├── designs/          ← design PRDs (read only if scope overlaps)

@@ -6,10 +6,10 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{AnalysisData, CodegenView, IdentGen, JsAst, RuntimeInfo};
 use svelte_ast::{
-    AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId, RenderTag,
-    SvelteBoundary, SvelteElement,
+    Attribute, AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
+    RenderTag, SvelteBoundary, SvelteElement,
 };
-use svelte_transform::TransformData;
+use svelte_transform_client::TransformData;
 
 use svelte_ast_builder::Builder;
 
@@ -30,6 +30,9 @@ impl<'a> CodegenQuery<'a> {
 
     pub fn element(&self, id: NodeId) -> &'a Element {
         self.component.store.element(id)
+    }
+    pub fn node_attributes(&self, id: NodeId) -> &'a [Attribute] {
+        self.component.store.get(id).attributes()
     }
     pub fn if_block(&self, id: NodeId) -> &'a IfBlock {
         self.component.store.if_block(id)
@@ -207,6 +210,9 @@ impl<'a> Ctx<'a> {
     pub fn element(&self, id: NodeId) -> &'a Element {
         self.query.element(id)
     }
+    pub fn node_attributes(&self, id: NodeId) -> &'a [svelte_ast::Attribute] {
+        self.query.node_attributes(id)
+    }
     pub fn render_tag(&self, id: NodeId) -> &'a RenderTag {
         self.query.render_tag(id)
     }
@@ -255,26 +261,75 @@ impl<'a> Ctx<'a> {
     pub fn has_attribute(&self, id: NodeId, name: &str) -> bool {
         self.query.analysis.has_attribute(id, name)
     }
+    pub fn class_semantics(&self, id: NodeId) -> Option<&svelte_analyze::ClassSemantics> {
+        self.node_attributes(id).iter().find_map(|attr| {
+            match self.query.analysis.attributes.get(attr.id()) {
+                svelte_analyze::AttributeSemantics::Class(class) => Some(class),
+                _ => None,
+            }
+        })
+    }
+    pub fn style_semantics(&self, id: NodeId) -> Option<&svelte_analyze::StyleSemantics> {
+        self.node_attributes(id).iter().find_map(|attr| {
+            match self.query.analysis.attributes.get(attr.id()) {
+                svelte_analyze::AttributeSemantics::Style(style) => Some(style),
+                _ => None,
+            }
+        })
+    }
     pub fn has_class_directives(&self, id: NodeId) -> bool {
-        self.query.view.has_class_directives(id)
+        self.class_semantics(id)
+            .is_some_and(|c| !c.directives.is_empty())
     }
     pub fn has_class_attribute(&self, id: NodeId) -> bool {
-        self.query.view.has_class_attribute(id)
+        self.class_semantics(id).is_some_and(|c| c.attr.is_some())
+    }
+    pub fn class_is_directives_only(&self, id: NodeId) -> bool {
+        self.class_semantics(id)
+            .is_some_and(|c| c.attr.is_none() && c.static_attr.is_none())
+    }
+    pub fn style_is_directives_only(&self, id: NodeId) -> bool {
+        self.style_semantics(id)
+            .is_some_and(|s| s.attr.is_none() && s.static_attr.is_none())
     }
     pub fn needs_clsx(&self, id: NodeId) -> bool {
-        self.query.view.needs_clsx(id)
+        self.class_semantics(id).is_some_and(|c| c.needs_clsx)
+    }
+    pub fn class_directive_info(
+        &self,
+        id: NodeId,
+    ) -> Option<&[svelte_analyze::ClassDirectiveInfo]> {
+        self.class_semantics(id).and_then(|c| {
+            if c.directives.is_empty() {
+                None
+            } else {
+                Some(c.directives.as_slice())
+            }
+        })
+    }
+    pub fn class_directives_volatility(&self, id: NodeId) -> svelte_analyze::Volatility {
+        self.class_semantics(id)
+            .map(|c| c.directives_volatility)
+            .unwrap_or(svelte_analyze::Volatility::Static)
+    }
+    pub fn style_directives_volatility(&self, id: NodeId) -> svelte_analyze::Volatility {
+        self.style_semantics(id)
+            .map(|s| s.directives_volatility)
+            .unwrap_or(svelte_analyze::Volatility::Static)
     }
     pub fn has_style_directives(&self, id: NodeId) -> bool {
-        self.query.view.has_style_directives(id)
+        self.style_semantics(id)
+            .is_some_and(|s| !s.directives.is_empty())
     }
     pub fn needs_class_base(&self, id: NodeId) -> bool {
-        self.query.view.needs_class_base(id)
+        self.class_semantics(id).is_some_and(|c| c.needs_base)
     }
     pub fn needs_style_base(&self, id: NodeId) -> bool {
-        self.query.view.needs_style_base(id)
+        self.style_semantics(id).is_some_and(|s| s.needs_base)
     }
     pub fn style_directives(&self, id: NodeId) -> &[svelte_ast::StyleDirective] {
-        self.query.view.style_directives(id)
+        self.style_semantics(id)
+            .map_or(&[], |s| s.directives.as_slice())
     }
     pub fn needs_input_defaults(&self, id: NodeId) -> bool {
         self.query.view.needs_input_defaults(id)
@@ -297,10 +352,12 @@ impl<'a> Ctx<'a> {
         self.query.view.needs_var(id)
     }
     pub fn static_class(&self, id: NodeId) -> Option<&str> {
-        self.query.view.static_class(id)
+        self.class_semantics(id)
+            .and_then(|c| c.static_base.as_deref())
     }
     pub fn static_style(&self, id: NodeId) -> Option<&str> {
-        self.query.view.static_style(id)
+        self.style_semantics(id)
+            .and_then(|s| s.static_base.as_deref())
     }
     pub fn is_bound_contenteditable(&self, id: NodeId) -> bool {
         self.query.view.is_bound_contenteditable(id)
@@ -309,10 +366,12 @@ impl<'a> Ctx<'a> {
         self.query.view.has_use_directive(id)
     }
     pub fn class_state_volatility(&self, id: NodeId) -> svelte_analyze::Volatility {
-        self.query.view.class_state_volatility(id)
+        self.class_semantics(id)
+            .map(|c| c.state_volatility)
+            .unwrap_or(svelte_analyze::Volatility::Static)
     }
     pub fn class_attr_id(&self, id: NodeId) -> Option<NodeId> {
-        self.query.view.class_attr_id(id)
+        self.class_semantics(id).and_then(|c| c.attr)
     }
     pub fn is_expression_shorthand(&self, id: NodeId) -> bool {
         self.query.view.is_expression_shorthand(id)

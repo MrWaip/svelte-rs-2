@@ -53,10 +53,15 @@ for (const file of files) {
   const moduleSource = isTsModule ? stripTsToJs(text) : text;
   const moduleFilename = isTsModule ? 'case.svelte.ts' : 'case.svelte.js';
 
-  const compileCell = (dev) =>
+  const compileCell = (dev, generate) =>
     isModule
-      ? compileModule(moduleSource, { filename: moduleFilename, ...caseConfig, dev })
-      : compile(text, { ...compileConfig, dev });
+      ? compileModule(moduleSource, {
+          filename: moduleFilename,
+          ...caseConfig,
+          dev,
+          ...(generate ? { generate } : {}),
+        })
+      : compile(text, { ...compileConfig, dev, ...(generate ? { generate } : {}) });
 
   if (quickCheckOverride) {
     const dev = compileConfig.dev === true;
@@ -71,11 +76,21 @@ for (const file of files) {
   const dev = compileCell(true);
   let js = prod.js.code;
   let jsDev = dev.js.code;
+  let jsServer = null;
+  let jsServerDev = null;
+  try {
+    jsServer = compileCell(false, "server").js.code;
+  } catch {}
+  try {
+    jsServerDev = compileCell(true, "server").js.code;
+  } catch {}
   if (isModule) {
     js = stripVersionComment(js);
     jsDev = stripVersionComment(jsDev);
+    if (jsServer) jsServer = stripVersionComment(jsServer);
+    if (jsServerDev) jsServerDev = stripVersionComment(jsServerDev);
   }
-  results[file] = { js, jsDev, css: prod.css?.code ?? null };
+  results[file] = { js, jsDev, jsServer, jsServerDev, css: prod.css?.code ?? null };
 }
 
 function stripVersionComment(code) {

@@ -4,7 +4,7 @@ use oxc_ast::ast::{Program, Statement};
 use svelte_analyze::{AnalysisData, ComponentScoping, IdentGen};
 
 use svelte_ast_builder::Builder;
-use svelte_transform::{IgnoreQuery, RestExcludes, transform_script};
+use svelte_transform_client::{IgnoreQuery, RestExcludes, transform_script};
 
 use crate::context::Ctx;
 

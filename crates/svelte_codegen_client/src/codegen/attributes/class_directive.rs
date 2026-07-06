@@ -121,7 +121,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
         dir_obj: Expression<'a>,
     ) -> Expression<'a> {
-        let Some(dirs) = self.ctx.query.view.class_directive_info(owner_id) else {
+        let Some(dirs) = self.ctx.class_directive_info(owner_id) else {
             return dir_obj;
         };
         let dir_ids: Vec<NodeId> = dirs.iter().map(|cd| cd.id).collect();
@@ -151,8 +151,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         class_attr_id: NodeId,
         memo: &mut TemplateMemoState<'a>,
     ) -> Result<Expression<'a>> {
-        let el = self.ctx.element(owner_id);
-        let attributes = el.attributes.clone();
+        let attributes = self.ctx.node_attributes(owner_id).to_vec();
 
         let Some(attr) = self
             .ctx
@@ -171,7 +170,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let _ = ea;
                 let data = self.ctx.expression_data(class_attr_id).cloned();
                 expr = coarse_wrap(self.ctx, expr, data.as_ref());
-                if self.ctx.needs_clsx(class_attr_id) {
+                if self.ctx.needs_clsx(owner_id) {
                     expr = self.ctx.b.call_expr("$.clsx", [Arg::Expr(expr)]);
                 }
                 let class_value = match data.as_ref().map(|d| d.volatility) {
@@ -193,7 +192,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 };
                 Ok(class_value)
             }
-            Attribute::ConcatenationAttribute(a) => self.build_html_concat_for_class(a, memo),
+            Attribute::ConcatenationAttribute(a) => {
+                self.build_html_concat_for_class(owner_id, a, memo)
+            }
             _ => CodegenError::unexpected_node(
                 class_attr_id,
                 "class_attr_id must reference ExpressionAttribute or ConcatenationAttribute",
@@ -203,16 +204,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn build_html_concat_for_class(
         &mut self,
+        owner_id: NodeId,
         attr: &svelte_ast::ConcatenationAttribute,
         memo: &mut TemplateMemoState<'a>,
     ) -> Result<Expression<'a>> {
-        use svelte_analyze::{AttributeSemantics, HtmlConcatSemantics};
-        let semantics: HtmlConcatSemantics = match self.ctx.query.analysis.attributes.get(attr.id) {
-            AttributeSemantics::HtmlConcat(s) => s.clone(),
-            _ => {
+        let semantics = match self
+            .ctx
+            .class_semantics(owner_id)
+            .and_then(|c| c.attr_concat.clone())
+        {
+            Some(semantics) => semantics,
+            None => {
                 return CodegenError::semantic_mismatch(
                     attr.id,
-                    "class ConcatenationAttribute requires HtmlConcat semantics",
+                    "class ConcatenationAttribute requires attr_concat semantics",
                 );
             }
         };
@@ -271,7 +276,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
     ) -> Result<Option<Expression<'a>>> {
         let dir_snapshot: Vec<(NodeId, String, bool, OxcNodeId)> =
-            match self.ctx.query.view.class_directive_info(owner_id) {
+            match self.ctx.class_directive_info(owner_id) {
                 Some(dirs) => dirs
                     .iter()
                     .map(|cd| (cd.id, cd.name.clone(), cd.has_expression, cd.expr_id))

@@ -26,5 +26,6 @@ compiler_case!(
 );
 compiler_case!(
     directive_member_name_transition_single_guard,
-    "directive_member_name/transition_single_guard"
+    "directive_member_name/transition_single_guard",
+    [prod, dev, ssr, ssr_dev]
 );
