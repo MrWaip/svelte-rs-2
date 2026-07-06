@@ -5,9 +5,7 @@ use svelte_component_semantics::{OriginKind, OxcNodeId as SemOxcNodeId, Referenc
 use super::*;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics};
 use crate::passes::fragment_topology::fragment_items;
-use crate::types::data::{
-    ComponentCssProp, ComponentPropKind, DeclaratorSemantics, LegacyDefaultSlot,
-};
+use crate::types::data::{ComponentPropKind, DeclaratorSemantics, LegacyDefaultSlot};
 
 #[derive(Clone, Copy)]
 pub struct CodegenView<'d, 'a> {
@@ -365,9 +363,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             .component_props(id)
             .iter()
             .any(has_bind_directive)
-    }
-    pub fn component_css_props(&self, id: NodeId) -> &[ComponentCssProp] {
-        self.data.elements.flags.component_css_props(id)
     }
     pub fn has_component_css_props(&self, id: NodeId) -> bool {
         self.data.elements.flags.has_component_css_props(id)

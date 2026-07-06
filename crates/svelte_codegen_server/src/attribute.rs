@@ -1,10 +1,11 @@
 use std::iter::empty;
+use std::mem;
 
 use oxc_ast::ast::Expression;
 use svelte_analyze::{
-    AttributeSemantics, ClassSemantics, ElementBindPropertyKind, ElementBindSemantics,
-    NamespaceKind, StyleSemantics, collapse_attribute_whitespace, emit_html_attribute_name,
-    is_dom_boolean_attribute,
+    AttributeSemantics, ClassSemantics, ComponentPropSemantics, ElementBindPropertyKind,
+    ElementBindSemantics, NamespaceKind, StyleSemantics, collapse_attribute_whitespace,
+    emit_html_attribute_name, is_dom_boolean_attribute,
 };
 use svelte_ast::{
     Attribute, BindDirective, ClassDirective, ConcatPart, Element, ExprRef, NodeId, StyleDirective,
@@ -13,9 +14,14 @@ use svelte_ast::{
 use svelte_ast_builder::{Arg, ObjProp, TemplatePart};
 use svelte_emit_builders::server_refs;
 
-use crate::error::Result;
+use crate::error::{CodegenError, Result};
 use crate::escape::escape_attribute;
 use crate::model::ServerCodegen;
+
+pub(crate) enum PropOrSpread<'a> {
+    Prop(ObjProp<'a>),
+    Spread(Expression<'a>),
+}
 
 const ELEMENT_IS_NAMESPACED: u32 = 1;
 const ELEMENT_PRESERVE_ATTRIBUTE_CASE: u32 = 1 << 1;
@@ -62,6 +68,7 @@ impl<'a> ServerCodegen<'a> {
                 | AttributeSemantics::DocumentBind(_)
                 | AttributeSemantics::ComponentBind(_)
                 | AttributeSemantics::ComponentProp(_)
+                | AttributeSemantics::ComponentCssProp(_)
                 | AttributeSemantics::SvelteComponentThis(_)
                 | AttributeSemantics::ComponentSpread(_)
                 | AttributeSemantics::ComponentAttach(_)
@@ -589,4 +596,94 @@ fn push_template_str<'a>(parts: &mut Vec<TemplatePart<'a>>, text: &str) {
     } else {
         parts.push(TemplatePart::Str(text.to_string()));
     }
+}
+
+impl<'a> ServerCodegen<'a> {
+    pub(crate) fn emit_component_attribute(
+        &mut self,
+        attr: &'a Attribute,
+        items: &mut Vec<PropOrSpread<'a>>,
+    ) -> Result<()> {
+        let attr_id = attr.id();
+        match self.analysis.attributes.get(attr_id) {
+            AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(_)) => {
+                let Attribute::ExpressionAttribute(ea) = attr else {
+                    return Err(CodegenError::Unsupported(attr_id, "component prop"));
+                };
+                let key: &'a str = self.b.alloc_str(&ea.name);
+                let value = self.take_expression(attr_id, &ea.expression)?;
+                items.push(PropOrSpread::Prop(prop_kv(key, value)));
+                Ok(())
+            }
+            AttributeSemantics::ComponentSpread(_) => {
+                let Attribute::SpreadAttribute(sa) = attr else {
+                    return Err(CodegenError::Unsupported(attr_id, "component spread"));
+                };
+                let value = self.take_expression(attr_id, &sa.expression)?;
+                items.push(PropOrSpread::Spread(value));
+                Ok(())
+            }
+            AttributeSemantics::NonSpecial => match attr {
+                Attribute::StringAttribute(a) => {
+                    let key: &'a str = self.b.alloc_str(&a.name);
+                    let value = a.value(self.component.source.as_str());
+                    items.push(PropOrSpread::Prop(ObjProp::KeyValue(
+                        key,
+                        self.b.str_expr(value),
+                    )));
+                    Ok(())
+                }
+                Attribute::BooleanAttribute(a) => {
+                    let key: &'a str = self.b.alloc_str(&a.name);
+                    items.push(PropOrSpread::Prop(ObjProp::KeyValue(
+                        key,
+                        self.b.bool_expr(true),
+                    )));
+                    Ok(())
+                }
+                _ => Err(CodegenError::Unsupported(attr_id, "component attribute")),
+            },
+            _ => Err(CodegenError::Unsupported(attr_id, "component attribute")),
+        }
+    }
+
+    pub(crate) fn build_props_expr(&self, items: Vec<PropOrSpread<'a>>) -> Expression<'a> {
+        let has_spread = items.iter().any(|i| matches!(i, PropOrSpread::Spread(_)));
+        if !has_spread {
+            return self
+                .b
+                .object_expr(items.into_iter().filter_map(|i| match i {
+                    PropOrSpread::Prop(p) => Some(p),
+                    PropOrSpread::Spread(_) => None,
+                }));
+        }
+
+        let mut args: Vec<Arg<'a, 'a>> = Vec::new();
+        let mut current: Vec<ObjProp<'a>> = Vec::new();
+        for item in items {
+            match item {
+                PropOrSpread::Prop(p) => current.push(p),
+                PropOrSpread::Spread(expr) => {
+                    if !current.is_empty() {
+                        args.push(Arg::Expr(self.b.object_expr(mem::take(&mut current))));
+                    }
+                    args.push(Arg::Expr(expr));
+                }
+            }
+        }
+        if !current.is_empty() {
+            args.push(Arg::Expr(self.b.object_expr(current)));
+        }
+        let array = self.b.array_from_args(args);
+        self.b.call_expr("$.spread_props", [Arg::Expr(array)])
+    }
+}
+
+fn prop_kv<'a>(key: &'a str, value: Expression<'a>) -> ObjProp<'a> {
+    if let Expression::Identifier(id) = &value
+        && id.name.as_str() == key
+    {
+        return ObjProp::Shorthand(key);
+    }
+    ObjProp::KeyValue(key, value)
 }

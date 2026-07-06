@@ -1,4 +1,4 @@
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{AnalysisData, JsAst};
 use svelte_ast::{Component, ExprRef, NodeId};
 use svelte_ast_builder::Builder;
@@ -16,6 +16,7 @@ pub(crate) struct ServerCodegen<'a> {
     pub dev: bool,
     pub filename: &'a str,
     pub items: Vec<TemplateItem<'a>>,
+    pub hoisted: Vec<Statement<'a>>,
 }
 
 impl<'a> ServerCodegen<'a> {
@@ -34,6 +35,7 @@ impl<'a> ServerCodegen<'a> {
             dev: options.dev,
             filename,
             items: Vec::new(),
+            hoisted: Vec::new(),
         }
     }
 
@@ -45,5 +47,11 @@ impl<'a> ServerCodegen<'a> {
         self.js_arena
             .take_expr(expr_ref.id())
             .ok_or(CodegenError::MissingExpression(node_id))
+    }
+
+    pub(crate) fn expression_is_volatile(&self, node_id: NodeId) -> bool {
+        self.analysis
+            .expression_data(node_id)
+            .is_some_and(|data| data.volatility.is_volatile())
     }
 }

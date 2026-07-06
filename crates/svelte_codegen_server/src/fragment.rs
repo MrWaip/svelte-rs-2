@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
-use svelte_ast::{Element, FragmentId, Node};
+use svelte_analyze::BlockSemantics;
+use svelte_ast::{Element, FragmentId, Node, NodeId};
 
 use crate::error::Result;
 use crate::escape::escape_text;
@@ -10,6 +11,8 @@ use crate::model::ServerCodegen;
 pub(crate) enum FragmentParent<'n> {
     Root,
     Element(&'n Element),
+    Component,
+    Snippet,
 }
 
 impl<'a> ServerCodegen<'a> {
@@ -19,9 +22,32 @@ impl<'a> ServerCodegen<'a> {
         parent: FragmentParent<'a>,
         preserve_whitespace: bool,
     ) -> Result<()> {
+        self.fragment_impl(id, parent, preserve_whitespace, true)
+    }
+
+    pub(crate) fn fragment_children_only(
+        &mut self,
+        id: FragmentId,
+        parent: FragmentParent<'a>,
+        preserve_whitespace: bool,
+    ) -> Result<()> {
+        self.fragment_impl(id, parent, preserve_whitespace, false)
+    }
+
+    fn fragment_impl(
+        &mut self,
+        id: FragmentId,
+        parent: FragmentParent<'a>,
+        preserve_whitespace: bool,
+        emit_snippets: bool,
+    ) -> Result<()> {
         let component = self.component;
         let source = component.source.as_str();
         let preserve_comments = self.analysis.script.preserve_comments;
+
+        if emit_snippets {
+            self.emit_fragment_snippets(id)?;
+        }
 
         let fragment = component.store.fragment(id);
         let mut kept: Vec<&'a Node> = Vec::with_capacity(fragment.nodes.len());
@@ -44,12 +70,13 @@ impl<'a> ServerCodegen<'a> {
             self.push_text("<!---->");
         }
 
+        let is_standalone = self.fragment_is_standalone(window);
         let can_remove_space = space_only_text_removable(parent);
         let mut prev_text_ends_ws = false;
         for (i, node) in window.iter().enumerate() {
             let Node::Text(text) = node else {
                 prev_text_ends_ws = false;
-                self.node(node, preserve_whitespace)?;
+                self.node(node, preserve_whitespace, is_standalone)?;
                 continue;
             };
 
@@ -86,18 +113,25 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn node(&mut self, node: &'a Node, preserve_whitespace: bool) -> Result<()> {
+    fn node(
+        &mut self,
+        node: &'a Node,
+        preserve_whitespace: bool,
+        is_standalone: bool,
+    ) -> Result<()> {
         match node {
             Node::Comment(comment) => self.comment(comment),
             Node::ExpressionTag(tag) => return self.expression_tag(tag),
             Node::Element(element) => return self.element(element, preserve_whitespace),
+            Node::ComponentNode(component) => {
+                return self.component_node(component, is_standalone);
+            }
+            Node::RenderTag(tag) => return self.render_tag(tag, is_standalone),
             Node::Text(_)
             | Node::SlotElementLegacy(_)
-            | Node::ComponentNode(_)
             | Node::IfBlock(_)
             | Node::EachBlock(_)
             | Node::SnippetBlock(_)
-            | Node::RenderTag(_)
             | Node::HtmlTag(_)
             | Node::ConstTag(_)
             | Node::DebugTag(_)
@@ -115,6 +149,43 @@ impl<'a> ServerCodegen<'a> {
             | Node::Error(_) => {}
         }
         Ok(())
+    }
+
+    fn emit_fragment_snippets(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self
+            .component
+            .store
+            .fragment(id)
+            .nodes
+            .iter()
+            .copied()
+            .filter(|nid| matches!(self.component.store.get(*nid), Node::SnippetBlock(_)))
+            .collect();
+
+        for node_id in node_ids {
+            let mut local = Vec::new();
+            self.route_snippet(node_id, &mut local)?;
+            for decl in local {
+                self.push_stmt(decl);
+            }
+        }
+        Ok(())
+    }
+
+    fn fragment_is_standalone(&self, window: &[&Node]) -> bool {
+        let [only] = window else {
+            return false;
+        };
+        match only {
+            Node::ComponentNode(cn) => {
+                !self.expression_is_volatile(cn.id) && !self.analysis.has_component_css_props(cn.id)
+            }
+            Node::RenderTag(tag) => match self.analysis.block_semantics(tag.id) {
+                BlockSemantics::Render(sem) => !sem.callee_volatility.is_volatile(),
+                _ => false,
+            },
+            _ => false,
+        }
     }
 }
 
@@ -179,9 +250,10 @@ fn is_filtered_out(node: &Node, preserve_comments: bool) -> bool {
 }
 
 fn is_text_first(parent: FragmentParent<'_>, window: &[&Node]) -> bool {
-    let FragmentParent::Root = parent else {
-        return false;
-    };
+    match parent {
+        FragmentParent::Root | FragmentParent::Component | FragmentParent::Snippet => {}
+        FragmentParent::Element(_) => return false,
+    }
     let Some(first) = window.first() else {
         return false;
     };

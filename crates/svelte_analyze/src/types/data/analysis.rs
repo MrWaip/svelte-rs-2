@@ -456,6 +456,12 @@ impl<'a> AnalysisData<'a> {
     pub fn has_spread(&self, id: NodeId) -> bool {
         self.elements.facts.has_spread(id)
     }
+    pub fn has_component_css_props(&self, id: NodeId) -> bool {
+        self.elements.flags.has_component_css_props(id)
+    }
+    pub fn legacy_default_slot(&self, id: NodeId) -> LegacyDefaultSlot {
+        self.elements.flags.legacy_default_slot(id)
+    }
     pub fn has_runtime_attrs(&self, id: NodeId) -> bool {
         self.elements.facts.has_runtime_attrs(id)
     }

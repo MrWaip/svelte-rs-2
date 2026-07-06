@@ -6,7 +6,7 @@ use crate::types::data::{
 };
 use compact_str::CompactString;
 use smallvec::SmallVec;
-use svelte_ast::{NodeId, OxcNodeId, StyleDirective};
+use svelte_ast::{Attribute, NodeId, OxcNodeId, Span, StyleDirective};
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum AttributeSemantics {
@@ -20,6 +20,7 @@ pub enum AttributeSemantics {
 
     Event(EventSemantics),
     ComponentProp(ComponentPropSemantics),
+    ComponentCssProp(ComponentCssPropValue),
     SvelteComponentThis(SvelteComponentThisSemantics),
     ComponentSpread(ComponentSpreadSemantics),
     ComponentAttach(ComponentAttachSemantics),
@@ -54,6 +55,7 @@ impl AttributeSemantics {
             | AttributeSemantics::ComponentBind(_)
             | AttributeSemantics::Event(_)
             | AttributeSemantics::ComponentProp(_)
+            | AttributeSemantics::ComponentCssProp(_)
             | AttributeSemantics::SvelteComponentThis(_)
             | AttributeSemantics::ComponentSpread(_)
             | AttributeSemantics::ComponentAttach(_)
@@ -63,6 +65,33 @@ impl AttributeSemantics {
             | AttributeSemantics::SpecialValueAttr(_)
             | AttributeSemantics::Autofocus => true,
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComponentCssPropValue {
+    Expression(OxcNodeId),
+    StaticString(Span),
+    Concatenation(SmallVec<[ConcatPartEmit; 4]>),
+    Boolean,
+}
+
+pub fn is_component_css_property(attribute: &Attribute) -> bool {
+    match attribute {
+        Attribute::ExpressionAttribute(expression) => expression.name.starts_with("--"),
+        Attribute::StringAttribute(string) => string.name.starts_with("--"),
+        Attribute::ConcatenationAttribute(concatenation) => concatenation.name.starts_with("--"),
+        Attribute::BooleanAttribute(boolean) => boolean.name.starts_with("--"),
+        Attribute::SpreadAttribute(_)
+        | Attribute::ClassDirective(_)
+        | Attribute::StyleDirective(_)
+        | Attribute::BindDirective(_)
+        | Attribute::LetDirectiveLegacy(_)
+        | Attribute::UseDirective(_)
+        | Attribute::OnDirectiveLegacy(_)
+        | Attribute::TransitionDirective(_)
+        | Attribute::AnimateDirective(_)
+        | Attribute::AttachTag(_) => false,
     }
 }
 

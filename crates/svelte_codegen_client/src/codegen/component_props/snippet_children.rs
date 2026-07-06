@@ -1,5 +1,5 @@
 use oxc_ast::ast::Statement;
-use svelte_analyze::BlockSemantics;
+use svelte_analyze::{BlockSemantics, SnippetSlotKey};
 use svelte_ast::NodeId;
 use svelte_ast_builder::ObjProp;
 
@@ -36,10 +36,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             out.decls.push(self.build_snippet_const(*snippet_id, &sem)?);
             let key = self.ctx.b.alloc_str(&snippet_name);
             items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
-            let slot_key = if snippet_name == "children" {
-                "default".to_string()
-            } else {
-                snippet_name
+            let slot_key = match sem.slot_key {
+                SnippetSlotKey::Default => "default".to_string(),
+                SnippetSlotKey::Named => snippet_name,
             };
             out.slot_keys.push(slot_key);
         }

@@ -9,6 +9,7 @@ pub use data::{
     EachKeyKind, HtmlTagNamespace, HtmlTagSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics,
     IfBranch, IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind,
     RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
+    SnippetSlotKey,
 };
 
 use crate::scope::SymbolId;

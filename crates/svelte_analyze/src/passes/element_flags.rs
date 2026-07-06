@@ -5,20 +5,18 @@ use svelte_ast::{
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::attribute_semantics::data::ComponentPropMemo;
+use crate::attribute_semantics::data::is_component_css_property;
 use crate::expression_semantics::Volatility;
 use crate::types::data::{
-    BindTargetSemantics, BindingSemantics, ComponentBindMode, ComponentCssProp,
-    ComponentCssPropValue, ComponentPropInfo, ComponentPropKind, EventHandlerMode, EventModifier,
-    JsAst, LegacyDefaultSlot, ParentKind, PropBindingKind, PropBindingSemantics,
-    RichContentParentKind,
+    BindTargetSemantics, BindingSemantics, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
+    EventHandlerMode, EventModifier, LegacyDefaultSlot, ParentKind, PropBindingKind,
+    PropBindingSemantics, RichContentParentKind,
 };
 use crate::utils::{
-    concat_single_dynamic_expr, expression_calls_or_awaits, is_delegatable_event, is_passive_event,
-    is_simple_identifier, strip_capture_event,
+    concat_single_dynamic_expr, is_delegatable_event, is_passive_event, is_simple_identifier,
+    strip_capture_event,
 };
 use crate::walker::{TemplateVisitor, VisitContext};
-use svelte_component_semantics::OxcNodeId;
 
 pub(crate) struct ElementFlagsVisitor<'src> {
     source: &'src str,
@@ -413,46 +411,10 @@ impl<'src> ElementFlagsVisitor<'src> {
         attributes: &[Attribute],
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        let parsed = ctx.parsed;
         let data = &mut *ctx.data;
         for attr in attributes {
-            let css_prop_name: Option<&str> = match attr {
-                Attribute::ExpressionAttribute(a) if a.name.starts_with("--") => Some(&a.name),
-                Attribute::StringAttribute(a) if a.name.starts_with("--") => Some(&a.name),
-                Attribute::ConcatenationAttribute(a) if a.name.starts_with("--") => Some(&a.name),
-                _ => None,
-            };
-            if let Some(name) = css_prop_name {
-                let (value, memo) = match attr {
-                    Attribute::ExpressionAttribute(a) => {
-                        let memo = derive_css_prop_memo(data, parsed, a.id, a.expression.id());
-                        (
-                            Some(ComponentCssPropValue::Expression(a.expression.id())),
-                            memo,
-                        )
-                    }
-                    Attribute::StringAttribute(a) => (
-                        Some(ComponentCssPropValue::StaticString(a.value_span)),
-                        ComponentPropMemo::Inline,
-                    ),
-                    Attribute::ConcatenationAttribute(_) => (
-                        Some(ComponentCssPropValue::Concatenation),
-                        ComponentPropMemo::Inline,
-                    ),
-                    _ => (None, ComponentPropMemo::Inline),
-                };
-                if let Some(value) = value {
-                    data.elements
-                        .flags
-                        .component_css_props
-                        .get_or_default(cn_id)
-                        .push(ComponentCssProp {
-                            name: name.to_string(),
-                            attr_id: attr.id(),
-                            value,
-                            memo,
-                        });
-                }
+            if is_component_css_property(attr) {
+                data.elements.flags.components_with_css_props.insert(cn_id);
                 continue;
             }
             let kind = match attr {
@@ -605,24 +567,5 @@ impl<'src> ElementFlagsVisitor<'src> {
                 .get_or_default(cn_id)
                 .push(ComponentPropInfo { kind });
         }
-    }
-}
-
-fn derive_css_prop_memo(
-    data: &crate::types::data::AnalysisData,
-    parsed: Option<&JsAst>,
-    attr_id: svelte_ast::NodeId,
-    expr_id: OxcNodeId,
-) -> ComponentPropMemo {
-    let calls_or_awaits = parsed
-        .and_then(|p| p.expr(expr_id))
-        .is_some_and(expression_calls_or_awaits);
-    let has_blockers = data
-        .expression_data(attr_id)
-        .is_some_and(|d| !d.blockers.is_empty());
-    if calls_or_awaits || has_blockers {
-        ComponentPropMemo::Derived
-    } else {
-        ComponentPropMemo::Inline
     }
 }

@@ -74,9 +74,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         for attr in &attrs {
             let attr_id: NodeId = attr.id();
-            if attr.name().is_some_and(|n| n.starts_with("--")) {
-                continue;
-            }
             match self.ctx.query.analysis.attributes.get(attr_id) {
                 AttributeSemantics::ComponentBind(b) => {
                     self.dispatch_component_bind(el_id, b, attr, &mut out)?;
@@ -192,6 +189,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         );
                     }
                 },
+                AttributeSemantics::ComponentCssProp(_) => continue,
                 _ => {
                     return CodegenError::semantic_mismatch(
                         attr_id,

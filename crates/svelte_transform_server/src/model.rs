@@ -72,9 +72,9 @@ impl<'a> ServerTransform<'_, 'a> {
         match self.analysis.declarator_semantics(declarator.node_id()) {
             DeclaratorSemantics::RuneState { kind } => self.rewrite_state(declarator, kind),
             DeclaratorSemantics::LegacyProps => self.rewrite_legacy_prop(declarator),
+            DeclaratorSemantics::RuneProps => self.rewrite_rune_props(declarator),
             DeclaratorSemantics::None
             | DeclaratorSemantics::RuntimeRuneCall { .. }
-            | DeclaratorSemantics::RuneProps
             | DeclaratorSemantics::LegacyState
             | DeclaratorSemantics::RuneDerived { .. }
             | DeclaratorSemantics::ConstTag { .. }

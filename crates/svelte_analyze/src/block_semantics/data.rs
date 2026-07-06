@@ -198,6 +198,12 @@ impl SnippetPlacement {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnippetSlotKey {
+    Default,
+    Named,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SnippetBlockSemantics {
     pub name: SymbolId,
@@ -205,6 +211,8 @@ pub struct SnippetBlockSemantics {
     pub placement: SnippetPlacement,
 
     pub params: SmallVec<[SnippetParam; 4]>,
+
+    pub slot_key: SnippetSlotKey,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -237,6 +245,8 @@ pub struct RenderTagBlockSemantics {
     pub call_kind: RenderCallKind,
 
     pub callee_sym: Option<SymbolId>,
+
+    pub callee_volatility: Volatility,
 
     pub args: SmallVec<[RenderArgKind; 4]>,
 

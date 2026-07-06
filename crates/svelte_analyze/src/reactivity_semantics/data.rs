@@ -169,6 +169,30 @@ impl BindingSemantics {
         }
     }
 
+    pub fn is_bindable(&self) -> bool {
+        match self {
+            BindingSemantics::Prop(PropBindingSemantics {
+                kind: PropBindingKind::Source { bindable, .. },
+                ..
+            }) => *bindable,
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
     pub fn is_runes_prop(&self) -> bool {
         match self {
             BindingSemantics::Prop(_) => true,

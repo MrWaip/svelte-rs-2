@@ -18,6 +18,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
             BlockSemantics::Render(RenderTagBlockSemantics {
                 call_kind: RenderCallKind::Plain,
                 callee_sym: None,
+                callee_volatility: Volatility::Static,
                 args: SmallVec::new(),
                 async_kind: RenderAsyncKind::Sync,
             }),
@@ -37,17 +38,18 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
     };
 
     let async_kind = derive_async_kind(ctx, tag);
-    let (callee_sym, args) = match call_opt {
+    let (callee_sym, callee_volatility, args) = match call_opt {
         Some(call) => {
             let callee_sym = callee_symbol(&call.callee, ctx);
+            let callee_volatility = callee_volatility(ctx, callee_sym);
             let args: SmallVec<[RenderArgKind; 4]> = call
                 .arguments
                 .iter()
                 .map(|arg| derive_arg_kind(ctx, arg))
                 .collect();
-            (callee_sym, args)
+            (callee_sym, callee_volatility, args)
         }
-        None => (None, SmallVec::new()),
+        None => (None, Volatility::Static, SmallVec::new()),
     };
 
     ctx.store.set(
@@ -55,10 +57,34 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &RenderTag) {
         BlockSemantics::Render(RenderTagBlockSemantics {
             call_kind,
             callee_sym,
+            callee_volatility,
             args,
             async_kind,
         }),
     );
+}
+
+fn callee_volatility(ctx: &Ctx<'_, '_>, callee_sym: Option<SymbolId>) -> Volatility {
+    let Some(sym) = callee_sym else {
+        return Volatility::Reactive;
+    };
+    match ctx.reactivity.binding_semantics(sym) {
+        BindingSemantics::MaybeReactive
+        | BindingSemantics::NonReactive
+        | BindingSemantics::Unresolved => Volatility::Static,
+        BindingSemantics::Prop(_)
+        | BindingSemantics::State(_)
+        | BindingSemantics::Derived(_)
+        | BindingSemantics::OptimizedDerived(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Store(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::LegacyApiExport => Volatility::Reactive,
+    }
 }
 
 fn derive_async_kind(ctx: &Ctx<'_, '_>, tag: &RenderTag) -> RenderAsyncKind {
@@ -236,6 +262,7 @@ mod tests {
             |sem| {
                 assert_eq!(sem.call_kind, RenderCallKind::Plain);
                 assert!(sem.callee_sym.is_some());
+                assert!(!sem.callee_volatility.is_volatile());
                 assert_eq!(sem.args.len(), 0);
                 assert!(matches!(sem.async_kind, RenderAsyncKind::Sync));
             },
@@ -259,6 +286,7 @@ mod tests {
             |sem| {
                 assert_eq!(sem.call_kind, RenderCallKind::Plain);
                 assert!(sem.callee_sym.is_some());
+                assert!(sem.callee_volatility.is_volatile());
             },
         );
     }

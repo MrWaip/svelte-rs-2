@@ -1,4 +1,5 @@
 mod attribute;
+mod component;
 mod element;
 mod error;
 mod escape;
@@ -7,7 +8,9 @@ mod legacy_props;
 mod legacy_reactive;
 mod model;
 mod program;
+mod render;
 mod renderer;
+mod snippet;
 mod text;
 
 use svelte_sourcemap::JsOutput;

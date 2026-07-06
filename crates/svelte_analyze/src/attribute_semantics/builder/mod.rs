@@ -2,12 +2,13 @@ use super::AttributeSemanticsStore;
 use super::data::{
     AttributeSemantics, BoundaryPropSemantics, ClassSemantics, ComponentAttachEmit,
     ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
-    ComponentPropConcatSemantics, ComponentPropExpressionSemantics, ComponentPropMemo,
-    ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit,
-    DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics, ElementBindPropertyKind,
-    ElementBindSemantics, EventEmit, EventSemantics, GroupBindValue, HandlerEmit, HtmlBindKind,
-    HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind, SpecialValueSemantics, StyleSemantics,
-    SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
+    ComponentCssPropValue, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
+    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
+    ConcatPartEmit, DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics,
+    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, GroupBindValue,
+    HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind,
+    SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics, TemplateEffect,
+    WindowBindSemantics, is_component_css_property,
 };
 use crate::expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
@@ -1383,6 +1384,27 @@ fn classify_component_attrs(
     carrier: ComponentPropCarrier,
 ) {
     for attr in attrs {
+        if is_component_css_property(attr) {
+            let css_property_value = match attr {
+                Attribute::ExpressionAttribute(expression) => {
+                    ComponentCssPropValue::Expression(expression.expression.id())
+                }
+                Attribute::StringAttribute(string) => {
+                    ComponentCssPropValue::StaticString(string.value_span)
+                }
+                Attribute::BooleanAttribute(_) => ComponentCssPropValue::Boolean,
+                Attribute::ConcatenationAttribute(concatenation) => {
+                    let (_, plan) = derive_component_concat_semantics(ctx, concatenation, carrier);
+                    ComponentCssPropValue::Concatenation(plan)
+                }
+                _ => unreachable!(),
+            };
+            store.set(
+                attr.id(),
+                AttributeSemantics::ComponentCssProp(css_property_value),
+            );
+            continue;
+        }
         match attr {
             Attribute::BindDirective(d) => {
                 let kind = derive_component_bind_kind(ctx, d);

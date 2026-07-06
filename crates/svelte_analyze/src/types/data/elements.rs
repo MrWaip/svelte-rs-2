@@ -1,21 +1,5 @@
 use super::*;
-use crate::attribute_semantics::data::ComponentPropMemo;
 use oxc_syntax::node::NodeId as OxcNodeId;
-
-#[derive(Clone)]
-pub struct ComponentCssProp {
-    pub name: String,
-    pub attr_id: NodeId,
-    pub value: ComponentCssPropValue,
-    pub memo: ComponentPropMemo,
-}
-
-#[derive(Clone)]
-pub enum ComponentCssPropValue {
-    Expression(OxcNodeId),
-    StaticString(Span),
-    Concatenation,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClassDirectiveInfo {
@@ -117,7 +101,7 @@ pub struct ElementFlags {
     pub(crate) expression_shorthand: NodeBitSet,
     pub(crate) component_props: NodeTable<Vec<ComponentPropInfo>>,
 
-    pub(crate) component_css_props: NodeTable<Vec<ComponentCssProp>>,
+    pub(crate) components_with_css_props: NodeBitSet,
     pub(crate) event_handler_mode: NodeTable<EventHandlerMode>,
 
     pub(crate) needs_textarea_value_lowering: NodeBitSet,
@@ -146,7 +130,7 @@ impl ElementFlags {
             has_use_directive: NodeBitSet::new(node_count),
             expression_shorthand: NodeBitSet::new(node_count),
             component_props: NodeTable::new(node_count),
-            component_css_props: NodeTable::new(node_count),
+            components_with_css_props: NodeBitSet::new(node_count),
             event_handler_mode: NodeTable::new(node_count),
             needs_textarea_value_lowering: NodeBitSet::new(node_count),
             option_synthetic_value_expr: NodeTable::new(node_count),
@@ -179,13 +163,8 @@ impl ElementFlags {
     pub fn component_props(&self, id: NodeId) -> &[ComponentPropInfo] {
         self.component_props.get(id).map_or(&[], |v| v.as_slice())
     }
-    pub fn component_css_props(&self, id: NodeId) -> &[ComponentCssProp] {
-        self.component_css_props
-            .get(id)
-            .map_or(&[], |v| v.as_slice())
-    }
     pub fn has_component_css_props(&self, id: NodeId) -> bool {
-        self.component_css_props.contains_key(id)
+        self.components_with_css_props.contains(&id)
     }
     pub fn event_handler_mode(&self, attr_id: NodeId) -> Option<EventHandlerMode> {
         self.event_handler_mode.get(attr_id).copied()

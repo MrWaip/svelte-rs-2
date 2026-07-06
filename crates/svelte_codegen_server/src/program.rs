@@ -1,3 +1,5 @@
+use std::mem;
+
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
 use oxc_span::{SPAN, Span};
@@ -14,6 +16,7 @@ impl<'a> ServerCodegen<'a> {
         let preserve_whitespace = self.analysis.script.preserve_whitespace;
         self.fragment(root, FragmentParent::Root, preserve_whitespace)?;
         let template_body = self.take_renderer_statements();
+        let hoisted_snippets = mem::take(&mut self.hoisted);
 
         let mut hoisted_imports: Vec<Statement<'a>> = Vec::new();
         let mut instance_body: Vec<Statement<'a>> = Vec::new();
@@ -98,6 +101,7 @@ impl<'a> ServerCodegen<'a> {
         program_body.push(b.import_all("$", "svelte/internal/server"));
         program_body.extend(hoisted_imports);
         program_body.extend(module_body);
+        program_body.extend(hoisted_snippets);
 
         if self.dev {
             program_body.push(Statement::FunctionDeclaration(b.alloc(render_fn)));

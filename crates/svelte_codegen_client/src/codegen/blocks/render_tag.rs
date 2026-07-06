@@ -7,10 +7,7 @@ use oxc_span::GetSpan;
 
 use crate::context::Ctx;
 
-use svelte_analyze::scope::SymbolId;
-use svelte_analyze::{
-    BindingSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics,
-};
+use svelte_analyze::{RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
@@ -31,7 +28,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             RenderAsyncKind::Async { blockers } => (true, blockers.to_vec()),
         };
 
-        let is_static_shape = render_callee_is_static(self.ctx, sem.callee_sym);
+        let is_static_shape = !sem.callee_volatility.is_volatile();
         let is_standalone = matches!(
             ctx.anchor,
             FragmentAnchor::Root
@@ -311,28 +308,5 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             self.ctx.b.call_expr_callee(callee, all_args)
         }
-    }
-}
-
-pub(crate) fn render_callee_is_static(ctx: &Ctx<'_>, callee_sym: Option<SymbolId>) -> bool {
-    let Some(sym) = callee_sym else {
-        return false;
-    };
-    match ctx.query.view.binding_semantics(sym) {
-        BindingSemantics::MaybeReactive
-        | BindingSemantics::NonReactive
-        | BindingSemantics::Unresolved => true,
-        BindingSemantics::Prop(_)
-        | BindingSemantics::State(_)
-        | BindingSemantics::Derived(_)
-        | BindingSemantics::OptimizedDerived(_)
-        | BindingSemantics::OptimizedRune(_)
-        | BindingSemantics::RuntimeRune { .. }
-        | BindingSemantics::Store(_)
-        | BindingSemantics::LegacyBindableProp(_)
-        | BindingSemantics::LegacyState(_)
-        | BindingSemantics::Const(_)
-        | BindingSemantics::Contextual(_)
-        | BindingSemantics::LegacyApiExport => false,
     }
 }
