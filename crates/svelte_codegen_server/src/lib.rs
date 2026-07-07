@@ -14,6 +14,7 @@ mod key_block;
 mod legacy_props;
 mod legacy_reactive;
 mod model;
+mod module;
 mod program;
 mod render;
 mod renderer;
@@ -26,6 +27,7 @@ mod text;
 use svelte_sourcemap::JsOutput;
 
 pub use error::CodegenError;
+pub use module::generate_module;
 
 pub fn generate<'a>(
     compile_ctx: svelte_types::CompileContext<'a, 'a>,

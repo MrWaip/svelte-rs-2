@@ -330,7 +330,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
         };
     }
 
-    let program = parsed
+    let mut program = parsed
         .program
         .take()
         .expect("analyze_module produced no program");
@@ -341,16 +341,32 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     };
     let kind = options.sourcemap_kind;
     let filename = options.filename.clone();
-    let js = svelte_codegen_client::generate_module(
-        &js_alloc,
-        program,
-        &analysis,
-        &line_index,
-        dev,
-        kind,
-        &filename,
-        source,
-    );
+    let js = match options.generate {
+        GenerateMode::Server => {
+            let mut ident_gen = svelte_analyze::IdentGen::with_conflicts(
+                analysis.scoping.collect_all_symbol_names(),
+            );
+            let transform_options = svelte_types::TransformOptions { dev };
+            svelte_transform_server::transform_module(
+                &js_alloc,
+                &mut program,
+                &analysis,
+                &mut ident_gen,
+                &transform_options,
+            );
+            svelte_codegen_server::generate_module(&js_alloc, program)
+        }
+        GenerateMode::Client | GenerateMode::False => svelte_codegen_client::generate_module(
+            &js_alloc,
+            program,
+            &analysis,
+            &line_index,
+            dev,
+            kind,
+            &filename,
+            source,
+        ),
+    };
 
     let source_name = if filename.is_empty() || filename == "(unknown)" {
         "input.svelte.js".to_string()

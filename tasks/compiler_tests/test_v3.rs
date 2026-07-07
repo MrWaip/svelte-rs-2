@@ -4,10 +4,9 @@ use std::{
 };
 
 use compiler_tests::cases::{load_v3_case, load_v3_module_case, v3_case_dir};
-use compiler_tests::compiler_case;
 use compiler_tests::sourcemap_invariants::assert_sourcemap_invariants;
+use compiler_tests::{compiler_case, compiler_module_case};
 use pretty_assertions::assert_eq;
-use rstest::rstest;
 use svelte_compiler::{GenerateMode, compile, compile_module};
 use test_support::strip_reference_only_css_markers;
 
@@ -1226,7 +1225,7 @@ fn strip_leading_block_comments(src: &str) -> String {
     out
 }
 
-fn assert_compiler_module(case: &str) {
+fn assert_compiler_module_prod(case: &str) {
     let dir = v3_case_dir(case);
     let (input, opts) = load_v3_module_case(case);
 
@@ -1250,6 +1249,11 @@ fn assert_compiler_module(case: &str) {
     if let Some(map) = js_output.map.as_ref() {
         assert_sourcemap_invariants(case, &input, map, svelte_compiler::SourcemapKind::Default);
     }
+}
+
+fn assert_compiler_module_dev(case: &str) {
+    let dir = v3_case_dir(case);
+    let (input, opts) = load_v3_module_case(case);
 
     let mut dev_opts = opts.clone();
     dev_opts.dev = true;
@@ -1269,84 +1273,148 @@ fn assert_compiler_module(case: &str) {
     );
 }
 
-#[rstest]
-fn state_class_field_proxy_init() {
-    assert_compiler_module("state_class_field_proxy_init");
+fn assert_compiler_module_ssr(case: &str) {
+    let dir = v3_case_dir(case);
+    let (input, opts) = load_v3_module_case(case);
+
+    let mut server_opts = opts.clone();
+    server_opts.generate = GenerateMode::Server;
+    let server_js = compile_module(&input, &server_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] server compile_module produced no JS"))
+        .code;
+    let expected_server =
+        read_to_string(dir.join("case-svelte.server.js")).expect("test invariant");
+    File::create(dir.join("case-rust.server.js"))
+        .expect("test invariant")
+        .write_all(server_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(
+        strip_leading_block_comments(&server_js),
+        strip_leading_block_comments(&expected_server),
+        "[{case}] server JS mismatch"
+    );
 }
 
-#[rstest]
-fn module_derived_arrow_wrap_with_state_deps() {
-    assert_compiler_module("module_derived_arrow_wrap_with_state_deps");
+fn assert_compiler_module_ssr_dev(case: &str) {
+    let dir = v3_case_dir(case);
+    let (input, opts) = load_v3_module_case(case);
+
+    let mut server_dev_opts = opts.clone();
+    server_dev_opts.generate = GenerateMode::Server;
+    server_dev_opts.dev = true;
+    let server_dev_js = compile_module(&input, &server_dev_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] server dev compile_module produced no JS"))
+        .code;
+    let expected_server_dev =
+        read_to_string(dir.join("case-svelte.server.dev.js")).expect("test invariant");
+    File::create(dir.join("case-rust.server.dev.js"))
+        .expect("test invariant")
+        .write_all(server_dev_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(
+        strip_leading_block_comments(&server_dev_js),
+        strip_leading_block_comments(&expected_server_dev),
+        "[{case}] server dev JS mismatch"
+    );
 }
 
-#[rstest]
-fn module_state_destructure() {
-    assert_compiler_module("module_state_destructure");
-}
+compiler_module_case!(
+    state_class_field_proxy_init,
+    "state_class_field_proxy_init",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
 
-#[rstest]
-fn module_compilation() {
-    assert_compiler_module("module_compilation");
-}
+compiler_module_case!(
+    module_derived_arrow_wrap_with_state_deps,
+    "module_derived_arrow_wrap_with_state_deps",
+    [prod, dev, ssr, ssr_dev]
+);
 
-#[rstest]
-fn state_raw_class_constructor_object_ts() {
-    assert_compiler_module("state_raw_class_constructor_object_ts");
-}
+compiler_module_case!(
+    module_state_destructure,
+    "module_state_destructure",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
 
-#[rstest]
-fn module_derived_arrow_wrap_in_class_method() {
-    assert_compiler_module("module_derived_arrow_wrap_in_class_method");
-}
-#[rstest]
-fn module_ts_strip() {
-    assert_compiler_module("module_ts_strip");
-}
+compiler_module_case!(
+    module_compilation,
+    "module_compilation",
+    [prod, dev, ssr, ssr_dev]
+);
 
-#[rstest]
-fn module_derived_arrow_wrap_no_state_deps() {
-    assert_compiler_module("module_derived_arrow_wrap_no_state_deps");
-}
+compiler_module_case!(
+    state_raw_class_constructor_object_ts,
+    "state_raw_class_constructor_object_ts",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
 
-#[rstest]
-fn diagnose_state_private_constructor_init_from_decl_only() {
-    assert_compiler_module("diagnose_state_private_constructor_init_from_decl_only");
-}
+compiler_module_case!(
+    module_derived_arrow_wrap_in_class_method,
+    "module_derived_arrow_wrap_in_class_method",
+    [prod, dev, ssr, ssr_dev]
+);
 
-#[rstest]
-fn state_private_class_field_array_proxy() {
-    assert_compiler_module("state_private_class_field_array_proxy");
-}
+compiler_module_case!(
+    module_ts_strip,
+    "module_ts_strip",
+    [prod, dev, ssr, ssr_dev]
+);
 
-#[rstest]
-fn diagnose_module_leading_jsdoc_dropped() {
-    assert_compiler_module("diagnose_module_leading_jsdoc_dropped");
-}
+compiler_module_case!(
+    module_derived_arrow_wrap_no_state_deps,
+    "module_derived_arrow_wrap_no_state_deps",
+    [prod, dev, ssr, ssr_dev]
+);
 
-#[rstest]
-fn ts_strip_non_null_chain() {
-    assert_compiler_module("ts_strip_non_null_chain");
-}
+compiler_module_case!(
+    diagnose_state_private_constructor_init_from_decl_only,
+    "diagnose_state_private_constructor_init_from_decl_only",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
 
-#[rstest]
-fn module_dev_state_tag() {
-    assert_compiler_module("module_dev_state_tag");
-}
+compiler_module_case!(
+    state_private_class_field_array_proxy,
+    "state_private_class_field_array_proxy",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
 
-#[rstest]
-fn module_dev_derived_tag() {
-    assert_compiler_module("module_dev_derived_tag");
-}
+compiler_module_case!(
+    diagnose_module_leading_jsdoc_dropped,
+    "diagnose_module_leading_jsdoc_dropped",
+    [prod, dev, ssr, ssr_dev]
+);
 
-#[rstest]
-fn module_dev_console_log_wrap() {
-    assert_compiler_module("module_dev_console_log_wrap");
-}
+compiler_module_case!(
+    ts_strip_non_null_chain,
+    "ts_strip_non_null_chain",
+    [prod, dev, ssr, ssr_dev]
+);
 
-#[rstest]
-fn diagnose_module_import_between_top_level_statements() {
-    assert_compiler_module("diagnose_module_import_between_top_level_statements");
-}
+compiler_module_case!(
+    module_dev_state_tag,
+    "module_dev_state_tag",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_module_case!(
+    module_dev_derived_tag,
+    "module_dev_derived_tag",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_module_case!(
+    module_dev_console_log_wrap,
+    "module_dev_console_log_wrap",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_module_case!(
+    diagnose_module_import_between_top_level_statements,
+    "diagnose_module_import_between_top_level_statements",
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(script_module_exports, [prod, dev, ssr, ssr_dev]);
 
@@ -1356,7 +1424,7 @@ compiler_case!(script_module_imports, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(script_module_empty, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(script_module_runes);
+compiler_case!(script_module_runes, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(script_module_instance_ref);
 
@@ -1396,7 +1464,7 @@ compiler_case!(legacy_export_specifier_alias);
 
 compiler_case!(legacy_export_destructure);
 
-compiler_case!(legacy_export_let_typed);
+compiler_case!(legacy_export_let_typed, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(legacy_export_let_member_mutation);
 
@@ -2286,11 +2354,11 @@ compiler_case!(render_tag_optional_dynamic, [prod, dev, ssr, ssr_dev]);
 // $inspect rune tests
 // ---------------------------------------------------------------------------
 
-compiler_case!(inspect_basic);
+compiler_case!(inspect_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(inspect_with_callback);
+compiler_case!(inspect_with_callback, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(inspect_prod_strip);
+compiler_case!(inspect_prod_strip, [prod, dev, ssr, ssr_dev]);
 
 // ---------------------------------------------------------------------------
 // $inspect.trace() rune tests

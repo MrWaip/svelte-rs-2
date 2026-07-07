@@ -12,12 +12,15 @@ use svelte_ast_builder::Builder;
 use svelte_emit_builders::server_refs;
 
 use crate::derived::expand_derived_destructure_declarators;
+use crate::effect::RuneStatement;
 
 pub(crate) struct ServerTransform<'b, 'a> {
     pub b: &'b Builder<'a>,
     pub analysis: &'b AnalysisData<'a>,
     pub ident_gen: &'b mut IdentGen,
     pub fn_depth: u32,
+    pub dev: bool,
+    pub strip_exports: bool,
 }
 
 impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
@@ -71,15 +74,21 @@ impl<'a> ServerTransform<'_, 'a> {
         let mut reactive: Vec<(usize, Statement<'a>)> = Vec::new();
         for stmt in it.drain(..) {
             let stmt = match stmt {
-                Statement::ExportNamedDeclaration(export) => match export.unbox().declaration {
-                    Some(decl) => Statement::from(decl),
-                    None => continue,
-                },
+                Statement::ExportNamedDeclaration(export) if self.strip_exports => {
+                    match export.unbox().declaration {
+                        Some(decl) => Statement::from(decl),
+                        None => continue,
+                    }
+                }
                 other => other,
             };
-            if !self.keep_statement(&stmt) {
-                continue;
-            }
+            let stmt = match self.rewrite_rune_statement(stmt) {
+                RuneStatement::Keep(stmt) => stmt,
+                RuneStatement::Replace(stmts) => {
+                    out.extend(stmts);
+                    continue;
+                }
+            };
             let rank = match &stmt {
                 Statement::LabeledStatement(labeled) => {
                     topo.iter().position(|node| *node == labeled.node_id())
