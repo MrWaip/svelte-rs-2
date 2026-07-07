@@ -4,6 +4,7 @@ mod effect;
 mod model;
 mod props;
 mod state;
+mod store;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Program, Statement};

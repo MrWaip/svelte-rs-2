@@ -836,17 +836,17 @@ compiler_case!(store_legacy_var_basic, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_legacy_member_mutation, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(store_runes_id_assign_ops);
+compiler_case!(store_runes_id_assign_ops, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_runes_id_ops_template);
 
-compiler_case!(store_runes_member_ops_script);
+compiler_case!(store_runes_member_ops_script, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_runes_member_ops_template);
 
-compiler_case!(store_runes_computed_member);
+compiler_case!(store_runes_computed_member, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(store_runes_dev_smoke);
+compiler_case!(store_runes_dev_smoke, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_runes_each_member_mutation, [prod, dev, ssr, ssr_dev]);
 
@@ -866,13 +866,13 @@ compiler_case!(component_bind_prop_order);
 
 compiler_case!(component_snippet_node_ident_ordering);
 
-compiler_case!(store_legacy_id_assign_ops);
+compiler_case!(store_legacy_id_assign_ops, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_legacy_id_ops_template, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(store_legacy_member_ops_script);
+compiler_case!(store_legacy_member_ops_script, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(store_legacy_dev_smoke);
+compiler_case!(store_legacy_dev_smoke, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_legacy_bind_value, [prod, dev, ssr, ssr_dev]);
 
@@ -890,7 +890,7 @@ compiler_case!(
 
 compiler_case!(legacy_dev_store_thunk_call_read, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_dev_store_set_assignment);
+compiler_case!(legacy_dev_store_set_assignment, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(legacy_dev_bind_store_unsub, [prod, dev, ssr, ssr_dev]);
 
@@ -926,7 +926,7 @@ compiler_case!(store_bind_this_element_ref);
 
 compiler_case!(store_bare_identifier_method_call);
 
-compiler_case!(store_write);
+compiler_case!(store_write, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_validate_dev);
 
@@ -1561,7 +1561,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_export_let_store_prop_writes);
+compiler_case!(
+    diagnose_legacy_export_let_store_prop_writes,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_export_let_leaks_into_exports,
@@ -1753,7 +1756,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(smoke_legacy_reactive_mutations_all);
+compiler_case!(
+    smoke_legacy_reactive_mutations_all,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(smoke_runes_reactive_mutations_all);
 
@@ -2546,7 +2552,7 @@ compiler_case!(store_compound_template);
 
 compiler_case!(store_update_template);
 
-compiler_case!(store_deep_mutation);
+compiler_case!(store_deep_mutation, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_deep_update);
 
@@ -3454,7 +3460,10 @@ compiler_case!(
 
 compiler_case!(diagnose_legacy_iife_read_nested_write_promotes_state);
 
-compiler_case!(diagnose_legacy_pre_effect_store_write_read_topological_order);
+compiler_case!(
+    diagnose_legacy_pre_effect_store_write_read_topological_order,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_css_slot_fallback_descendant_scope);
 
@@ -3507,7 +3516,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_let_writable_store_only_assign);
+compiler_case!(
+    diagnose_legacy_let_writable_store_only_assign,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_legacy_bind_store_member_keeps_writable_plain);
 

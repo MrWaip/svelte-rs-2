@@ -55,9 +55,16 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
     }
 
     fn visit_expression(&mut self, it: &mut Expression<'a>) {
+        if self.rewrite_store_mutation(it) {
+            return;
+        }
+        let member_mutation = self.detect_store_member_mutation(it);
         walk_mut::walk_expression(self, it);
         self.rewrite_await(it);
         server_refs::rewrite_identifier_read(self.b, self.analysis, it);
+        if let Some((dollar_name, base_sym)) = member_mutation {
+            self.apply_store_member_mutation(it, &dollar_name, base_sym);
+        }
     }
 }
 

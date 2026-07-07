@@ -162,15 +162,18 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_dep_order_store_member_lhs_read,
-    "legacy/coarse_deps/dep_order_store_member_lhs_read"
+    "legacy/coarse_deps/dep_order_store_member_lhs_read",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_dep_order_store_member_lhs_only,
-    "legacy/coarse_deps/dep_order_store_member_lhs_only"
+    "legacy/coarse_deps/dep_order_store_member_lhs_only",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_dep_order_nested_member_lhs,
-    "legacy/coarse_deps/dep_order_nested_member_lhs"
+    "legacy/coarse_deps/dep_order_nested_member_lhs",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_dep_order_plain_member_lhs_read,

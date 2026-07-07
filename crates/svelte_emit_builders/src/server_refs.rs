@@ -15,14 +15,14 @@ fn reads_runtime_derived(analysis: &AnalysisData<'_>, ref_id: ReferenceId) -> bo
     })
 }
 
-fn store_base_symbol(analysis: &AnalysisData<'_>, store_symbol: SymbolId) -> Option<SymbolId> {
+pub fn store_base_symbol(analysis: &AnalysisData<'_>, store_symbol: SymbolId) -> Option<SymbolId> {
     match analysis.binding_semantics(store_symbol) {
         BindingSemantics::Store(facts) => Some(facts.base_symbol),
         _ => None,
     }
 }
 
-fn server_store_base_read<'a>(
+pub fn server_store_base_read<'a>(
     b: &Builder<'a>,
     analysis: &AnalysisData<'a>,
     base_symbol: SymbolId,
@@ -39,26 +39,78 @@ fn server_store_base_read<'a>(
     b.rid_expr(base_name)
 }
 
-pub fn server_store_get<'a>(
-    b: &Builder<'a>,
-    dollar_name: &str,
-    base: Expression<'a>,
-) -> Expression<'a> {
+fn store_subs_assign<'a>(b: &Builder<'a>) -> Expression<'a> {
     let ast = b.ast;
     let target = AssignmentTarget::AssignmentTargetIdentifier(
         ast.alloc(ast.identifier_reference(SPAN, ast.atom("$$store_subs"))),
     );
     let empty_object = ast.expression_object(SPAN, ast.vec());
-    let subs = Expression::AssignmentExpression(ast.alloc(ast.assignment_expression(
+    Expression::AssignmentExpression(ast.alloc(ast.assignment_expression(
         SPAN,
         AssignmentOperator::LogicalNullish,
         target,
         empty_object,
-    )));
+    )))
+}
+
+pub fn server_store_get<'a>(
+    b: &Builder<'a>,
+    dollar_name: &str,
+    base: Expression<'a>,
+) -> Expression<'a> {
+    let subs = store_subs_assign(b);
     let name: &str = b.alloc_str(dollar_name);
     b.call_expr(
         "$.store_get",
         [Arg::Expr(subs), Arg::StrRef(name), Arg::Expr(base)],
+    )
+}
+
+pub fn server_store_set<'a>(
+    b: &Builder<'a>,
+    base: Expression<'a>,
+    value: Expression<'a>,
+) -> Expression<'a> {
+    b.call_expr("$.store_set", [Arg::Expr(base), Arg::Expr(value)])
+}
+
+pub fn server_store_update<'a>(
+    b: &Builder<'a>,
+    dollar_name: &str,
+    base: Expression<'a>,
+    is_prefix: bool,
+    is_decrement: bool,
+) -> Expression<'a> {
+    let fn_name = if is_prefix {
+        "$.update_store_pre"
+    } else {
+        "$.update_store"
+    };
+    let subs = store_subs_assign(b);
+    let name: &str = b.alloc_str(dollar_name);
+    let mut args = vec![Arg::Expr(subs), Arg::StrRef(name), Arg::Expr(base)];
+    if is_decrement {
+        args.push(Arg::Num(-1.0));
+    }
+    b.call_expr(fn_name, args)
+}
+
+pub fn server_store_mutate<'a>(
+    b: &Builder<'a>,
+    dollar_name: &str,
+    base: Expression<'a>,
+    mutation: Expression<'a>,
+) -> Expression<'a> {
+    let subs = store_subs_assign(b);
+    let name: &str = b.alloc_str(dollar_name);
+    b.call_expr(
+        "$.store_mutate",
+        [
+            Arg::Expr(subs),
+            Arg::StrRef(name),
+            Arg::Expr(base),
+            Arg::Expr(mutation),
+        ],
     )
 }
 
