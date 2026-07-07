@@ -2,7 +2,7 @@ use std::mem;
 
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, Expression, Function, Statement, VariableDeclaration,
+    ArrowFunctionExpression, BindingPattern, Expression, Function, Statement, VariableDeclaration,
     VariableDeclarator,
 };
 use oxc_ast_visit::{VisitMut, walk_mut};
@@ -33,6 +33,7 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
         if self.fn_depth > 0 {
             self.expand_nested_derived_destructure(it);
         }
+        self.expand_legacy_props_destructure(it);
         walk_mut::walk_variable_declaration(self, it);
     }
 
@@ -122,14 +123,21 @@ impl<'a> ServerTransform<'_, 'a> {
     }
 
     fn declarator(&mut self, declarator: &mut VariableDeclarator<'a>) {
+        if let BindingPattern::BindingIdentifier(id) = &declarator.id
+            && let Some(sym) = id.symbol_id.get()
+            && self.analysis.binding_semantics(sym).is_legacy_prop()
+        {
+            self.rewrite_legacy_prop(declarator);
+            return;
+        }
         match self.analysis.declarator_semantics(declarator.node_id()) {
             DeclaratorSemantics::RuneState { kind } => self.rewrite_state(declarator, kind),
-            DeclaratorSemantics::LegacyProps => self.rewrite_legacy_prop(declarator),
             DeclaratorSemantics::RuneProps => self.rewrite_rune_props(declarator),
             DeclaratorSemantics::RuneDerived {
                 kind, async_kind, ..
             } => self.rewrite_derived(declarator, kind, async_kind),
-            DeclaratorSemantics::None
+            DeclaratorSemantics::LegacyProps
+            | DeclaratorSemantics::None
             | DeclaratorSemantics::RuntimeRuneCall { .. }
             | DeclaratorSemantics::LegacyState
             | DeclaratorSemantics::ConstTag { .. }

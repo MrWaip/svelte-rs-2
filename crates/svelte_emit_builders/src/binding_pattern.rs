@@ -49,6 +49,13 @@ pub fn to_array_derived<'a>(
     b.call_expr("$.derived", [Arg::Expr(thunk)])
 }
 
+pub fn to_array<'a>(b: &Builder<'a>, source: Expression<'a>, count: Option<u32>) -> Expression<'a> {
+    match count {
+        Some(count) => b.call_expr("$.to_array", [Arg::Expr(source), Arg::Num(count as f64)]),
+        None => b.call_expr("$.to_array", [Arg::Expr(source)]),
+    }
+}
+
 pub fn exclude_from_object<'a>(
     b: &Builder<'a>,
     object: Expression<'a>,
