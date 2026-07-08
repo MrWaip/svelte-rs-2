@@ -4,6 +4,6 @@ mod data;
 pub(crate) use builder::build;
 pub use data::{
     BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementSemantics, ElementSemanticsStore,
-    LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics, RegularElementSemantics,
-    SvelteElementSemantics,
+    ElementValueRole, LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics,
+    RegularElementSemantics, SvelteElementSemantics,
 };

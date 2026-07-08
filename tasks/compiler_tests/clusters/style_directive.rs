@@ -25,13 +25,21 @@ compiler_case!(
     "style_directive/reactive_let_guard",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(prop_guard, "style_directive/prop_guard");
+compiler_case!(
+    prop_guard,
+    "style_directive/prop_guard",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     mixed_guard,
     "style_directive/mixed_guard",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(global_call_suffix, "style_directive/global_call_suffix");
+compiler_case!(
+    global_call_suffix,
+    "style_directive/global_call_suffix",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     user_call_suffix_guard,
     "style_directive/user_call_suffix_guard",

@@ -31,9 +31,11 @@ compiler_case!(
 );
 compiler_case!(
     red_multi_svg_with_component,
-    "element_namespace/red_multi_svg_with_component"
+    "element_namespace/red_multi_svg_with_component",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     red_circle_under_dynamic_svelte_element,
-    "element_namespace/red_circle_under_dynamic_svelte_element"
+    "element_namespace/red_circle_under_dynamic_svelte_element",
+    [prod, dev, ssr, ssr_dev]
 );

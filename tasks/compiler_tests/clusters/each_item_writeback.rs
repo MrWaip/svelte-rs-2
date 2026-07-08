@@ -87,7 +87,8 @@ compiler_case!(
 );
 compiler_case!(
     legacy_reactive_await_rooted_collection_mutate,
-    "each_item_writeback/legacy_reactive_await_rooted_collection_mutate"
+    "each_item_writeback/legacy_reactive_await_rooted_collection_mutate",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     runes_array_item_mutate_guard,
@@ -111,7 +112,8 @@ compiler_case!(
 );
 compiler_case!(
     runes_derived_collection_bind,
-    "each_item_writeback/runes_derived_collection_bind"
+    "each_item_writeback/runes_derived_collection_bind",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_reactive_function_in_collection_expr,

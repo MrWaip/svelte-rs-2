@@ -10,25 +10,45 @@ compiler_case!(
     "text_reactivity/const_member_nonreactive",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(derived_literal, "text_reactivity/derived_literal");
+compiler_case!(
+    derived_literal,
+    "text_reactivity/derived_literal",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     derived_nonreactive_dep,
-    "text_reactivity/derived_nonreactive_dep"
+    "text_reactivity/derived_nonreactive_dep",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     derived_destructured_nonreactive,
-    "text_reactivity/derived_destructured_nonreactive"
+    "text_reactivity/derived_destructured_nonreactive",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(derived_state_dep, "text_reactivity/derived_state_dep");
-compiler_case!(derived_reactive_dep, "text_reactivity/derived_reactive_dep");
+compiler_case!(
+    derived_state_dep,
+    "text_reactivity/derived_state_dep",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    derived_reactive_dep,
+    "text_reactivity/derived_reactive_dep",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     derived_chain_nonreactive,
-    "text_reactivity/derived_chain_nonreactive"
+    "text_reactivity/derived_chain_nonreactive",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(derived_forward_ref, "text_reactivity/derived_forward_ref");
+compiler_case!(
+    derived_forward_ref,
+    "text_reactivity/derived_forward_ref",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     derived_nonreactive_dep_attr,
-    "text_reactivity/derived_nonreactive_dep_attr"
+    "text_reactivity/derived_nonreactive_dep_attr",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     literal_root_call,
@@ -37,11 +57,13 @@ compiler_case!(
 );
 compiler_case!(
     legacy_rest_props_call,
-    "text_reactivity/legacy_rest_props_call"
+    "text_reactivity/legacy_rest_props_call",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_props_object_call,
-    "text_reactivity/legacy_props_object_call"
+    "text_reactivity/legacy_props_object_call",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     each_sequence_reactive_read,
@@ -50,7 +72,8 @@ compiler_case!(
 );
 compiler_case!(
     legacy_static_sequence,
-    "text_reactivity/legacy_static_sequence"
+    "text_reactivity/legacy_static_sequence",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_reactive_let_text,
@@ -72,7 +95,11 @@ compiler_case!(
     "text_reactivity/call_global_root_guard",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(call_effect_tracking, "text_reactivity/call_effect_tracking");
+compiler_case!(
+    call_effect_tracking,
+    "text_reactivity/call_effect_tracking",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     tagged_template_call,
     "text_reactivity/tagged_template_call",
@@ -95,9 +122,14 @@ compiler_case!(
 );
 compiler_case!(
     logical_shortcircuit_call,
-    "text_reactivity/logical_shortcircuit_call"
+    "text_reactivity/logical_shortcircuit_call",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(select_value_call, "text_reactivity/select_value_call");
+compiler_case!(
+    select_value_call,
+    "text_reactivity/select_value_call",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     call_literal_chain,
     "text_reactivity/call_literal_chain",

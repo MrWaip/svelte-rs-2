@@ -3,8 +3,8 @@ use std::mem;
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Declaration, ExportNamedDeclaration, Expression,
-    Function, Program, Statement, VariableDeclaration, VariableDeclarator,
+    ArrowFunctionExpression, BindingPattern, Class, Declaration, ExportNamedDeclaration,
+    Expression, Function, Program, Statement, VariableDeclaration, VariableDeclarator,
 };
 use oxc_ast_visit::{VisitMut, walk_mut};
 use oxc_semantic::ScopeFlags;
@@ -12,7 +12,6 @@ use svelte_analyze::{AnalysisData, DeclaratorSemantics, IdentGen};
 use svelte_ast_builder::Builder;
 use svelte_emit_builders::server_refs;
 
-use crate::derived::expand_derived_destructure_declarators;
 use crate::effect::RuneStatement;
 
 pub(crate) struct ServerTransform<'b, 'a> {
@@ -36,9 +35,7 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
     }
 
     fn visit_variable_declaration(&mut self, it: &mut VariableDeclaration<'a>) {
-        if self.fn_depth > 0 {
-            self.expand_nested_derived_destructure(it);
-        }
+        self.expand_rune_destructure_declaration(it);
         self.expand_legacy_destructure(it);
         walk_mut::walk_variable_declaration(self, it);
     }
@@ -64,13 +61,20 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
         if self.rewrite_store_mutation(it) {
             return;
         }
+        self.rewrite_runtime_rune_call(it);
         let member_mutation = self.detect_store_member_mutation(it);
         walk_mut::walk_expression(self, it);
         self.rewrite_await(it);
+        self.rewrite_private_derived_read(it);
         server_refs::rewrite_identifier_read(self.b, self.analysis, it);
         if let Some((dollar_name, base_sym)) = member_mutation {
             self.apply_store_member_mutation(it, &dollar_name, base_sym);
         }
+    }
+
+    fn visit_class(&mut self, it: &mut Class<'a>) {
+        walk_mut::walk_class(self, it);
+        self.rewrite_server_class(it);
     }
 }
 
@@ -172,15 +176,10 @@ impl<'a> ServerTransform<'_, 'a> {
         mem::swap(it, &mut out);
     }
 
-    fn expand_nested_derived_destructure(&mut self, it: &mut VariableDeclaration<'a>) {
+    fn expand_rune_destructure_declaration(&mut self, it: &mut VariableDeclaration<'a>) {
         let mut rebuilt = self.b.ast.vec_with_capacity(it.declarations.len());
         for mut declarator in it.declarations.drain(..) {
-            match expand_derived_destructure_declarators(
-                self.b,
-                self.analysis,
-                self.ident_gen,
-                &mut declarator,
-            ) {
+            match self.expand_rune_destructure(&mut declarator) {
                 Some(expanded) => rebuilt.extend(expanded),
                 None => rebuilt.push(declarator),
             }
@@ -189,6 +188,11 @@ impl<'a> ServerTransform<'_, 'a> {
     }
 
     fn declarator(&mut self, declarator: &mut VariableDeclarator<'a>) {
+        if let Some(init) = declarator.init.as_mut()
+            && self.elide_state_snapshot_init(init)
+        {
+            return;
+        }
         if let BindingPattern::BindingIdentifier(id) = &declarator.id
             && let Some(sym) = id.symbol_id.get()
             && self.analysis.binding_semantics(sym).is_legacy_prop()
@@ -200,8 +204,10 @@ impl<'a> ServerTransform<'_, 'a> {
             DeclaratorSemantics::RuneState { kind } => self.rewrite_state(declarator, kind),
             DeclaratorSemantics::RuneProps => self.rewrite_rune_props(declarator),
             DeclaratorSemantics::RuneDerived {
-                kind, async_kind, ..
-            } => self.rewrite_derived(declarator, kind, async_kind),
+                kind,
+                async_kind,
+                source,
+            } => self.rewrite_derived(declarator, kind, async_kind, source),
             DeclaratorSemantics::LegacyProps
             | DeclaratorSemantics::None
             | DeclaratorSemantics::RuntimeRuneCall { .. }

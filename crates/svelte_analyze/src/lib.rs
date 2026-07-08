@@ -42,8 +42,8 @@ pub use block_semantics::{
 };
 pub use element_semantics::{
     BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementSemantics, ElementSemanticsStore,
-    LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics, RegularElementSemantics,
-    SvelteElementSemantics,
+    ElementValueRole, LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics,
+    RegularElementSemantics, SvelteElementSemantics,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{

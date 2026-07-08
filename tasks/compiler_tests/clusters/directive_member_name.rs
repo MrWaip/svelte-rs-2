@@ -2,27 +2,33 @@ use super::*;
 
 compiler_case!(
     directive_member_name_use_member_dash_guard,
-    "directive_member_name/use_member_dash_guard"
+    "directive_member_name/use_member_dash_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     directive_member_name_transition_member_dash,
-    "directive_member_name/transition_member_dash"
+    "directive_member_name/transition_member_dash",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     directive_member_name_in_member_dash,
-    "directive_member_name/in_member_dash"
+    "directive_member_name/in_member_dash",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     directive_member_name_out_member_dash,
-    "directive_member_name/out_member_dash"
+    "directive_member_name/out_member_dash",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     directive_member_name_animate_member_dash,
-    "directive_member_name/animate_member_dash"
+    "directive_member_name/animate_member_dash",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     directive_member_name_transition_member_valid_guard,
-    "directive_member_name/transition_member_valid_guard"
+    "directive_member_name/transition_member_valid_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     directive_member_name_transition_single_guard,

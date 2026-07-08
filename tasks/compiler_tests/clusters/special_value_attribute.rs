@@ -6,15 +6,18 @@ compiler_case!(
 );
 compiler_case!(
     option_value_static_text,
-    "special_value_attribute/option_value_static_text"
+    "special_value_attribute/option_value_static_text",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     option_value_static_null,
-    "special_value_attribute/option_value_static_null"
+    "special_value_attribute/option_value_static_null",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     option_value_reactive_each,
-    "special_value_attribute/option_value_reactive_each"
+    "special_value_attribute/option_value_reactive_each",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     option_value_prop_text,
@@ -22,7 +25,8 @@ compiler_case!(
 );
 compiler_case!(
     option_synthetic_reactive_each,
-    "special_value_attribute/option_synthetic_reactive_each"
+    "special_value_attribute/option_synthetic_reactive_each",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     option_value_member_prop,

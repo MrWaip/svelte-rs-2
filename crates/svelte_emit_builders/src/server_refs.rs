@@ -10,7 +10,7 @@ fn reads_runtime_derived(analysis: &AnalysisData<'_>, ref_id: ReferenceId) -> bo
     analysis.symbol_for_reference(ref_id).is_some_and(|sym| {
         matches!(
             analysis.binding_semantics(sym),
-            BindingSemantics::Derived(_)
+            BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_)
         )
     })
 }

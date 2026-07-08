@@ -1,12 +1,14 @@
 use std::mem;
 
-use oxc_ast::NONE;
 use oxc_ast::ast::{
     Argument, AssignmentOperator, AssignmentTarget, BindingPattern, CallExpression, Expression,
-    PropertyKey, Statement, VariableDeclarationKind, VariableDeclarator,
+    IdentifierReference, PropertyKey, Statement, VariableDeclarator,
 };
 use oxc_span::SPAN;
-use svelte_analyze::{AnalysisData, DeclaratorSemantics, DerivedAsyncKind, DerivedKind, IdentGen};
+use svelte_analyze::{
+    AnalysisData, BindingSemantics, DeclaratorSemantics, DerivedAsyncKind, DerivedKind,
+    DerivedSource, IdentGen,
+};
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::{Access, SymbolId, walk_bindings};
 
@@ -18,6 +20,7 @@ impl<'a> ServerTransform<'_, 'a> {
         declarator: &mut VariableDeclarator<'a>,
         kind: DerivedKind,
         async_kind: DerivedAsyncKind,
+        source: DerivedSource,
     ) {
         if !matches!(&declarator.id, BindingPattern::BindingIdentifier(_)) {
             return;
@@ -26,7 +29,29 @@ impl<'a> ServerTransform<'_, 'a> {
             return;
         };
         let value = self.take_first_arg(call);
+        if matches!(kind, DerivedKind::Derived)
+            && matches!(async_kind, DerivedAsyncKind::Sync)
+            && let Expression::Identifier(id) = value.get_inner_expression()
+            && self.reads_runtime_derived(id)
+        {
+            let getter = self.b.rid_expr(id.name.as_str());
+            declarator.init = Some(self.b.call_expr("$.derived", [Arg::Expr(getter)]));
+            return;
+        }
+        let _ = source;
         declarator.init = Some(build_derived_init(self.b, kind, async_kind, value));
+    }
+
+    fn reads_runtime_derived(&self, id: &IdentifierReference<'a>) -> bool {
+        id.reference_id
+            .get()
+            .and_then(|ref_id| self.analysis.symbol_for_reference(ref_id))
+            .is_some_and(|sym| {
+                matches!(
+                    self.analysis.binding_semantics(sym),
+                    BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_)
+                )
+            })
     }
 
     fn take_first_arg(&self, call: &mut CallExpression<'a>) -> Expression<'a> {
@@ -42,7 +67,7 @@ impl<'a> ServerTransform<'_, 'a> {
     }
 }
 
-fn build_derived_init<'a>(
+pub(crate) fn build_derived_init<'a>(
     b: &Builder<'a>,
     kind: DerivedKind,
     async_kind: DerivedAsyncKind,
@@ -198,38 +223,6 @@ pub(crate) fn expand_derived_destructure_statements<'a>(
         stmts.push(b.expr_stmt(assign));
     }
     Ok(stmts)
-}
-
-pub(crate) fn expand_derived_destructure_declarators<'a>(
-    b: &Builder<'a>,
-    analysis: &AnalysisData<'a>,
-    ident_gen: &mut IdentGen,
-    declarator: &mut VariableDeclarator<'a>,
-) -> Option<Vec<VariableDeclarator<'a>>> {
-    let expansion = prepare(b, analysis, ident_gen, declarator)?;
-    let mut out = vec![make_declarator(b, expansion.dd, expansion.init)];
-    for (name, derived) in expansion.entries {
-        out.push(make_declarator(b, name, derived));
-    }
-    Some(out)
-}
-
-fn make_declarator<'a>(
-    b: &Builder<'a>,
-    name: &str,
-    init: Expression<'a>,
-) -> VariableDeclarator<'a> {
-    let pattern = b
-        .ast
-        .binding_pattern_binding_identifier(SPAN, b.ast.atom(name));
-    b.ast.variable_declarator(
-        SPAN,
-        VariableDeclarationKind::Let,
-        pattern,
-        NONE,
-        Some(init),
-        false,
-    )
 }
 
 fn static_key_name<'a>(key: &PropertyKey<'a>) -> Option<&'a str> {

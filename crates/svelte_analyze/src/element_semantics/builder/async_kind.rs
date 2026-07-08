@@ -7,7 +7,7 @@ use crate::expression_semantics::{ExpressionSemantics, ExpressionSemanticsStore}
 pub(super) fn from_attributes(
     expressions: &ExpressionSemanticsStore,
     attributes: &[Attribute],
-) -> Option<ElementAsyncKind> {
+) -> ElementAsyncKind {
     let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
     let mut awaited = false;
     for attr in attributes {
@@ -29,23 +29,20 @@ pub(super) fn from_attributes(
     make(blockers, awaited)
 }
 
-pub(super) fn from_tag(
-    expressions: &ExpressionSemanticsStore,
-    id: NodeId,
-) -> Option<ElementAsyncKind> {
+pub(super) fn from_tag(expressions: &ExpressionSemanticsStore, id: NodeId) -> ElementAsyncKind {
     let ExpressionSemantics::Expression(data) = expressions.get(id) else {
-        return None;
+        return ElementAsyncKind::Sync;
     };
     make(data.blockers.clone(), data.volatility.is_asynchronous())
 }
 
-fn make(blockers: SmallVec<[u32; 2]>, awaited: bool) -> Option<ElementAsyncKind> {
+fn make(blockers: SmallVec<[u32; 2]>, awaited: bool) -> ElementAsyncKind {
     if awaited {
-        Some(ElementAsyncKind::Awaited { blockers })
+        ElementAsyncKind::Awaited { blockers }
     } else if !blockers.is_empty() {
-        Some(ElementAsyncKind::Deferred { blockers })
+        ElementAsyncKind::Deferred { blockers }
     } else {
-        None
+        ElementAsyncKind::Sync
     }
 }
 

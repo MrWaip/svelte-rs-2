@@ -1,22 +1,24 @@
 mod async_kind;
 mod boundary;
 mod legacy_slot;
+mod value_role;
 
 use svelte_ast::{Component, ComponentLikeView, Node};
 
 use super::{
-    ElementSemantics, ElementSemanticsStore, RegularElementSemantics, SvelteElementSemantics,
+    ElementSemantics, ElementSemanticsStore, ElementValueRole, RegularElementSemantics,
+    SvelteElementSemantics,
 };
-use crate::expression_semantics::ExpressionSemanticsStore;
-use crate::types::data::JsAst;
+use crate::types::data::{AnalysisData, JsAst};
 
 pub(crate) fn build(
     component: &Component,
     parsed: &JsAst<'_>,
-    expressions: &ExpressionSemanticsStore,
+    data: &AnalysisData,
     source: &str,
     node_count: u32,
 ) -> ElementSemanticsStore {
+    let expressions = &data.expressions_v2;
     let mut store = ElementSemanticsStore::new(node_count);
     for fragment in component.store.iter_fragments() {
         for &node_id in fragment.nodes.iter() {
@@ -27,19 +29,21 @@ pub(crate) fn build(
                     store.set(el.id, ElementSemantics::Boundary(boundary));
                 }
                 Node::Element(el) => {
-                    if let Some(async_kind) =
-                        async_kind::from_attributes(expressions, &el.attributes)
-                    {
+                    let async_kind = async_kind::from_attributes(expressions, &el.attributes);
+                    let value_role = value_role::classify(data, el);
+                    if !async_kind.is_sync() || value_role != ElementValueRole::Plain {
                         store.set(
                             el.id,
                             ElementSemantics::RegularElement(RegularElementSemantics {
                                 async_kind,
+                                value_role,
                             }),
                         );
                     }
                 }
                 Node::SvelteElement(el) => {
-                    if let Some(async_kind) = async_kind::from_tag(expressions, el.id) {
+                    let async_kind = async_kind::from_tag(expressions, el.id);
+                    if !async_kind.is_sync() {
                         store.set(
                             el.id,
                             ElementSemantics::SvelteElement(SvelteElementSemantics { async_kind }),

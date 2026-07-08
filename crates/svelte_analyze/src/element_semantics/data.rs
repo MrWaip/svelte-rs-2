@@ -40,6 +40,24 @@ pub enum LegacyDefaultSlot {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RegularElementSemantics {
     pub async_kind: ElementAsyncKind,
+    pub value_role: ElementValueRole,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ElementValueRole {
+    #[default]
+    Plain,
+    Select {
+        rich: bool,
+    },
+    Option {
+        value: Option<NodeId>,
+        rich: bool,
+    },
+    TextareaValue {
+        value: NodeId,
+    },
+    RichContainer,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,6 +67,8 @@ pub struct SvelteElementSemantics {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ElementAsyncKind {
+    Sync,
+
     Awaited { blockers: SmallVec<[u32; 2]> },
 
     Deferred { blockers: SmallVec<[u32; 2]> },
@@ -57,6 +77,7 @@ pub enum ElementAsyncKind {
 impl ElementAsyncKind {
     pub fn blockers(&self) -> &[u32] {
         match self {
+            ElementAsyncKind::Sync => &[],
             ElementAsyncKind::Awaited { blockers } | ElementAsyncKind::Deferred { blockers } => {
                 blockers
             }
@@ -65,6 +86,10 @@ impl ElementAsyncKind {
 
     pub fn awaited(&self) -> bool {
         matches!(self, ElementAsyncKind::Awaited { .. })
+    }
+
+    pub fn is_sync(&self) -> bool {
+        matches!(self, ElementAsyncKind::Sync)
     }
 }
 

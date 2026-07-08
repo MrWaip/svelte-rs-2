@@ -224,13 +224,8 @@ pub(crate) fn execute_pass<'a>(
             data.block_semantics_store = block_store;
         }
         super::PassKey::BuildElementSemantics => {
-            data.element_semantics = element_semantics::build(
-                component,
-                parsed,
-                &data.expressions_v2,
-                source,
-                component.node_count(),
-            );
+            data.element_semantics =
+                element_semantics::build(component, parsed, data, source, component.node_count());
         }
         super::PassKey::BuildFragmentTopology => {
             fragment_topology::build(component, data);

@@ -64,7 +64,7 @@ impl<'a> ServerCodegen<'a> {
                     if self
                         .analysis
                         .expression_data(a.id)
-                        .is_some_and(|d| matches!(d.evaluation, Evaluation::MaybeNullish { .. })))
+                        .is_some_and(|d| matches!(d.declared_evaluation, Evaluation::MaybeNullish { .. })))
         })
     }
 

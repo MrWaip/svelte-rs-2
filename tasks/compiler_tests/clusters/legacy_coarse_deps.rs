@@ -2,23 +2,28 @@ use super::*;
 
 compiler_case!(
     coarse_deps_dep_order_props_first,
-    "legacy/coarse_deps/dep_order_props_first"
+    "legacy/coarse_deps/dep_order_props_first",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_dep_order_props_last,
-    "legacy/coarse_deps/dep_order_props_last"
+    "legacy/coarse_deps/dep_order_props_last",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_dep_order_props_middle,
-    "legacy/coarse_deps/dep_order_props_middle"
+    "legacy/coarse_deps/dep_order_props_middle",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_dep_order_restprops_first,
-    "legacy/coarse_deps/dep_order_restprops_first"
+    "legacy/coarse_deps/dep_order_restprops_first",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_dep_order_props_restprops_mixed,
-    "legacy/coarse_deps/dep_order_props_restprops_mixed"
+    "legacy/coarse_deps/dep_order_props_restprops_mixed",
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
@@ -80,11 +85,13 @@ compiler_case!(
 
 compiler_case!(
     coarse_deps_module_mutated_read_template,
-    "legacy/coarse_deps/module_mutated_read_template"
+    "legacy/coarse_deps/module_mutated_read_template",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_module_mutated_read_reactive_stmt,
-    "legacy/coarse_deps/module_mutated_read_reactive_stmt"
+    "legacy/coarse_deps/module_mutated_read_reactive_stmt",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_module_unmutated_read_template,
@@ -93,7 +100,8 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_instance_mutated_read_template,
-    "legacy/coarse_deps/instance_mutated_read_template"
+    "legacy/coarse_deps/instance_mutated_read_template",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_each_index_unkeyed,
@@ -166,11 +174,13 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_prop_global_member,
-    "legacy/coarse_deps/prop_global_member"
+    "legacy/coarse_deps/prop_global_member",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_prop_const_inline_bare,
-    "legacy/coarse_deps/prop_const_inline_bare"
+    "legacy/coarse_deps/prop_const_inline_bare",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_dep_order_store_member_lhs_read,
@@ -209,5 +219,6 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_dep_order_readonly_block,
-    "legacy/coarse_deps/dep_order_readonly_block"
+    "legacy/coarse_deps/dep_order_readonly_block",
+    [prod, dev, ssr, ssr_dev]
 );

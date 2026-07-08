@@ -18,7 +18,7 @@ Per-expression факты для каждого template/attribute-выраже�
 ## Что несёт вариант
 
 - expression kind (sync / async / non-special);
-- `Evaluation` — `Known(KnownValue)` / `Defined { class }` / `MaybeNullish { has_unknown }`;
+- `Evaluation` — `Known(KnownValue)` / `Defined { class }` / `MaybeNullish { has_unknown }`; выражение несёт две оценки одного типа под разные модели исполнения: `evaluation` — значение при реактивном чтении (`ReadContext::Runtime`, реактивный источник непрозрачен), потребляет клиентский backend; `declared_evaluation` — значение при сколлапсированной реактивности (`ReadContext::Declaration`, `$state`/`$derived` свёрнуты к init), потребляет серверный backend, где рендер однократен. Обе target-агностичны — считаются всегда, backend выбирает свою; выбор формы (свернуть в статический текст vs `$.escape` в рантайме) живёт в кодгене;
 - `LegacyWrap`-выбор для legacy reactive-контекстов;
 - `references: SmallVec<SymbolId>`, реально прочитанные выражением;
 - blocker-индексы.

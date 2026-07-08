@@ -5,33 +5,56 @@ compiler_case!(
     "events/legacy_dev_arrow_handler_return",
     ignore = "divergence: legacy dev arrow handler expression body loses implicit return — on:click={() => n++} emits $.update(n) instead of return $.update(n); reproduces unquoted too, unrelated to quoted directives"
 );
-compiler_case!(snippet_param, "events/snippet_param");
-compiler_case!(store_handler_onclick, "events/store_handler_onclick");
-compiler_case!(store_handler_legacy_on, "events/store_handler_legacy_on");
+compiler_case!(
+    snippet_param,
+    "events/snippet_param",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    store_handler_onclick,
+    "events/store_handler_onclick",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    store_handler_legacy_on,
+    "events/store_handler_legacy_on",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     state_handler,
     "events/state_handler",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(derived_handler, "events/derived_handler");
+compiler_case!(
+    derived_handler,
+    "events/derived_handler",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     legacy_reactive_state_handler,
-    "events/legacy_reactive_state_handler"
+    "events/legacy_reactive_state_handler",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(await_value, "events/await_value");
-compiler_case!(await_error, "events/await_error");
+compiler_case!(await_value, "events/await_value", [prod, dev, ssr, ssr_dev]);
+compiler_case!(await_error, "events/await_error", [prod, dev, ssr, ssr_dev]);
 compiler_case!(each_item, "events/each_item", [prod, dev, ssr, ssr_dev]);
 compiler_case!(each_index, "events/each_index", [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     shorthand_event_delegatable,
-    "events/shorthand_event_delegatable"
+    "events/shorthand_event_delegatable",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     shorthand_event_non_delegatable,
-    "events/shorthand_event_non_delegatable"
+    "events/shorthand_event_non_delegatable",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(shorthand_event_bare_on, "events/shorthand_event_bare_on");
+compiler_case!(
+    shorthand_event_bare_on,
+    "events/shorthand_event_bare_on",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     forward_bare_on_regular,
     "events/forward_bare_on_regular",
@@ -44,7 +67,8 @@ compiler_case!(
 );
 compiler_case!(
     forward_bare_on_svelte_element,
-    "events/forward_bare_on_svelte_element"
+    "events/forward_bare_on_svelte_element",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     forward_bare_on_nested_if,
@@ -61,27 +85,47 @@ compiler_case!(
     "events/forward_bare_on_window",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(shorthand_non_event, "events/shorthand_non_event");
+compiler_case!(
+    shorthand_non_event,
+    "events/shorthand_non_event",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     explicit_event_delegatable,
-    "events/explicit_event_delegatable"
+    "events/explicit_event_delegatable",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     shorthand_event_on_component,
-    "events/shorthand_event_on_component"
+    "events/shorthand_event_on_component",
+    [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(spread_order_one_handler, "events/spread_order_one_handler");
+compiler_case!(
+    spread_order_one_handler,
+    "events/spread_order_one_handler",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     spread_order_two_handlers,
-    "events/spread_order_two_handlers"
+    "events/spread_order_two_handlers",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     spread_order_plain_handler,
-    "events/spread_order_plain_handler"
+    "events/spread_order_plain_handler",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(spread_order_no_handler, "events/spread_order_no_handler");
-compiler_case!(spread_order_no_spread, "events/spread_order_no_spread");
+compiler_case!(
+    spread_order_no_handler,
+    "events/spread_order_no_handler",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    spread_order_no_spread,
+    "events/spread_order_no_spread",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     spread_order_runes_onclick,
     "events/spread_order_runes_onclick"
@@ -93,25 +137,48 @@ compiler_case!(
 );
 compiler_case!(
     spread_order_use_directive,
-    "events/spread_order_use_directive"
+    "events/spread_order_use_directive",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(spread_order_bind, "events/spread_order_bind");
-compiler_case!(spread_order_transition, "events/spread_order_transition");
+compiler_case!(
+    spread_order_bind,
+    "events/spread_order_bind",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    spread_order_transition,
+    "events/spread_order_transition",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     spread_order_memo_with_use,
-    "events/spread_order_memo_with_use"
+    "events/spread_order_memo_with_use",
+    [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(input_defaults_memo_on, "events/input_defaults_memo_on");
+compiler_case!(
+    input_defaults_memo_on,
+    "events/input_defaults_memo_on",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     textarea_remove_child_memo_on,
     "events/textarea_remove_child_memo_on"
 );
-compiler_case!(input_defaults_plain_on, "events/input_defaults_plain_on");
-compiler_case!(input_defaults_no_on, "events/input_defaults_no_on");
+compiler_case!(
+    input_defaults_plain_on,
+    "events/input_defaults_plain_on",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    input_defaults_no_on,
+    "events/input_defaults_no_on",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     input_defaults_static_attr,
-    "events/input_defaults_static_attr"
+    "events/input_defaults_static_attr",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     input_no_defaults_memo_on,

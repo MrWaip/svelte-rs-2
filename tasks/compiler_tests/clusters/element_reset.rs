@@ -6,5 +6,13 @@ compiler_case!(
     "element_reset/static_children_guard",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(dynamic_child_guard, "element_reset/dynamic_child_guard");
-compiler_case!(directive_child_guard, "element_reset/directive_child_guard");
+compiler_case!(
+    dynamic_child_guard,
+    "element_reset/dynamic_child_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    directive_child_guard,
+    "element_reset/directive_child_guard",
+    [prod, dev, ssr, ssr_dev]
+);

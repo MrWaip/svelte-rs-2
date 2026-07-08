@@ -367,6 +367,32 @@ impl<'a> ServerCodegen<'a> {
         owner_id: NodeId,
         attributes: &'a [Attribute],
     ) -> Result<()> {
+        let (object, optionals) = self.build_element_attribute_object(owner_id, attributes)?;
+        let mut args = vec![Arg::Expr(object)];
+        args.extend(self.optional_trailing_args(optionals.into_iter().collect()));
+        let call = self.b.call_expr("$.attributes", args);
+        self.push_expr(call);
+        Ok(())
+    }
+
+    pub(crate) fn optional_trailing_args(
+        &self,
+        mut optionals: Vec<Option<Expression<'a>>>,
+    ) -> Vec<Arg<'a, 'a>> {
+        while matches!(optionals.last(), Some(None)) {
+            optionals.pop();
+        }
+        optionals
+            .into_iter()
+            .map(|optional| Arg::Expr(optional.unwrap_or_else(|| self.b.void_zero_expr())))
+            .collect()
+    }
+
+    pub(crate) fn build_element_attribute_object(
+        &mut self,
+        owner_id: NodeId,
+        attributes: &'a [Attribute],
+    ) -> Result<(Expression<'a>, [Option<Expression<'a>>; 4])> {
         let source = self.component.source.as_str();
         let mut props: Vec<ObjProp<'a>> = Vec::new();
 
@@ -472,21 +498,7 @@ impl<'a> ServerCodegen<'a> {
             None
         };
 
-        let mut optionals: Vec<Option<Expression<'a>>> =
-            vec![css_hash, classes, styles, flags_expr];
-        while matches!(optionals.last(), Some(None)) {
-            optionals.pop();
-        }
-
-        let mut args = vec![Arg::Expr(object)];
-        for optional in optionals {
-            let expr = optional.unwrap_or_else(|| self.b.void_zero_expr());
-            args.push(Arg::Expr(expr));
-        }
-
-        let call = self.b.call_expr("$.attributes", args);
-        self.push_expr(call);
-        Ok(())
+        Ok((object, [css_hash, classes, styles, flags_expr]))
     }
 
     fn spread_flags(&self, owner_id: NodeId) -> u32 {
@@ -520,7 +532,7 @@ impl<'a> ServerCodegen<'a> {
         if let Some(value) = self.analysis.expression_data(attr_id).and_then(|data| {
             data.references
                 .is_empty()
-                .then(|| data.evaluation.known_str())
+                .then(|| data.declared_evaluation.known_str())
                 .flatten()
         }) {
             return Ok(AttrValue::Static(value));
@@ -548,7 +560,7 @@ impl<'a> ServerCodegen<'a> {
                     let evaluation = self
                         .analysis
                         .expression_data(*id)
-                        .map(|data| data.evaluation.clone());
+                        .map(|data| data.declared_evaluation.clone());
                     if let Some(known) = evaluation.as_ref().and_then(|e| e.known_str()) {
                         push_template_str(&mut segments, &known);
                         continue;

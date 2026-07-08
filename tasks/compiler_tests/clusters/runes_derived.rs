@@ -2,7 +2,8 @@ use super::*;
 
 compiler_case!(
     declaration_nested_function_sync,
-    "runes/derived/declaration/nested_function_sync"
+    "runes/derived/declaration/nested_function_sync",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_nested_effect_sync,
@@ -21,70 +22,90 @@ compiler_case!(
 );
 compiler_case!(
     declaration_array_with_object,
-    "runes/derived/declaration/array_with_object"
+    "runes/derived/declaration/array_with_object",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_boxed_nested_array,
-    "runes/derived/declaration/boxed_nested_array"
+    "runes/derived/declaration/boxed_nested_array",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_default_nested_array,
-    "runes/derived/declaration/default_nested_array"
+    "runes/derived/declaration/default_nested_array",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_derived_by_nested,
-    "runes/derived/declaration/derived_by_nested"
+    "runes/derived/declaration/derived_by_nested",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_flat_object,
-    "runes/derived/declaration/flat_object"
+    "runes/derived/declaration/flat_object",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_nested_array,
-    "runes/derived/declaration/nested_array"
+    "runes/derived/declaration/nested_array",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_nested_object,
-    "runes/derived/declaration/nested_object"
+    "runes/derived/declaration/nested_object",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_object_of_arrays,
-    "runes/derived/declaration/object_of_arrays"
+    "runes/derived/declaration/object_of_arrays",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_rest_nested_array,
-    "runes/derived/declaration/rest_nested_array"
+    "runes/derived/declaration/rest_nested_array",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_single_array,
-    "runes/derived/declaration/single_array"
+    "runes/derived/declaration/single_array",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_string_key,
-    "runes/derived/declaration/string_key"
+    "runes/derived/declaration/string_key",
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
     write_update_postfix_inc,
-    "runes/derived/write/update_postfix_inc"
+    "runes/derived/write/update_postfix_inc",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     write_update_postfix_dec,
-    "runes/derived/write/update_postfix_dec"
+    "runes/derived/write/update_postfix_dec",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     write_update_prefix_inc,
-    "runes/derived/write/update_prefix_inc"
+    "runes/derived/write/update_prefix_inc",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     write_update_prefix_dec,
-    "runes/derived/write/update_prefix_dec"
+    "runes/derived/write/update_prefix_dec",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(write_compound_assign, "runes/derived/write/compound_assign");
+compiler_case!(
+    write_compound_assign,
+    "runes/derived/write/compound_assign",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(write_bind_value, "runes/derived/write/bind_value");
 compiler_case!(
     write_plain_assign_guard,
-    "runes/derived/write/plain_assign_guard"
+    "runes/derived/write/plain_assign_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     write_state_update_guard,
@@ -93,7 +114,8 @@ compiler_case!(
 );
 compiler_case!(
     write_derived_read_guard,
-    "runes/derived/write/derived_read_guard"
+    "runes/derived/write/derived_read_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
@@ -106,9 +128,11 @@ compiler_case!(
 );
 compiler_case!(
     read_let_declared_get_guard,
-    "runes/derived/read/let_declared_get_guard"
+    "runes/derived/read/let_declared_get_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     read_const_declared_get_guard,
-    "runes/derived/read/const_declared_get_guard"
+    "runes/derived/read/const_declared_get_guard",
+    [prod, dev, ssr, ssr_dev]
 );

@@ -49,7 +49,8 @@ compiler_case!(
 
 compiler_case!(
     snippet_param_plain_guard,
-    "typescript/snippet_param/param_plain_guard"
+    "typescript/snippet_param/param_plain_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     snippet_param_param_type,
@@ -73,7 +74,8 @@ compiler_case!(
 );
 compiler_case!(
     snippet_param_param_optional_default,
-    "typescript/snippet_param/param_optional_default"
+    "typescript/snippet_param/param_optional_default",
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
