@@ -7,6 +7,7 @@ use oxc_ast::ast::{
     VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_span::SPAN;
+use svelte_analyze::DeclaratorGroup;
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::{Access, Step, SymbolId, walk_bindings};
 use svelte_emit_builders::binding_pattern as bp;
@@ -112,18 +113,18 @@ impl<'a> ServerTransform<'_, 'a> {
         declarator.init = Some(init);
     }
 
-    pub(crate) fn expand_legacy_props_destructure(&mut self, decl: &mut VariableDeclaration<'a>) {
+    pub(crate) fn expand_legacy_destructure(&mut self, decl: &mut VariableDeclaration<'a>) {
         if !decl
             .declarations
             .iter()
-            .any(|d| self.is_legacy_props_destructure(d))
+            .any(|d| self.is_legacy_destructure(d))
         {
             return;
         }
         let kind = decl.kind;
         let mut rebuilt = self.b.ast.vec_with_capacity(decl.declarations.len());
         for mut declarator in decl.declarations.drain(..) {
-            if !self.is_legacy_props_destructure(&declarator) {
+            if !self.is_legacy_destructure(&declarator) {
                 rebuilt.push(declarator);
                 continue;
             }
@@ -139,13 +140,14 @@ impl<'a> ServerTransform<'_, 'a> {
         decl.declarations = rebuilt;
     }
 
-    fn is_legacy_props_destructure(&self, declarator: &VariableDeclarator<'a>) -> bool {
+    fn is_legacy_destructure(&self, declarator: &VariableDeclarator<'a>) -> bool {
         if matches!(&declarator.id, BindingPattern::BindingIdentifier(_)) {
             return false;
         }
         self.analysis
             .declarator_semantics(declarator.node_id())
-            .is_legacy_props()
+            .group()
+            == DeclaratorGroup::Legacy
     }
 
     fn expand_destructure_declarator(

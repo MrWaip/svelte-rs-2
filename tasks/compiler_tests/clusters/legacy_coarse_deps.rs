@@ -23,35 +23,43 @@ compiler_case!(
 
 compiler_case!(
     coarse_deps_reactive_api_export_fn,
-    "legacy/coarse_deps/reactive_api_export_fn"
+    "legacy/coarse_deps/reactive_api_export_fn",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_reactive_api_export_const,
-    "legacy/coarse_deps/reactive_api_export_const"
+    "legacy/coarse_deps/reactive_api_export_const",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_reactive_api_export_class,
-    "legacy/coarse_deps/reactive_api_export_class"
+    "legacy/coarse_deps/reactive_api_export_class",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_reactive_local_fn,
-    "legacy/coarse_deps/reactive_local_fn"
+    "legacy/coarse_deps/reactive_local_fn",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_reactive_local_const,
-    "legacy/coarse_deps/reactive_local_const"
+    "legacy/coarse_deps/reactive_local_const",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_reactive_prop,
-    "legacy/coarse_deps/reactive_prop"
+    "legacy/coarse_deps/reactive_prop",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_reactive_import,
-    "legacy/coarse_deps/reactive_import"
+    "legacy/coarse_deps/reactive_import",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_reactive_state,
-    "legacy/coarse_deps/reactive_state"
+    "legacy/coarse_deps/reactive_state",
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(

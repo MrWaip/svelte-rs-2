@@ -33,7 +33,7 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
         if self.fn_depth > 0 {
             self.expand_nested_derived_destructure(it);
         }
-        self.expand_legacy_props_destructure(it);
+        self.expand_legacy_destructure(it);
         walk_mut::walk_variable_declaration(self, it);
     }
 

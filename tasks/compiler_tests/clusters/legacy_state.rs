@@ -85,74 +85,95 @@ compiler_case!(
     "legacy/state/assignment/member_template_handler",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(declaration_alias, "legacy/state/declaration/alias");
+compiler_case!(
+    declaration_alias,
+    "legacy/state/declaration/alias",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     declaration_array_hole,
-    "legacy/state/declaration/array_hole"
+    "legacy/state/declaration/array_hole",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_array_of_objects,
-    "legacy/state/declaration/array_of_objects"
+    "legacy/state/declaration/array_of_objects",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_array_rest,
-    "legacy/state/declaration/array_rest"
+    "legacy/state/declaration/array_rest",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_array_rest_nested,
-    "legacy/state/declaration/array_rest_nested"
+    "legacy/state/declaration/array_rest_nested",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_computed_key,
-    "legacy/state/declaration/computed_key"
+    "legacy/state/declaration/computed_key",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_default_intermediate_array,
-    "legacy/state/declaration/default_intermediate_array"
+    "legacy/state/declaration/default_intermediate_array",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_default_intermediate_object,
-    "legacy/state/declaration/default_intermediate_object"
+    "legacy/state/declaration/default_intermediate_object",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_default_leaf_array,
-    "legacy/state/declaration/default_leaf_array"
+    "legacy/state/declaration/default_leaf_array",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_default_leaf_object,
-    "legacy/state/declaration/default_leaf_object"
+    "legacy/state/declaration/default_leaf_object",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_flat_object,
-    "legacy/state/declaration/flat_object"
+    "legacy/state/declaration/flat_object",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_nested_array,
-    "legacy/state/declaration/nested_array"
+    "legacy/state/declaration/nested_array",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_nested_object,
-    "legacy/state/declaration/nested_object"
+    "legacy/state/declaration/nested_object",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_object_in_array_in_object,
-    "legacy/state/declaration/object_in_array_in_object"
+    "legacy/state/declaration/object_in_array_in_object",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_object_of_arrays,
-    "legacy/state/declaration/object_of_arrays"
+    "legacy/state/declaration/object_of_arrays",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_object_rest,
-    "legacy/state/declaration/object_rest"
+    "legacy/state/declaration/object_rest",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_single_array,
-    "legacy/state/declaration/single_array"
+    "legacy/state/declaration/single_array",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_string_key,
-    "legacy/state/declaration/string_key"
+    "legacy/state/declaration/string_key",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     const_member_mutated_handler_only,

@@ -747,7 +747,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(legacy_reactive_assignment_declared_dependency);
+compiler_case!(
+    legacy_reactive_assignment_declared_dependency,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     legacy_reactive_assignment_block_destructure,
@@ -759,7 +762,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(legacy_reactive_assignment_import_topology);
+compiler_case!(
+    legacy_reactive_assignment_import_topology,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(legacy_rest_props_basic, [prod, dev, ssr, ssr_dev]);
 
