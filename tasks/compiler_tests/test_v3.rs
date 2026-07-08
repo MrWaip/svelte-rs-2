@@ -1573,7 +1573,10 @@ compiler_case!(
 
 compiler_case!(diagnose_legacy_bind_value_on_implicit_reactive_declaration);
 
-compiler_case!(diagnose_script_let_multi_declarator_splits);
+compiler_case!(
+    diagnose_script_let_multi_declarator_splits,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_script_empty_named_import_normalized_to_bare,
