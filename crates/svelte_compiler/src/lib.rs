@@ -262,7 +262,12 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                         &mut compile_ctx,
                         &transform_options,
                     );
-                    svelte_codegen_server::generate(compile_ctx, &codegen_options).ok()
+                    svelte_codegen_server::generate(
+                        compile_ctx,
+                        &codegen_options,
+                        injected_css_text.as_deref(),
+                    )
+                    .ok()
                 }
                 GenerateMode::Client | GenerateMode::False => {
                     let transform_data = {

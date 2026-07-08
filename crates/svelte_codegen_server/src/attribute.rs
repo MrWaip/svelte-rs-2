@@ -80,6 +80,14 @@ impl<'a> ServerCodegen<'a> {
             }
         }
 
+        if self.analysis.is_css_scoped(owner_id) && self.find_class_semantics(attributes).is_none()
+        {
+            let hash = self.analysis.css_hash();
+            if !hash.is_empty() {
+                self.push_text(&format!(" class=\"{}\"", escape_attribute(hash)));
+            }
+        }
+
         Ok(())
     }
 

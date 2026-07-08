@@ -33,6 +33,7 @@ pub use module::generate_module;
 pub fn generate<'a>(
     compile_ctx: svelte_types::CompileContext<'a, 'a>,
     options: &svelte_types::CodegenOptions,
+    injected_css_text: Option<&str>,
 ) -> Result<JsOutput, CodegenError> {
-    model::ServerCodegen::new(compile_ctx, options).generate()
+    model::ServerCodegen::new(compile_ctx, options, injected_css_text).generate()
 }

@@ -2,7 +2,8 @@ use super::*;
 
 compiler_case!(
     bare_selector_inside_svelte_fragment,
-    "css_scope_svelte_fragment/bare_selector_inside_svelte_fragment"
+    "css_scope_svelte_fragment/bare_selector_inside_svelte_fragment",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     descendant_through_component_default_slot,
@@ -14,7 +15,8 @@ compiler_case!(
 );
 compiler_case!(
     descendant_through_svelte_head,
-    "css_scope_svelte_fragment/descendant_through_svelte_head"
+    "css_scope_svelte_fragment/descendant_through_svelte_head",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     descendant_through_snippet,

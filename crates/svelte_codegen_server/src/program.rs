@@ -3,7 +3,7 @@ use std::mem;
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
 use oxc_span::{SPAN, Span};
-use svelte_ast_builder::{Arg, AssignLeft, Builder};
+use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::JsOutput;
 
 use crate::error::Result;
@@ -89,6 +89,16 @@ impl<'a> ServerCodegen<'a> {
         }
         let renders_slot = self.analysis.output.renders_legacy_slot;
 
+        let inject_css = self
+            .injected_css_text
+            .filter(|_| !self.analysis.output.is_custom_element_target);
+        if inject_css.is_some() {
+            component_block.insert(
+                0,
+                b.call_stmt("$$renderer.global.css.add", [Arg::Ident("$$css")]),
+            );
+        }
+
         let needs_props_param = inject_context
             || has_bind_props
             || has_runes_props
@@ -117,6 +127,16 @@ impl<'a> ServerCodegen<'a> {
         program_body.extend(hoisted_imports);
         program_body.extend(module_body);
         program_body.extend(hoisted_snippets);
+
+        if let Some(code) = inject_css {
+            let hash: &str = b.alloc_str(self.analysis.css_hash());
+            let code: &str = b.alloc_str(code);
+            let css_obj = b.object_expr([
+                ObjProp::KeyValue("hash", b.str_expr(hash)),
+                ObjProp::KeyValue("code", b.str_expr(code)),
+            ]);
+            program_body.push(b.const_stmt("$$css", css_obj));
+        }
 
         if self.dev {
             program_body.push(Statement::FunctionDeclaration(b.alloc(render_fn)));

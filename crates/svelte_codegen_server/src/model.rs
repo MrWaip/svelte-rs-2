@@ -27,6 +27,7 @@ pub(crate) struct ServerCodegen<'a> {
     pub promise_hoists: Option<Vec<Statement<'a>>>,
     pub promise_index: u32,
     pub const_tag_blockers: HashMap<SymbolId, (String, u32)>,
+    pub injected_css_text: Option<&'a str>,
 }
 
 pub(crate) enum AsyncInterpolation<'a> {
@@ -38,9 +39,11 @@ impl<'a> ServerCodegen<'a> {
     pub(crate) fn new(
         ctx: svelte_types::CompileContext<'a, 'a>,
         options: &svelte_types::CodegenOptions,
+        injected_css_text: Option<&str>,
     ) -> Self {
         let b = Builder::new(ctx.alloc);
         let filename: &'a str = b.alloc_str(&options.filename);
+        let injected_css_text: Option<&'a str> = injected_css_text.map(|t| b.alloc_str(t) as &str);
         Self {
             b,
             component: ctx.component,
@@ -58,6 +61,7 @@ impl<'a> ServerCodegen<'a> {
             promise_hoists: None,
             promise_index: 0,
             const_tag_blockers: HashMap::new(),
+            injected_css_text,
         }
     }
 

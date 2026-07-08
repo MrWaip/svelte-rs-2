@@ -127,7 +127,7 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(css_scope_class_in_snippet);
+compiler_case!(css_scope_class_in_snippet, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(css_scope_svelte_element_class, [prod, dev, ssr, ssr_dev]);
 
@@ -138,15 +138,15 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(css_scope_class_array_with_state);
+compiler_case!(css_scope_class_array_with_state, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_scope_spread_attribute);
+compiler_case!(css_scope_spread_attribute, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(css_unused_external, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_unused_injected, [prod, dev_todo]);
+compiler_case!(css_unused_injected, [prod, dev_todo, ssr, ssr_dev_todo]);
 
-compiler_case!(css_nested_style);
+compiler_case!(css_nested_style, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     css_nested_pseudo_element_no_scope_class,
@@ -173,22 +173,25 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(css_scoped_id_selector);
+compiler_case!(css_scoped_id_selector, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_scoped_attr_presence);
+compiler_case!(css_scoped_attr_presence, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_scoped_attr_value_selector);
+compiler_case!(css_scoped_attr_value_selector, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_scoped_attr_matcher_operators);
+compiler_case!(css_scoped_attr_matcher_operators, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_scoped_attr_name_casefolding);
+compiler_case!(css_scoped_attr_name_casefolding, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     css_pseudo_compound_unused_but_scoped,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(css_scope_child_combinator_bare_pseudo);
+compiler_case!(
+    css_scope_child_combinator_bare_pseudo,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     css_scope_child_combinator_global_pseudo_unscoped,
@@ -205,15 +208,15 @@ compiler_case!(css_component_snippet_descendant_boundary);
 
 compiler_case!(css_pseudo_has, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_pseudo_not_scoped);
+compiler_case!(css_pseudo_not_scoped, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(css_nesting_selector_scoped, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(css_root_has_scoped, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_escaped_selector_scoped);
+compiler_case!(css_escaped_selector_scoped, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_dynamic_attr_selector_match);
+compiler_case!(css_dynamic_attr_selector_match, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(css_comments_preserved, [prod, dev, ssr, ssr_dev]);
 
@@ -305,20 +308,20 @@ compiler_case!(
 
 compiler_case!(
     css_injected_append_styles_with_stores_order,
-    [prod, dev_todo]
+    [prod, dev_todo, ssr, ssr_dev_todo]
 );
 
-compiler_case!(css_scoped_basic);
+compiler_case!(css_scoped_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_injected, [prod, dev_todo]);
+compiler_case!(css_injected, [prod, dev_todo, ssr, ssr_dev_todo]);
 
-compiler_case!(css_global_basic);
+compiler_case!(css_global_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_global_block);
+compiler_case!(css_global_block, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_global_compound);
+compiler_case!(css_global_compound, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_global_in_pseudo);
+compiler_case!(css_global_in_pseudo, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(css_global_with_combinators, [prod, dev, ssr, ssr_dev]);
 
@@ -327,9 +330,12 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(css_keyframes_scoped);
+compiler_case!(css_keyframes_scoped, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_keyframes_percentage_scopes_all);
+compiler_case!(
+    css_keyframes_percentage_scopes_all,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     bind_this_with_children_and_class_directive,
@@ -777,7 +783,10 @@ compiler_case!(legacy_before_after_update_basic, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(legacy_before_after_update_alias, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(custom_element_css_default_injected, [prod, dev_todo]);
+compiler_case!(
+    custom_element_css_default_injected,
+    [prod, dev_todo, ssr, ssr_dev]
+);
 
 compiler_case!(custom_element_shadow_object, [prod, dev, ssr, ssr_dev]);
 
@@ -3540,7 +3549,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_css_slot_fallback_descendant_scope);
+compiler_case!(
+    diagnose_css_slot_fallback_descendant_scope,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(ts_init_impure_type_assertion, [prod, dev, ssr, ssr_dev]);
 
