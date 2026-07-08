@@ -110,7 +110,6 @@ const FROZEN_APIS: &[(&str, &str, &[&str])] = &[
             "is_input",
             "is_void",
             "iter_store_bindings",
-            "legacy_default_slot",
             "legacy_indirect_bindings",
             "namespace",
             "nearest_element",

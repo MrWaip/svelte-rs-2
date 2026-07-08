@@ -2,42 +2,25 @@ use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, FragmentEmitKind, Result};
 use oxc_ast::ast::{Expression, Statement};
-use svelte_ast::{FragmentId, Node, NodeId};
+use svelte_analyze::ElementSemantics;
+use svelte_ast::{Node, NodeId};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
-    fn unwrap_default_svelte_fragment_legacy(
-        &self,
-        fragment: FragmentId,
-    ) -> Option<(NodeId, FragmentId)> {
-        let store = &self.ctx.query.component.store;
-        let source = self.ctx.query.component.source.as_str();
-        let mut wrapper: Option<(NodeId, FragmentId)> = None;
-        for &child_id in store.fragment_nodes(fragment) {
-            match store.get(child_id) {
-                Node::Text(t) if t.raw_value(source).chars().all(|c| c.is_ascii_whitespace()) => {
-                    continue;
-                }
-                Node::SvelteFragmentLegacy(el) => {
-                    if wrapper.is_some() {
-                        return None;
-                    }
-                    wrapper = Some((child_id, el.fragment));
-                }
-                _ => return None,
-            }
-        }
-        wrapper
-    }
-
     pub(in super::super) fn build_component_default_children_with_let(
         &mut self,
         parent_ctx: &FragmentCtx<'a>,
         el_id: NodeId,
         fragment: svelte_ast::FragmentId,
     ) -> Result<Option<Expression<'a>>> {
-        let wrapped = self.unwrap_default_svelte_fragment_legacy(fragment);
-        let (let_owner, effective_fragment) = match wrapped {
-            Some((wrapper_id, inner)) => (wrapper_id, inner),
+        let default_wrapper = match self.ctx.query.analysis.element_semantics.query(el_id) {
+            ElementSemantics::LegacyComponentSlots(sem) => sem.default_wrapper,
+            _ => None,
+        };
+        let (let_owner, effective_fragment) = match default_wrapper {
+            Some(wrapper_id) => match self.ctx.query.component.store.get(wrapper_id) {
+                Node::SvelteFragmentLegacy(el) => (wrapper_id, el.fragment),
+                _ => (el_id, fragment),
+            },
             None => (el_id, fragment),
         };
         let let_stmts = self.emit_let_directive_legacy_stmts(let_owner)?;

@@ -229,25 +229,34 @@ compiler_case!(warn_attr_illegal_colon, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(warn_attr_invalid_prop_name, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(warn_slot_deprecated);
+compiler_case!(warn_slot_deprecated, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(slot_named_fallback);
+compiler_case!(slot_named_fallback, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_slot_dev_mixed);
+compiler_case!(legacy_slot_dev_mixed, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(slot_props_default);
+compiler_case!(slot_props_default, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(slot_props_spread);
+compiler_case!(slot_props_spread, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(slot_props_dynamic_state);
+compiler_case!(slot_props_dynamic_state, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(slot_props_dynamic_call);
+compiler_case!(slot_props_dynamic_call, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_legacy_slot_props_store_member);
+compiler_case!(
+    diagnose_legacy_slot_props_store_member,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_slot_prop_conditional_no_derived_wrap);
+compiler_case!(
+    diagnose_legacy_slot_prop_conditional_no_derived_wrap,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_slot_prop_non_simple_stateful_shapes);
+compiler_case!(
+    diagnose_legacy_slot_prop_non_simple_stateful_shapes,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(warn_script_context_deprecated, [prod, dev, ssr, ssr_dev]);
 
@@ -459,11 +468,17 @@ compiler_case!(class_directive, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(diagnose_class_directive_name_with_underscore);
 
-compiler_case!(diagnose_class_directive_named_like_slot_attribute_no_placement_error);
+compiler_case!(
+    diagnose_class_directive_named_like_slot_attribute_no_placement_error,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_class_directive_call_in_template_effect);
 
-compiler_case!(diagnose_class_directive_slots_member_legacy);
+compiler_case!(
+    diagnose_class_directive_slots_member_legacy,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_attribute_effect_spread_call_memo,
@@ -575,7 +590,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(legacy_slot_fallback_if_sibling_node_naming);
+compiler_case!(
+    legacy_slot_fallback_if_sibling_node_naming,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(component_events);
 
@@ -583,22 +601,34 @@ compiler_case!(component_events_dev_apply);
 
 compiler_case!(component_element_children, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_named_slot);
+compiler_case!(component_named_slot, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_slot_forward_named_into_child_component);
+compiler_case!(
+    legacy_slot_forward_named_into_child_component,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_default_slot_let);
+compiler_case!(component_default_slot_let, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_component_callee_from_slot_let);
+compiler_case!(
+    diagnose_component_callee_from_slot_let,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_component_callee_member_legacy_reactive_root,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_component_callee_from_slot_let_shadowed_by_script_binding);
+compiler_case!(
+    diagnose_component_callee_from_slot_let_shadowed_by_script_binding,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_let_directive_name_starts_with_on);
+compiler_case!(
+    component_let_directive_name_starts_with_on,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_component_events_slot_let_handler);
 
@@ -607,15 +637,21 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(component_default_slot_let_alias);
+compiler_case!(component_default_slot_let_alias, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_named_slot_let_element);
+compiler_case!(component_named_slot_let_element, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_named_slot_let_element_destructure);
+compiler_case!(
+    component_named_slot_let_element_destructure,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_named_slot_let_element_multiple);
+compiler_case!(
+    component_named_slot_let_element_multiple,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_child_slot_attribute);
+compiler_case!(component_child_slot_attribute, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(smoke_all);
 
@@ -682,7 +718,7 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(custom_element_slots);
+compiler_case!(custom_element_slots, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(legacy_props_basic, [prod, dev, ssr, ssr_dev]);
 
@@ -727,9 +763,9 @@ compiler_case!(legacy_reactive_assignment_import_topology);
 
 compiler_case!(legacy_rest_props_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_slots_if);
+compiler_case!(legacy_slots_if, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_slots_script_basic);
+compiler_case!(legacy_slots_script_basic, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(legacy_before_after_update_basic, [prod, dev, ssr, ssr_dev]);
 
@@ -1937,21 +1973,30 @@ compiler_case!(svelte_element_basic, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_element_self_closing, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_fragment_named_slot);
+compiler_case!(svelte_fragment_named_slot, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_fragment_named_slot_inside_svelte_component);
 
-compiler_case!(svelte_fragment_named_slot_component_expr_attr);
+compiler_case!(
+    svelte_fragment_named_slot_component_expr_attr,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_named_slot_let_fragment);
+compiler_case!(component_named_slot_let_fragment, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_named_slot_let_fragment_destructure);
+compiler_case!(
+    component_named_slot_let_fragment_destructure,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(svelte_fragment_default_slot_wrapper);
 
-compiler_case!(svelte_fragment_default_slot_let);
+compiler_case!(svelte_fragment_default_slot_let, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_fragment_explicit_default_slot_attribute_lowers_to_children_prop);
+compiler_case!(
+    svelte_fragment_explicit_default_slot_attribute_lowers_to_children_prop,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(svelte_fragment_named_slot_with_const_tag);
 
@@ -2718,7 +2763,10 @@ compiler_case!(
 
 compiler_case!(diagnose_fragment_id_in_snippet_used_as_expression);
 
-compiler_case!(diagnose_fragment_id_in_sibling_named_slot_after_component);
+compiler_case!(
+    diagnose_fragment_id_in_sibling_named_slot_after_component,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(component_prop_const_tag_member, [prod, dev, ssr, ssr_dev]);
 
@@ -2746,7 +2794,10 @@ compiler_case!(
 
 compiler_case!(diagnose_legacy_slot_let_array_destructure_dep_read);
 
-compiler_case!(diagnose_svelte_fragment_let_inside_named_slot_component);
+compiler_case!(
+    diagnose_svelte_fragment_let_inside_named_slot_component,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_svelte_component_css_custom_prop_wrapper,
@@ -3063,19 +3114,34 @@ compiler_case!(diagnose_svg_city_icon);
 
 compiler_case!(clock_svg_derived_onmount);
 
-compiler_case!(diagnose_component_default_and_named_slot_expr);
+compiler_case!(
+    diagnose_component_default_and_named_slot_expr,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_component_named_slot_child_with_expression_prop);
+compiler_case!(
+    diagnose_component_named_slot_child_with_expression_prop,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_component_named_slot_child_inflates_template_root_ids);
+compiler_case!(
+    diagnose_component_named_slot_child_inflates_template_root_ids,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_component_named_slot_empty_element_child_kept);
+compiler_case!(
+    diagnose_component_named_slot_empty_element_child_kept,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_component_named_slot_svelte_component_child_kept);
 
 compiler_case!(diagnose_svelte_component_named_slot_expression_binds);
 
-compiler_case!(diagnose_legacy_slot_forward_inflates_template_root_ids);
+compiler_case!(
+    diagnose_legacy_slot_forward_inflates_template_root_ids,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_legacy_dev_benchmark);
 
@@ -3099,7 +3165,7 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(add_locations_named_slot_wrapper);
+compiler_case!(add_locations_named_slot_wrapper, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(auto_softlegacy_member_read, [prod, dev, ssr, ssr_dev]);
 
@@ -3540,7 +3606,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_slot_attribute_const_arrow_shorthand);
+compiler_case!(
+    diagnose_slot_attribute_const_arrow_shorthand,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_component_prop_object_literal_arrow_value_inline,
@@ -3552,7 +3621,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_component_name_collides_with_slot_let_binding);
+compiler_case!(
+    diagnose_component_name_collides_with_slot_let_binding,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_component_name_collides_with_each_alias_binding,

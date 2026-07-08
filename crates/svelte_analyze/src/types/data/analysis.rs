@@ -149,6 +149,7 @@ pub struct ApiExport {
 pub struct OutputData {
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
+    pub renders_legacy_slot: bool,
     pub custom_element_slot_names: Vec<String>,
     pub component_name: String,
     pub is_custom_element_target: bool,
@@ -167,6 +168,7 @@ impl OutputData {
         Self {
             needs_context: false,
             needs_sanitized_legacy_slots: false,
+            renders_legacy_slot: false,
             custom_element_slot_names: Vec::new(),
             component_name: String::new(),
             is_custom_element_target: false,
@@ -467,9 +469,6 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn has_component_css_props(&self, id: NodeId) -> bool {
         self.elements.flags.has_component_css_props(id)
-    }
-    pub fn legacy_default_slot(&self, id: NodeId) -> LegacyDefaultSlot {
-        self.elements.flags.legacy_default_slot(id)
     }
     pub fn svelte_element_tag(&self, id: NodeId) -> Option<&SvelteElementTag> {
         self.elements.flags.svelte_element_tag(id)

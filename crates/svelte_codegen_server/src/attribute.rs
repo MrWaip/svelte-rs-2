@@ -673,6 +673,7 @@ impl<'a> ServerCodegen<'a> {
                 }
                 _ => Err(CodegenError::Unsupported(attr_id, "component attribute")),
             },
+            AttributeSemantics::Skip(_) => Ok(()),
             _ => Err(CodegenError::Unsupported(attr_id, "component attribute")),
         }
     }

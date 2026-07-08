@@ -3,9 +3,10 @@ use std::borrow::Cow;
 use svelte_component_semantics::{OriginKind, OxcNodeId as SemOxcNodeId, ReferenceId};
 
 use super::*;
+use crate::element_semantics::{ElementSemantics, LegacyDefaultSlot};
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics};
 use crate::passes::fragment_topology::fragment_items;
-use crate::types::data::{ComponentPropKind, DeclaratorSemantics, LegacyDefaultSlot};
+use crate::types::data::{ComponentPropKind, DeclaratorSemantics};
 
 #[derive(Clone, Copy)]
 pub struct CodegenView<'d, 'a> {
@@ -392,10 +393,16 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         self.data.elements.flags.is_svelte_fragment_slot(id)
     }
     pub fn legacy_default_slot(&self, id: NodeId) -> LegacyDefaultSlot {
-        self.data.elements.flags.legacy_default_slot(id)
+        match self.data.element_semantics.query(id) {
+            ElementSemantics::LegacyComponentSlots(sem) => sem.default_slot,
+            _ => LegacyDefaultSlot::ChildrenProp,
+        }
     }
     pub fn legacy_slot_has_fallback(&self, id: NodeId) -> bool {
-        self.data.elements.flags.legacy_slot_has_fallback(id)
+        match self.data.element_semantics.query(id) {
+            ElementSemantics::LegacySlot(sem) => sem.has_fallback,
+            _ => false,
+        }
     }
     pub fn has_bind_group(&self, id: NodeId) -> bool {
         self.data.template.bind_semantics.has_bind_group(id)

@@ -149,8 +149,8 @@ impl<'a> ServerCodegen<'a> {
             Node::SvelteBoundary(boundary) => {
                 return self.svelte_boundary(boundary, preserve_whitespace);
             }
+            Node::SlotElementLegacy(el) => return self.slot_element_legacy(el),
             Node::Text(_)
-            | Node::SlotElementLegacy(_)
             | Node::SnippetBlock(_)
             | Node::ConstTag(_)
             | Node::DebugTag(_)

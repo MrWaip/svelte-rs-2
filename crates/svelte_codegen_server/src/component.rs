@@ -1,11 +1,10 @@
-use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{BlockSemantics, LegacyDefaultSlot, SnippetSlotKey};
+use oxc_ast::ast::Statement;
+use svelte_analyze::{BlockSemantics, ElementSemantics, LegacyDefaultSlot, SnippetSlotKey};
 use svelte_ast::{ComponentNode, Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
 use crate::attribute::PropOrSpread;
 use crate::error::{CodegenError, Result};
-use crate::fragment::FragmentParent;
 use crate::model::ServerCodegen;
 
 impl<'a> ServerCodegen<'a> {
@@ -25,6 +24,9 @@ impl<'a> ServerCodegen<'a> {
 
         let mut items: Vec<PropOrSpread<'a>> = Vec::new();
         for attr in &cn.attributes {
+            if matches!(attr, svelte_ast::Attribute::LetDirectiveLegacy(_)) {
+                continue;
+            }
             self.emit_component_attribute(attr, &mut items)?;
         }
 
@@ -65,10 +67,6 @@ impl<'a> ServerCodegen<'a> {
         snippet_decls: &mut Vec<Statement<'a>>,
         slot_entries: &mut Vec<ObjProp<'a>>,
     ) -> Result<()> {
-        if !cn.legacy_slots.is_empty() {
-            return Err(CodegenError::Unsupported(cn.id, "component named slots"));
-        }
-
         let child_ids: Vec<NodeId> = self.component.store.fragment(cn.fragment).nodes.to_vec();
         for child_id in &child_ids {
             if let Node::SnippetBlock(_) = self.component.store.get(*child_id) {
@@ -88,7 +86,16 @@ impl<'a> ServerCodegen<'a> {
             }
         }
 
-        self.build_default_children(cn, items, slot_entries)
+        self.build_default_children(cn, items, slot_entries)?;
+
+        for slot in &cn.legacy_slots {
+            let Some(arrow) = self.build_named_slot_fill(slot)? else {
+                continue;
+            };
+            let key: &'a str = self.b.alloc_str(&slot.name);
+            slot_entries.push(ObjProp::KeyValue(key, arrow));
+        }
+        Ok(())
     }
 
     fn build_default_children(
@@ -97,33 +104,46 @@ impl<'a> ServerCodegen<'a> {
         items: &mut Vec<PropOrSpread<'a>>,
         slot_entries: &mut Vec<ObjProp<'a>>,
     ) -> Result<()> {
-        let fragment = cn.fragment;
-        let preserve = self.analysis.script.preserve_whitespace;
-        let body = self.child_statements(|codegen| {
-            codegen.fragment_children_only(fragment, FragmentParent::Component, preserve)
-        })?;
-        if body.is_empty() {
-            return Ok(());
-        }
+        let (default_slot, default_wrapper) = match self.analysis.element_semantics.query(cn.id) {
+            ElementSemantics::LegacyComponentSlots(sem) => (sem.default_slot, sem.default_wrapper),
+            _ => (LegacyDefaultSlot::ChildrenProp, None),
+        };
 
-        match self.analysis.legacy_default_slot(cn.id) {
+        let (owner_id, fragment, wrap_block) = match default_wrapper {
+            Some(wrapper_id) => match self.component.store.get(wrapper_id) {
+                Node::SvelteFragmentLegacy(el) => (wrapper_id, el.fragment, true),
+                _ => (cn.id, cn.fragment, false),
+            },
+            None => (cn.id, cn.fragment, false),
+        };
+
+        let Some(arrow) = self.build_default_slot_fill(owner_id, fragment, wrap_block)? else {
+            return Ok(());
+        };
+
+        match default_slot {
             LegacyDefaultSlot::ChildrenProp => {
-                let arrow = self.b.arrow_block(self.b.params(["$$renderer"]), body);
-                let mut arrow_expr = Expression::ArrowFunctionExpression(self.b.alloc(arrow));
-                if self.dev {
-                    arrow_expr = self
-                        .b
-                        .call_expr("$.prevent_snippet_stringification", [Arg::Expr(arrow_expr)]);
-                }
-                items.push(PropOrSpread::Prop(ObjProp::KeyValue(
-                    "children", arrow_expr,
-                )));
+                let arrow = if self.dev {
+                    self.b
+                        .call_expr("$.prevent_snippet_stringification", [Arg::Expr(arrow)])
+                } else {
+                    arrow
+                };
+                items.push(PropOrSpread::Prop(ObjProp::KeyValue("children", arrow)));
                 slot_entries.push(ObjProp::KeyValue("default", self.b.bool_expr(true)));
-                Ok(())
             }
-            LegacyDefaultSlot::SlotDefault | LegacyDefaultSlot::SlotDefaultInvalid => {
-                Err(CodegenError::Unsupported(cn.id, "legacy default slot"))
+            LegacyDefaultSlot::SlotDefaultInvalid => {
+                items.push(PropOrSpread::Prop(ObjProp::KeyValue(
+                    "children",
+                    self.b
+                        .static_member_expr(self.b.rid_expr("$"), "invalid_default_snippet"),
+                )));
+                slot_entries.push(ObjProp::KeyValue("default", arrow));
+            }
+            LegacyDefaultSlot::SlotDefault => {
+                slot_entries.push(ObjProp::KeyValue("default", arrow));
             }
         }
+        Ok(())
     }
 }

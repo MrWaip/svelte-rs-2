@@ -99,7 +99,8 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_if_dollar_slots_bare,
-    "legacy/coarse_deps/if_dollar_slots_bare"
+    "legacy/coarse_deps/if_dollar_slots_bare",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_if_dollar_props_bare,
@@ -137,7 +138,8 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_if_slots_member,
-    "legacy/coarse_deps/if_slots_member"
+    "legacy/coarse_deps/if_slots_member",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_if_props_member,
@@ -146,11 +148,13 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_text_dollar_slots_concat,
-    "legacy/coarse_deps/text_dollar_slots_concat"
+    "legacy/coarse_deps/text_dollar_slots_concat",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_prop_slots_member,
-    "legacy/coarse_deps/prop_slots_member"
+    "legacy/coarse_deps/prop_slots_member",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_prop_global_member,

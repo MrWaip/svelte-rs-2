@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use svelte_ast::{
-    Attribute, ComponentNode, ConcatPart, Element, Node, NodeId, SlotElementLegacy, is_mathml,
-    is_svg, is_void,
+    Attribute, ComponentNode, ConcatPart, Element, NodeId, SlotElementLegacy, is_mathml, is_svg,
+    is_void,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -10,8 +10,8 @@ use crate::attribute_semantics::data::is_component_css_property;
 use crate::expression_semantics::Volatility;
 use crate::types::data::{
     BindTargetSemantics, BindingSemantics, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
-    EventHandlerMode, EventModifier, LegacyDefaultSlot, ParentKind, PropBindingKind,
-    PropBindingSemantics, RichContentParentKind, SvelteElementTag,
+    EventHandlerMode, EventModifier, ParentKind, PropBindingKind, PropBindingSemantics,
+    RichContentParentKind, SvelteElementTag,
 };
 use crate::utils::{
     concat_single_dynamic_expr, is_delegatable_event, is_passive_event, is_simple_identifier,
@@ -307,33 +307,24 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     ) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
-        self.record_legacy_default_slot(cn.id, &cn.attributes, cn.fragment, ctx);
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
-        self.record_legacy_default_slot(cn.id, &cn.attributes, cn.fragment, ctx);
     }
 
     fn visit_svelte_self(&mut self, cn: &svelte_ast::SvelteSelf, ctx: &mut VisitContext<'_, '_>) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
-        self.record_legacy_default_slot(cn.id, &cn.attributes, cn.fragment, ctx);
     }
 
     fn visit_slot_element_legacy(
         &mut self,
-        el: &SlotElementLegacy,
+        _el: &SlotElementLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        if !ctx.store.fragment_nodes(el.fragment).is_empty() {
-            ctx.data
-                .elements
-                .flags
-                .legacy_slot_has_fallback
-                .insert(el.id);
-        }
+        ctx.data.output.renders_legacy_slot = true;
     }
 
     fn visit_js_expression(
@@ -372,46 +363,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 }
 
 impl<'src> ElementFlagsVisitor<'src> {
-    fn record_legacy_default_slot(
-        &self,
-        cn_id: svelte_ast::NodeId,
-        attributes: &[Attribute],
-        fragment: svelte_ast::FragmentId,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
-        let has_children_attr = attributes.iter().any(|a| match a {
-            Attribute::StringAttribute(x) => x.name == "children",
-            Attribute::BooleanAttribute(x) => x.name == "children",
-            Attribute::ExpressionAttribute(x) => x.name == "children",
-            Attribute::ConcatenationAttribute(x) => x.name == "children",
-            _ => false,
-        });
-        let has_let = attributes
-            .iter()
-            .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_)))
-            || ctx.store.fragment_nodes(fragment).iter().any(|&child_id| {
-                match ctx.store.get(child_id) {
-                    Node::SvelteFragmentLegacy(el) => el
-                        .attributes
-                        .iter()
-                        .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_))),
-                    _ => false,
-                }
-            });
-        let form = if has_children_attr {
-            LegacyDefaultSlot::SlotDefault
-        } else if has_let {
-            LegacyDefaultSlot::SlotDefaultInvalid
-        } else {
-            LegacyDefaultSlot::ChildrenProp
-        };
-        ctx.data
-            .elements
-            .flags
-            .legacy_default_slot
-            .insert(cn_id, form);
-    }
-
     fn mark_bind_group_if_present(
         &self,
         node_id: svelte_ast::NodeId,

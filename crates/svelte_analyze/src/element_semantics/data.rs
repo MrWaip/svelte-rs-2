@@ -11,6 +11,30 @@ pub enum ElementSemantics {
     Boundary(BoundarySemantics),
 
     SvelteElement(SvelteElementSemantics),
+
+    LegacySlot(LegacySlotSemantics),
+
+    LegacyComponentSlots(LegacyComponentSlotsSemantics),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LegacySlotSemantics {
+    pub name: String,
+    pub has_fallback: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LegacyComponentSlotsSemantics {
+    pub default_slot: LegacyDefaultSlot,
+    pub default_wrapper: Option<NodeId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LegacyDefaultSlot {
+    #[default]
+    ChildrenProp,
+    SlotDefaultInvalid,
+    SlotDefault,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

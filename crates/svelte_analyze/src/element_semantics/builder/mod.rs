@@ -1,7 +1,8 @@
 mod async_kind;
 mod boundary;
+mod legacy_slot;
 
-use svelte_ast::{Component, Node};
+use svelte_ast::{Component, ComponentLikeView, Node};
 
 use super::{
     ElementSemantics, ElementSemanticsStore, RegularElementSemantics, SvelteElementSemantics,
@@ -13,12 +14,14 @@ pub(crate) fn build(
     component: &Component,
     parsed: &JsAst<'_>,
     expressions: &ExpressionSemanticsStore,
+    source: &str,
     node_count: u32,
 ) -> ElementSemanticsStore {
     let mut store = ElementSemanticsStore::new(node_count);
     for fragment in component.store.iter_fragments() {
         for &node_id in fragment.nodes.iter() {
-            match component.store.get(node_id) {
+            let node = component.store.get(node_id);
+            match node {
                 Node::SvelteBoundary(el) => {
                     let boundary = boundary::classify(component, parsed, el);
                     store.set(el.id, ElementSemantics::Boundary(boundary));
@@ -43,7 +46,24 @@ pub(crate) fn build(
                         );
                     }
                 }
-                _ => {}
+                Node::SlotElementLegacy(el) => {
+                    let slot = legacy_slot::classify_slot(el, component, source);
+                    store.set(el.id, ElementSemantics::LegacySlot(slot));
+                }
+                _ => {
+                    if let Some(view) = node.as_component_like() {
+                        let ComponentLikeView {
+                            id,
+                            attributes,
+                            fragment,
+                            ..
+                        } = view;
+                        let slots = legacy_slot::classify_component_slots(
+                            attributes, fragment, component, source,
+                        );
+                        store.set(id, ElementSemantics::LegacyComponentSlots(slots));
+                    }
+                }
             }
         }
     }

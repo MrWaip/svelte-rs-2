@@ -1,6 +1,6 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::Volatility;
+use svelte_analyze::{AttributeSemantics, ElementSemantics, Volatility};
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 use svelte_emit_builders::runes::rune_get;
@@ -38,8 +38,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             _ => return CodegenError::unexpected_node(el_id, "SlotElementLegacy"),
         };
 
-        let slot_name = self.legacy_slot_name(&attrs);
-        let slot_name_alloc: &str = self.ctx.b.alloc_str(&slot_name);
+        let slot_name = match self.ctx.query.analysis.element_semantics.query(el_id) {
+            ElementSemantics::LegacySlot(sem) => sem.name.as_str(),
+            _ => "default",
+        };
+        let slot_name_alloc: &str = self.ctx.b.alloc_str(slot_name);
 
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         let mut spreads: Vec<Expression<'a>> = Vec::new();
@@ -48,11 +51,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         for attr in &attrs {
             let attr_id = attr.id();
+            if matches!(
+                self.ctx.query.analysis.attributes.get(attr_id),
+                AttributeSemantics::Skip(_)
+            ) {
+                continue;
+            }
             match attr {
                 Attribute::StringAttribute(a) => {
-                    if a.name == "name" || a.name == "slot" {
-                        continue;
-                    }
                     let key = self.ctx.b.alloc_str(&a.name);
                     let value = self
                         .ctx
@@ -61,9 +67,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     props.push(ObjProp::KeyValue(key, value));
                 }
                 Attribute::BooleanAttribute(a) => {
-                    if a.name == "name" || a.name == "slot" {
-                        continue;
-                    }
                     let key = self.ctx.b.alloc_str(&a.name);
                     props.push(ObjProp::KeyValue(key, self.ctx.b.bool_expr(true)));
                 }
@@ -72,9 +75,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     spreads.push(self.ctx.b.thunk(value));
                 }
                 Attribute::ExpressionAttribute(a) => {
-                    if a.name == "name" || a.name == "slot" {
-                        continue;
-                    }
                     let key = self.ctx.b.alloc_str(&a.name);
                     let expr = self.take_attr_expr(attr_id, &a.expression)?;
                     let (memo, shorthand) = match self.ctx.query.analysis.attributes.get(attr_id) {
@@ -110,9 +110,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
                 Attribute::ConcatenationAttribute(a) => {
-                    if a.name == "name" || a.name == "slot" {
-                        continue;
-                    }
                     let key = self.ctx.b.alloc_str(&a.name);
                     let val = self.build_concat_expr_collapse_single(attr_id, &a.parts)?;
                     match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
@@ -172,17 +169,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         Ok(anchor_node)
-    }
-
-    fn legacy_slot_name(&self, attrs: &[Attribute]) -> String {
-        for attr in attrs {
-            if let Attribute::StringAttribute(sa) = attr
-                && sa.name == "name"
-            {
-                return sa.value(&self.ctx.query.component.source).to_string();
-            }
-        }
-        "default".to_string()
     }
 
     fn build_legacy_slot_fallback(

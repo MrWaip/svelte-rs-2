@@ -40,6 +40,7 @@ pub enum AttributeSemantics {
 pub enum SkipCause {
     TagCarrier,
     Member,
+    SlotName,
 }
 
 impl AttributeSemantics {

@@ -83,9 +83,18 @@ impl<'a> ServerCodegen<'a> {
         if needs_sanitized_props {
             component_block.insert(0, self.sanitized_props_stmt());
         }
+        let needs_sanitized_slots = self.analysis.output.needs_sanitized_legacy_slots;
+        if needs_sanitized_slots {
+            component_block.insert(0, self.sanitize_slots_stmt());
+        }
+        let renders_slot = self.analysis.output.renders_legacy_slot;
 
-        let needs_props_param =
-            inject_context || has_bind_props || has_runes_props || needs_sanitized_props;
+        let needs_props_param = inject_context
+            || has_bind_props
+            || has_runes_props
+            || needs_sanitized_props
+            || needs_sanitized_slots
+            || renders_slot;
         let params = if needs_props_param {
             b.params(["$$renderer", "$$props"])
         } else {

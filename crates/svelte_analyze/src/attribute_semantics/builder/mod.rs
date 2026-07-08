@@ -1402,6 +1402,10 @@ fn classify_component_attrs(
     carrier: ComponentPropCarrier,
 ) {
     for attr in attrs {
+        if matches!(carrier, ComponentPropCarrier::SlotLegacy) && is_slot_meta_attribute(attr) {
+            store.set(attr.id(), AttributeSemantics::Skip(SkipCause::SlotName));
+            continue;
+        }
         if is_component_css_property(attr) {
             let css_property_value = match attr {
                 Attribute::ExpressionAttribute(expression) => {
@@ -1516,6 +1520,13 @@ fn classify_component_attrs(
             _ => {}
         }
     }
+}
+
+fn is_slot_meta_attribute(attr: &Attribute) -> bool {
+    let Some(name) = attr.name() else {
+        return false;
+    };
+    name == "name" || name == "slot"
 }
 
 fn parse_event_modifiers(modifiers: &[String]) -> EventModifier {

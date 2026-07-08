@@ -228,6 +228,7 @@ pub(crate) fn execute_pass<'a>(
                 component,
                 parsed,
                 &data.expressions_v2,
+                source,
                 component.node_count(),
             );
         }

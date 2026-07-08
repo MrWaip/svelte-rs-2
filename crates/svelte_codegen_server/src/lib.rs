@@ -18,6 +18,7 @@ mod module;
 mod program;
 mod render;
 mod renderer;
+mod slot;
 mod snippet;
 mod svelte_boundary;
 mod svelte_element;

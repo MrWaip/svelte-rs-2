@@ -42,7 +42,8 @@ pub use block_semantics::{
 };
 pub use element_semantics::{
     BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementSemantics, ElementSemanticsStore,
-    RegularElementSemantics, SvelteElementSemantics,
+    LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics, RegularElementSemantics,
+    SvelteElementSemantics,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{
@@ -55,15 +56,15 @@ pub use types::data::{
     DerivedDeclarationSemantics, DerivedKind, DerivedSource, DocumentBindKind, EachIndexStrategy,
     EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags,
     ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry,
-    IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDefaultSlot,
-    LegacyDependency, LegacyInit, LegacySummary, MediaBindKind, NamespaceKind,
-    OptimizedRuneSemantics, OutputData, ParentKind, ParentRef, PickledAwaits, PropBindingKind,
-    PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics, PropsSummary,
-    ReactivitySemantics, ReactivitySummary, ReferenceSemantics, ResizeObserverKind,
-    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimeInfo, RuntimeRuneKind,
-    ScriptAnalysis, SignalReferenceKind, SnippetData, SnippetParamStrategy,
-    StateDeclarationSemantics, StateKind, StoreBindingSemantics, SvelteElementTag,
-    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
+    IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDependency,
+    LegacyInit, LegacySummary, MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData,
+    ParentKind, ParentRef, PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind,
+    PropEmitMode, PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
+    ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
+    RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind,
+    SnippetData, SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
+    SvelteElementTag, TemplateAnalysis, TemplateElementEntry, TemplateElementIndex,
+    TemplateTopology, WindowBindKind,
 };
 
 bitflags::bitflags! {
@@ -352,6 +353,9 @@ fn needs_props_param(
         return true;
     }
     if data.output.legacy_has_export_declaration {
+        return true;
+    }
+    if data.output.renders_legacy_slot || data.output.needs_sanitized_legacy_slots {
         return true;
     }
     has_legacy_event_forward(component)

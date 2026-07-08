@@ -83,6 +83,13 @@ impl<'a> ServerCodegen<'a> {
         self.b.const_stmt("$$sanitized_props", call)
     }
 
+    pub(crate) fn sanitize_slots_stmt(&self) -> Statement<'a> {
+        let call = self
+            .b
+            .call_expr("$.sanitize_slots", [Arg::Ident("$$props")]);
+        self.b.const_stmt("$$slots", call)
+    }
+
     pub(crate) fn rest_props_stmt(&self) -> Statement<'a> {
         let keys = self.b.array_expr(self.legacy_rest_props_keys());
         let call = self.b.call_expr(
