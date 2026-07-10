@@ -29,22 +29,22 @@ compiler_case!(
 compiler_case!(
     template_expr_handler_param_type,
     "typescript/template_expr/handler_param_type",
-    ignore = "ts-in-template-expr scoping"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     template_expr_handler_as_cast,
     "typescript/template_expr/handler_as_cast",
-    ignore = "ts-in-template-expr scoping"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     template_expr_handler_non_null,
     "typescript/template_expr/handler_non_null",
-    ignore = "ts-in-template-expr scoping"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     template_expr_mustache_as_cast,
     "typescript/template_expr/mustache_as_cast",
-    ignore = "ts-in-template-expr scoping"
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
@@ -55,22 +55,22 @@ compiler_case!(
 compiler_case!(
     snippet_param_param_type,
     "typescript/snippet_param/param_type",
-    ignore = "ts-in-snippet-param scoping"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     snippet_param_param_optional,
     "typescript/snippet_param/param_optional",
-    ignore = "ts-in-snippet-param scoping"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     snippet_param_param_typed_default,
     "typescript/snippet_param/param_typed_default",
-    ignore = "ts-in-snippet-param scoping"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     snippet_param_param_destructure_type,
     "typescript/snippet_param/param_destructure_type",
-    ignore = "ts-in-snippet-param scoping"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     snippet_param_param_optional_default,

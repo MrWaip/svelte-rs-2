@@ -2,7 +2,8 @@ use super::*;
 
 compiler_case!(
     select_oneway_prop,
-    "special_value_attribute/select_oneway_prop"
+    "special_value_attribute/select_oneway_prop",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     option_value_static_text,
@@ -21,7 +22,8 @@ compiler_case!(
 );
 compiler_case!(
     option_value_prop_text,
-    "special_value_attribute/option_value_prop_text"
+    "special_value_attribute/option_value_prop_text",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     option_synthetic_reactive_each,
@@ -30,11 +32,13 @@ compiler_case!(
 );
 compiler_case!(
     option_value_member_prop,
-    "special_value_attribute/option_value_member_prop"
+    "special_value_attribute/option_value_member_prop",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     select_oneway_reactive_options,
-    "special_value_attribute/select_oneway_reactive_options"
+    "special_value_attribute/select_oneway_reactive_options",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     input_default_value_in_static_parent,

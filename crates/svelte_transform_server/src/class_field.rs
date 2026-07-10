@@ -6,7 +6,8 @@ use oxc_ast::ast::{
     ClassElement, Expression, MethodDefinition, MethodDefinitionKind, PropertyDefinition,
     PropertyKey, Statement,
 };
-use svelte_analyze::{ClassFieldSemantics, DeclaratorSemantics, DerivedKind};
+use oxc_ast_visit::VisitMut;
+use svelte_analyze::{DeclaratorSemantics, DerivedKind};
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::OxcNodeId;
 
@@ -29,14 +30,54 @@ impl<'a> ServerTransform<'_, 'a> {
         self.rewrite_server_class_body(&mut class.body, &info);
     }
 
+    pub(crate) fn rewrite_private_derived_write(&mut self, node: &mut Expression<'a>) -> bool {
+        {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            if assign.operator != AssignmentOperator::Assign {
+                return false;
+            }
+            if self.class_field_declarator(assign.node_id()).is_some() {
+                return false;
+            }
+            let AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left else {
+                return false;
+            };
+            if !self
+                .analysis
+                .class_field_semantics(pfe.node_id())
+                .is_derived()
+            {
+                return false;
+            }
+        }
+
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            return false;
+        };
+        let AssignmentTarget::PrivateFieldExpression(pfe) = &assign.left else {
+            return false;
+        };
+        let field_name: &'a str = self.b.alloc_str(pfe.field.name.as_str());
+        let callee = self
+            .b
+            .private_member(self.b.clone_expr(&pfe.object), field_name);
+        self.visit_expression(&mut assign.right);
+        let right = self.b.move_expr(&mut assign.right);
+        *node = self.b.call_expr_callee(callee, [Arg::Expr(right)]);
+        true
+    }
+
     pub(crate) fn rewrite_private_derived_read(&self, expr: &mut Expression<'a>) -> bool {
         let Expression::PrivateFieldExpression(pfe) = &*expr else {
             return false;
         };
-        if !matches!(
-            self.analysis.class_field_semantics(pfe.node_id()),
-            ClassFieldSemantics::Derived { .. }
-        ) {
+        if !self
+            .analysis
+            .class_field_semantics(pfe.node_id())
+            .is_derived()
+        {
             return false;
         }
         let field = self.b.move_expr(expr);

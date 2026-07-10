@@ -4,6 +4,7 @@ use oxc_ast::ast::{
     Argument, AssignmentOperator, AssignmentTarget, BindingPattern, CallExpression, Expression,
     IdentifierReference, PropertyKey, Statement, VariableDeclarator,
 };
+use oxc_ast_visit::VisitMut;
 use oxc_span::SPAN;
 use svelte_analyze::{
     AnalysisData, BindingSemantics, DeclaratorSemantics, DerivedAsyncKind, DerivedKind,
@@ -40,6 +41,37 @@ impl<'a> ServerTransform<'_, 'a> {
         }
         let _ = source;
         declarator.init = Some(build_derived_init(self.b, kind, async_kind, value));
+    }
+
+    pub(crate) fn rewrite_derived_write(&mut self, node: &mut Expression<'a>) -> bool {
+        let name: &'a str = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            if assign.operator != AssignmentOperator::Assign {
+                return false;
+            }
+            let AssignmentTarget::AssignmentTargetIdentifier(id) = &assign.left else {
+                return false;
+            };
+            let Some(ref_id) = id.reference_id.get() else {
+                return false;
+            };
+            if !self.analysis.reference_semantics(ref_id).is_derived_write() {
+                return false;
+            }
+            self.b.alloc_str(id.name.as_str())
+        };
+
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            return false;
+        };
+        self.visit_expression(&mut assign.right);
+        let right = self.b.move_expr(&mut assign.right);
+        *node = self
+            .b
+            .call_expr_callee(self.b.rid_expr(name), [Arg::Expr(right)]);
+        true
     }
 
     fn reads_runtime_derived(&self, id: &IdentifierReference<'a>) -> bool {

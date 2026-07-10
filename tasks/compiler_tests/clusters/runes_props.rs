@@ -40,14 +40,20 @@ compiler_case!(
     "runes/props/declaration/alias",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(declaration_bindable, "runes/props/declaration/bindable");
+compiler_case!(
+    declaration_bindable,
+    "runes/props/declaration/bindable",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     declaration_bindable_alias,
-    "runes/props/declaration/bindable_alias"
+    "runes/props/declaration/bindable_alias",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_bindable_default,
-    "runes/props/declaration/bindable_default"
+    "runes/props/declaration/bindable_default",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_default_alias,

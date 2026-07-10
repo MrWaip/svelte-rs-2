@@ -19,6 +19,8 @@
   - ElementSemantics — `element-semantics.md`
   - AttributeSemantics — `attribute-semantics.md`
   - BlockSemantics — `block-semantics.md`
+  - FragmentSemantics — `fragment-semantics.md`
+  - RuntimeSemantics — `runtime-semantics.md`
 - Трансформ (client) — `transform.md`
 - Трансформ (server) — `transform-server.md`
 - Кодген (client) — `codegen.md`
@@ -187,6 +189,9 @@ _Avoid_: codegen-walk, in-codegen detection, повторный visit, recompute
 
 **`ComponentSemantics`** — центральное хранилище семантики компонента: scope-tree, `SymbolTable`, `ReferenceTable`, side-tables.
 
+**`RuntimeSemantics`** *(en: runtime semantics; кластер `svelte_analyze::runtime_semantics`)* — доменные вердикты уровня **компонента**-как-целого: синглтон на компонент, потребляемый обоими backend'ами одним запросом `query()`. Носит component-level факты (напр. `child_prop_mode` — режим передачи пропсов дочерним компонентам: `In` / `InOut`, в терминологии режимов параметров), не пер-узловые. Имя историческое — см. `Flagged ambiguities` про `runtime`.
+_Avoid_: OutputData, RuntimeInfo, component flags, per-component bag.
+
 ### Реактивность
 
 **Реактивность** *(en: reactivity; кластер `ReactivitySemantics`)* — механизм автоматического обновления значений и UI при изменении источников.
@@ -269,6 +274,7 @@ _Avoid_: одиночное «модуль» / «module» без квалифи�
 - **`module`** — **module-script** (`<script module>`/`<script context="module">`-блок внутри `.svelte`, код один раз на импорт) vs standalone **`.svelte.js`/`.svelte.ts`-модуль** (отдельный файл с поддержкой рун, компилируется `compile_module`/`generate_module`).
 - **`tag`** — **@-тег** (`{@...}`, в AST `*Tag`) vs HTML-маркер `<...>` (это **элемент**, не тег); в проектной речи всегда конкретно.
 - **`shadow`** — **shadowing** в скоупах vs Shadow DOM в custom-elements (`CeDomMode`).
+- **`runtime` / `RuntimeSemantics`** — **Рантайм** (JS-модуль `svelte/internal/*`, от которого анализ отгорожен) vs кластер анализа `RuntimeSemantics` (доменные вердикты уровня компонента-как-целого, `runtime-semantics.md`). Имя кластера историческое и неидеальное: оно про «что компонент требует на верхнем уровне», а не про сам рантайм-модуль; оси кластера обязаны оставаться доменными (guardrail в PRD).
 - **«синтетический биндинг»** — два источника: парсер (`{@const ...}` представлен как JS-декларация) и анализ (store-sub `$count` для store `count` в legacy-режиме); оба легитимны, контекст уточняется по фазе.
 - **«фрагмент»** — наш **Фрагмент** (`Fragment`-узел) vs `<svelte:fragment slot="…">` в legacy-слотах (это **элемент** под именем `SvelteFragment`).
 - **«компонент»** — единица компиляции `.svelte`-файла (определение) vs use-site в шаблоне `<MyButton />` или `<svelte:component this={…} />` (AST-узел `Component`, категория **элемента**); в проектной речи при риске смешения уточнять «компонент-определение» / «компонент-вызов».

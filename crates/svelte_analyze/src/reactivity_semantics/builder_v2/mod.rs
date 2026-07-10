@@ -2145,6 +2145,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     PropBindingSemantics {
                         emit_mode: self.prop_lowering_mode,
                         kind: PropBindingKind::Rest,
+                        bindable: false,
                     },
                 );
                 self.data
@@ -2191,7 +2192,6 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                         self.standard_prop_source_symbols.push(sym);
                     }
                     PropBindingKind::Source {
-                        bindable: false,
                         updated: self.data.scoping.is_mutated(sym)
                             || self.data.scoping.is_reexported_specifier_local(sym),
                         default_lowering: PropDefaultKind::None,
@@ -2205,6 +2205,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     PropBindingSemantics {
                         emit_mode: self.prop_lowering_mode,
                         kind,
+                        bindable: false,
                     },
                 );
                 Some(sym)
@@ -2252,12 +2253,12 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             PropBindingSemantics {
                 emit_mode: self.prop_lowering_mode,
                 kind: PropBindingKind::Source {
-                    bindable,
                     updated: self.data.scoping.is_mutated(sym)
                         || self.data.scoping.is_reexported_specifier_local(sym),
                     default_lowering,
                     default_needs_proxy,
                 },
+                bindable,
             },
         );
         Some(sym)
@@ -2273,6 +2274,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             PropBindingSemantics {
                 emit_mode: self.prop_lowering_mode,
                 kind: PropBindingKind::Rest,
+                bindable: false,
             },
         );
         Some(sym)

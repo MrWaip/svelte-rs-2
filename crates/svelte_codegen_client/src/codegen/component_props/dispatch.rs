@@ -181,7 +181,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     Attribute::BooleanAttribute(a) => {
                         self.emit_component_prop_boolean(&a.name, &mut out.items);
                     }
-                    Attribute::LetDirectiveLegacy(_) => continue,
                     _ => {
                         return CodegenError::semantic_mismatch(
                             attr_id,
@@ -190,6 +189,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 },
                 AttributeSemantics::ComponentCssProp(_) => continue,
+                AttributeSemantics::Skip(_) => continue,
                 _ => {
                     return CodegenError::semantic_mismatch(
                         attr_id,
@@ -260,7 +260,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 out.bind_this = Some(d.id);
                 Ok(())
             }
-            ComponentBindKind::Expression => {
+            ComponentBindKind::Expression | ComponentBindKind::StoreMemberMutation { .. } => {
                 let Some(expr) = self.take_expr_by_ref(&d.expression) else {
                     return CodegenError::missing_expression(d.id);
                 };

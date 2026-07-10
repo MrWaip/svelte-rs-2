@@ -15,42 +15,46 @@ pub(crate) enum FragmentParent<'n> {
     Snippet,
     EachBlock,
     Block,
+    Boundary,
     SvelteElement,
     SvelteHead,
 }
 
 impl<'a> ServerCodegen<'a> {
-    pub(crate) fn fragment(
-        &mut self,
-        id: FragmentId,
-        parent: FragmentParent<'a>,
-        preserve_whitespace: bool,
-    ) -> Result<()> {
-        self.fragment_impl(id, parent, preserve_whitespace, true)
+    pub(crate) fn fragment(&mut self, id: FragmentId, parent: FragmentParent<'a>) -> Result<()> {
+        self.fragment_impl(id, parent, true)
     }
 
     pub(crate) fn fragment_children_only(
         &mut self,
         id: FragmentId,
         parent: FragmentParent<'a>,
-        preserve_whitespace: bool,
     ) -> Result<()> {
-        self.fragment_impl(id, parent, preserve_whitespace, false)
+        self.fragment_impl(id, parent, false)
     }
 
     fn fragment_impl(
         &mut self,
         id: FragmentId,
         parent: FragmentParent<'a>,
-        preserve_whitespace: bool,
         emit_snippets: bool,
     ) -> Result<()> {
         let component = self.component;
         let source = component.source.as_str();
         let preserve_comments = self.analysis.script.preserve_comments;
+        let preserve_whitespace = self
+            .analysis
+            .fragment_semantics
+            .query(id)
+            .whitespace
+            .is_preserved();
 
         if emit_snippets {
-            self.emit_fragment_hoisted(id, preserve_whitespace)?;
+            self.emit_fragment_hoisted(id)?;
+        }
+
+        if self.dev {
+            self.emit_svelte_element_dev_inits(id)?;
         }
 
         let title_ids: Vec<NodeId> = self
@@ -83,13 +87,18 @@ impl<'a> ServerCodegen<'a> {
             self.push_text("<!---->");
         }
 
-        let is_standalone = self.fragment_is_standalone(window);
-        let can_remove_space = space_only_text_removable(parent);
+        let is_standalone = self.fragment_is_standalone(parent, window);
+        let can_remove_space = self
+            .analysis
+            .fragment_semantics
+            .query(id)
+            .whitespace
+            .is_removable();
         let mut prev_text_ends_ws = false;
         for (i, node) in window.iter().enumerate() {
             let Node::Text(text) = node else {
                 prev_text_ends_ws = false;
-                self.node(node, preserve_whitespace, is_standalone)?;
+                self.node(node, is_standalone)?;
                 continue;
             };
 
@@ -126,41 +135,36 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn node(
-        &mut self,
-        node: &'a Node,
-        preserve_whitespace: bool,
-        is_standalone: bool,
-    ) -> Result<()> {
+    fn node(&mut self, node: &'a Node, is_standalone: bool) -> Result<()> {
         match node {
             Node::Comment(comment) => self.comment(comment),
             Node::ExpressionTag(tag) => return self.expression_tag(tag),
-            Node::Element(element) => return self.element(element, preserve_whitespace),
+            Node::Element(element) => return self.element(element),
             Node::ComponentNode(component) => {
                 return self.component_node(component, is_standalone);
             }
             Node::RenderTag(tag) => return self.render_tag(tag, is_standalone),
-            Node::IfBlock(block) => return self.if_block(block, preserve_whitespace),
-            Node::EachBlock(block) => return self.each_block(block, preserve_whitespace),
-            Node::KeyBlock(block) => return self.key_block(block, preserve_whitespace),
+            Node::IfBlock(block) => return self.if_block(block),
+            Node::EachBlock(block) => return self.each_block(block),
+            Node::KeyBlock(block) => return self.key_block(block),
             Node::HtmlTag(tag) => return self.html_tag(tag),
             Node::SvelteElement(el) => return self.svelte_element(el),
-            Node::AwaitBlock(block) => return self.await_block(block, preserve_whitespace),
+            Node::AwaitBlock(block) => return self.await_block(block),
             Node::SvelteBoundary(boundary) => {
-                return self.svelte_boundary(boundary, preserve_whitespace);
+                return self.svelte_boundary(boundary);
             }
             Node::SlotElementLegacy(el) => return self.slot_element_legacy(el),
+            Node::SvelteSelf(node) => return self.svelte_self(node, is_standalone),
+            Node::SvelteComponentLegacy(node) => return self.svelte_component_legacy(node),
             Node::Text(_)
             | Node::SnippetBlock(_)
             | Node::ConstTag(_)
             | Node::DebugTag(_)
             | Node::SvelteHead(_)
             | Node::SvelteFragmentLegacy(_)
-            | Node::SvelteComponentLegacy(_)
             | Node::SvelteWindow(_)
             | Node::SvelteDocument(_)
             | Node::SvelteBody(_)
-            | Node::SvelteSelf(_)
             | Node::Error(_) => {}
         }
         Ok(())
@@ -183,9 +187,14 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn emit_fragment_hoisted(&mut self, id: FragmentId, preserve_whitespace: bool) -> Result<()> {
-        self.emit_fragment_titles(id, preserve_whitespace)?;
+    pub(crate) fn emit_fragment_hoisted(&mut self, id: FragmentId) -> Result<()> {
+        self.emit_fragment_titles(id)?;
+        self.emit_fragment_const_tags_hoisted(id)?;
+        self.emit_fragment_snippets_debug_head(id)?;
+        Ok(())
+    }
 
+    pub(crate) fn emit_fragment_const_tags_hoisted(&mut self, id: FragmentId) -> Result<()> {
         let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
 
         let mut const_tags: Vec<(u32, NodeId, bool)> = node_ids
@@ -210,13 +219,18 @@ impl<'a> ServerCodegen<'a> {
                 self.const_tag(*nid)?;
             }
         }
+        Ok(())
+    }
+
+    pub(crate) fn emit_fragment_snippets_debug_head(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
 
         for &nid in &node_ids {
             if matches!(self.component.store.get(nid), Node::SnippetBlock(_)) {
                 let mut local = Vec::new();
                 self.route_snippet(nid, &mut local)?;
                 for decl in local {
-                    self.push_stmt(decl);
+                    self.hoist_stmt(decl);
                 }
             }
         }
@@ -229,21 +243,27 @@ impl<'a> ServerCodegen<'a> {
 
         for &nid in &node_ids {
             if matches!(self.component.store.get(nid), Node::SvelteHead(_)) {
-                self.svelte_head(nid, preserve_whitespace)?;
+                self.svelte_head(nid)?;
             }
         }
 
-        if self.dev {
-            for &nid in &node_ids {
-                if let Node::SvelteElement(el) = self.component.store.get(nid) {
-                    self.svelte_element_dev_init(el)?;
-                }
+        Ok(())
+    }
+
+    fn emit_svelte_element_dev_inits(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+        for &nid in &node_ids {
+            if let Node::SvelteElement(el) = self.component.store.get(nid) {
+                self.svelte_element_dev_init(el)?;
             }
         }
         Ok(())
     }
 
-    fn fragment_is_standalone(&self, window: &[&Node]) -> bool {
+    fn fragment_is_standalone(&self, parent: FragmentParent<'a>, window: &[&Node]) -> bool {
+        if matches!(parent, FragmentParent::Element(_)) {
+            return false;
+        }
         let [only] = window else {
             return false;
         };
@@ -325,7 +345,8 @@ fn is_text_first(parent: FragmentParent<'_>, window: &[&Node]) -> bool {
         FragmentParent::Root
         | FragmentParent::Component
         | FragmentParent::Snippet
-        | FragmentParent::EachBlock => {}
+        | FragmentParent::EachBlock
+        | FragmentParent::Boundary => {}
         FragmentParent::Element(_)
         | FragmentParent::Block
         | FragmentParent::SvelteElement
@@ -390,16 +411,6 @@ fn strip_pre_first_newline<'w, 'n>(
         return &window[1..];
     }
     window
-}
-
-fn space_only_text_removable(parent: FragmentParent<'_>) -> bool {
-    let FragmentParent::Element(el) = parent else {
-        return false;
-    };
-    matches!(
-        el.name.as_str(),
-        "select" | "tr" | "table" | "tbody" | "thead" | "tfoot" | "colgroup" | "datalist"
-    )
 }
 
 fn trim_text<'s>(

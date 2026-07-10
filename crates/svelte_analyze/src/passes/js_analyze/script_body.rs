@@ -108,7 +108,8 @@ fn is_class_field_state_fact(semantics: DeclaratorSemantics) -> bool {
 
 impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if is_effect_call_fact(self.reactivity.declarator_semantics(call.node_id())) {
+        let semantics = self.reactivity.declarator_semantics(call.node_id());
+        if is_effect_call_fact(semantics) {
             self.has_effects = true;
         }
         walk_call_expression(self, call);

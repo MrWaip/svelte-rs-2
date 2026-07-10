@@ -3,11 +3,12 @@ use std::mem;
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Class, Declaration, ExportNamedDeclaration,
-    Expression, Function, Program, Statement, VariableDeclaration, VariableDeclarator,
+    ArrowFunctionExpression, Class, Declaration, ExportNamedDeclaration, Expression, Function,
+    ObjectProperty, Program, PropertyKind, Statement, VariableDeclaration, VariableDeclarator,
 };
 use oxc_ast_visit::{VisitMut, walk_mut};
 use oxc_semantic::ScopeFlags;
+use oxc_span::GetSpan;
 use svelte_analyze::{AnalysisData, DeclaratorSemantics, IdentGen};
 use svelte_ast_builder::Builder;
 use svelte_emit_builders::server_refs;
@@ -21,6 +22,19 @@ pub(crate) struct ServerTransform<'b, 'a> {
     pub fn_depth: u32,
     pub dev: bool,
     pub strip_exports: bool,
+    pub enclosing_stmt_start: Vec<u32>,
+}
+
+impl<'a> ServerTransform<'_, 'a> {
+    pub(crate) fn is_in_ignored_stmt(&self, code: &str) -> bool {
+        let Some(&start) = self.enclosing_stmt_start.last() else {
+            return false;
+        };
+        self.analysis
+            .output
+            .ignore_data
+            .is_ignored_at_span(start, code)
+    }
 }
 
 impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
@@ -34,6 +48,12 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
         walk_mut::walk_statements(self, it);
     }
 
+    fn visit_statement(&mut self, it: &mut Statement<'a>) {
+        self.enclosing_stmt_start.push(it.span().start);
+        walk_mut::walk_statement(self, it);
+        self.enclosing_stmt_start.pop();
+    }
+
     fn visit_variable_declaration(&mut self, it: &mut VariableDeclaration<'a>) {
         self.expand_rune_destructure_declaration(it);
         self.expand_legacy_destructure(it);
@@ -43,6 +63,7 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
     fn visit_variable_declarator(&mut self, it: &mut VariableDeclarator<'a>) {
         self.declarator(it);
         walk_mut::walk_variable_declarator(self, it);
+        self.finish_legacy_prop(it);
     }
 
     fn visit_function(&mut self, it: &mut Function<'a>, flags: ScopeFlags) {
@@ -61,6 +82,12 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
         if self.rewrite_store_mutation(it) {
             return;
         }
+        if self.rewrite_derived_write(it) {
+            return;
+        }
+        if self.rewrite_private_derived_write(it) {
+            return;
+        }
         self.rewrite_runtime_rune_call(it);
         let member_mutation = self.detect_store_member_mutation(it);
         walk_mut::walk_expression(self, it);
@@ -75,6 +102,16 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
     fn visit_class(&mut self, it: &mut Class<'a>) {
         walk_mut::walk_class(self, it);
         self.rewrite_server_class(it);
+    }
+
+    fn visit_object_property(&mut self, it: &mut ObjectProperty<'a>) {
+        if !it.method
+            && it.kind == PropertyKind::Init
+            && matches!(&it.value, Expression::FunctionExpression(_))
+        {
+            it.method = true;
+        }
+        walk_mut::walk_object_property(self, it);
     }
 }
 
@@ -132,6 +169,25 @@ impl<'a> ServerTransform<'_, 'a> {
         out
     }
 
+    fn is_props_id_declaration(&self, stmt: &Statement<'a>) -> bool {
+        let Statement::VariableDeclaration(decl) = stmt else {
+            return false;
+        };
+        for declarator in &decl.declarations {
+            let Some(Expression::CallExpression(call)) = declarator.init.as_ref() else {
+                continue;
+            };
+            if self
+                .analysis
+                .declarator_semantics(call.node_id())
+                .is_props_id_call()
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     fn rewrite_statements(&mut self, it: &mut OxcVec<'a, Statement<'a>>) {
         let topo: Vec<_> = self
             .analysis
@@ -143,6 +199,7 @@ impl<'a> ServerTransform<'_, 'a> {
 
         let mut out = self.b.ast.vec_with_capacity(it.len());
         let mut reactive: Vec<(usize, Statement<'a>)> = Vec::new();
+        let mut props_id: Option<Statement<'a>> = None;
         for stmt in it.drain(..) {
             let stmt = match stmt {
                 Statement::ExportNamedDeclaration(export) if self.strip_exports => {
@@ -160,6 +217,10 @@ impl<'a> ServerTransform<'_, 'a> {
                     continue;
                 }
             };
+            if props_id.is_none() && self.is_props_id_declaration(&stmt) {
+                props_id = Some(stmt);
+                continue;
+            }
             let rank = match &stmt {
                 Statement::LabeledStatement(labeled) => {
                     topo.iter().position(|node| *node == labeled.node_id())
@@ -173,6 +234,9 @@ impl<'a> ServerTransform<'_, 'a> {
         }
         reactive.sort_by_key(|(rank, _)| *rank);
         out.extend(reactive.into_iter().map(|(_, stmt)| stmt));
+        if let Some(props_id) = props_id {
+            out.insert(0, props_id);
+        }
         mem::swap(it, &mut out);
     }
 
@@ -193,11 +257,7 @@ impl<'a> ServerTransform<'_, 'a> {
         {
             return;
         }
-        if let BindingPattern::BindingIdentifier(id) = &declarator.id
-            && let Some(sym) = id.symbol_id.get()
-            && self.analysis.binding_semantics(sym).is_legacy_prop()
-        {
-            self.rewrite_legacy_prop(declarator);
+        if self.legacy_prop_symbol(declarator).is_some() {
             return;
         }
         match self.analysis.declarator_semantics(declarator.node_id()) {

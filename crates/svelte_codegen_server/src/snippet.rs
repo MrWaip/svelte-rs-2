@@ -67,9 +67,8 @@ impl<'a> ServerCodegen<'a> {
         let body_fragment = block.body;
         let params = self.take_snippet_params(block.decl.id());
 
-        let mut body = self.child_statements(|codegen| {
-            codegen.fragment(body_fragment, FragmentParent::Snippet, false)
-        })?;
+        let mut body = self
+            .child_statements(|codegen| codegen.fragment(body_fragment, FragmentParent::Snippet))?;
 
         if self.dev {
             let validate = self

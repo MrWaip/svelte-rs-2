@@ -8,10 +8,10 @@ pub use data::{
     ComponentCssPropValue, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
     ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
     ConcatPartEmit, DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics,
-    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, HandlerEmit,
-    HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SkipCause, SpecialValueKind,
-    SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics, TemplateEffect,
-    WindowBindSemantics, is_component_css_property,
+    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, GroupBindValue,
+    GroupReflection, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SkipCause,
+    SpecialValueKind, SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics,
+    TemplateEffect, WindowBindSemantics, is_component_css_property,
 };
 
 use svelte_ast::NodeId;

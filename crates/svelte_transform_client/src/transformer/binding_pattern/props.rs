@@ -201,12 +201,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 .alloc_str(self.component_scoping.symbol_name(v.symbol));
             let default_expr = defaults.remove(&v.symbol);
 
+            let bindable = leaf_prop.bindable;
             match leaf_prop.kind {
                 PropBindingKind::NonSource
                 | PropBindingKind::Identifier
                 | PropBindingKind::Rest => {}
                 PropBindingKind::Source {
-                    bindable,
                     updated,
                     default_lowering,
                     default_needs_proxy,

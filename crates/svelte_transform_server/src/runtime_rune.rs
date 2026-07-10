@@ -51,17 +51,26 @@ impl<'a> ServerTransform<'_, 'a> {
             RuntimeRuneKind::EffectRoot => Some(self.b.arrow_expr(self.b.no_params(), empty())),
             RuntimeRuneKind::StateEager => Some(self.take_rune_arg(call)),
             RuntimeRuneKind::StateSnapshot => {
+                let suppress_warning =
+                    self.dev && self.is_in_ignored_stmt("state_snapshot_uncloneable");
                 let arg = self.take_rune_arg(call);
-                Some(self.b.call_expr("$.snapshot", [Arg::Expr(arg)]))
+                let args = if suppress_warning {
+                    vec![Arg::Expr(arg), Arg::Expr(self.b.bool_expr(true))]
+                } else {
+                    vec![Arg::Expr(arg)]
+                };
+                Some(self.b.call_expr("$.snapshot", args))
             }
             RuntimeRuneKind::Host
             | RuntimeRuneKind::Effect
             | RuntimeRuneKind::EffectPre
             | RuntimeRuneKind::InspectTrace => Some(self.b.void_zero_expr()),
-            RuntimeRuneKind::PropsId
-            | RuntimeRuneKind::Inspect
-            | RuntimeRuneKind::InspectWith
-            | RuntimeRuneKind::Bindable => None,
+            RuntimeRuneKind::PropsId => {
+                Some(self.b.call_expr("$.props_id", [Arg::Ident("$$renderer")]))
+            }
+            RuntimeRuneKind::Inspect | RuntimeRuneKind::InspectWith | RuntimeRuneKind::Bindable => {
+                None
+            }
         }
     }
 

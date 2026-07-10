@@ -1,5 +1,7 @@
 use smallvec::SmallVec;
-use svelte_ast::NodeId;
+use svelte_ast::{NodeId, OxcNodeId};
+
+use crate::types::data::ContentEditableKind;
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum ElementSemantics {
@@ -41,9 +43,25 @@ pub enum LegacyDefaultSlot {
 pub struct RegularElementSemantics {
     pub async_kind: ElementAsyncKind,
     pub value_role: ElementValueRole,
+    pub replay_events: SmallVec<[ElementReplayEvent; 2]>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ElementReplayEvent {
+    Load,
+    Error,
+}
+
+impl ElementReplayEvent {
+    pub fn attribute_name(self) -> &'static str {
+        match self {
+            ElementReplayEvent::Load => "onload",
+            ElementReplayEvent::Error => "onerror",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum ElementValueRole {
     #[default]
     Plain,
@@ -55,9 +73,26 @@ pub enum ElementValueRole {
         rich: bool,
     },
     TextareaValue {
-        value: NodeId,
+        body: TextareaBody,
+    },
+    ContentEditable {
+        bind_id: NodeId,
+        kind: ContentEditableKind,
     },
     RichContainer,
+    RawText,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TextareaBody {
+    Single(OxcNodeId),
+    Segments(Vec<TextareaSegment>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TextareaSegment {
+    Text(String),
+    Expression { node_id: NodeId, oxc_id: OxcNodeId },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

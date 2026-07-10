@@ -146,14 +146,20 @@ compiler_case!(
     "legacy/props/declaration/string_key",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(default_store_autosub, "legacy/props/default/store_autosub");
+compiler_case!(
+    default_store_autosub,
+    "legacy/props/default/store_autosub",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     default_store_in_binary,
-    "legacy/props/default/store_in_binary"
+    "legacy/props/default/store_in_binary",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     default_store_in_conditional,
-    "legacy/props/default/store_in_conditional"
+    "legacy/props/default/store_in_conditional",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     default_guard_literal_eager,

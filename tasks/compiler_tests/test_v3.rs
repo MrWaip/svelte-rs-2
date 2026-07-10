@@ -115,7 +115,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_js_object_method_shorthand);
+compiler_case!(
+    diagnose_js_object_method_shorthand,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_props_default_identifier_prop_reference,
@@ -198,13 +201,22 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(css_snippet_descendant_scope_boundary);
+compiler_case!(
+    css_snippet_descendant_scope_boundary,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(css_snippet_sibling_boundary, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_css_recursive_snippet_sibling_overflow);
+compiler_case!(
+    diagnose_css_recursive_snippet_sibling_overflow,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(css_component_snippet_descendant_boundary);
+compiler_case!(
+    css_component_snippet_descendant_boundary,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(css_pseudo_has, [prod, dev, ssr, ssr_dev]);
 
@@ -220,7 +232,10 @@ compiler_case!(css_dynamic_attr_selector_match, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(css_comments_preserved, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(script_module_exports_ordering_with_snippets);
+compiler_case!(
+    script_module_exports_ordering_with_snippets,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(script_jsdoc_preserve, [prod, dev, ssr, ssr_dev]);
 
@@ -271,7 +286,7 @@ compiler_case!(head_with_if_body, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(head_with_render_and_component, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_head_script_in_if);
+compiler_case!(diagnose_head_script_in_if, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     diagnose_head_inline_script_template_literal,
@@ -285,19 +300,28 @@ compiler_case!(
 
 compiler_case!(head_title_then_meta_effect_order, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(push_binding_group_order);
+compiler_case!(push_binding_group_order, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_order_with_stores);
+compiler_case!(bind_group_order_with_stores, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_order_with_legacy_reactive);
+compiler_case!(
+    bind_group_order_with_legacy_reactive,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_bind_group_multiple_targets);
+compiler_case!(
+    component_bind_group_multiple_targets,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(bind_group_value_defined);
+compiler_case!(bind_group_value_defined, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_member_expression_no_runes);
+compiler_case!(bind_member_expression_no_runes, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_const_destructured_member_bind);
+compiler_case!(
+    legacy_const_destructured_member_bind,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_const_destructure_keeps_siblings,
@@ -398,15 +422,24 @@ compiler_case!(
 
 compiler_case!(bind_value_dev_named_fns, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_component_prop_dev_ownership);
+compiler_case!(bind_component_prop_dev_ownership, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_component_plain_prop_dev_ownership);
+compiler_case!(
+    bind_component_plain_prop_dev_ownership,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(bind_dynamic_component_dev_ownership);
+compiler_case!(
+    bind_dynamic_component_dev_ownership,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(bind_component_dev_ownership_ignore);
+compiler_case!(
+    bind_component_dev_ownership_ignore,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(bind_component_explicit_source);
+compiler_case!(bind_component_explicit_source, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(customizable_select_option_el, [prod, dev, ssr, ssr_dev]);
 
@@ -434,7 +467,10 @@ compiler_case!(each_block, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(each_inner_shadow, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(each_nested_array_destructure_no_inner_shadow);
+compiler_case!(
+    each_nested_array_destructure_no_inner_shadow,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     each_legacy_shadow_with_script_array_assign,
@@ -460,11 +496,11 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(img_spread_replay_events);
+compiler_case!(img_spread_replay_events, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(embed_spread_replay_events);
+compiler_case!(embed_spread_replay_events, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(object_spread_replay_events);
+compiler_case!(object_spread_replay_events, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     source_spread_in_each_no_replay_events,
@@ -542,7 +578,10 @@ compiler_case!(class_concat_literal_fold, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(attribute_concat_literal_fold, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_prop_concat_literal_fold);
+compiler_case!(
+    component_prop_concat_literal_fold,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(rune_update, [prod, dev, ssr, ssr_dev]);
 
@@ -574,9 +613,9 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(props_renamed_bindable);
+compiler_case!(props_renamed_bindable, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(props_bindable);
+compiler_case!(props_bindable, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(props_lazy_default, [prod, dev, ssr, ssr_dev]);
 
@@ -589,7 +628,7 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(props_mixed);
+compiler_case!(props_mixed, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(exports, [prod, dev, ssr, ssr_dev]);
 
@@ -597,21 +636,27 @@ compiler_case!(snippet_basic, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_component_basic);
+compiler_case!(svelte_component_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_component_children);
+compiler_case!(svelte_component_children, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_component_if_child);
+compiler_case!(svelte_component_if_child, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_component_each_child);
+compiler_case!(svelte_component_each_child, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_component_slot_legacy_store_reactivity);
+compiler_case!(
+    svelte_component_slot_legacy_store_reactivity,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(svelte_component_slot_legacy_if_store_untrack);
+compiler_case!(
+    svelte_component_slot_legacy_if_store_untrack,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(component_non_self_closing, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_in_element);
+compiler_case!(component_in_element, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_mixed, [prod, dev, ssr, ssr_dev]);
 
@@ -619,7 +664,10 @@ compiler_case!(component_props, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_children, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_component_slot_node_naming);
+compiler_case!(
+    diagnose_component_slot_node_naming,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_sibling_after_deep_nested_elements,
@@ -631,9 +679,9 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(component_events);
+compiler_case!(component_events, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_events_dev_apply);
+compiler_case!(component_events_dev_apply, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_element_children, [prod, dev, ssr, ssr_dev]);
 
@@ -666,7 +714,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_component_events_slot_let_handler);
+compiler_case!(
+    diagnose_component_events_slot_let_handler,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_component_attr_on_prefix_false_positive,
@@ -689,7 +740,7 @@ compiler_case!(
 
 compiler_case!(component_child_slot_attribute, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(smoke_all);
+compiler_case!(smoke_all, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(derived_basic, [prod, dev, ssr, ssr_dev]);
 
@@ -702,7 +753,7 @@ compiler_case!(derived_by, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(derived_dynamic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(derived_write_assignment);
+compiler_case!(derived_write_assignment, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(unmutated_state_optimization, [prod, dev, ssr, ssr_dev]);
 
@@ -839,21 +890,33 @@ compiler_case!(key_block_nested, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(style_directive, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_custom_prop_component);
+compiler_case!(css_custom_prop_component, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_css_prop_boolean);
+compiler_case!(component_css_prop_boolean, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_custom_prop_component_svg);
+compiler_case!(css_custom_prop_component_svg, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_custom_prop_component_nested);
+compiler_case!(css_custom_prop_component_nested, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(css_custom_prop_component_string_value);
+compiler_case!(
+    css_custom_prop_component_string_value,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(css_custom_prop_component_concat_value);
+compiler_case!(
+    css_custom_prop_component_concat_value,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(css_custom_prop_component_with_memoized_prop);
+compiler_case!(
+    css_custom_prop_component_with_memoized_prop,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(css_custom_prop_component_slot_fill);
+compiler_case!(
+    css_custom_prop_component_slot_fill,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(style_directive_important, [prod, dev, ssr, ssr_dev]);
 
@@ -933,19 +996,28 @@ compiler_case!(store_runes_each_member_mutation, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_runes_prop_thunk, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(store_runes_synthetic_thunk_derived_base);
+compiler_case!(
+    store_runes_synthetic_thunk_derived_base,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(store_runes_prop_assign_bind, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_bindable_prop_store_only);
+compiler_case!(diagnose_bindable_prop_store_only, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(store_runes_component_bind_prop_store);
+compiler_case!(
+    store_runes_component_bind_prop_store,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_bind_ref_state_flag);
+compiler_case!(component_bind_ref_state_flag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_bind_prop_order);
+compiler_case!(component_bind_prop_order, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_snippet_node_ident_ordering);
+compiler_case!(
+    component_snippet_node_ident_ordering,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(store_legacy_id_assign_ops, [prod, dev, ssr, ssr_dev]);
 
@@ -1005,7 +1077,7 @@ compiler_case!(store_render_tag_snippet, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_bind_this_element_ref, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(store_bare_identifier_method_call);
+compiler_case!(store_bare_identifier_method_call, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_write, [prod, dev, ssr, ssr_dev]);
 
@@ -1015,7 +1087,7 @@ compiler_case!(store_reassign_unsub, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(store_each_invalidate, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(store_mark_binding);
+compiler_case!(store_mark_binding, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(const_tag, [prod, dev, ssr, ssr_dev]);
 
@@ -1034,11 +1106,11 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(const_tag_key_block);
+compiler_case!(const_tag_key_block, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(const_tag_await, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(const_tag_component);
+compiler_case!(const_tag_component, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(class_array, [prod, dev, ssr, ssr_dev]);
 
@@ -1059,13 +1131,16 @@ compiler_case!(
 
 compiler_case!(bind_files, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_property);
+compiler_case!(bind_property, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_content_editable);
+compiler_case!(bind_content_editable, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(bind_element_size, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_element_size_bindable_prop_source);
+compiler_case!(
+    bind_element_size_bindable_prop_source,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(bind_resize_observer, [prod, dev, ssr, ssr_dev]);
 
@@ -1079,7 +1154,7 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(bind_textarea_value);
+compiler_case!(bind_textarea_value, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(bind_media_rw, [prod, dev, ssr, ssr_dev]);
 
@@ -1091,33 +1166,33 @@ compiler_case!(bind_img, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(bind_this, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_bind_this);
+compiler_case!(component_bind_this, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_bind_this_variants);
+compiler_case!(component_bind_this_variants, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_if);
+compiler_case!(svelte_self_if, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_if_sibling);
+compiler_case!(svelte_self_if_sibling, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_if_else_sibling);
+compiler_case!(svelte_self_if_else_sibling, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_each_sibling);
+compiler_case!(svelte_self_each_sibling, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_element_sibling);
+compiler_case!(svelte_self_element_sibling, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_css_props);
+compiler_case!(svelte_self_css_props, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_each);
+compiler_case!(svelte_self_each, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_snippet);
+compiler_case!(svelte_self_snippet, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_slot);
+compiler_case!(svelte_self_slot, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_props);
+compiler_case!(svelte_self_props, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_self_bind_this);
+compiler_case!(svelte_self_bind_this, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_focused);
+compiler_case!(bind_focused, [prod, dev, ssr, ssr_dev]);
 
 // ---------------------------------------------------------------------------
 // Transition tests
@@ -1231,10 +1306,7 @@ compiler_case!(state_snapshot_ignored, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(state_snapshot_not_ignored, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(
-    state_snapshot_ignored_return,
-    [prod, dev, ssr, ssr_dev_todo]
-);
+compiler_case!(state_snapshot_ignored_return, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(for_await_ignored, [prod, dev, ssr, ssr_dev]);
 
@@ -1258,13 +1330,13 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(svg_inner_whitespace_trimming);
+compiler_case!(svg_inner_whitespace_trimming, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svg_inner_template_from_svg);
+compiler_case!(svg_inner_template_from_svg, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(template_effect_call_deps, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svg_text_preserves_whitespace);
+compiler_case!(svg_text_preserves_whitespace, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     template_effect_multiple_call_deps,
@@ -1276,13 +1348,22 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(component_local_underscored_bind_this);
+compiler_case!(
+    component_local_underscored_bind_this,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_dynamic_dotted_identifier_root);
+compiler_case!(
+    component_dynamic_dotted_identifier_root,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_dynamic_props_access);
+compiler_case!(component_dynamic_props_access, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_dynamic_dotted_props_root);
+compiler_case!(
+    component_dynamic_dotted_props_root,
+    [prod, dev, ssr, ssr_dev]
+);
 
 // ---------------------------------------------------------------------------
 // Module compilation tests
@@ -1422,7 +1503,7 @@ fn assert_compiler_module_ssr_dev(case: &str) {
 compiler_module_case!(
     state_class_field_proxy_init,
     "state_class_field_proxy_init",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_module_case!(
@@ -1434,7 +1515,7 @@ compiler_module_case!(
 compiler_module_case!(
     module_state_destructure,
     "module_state_destructure",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_module_case!(
@@ -1446,7 +1527,7 @@ compiler_module_case!(
 compiler_module_case!(
     state_raw_class_constructor_object_ts,
     "state_raw_class_constructor_object_ts",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_module_case!(
@@ -1470,13 +1551,13 @@ compiler_module_case!(
 compiler_module_case!(
     diagnose_state_private_constructor_init_from_decl_only,
     "diagnose_state_private_constructor_init_from_decl_only",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_module_case!(
     state_private_class_field_array_proxy,
     "state_private_class_field_array_proxy",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_module_case!(
@@ -1570,24 +1651,42 @@ compiler_case!(legacy_export_let_typed, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(legacy_export_let_member_mutation, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(legacy_export_let_bind_to_inner);
+compiler_case!(legacy_export_let_bind_to_inner, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     diagnose_legacy_export_let_element_bind_this,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_bind_group_radio_export_let_prop);
+compiler_case!(
+    diagnose_legacy_bind_group_radio_export_let_prop,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_bind_group_radio_attr_update_order);
+compiler_case!(
+    diagnose_legacy_bind_group_radio_attr_update_order,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_bind_group_value_use_action_cache_var_order);
+compiler_case!(
+    diagnose_legacy_bind_group_value_use_action_cache_var_order,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_bind_group_radio_value_shorthand_spread);
+compiler_case!(
+    diagnose_legacy_bind_group_radio_value_shorthand_spread,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_each_bind_group_input_value_merges_with_text);
+compiler_case!(
+    diagnose_legacy_each_bind_group_input_value_merges_with_text,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_each_bind_group_radio_value_index_no_cache);
+compiler_case!(
+    diagnose_legacy_each_bind_group_radio_value_index_no_cache,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_input_bind_spread_omits_remove_defaults,
@@ -1634,7 +1733,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_bind_value_on_implicit_reactive_declaration);
+compiler_case!(
+    diagnose_legacy_bind_value_on_implicit_reactive_declaration,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_script_let_multi_declarator_splits,
@@ -1651,21 +1753,30 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_bind_value_textarea_export_let_prop);
+compiler_case!(
+    diagnose_legacy_bind_value_textarea_export_let_prop,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_bind_files_export_let_prop,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_textarea_bind_value_with_spread_init_order);
+compiler_case!(
+    diagnose_textarea_bind_value_with_spread_init_order,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_textarea_spread_only_emits_remove_child,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_textarea_dynamic_value_attribute_emits_remove_child);
+compiler_case!(
+    diagnose_textarea_dynamic_value_attribute_emits_remove_child,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_export_let_store_prop_subscription,
@@ -1754,9 +1865,15 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_component_bind_store_prop);
+compiler_case!(
+    diagnose_legacy_component_bind_store_prop,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_component_bind_store_reactive_destructured_base);
+compiler_case!(
+    diagnose_legacy_component_bind_store_reactive_destructured_base,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     legacy_export_let_compound_assign_prop,
@@ -1818,7 +1935,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(svelte_component_legacy_derived_hoist_block);
+compiler_case!(
+    svelte_component_legacy_derived_hoist_block,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     legacy_export_let_key_block_member_coarse_wrap,
@@ -1875,9 +1995,15 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(smoke_runes_reactive_mutations_all);
+compiler_case!(
+    smoke_runes_reactive_mutations_all,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(smoke_legacy_contextual_mutations_all);
+compiler_case!(
+    smoke_legacy_contextual_mutations_all,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(smoke_legacy_rune_fallback_all, [prod, dev, ssr, ssr_dev]);
 
@@ -1927,24 +2053,45 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_svg_fragment_root_ws_between_siblings);
+compiler_case!(
+    diagnose_svg_fragment_root_ws_between_siblings,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svg_block_fragment_ws_between_siblings);
+compiler_case!(
+    diagnose_svg_block_fragment_ws_between_siblings,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svg_component_slot_ws_between_siblings);
+compiler_case!(
+    diagnose_svg_component_slot_ws_between_siblings,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_svg_text_block_ws_preserved,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_svg_snippet_body_ws_between_siblings);
+compiler_case!(
+    diagnose_svg_snippet_body_ws_between_siblings,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svg_legacy_slot_ws_between_siblings);
+compiler_case!(
+    diagnose_svg_legacy_slot_ws_between_siblings,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svg_root_html_tag_strategy);
+compiler_case!(
+    diagnose_svg_root_html_tag_strategy,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svg_root_block_only_html_tag);
+compiler_case!(
+    diagnose_svg_root_block_only_html_tag,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(preserve_comments_basic, [prod, dev, ssr, ssr_dev]);
 
@@ -2062,7 +2209,10 @@ compiler_case!(svelte_element_self_closing, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(svelte_fragment_named_slot, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(svelte_fragment_named_slot_inside_svelte_component);
+compiler_case!(
+    svelte_fragment_named_slot_inside_svelte_component,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     svelte_fragment_named_slot_component_expr_attr,
@@ -2076,7 +2226,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(svelte_fragment_default_slot_wrapper);
+compiler_case!(
+    svelte_fragment_default_slot_wrapper,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(svelte_fragment_default_slot_let, [prod, dev, ssr, ssr_dev]);
 
@@ -2085,7 +2238,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(svelte_fragment_named_slot_with_const_tag);
+compiler_case!(
+    svelte_fragment_named_slot_with_const_tag,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(svelte_element_static_tag, [prod, dev, ssr, ssr_dev]);
 
@@ -2510,15 +2666,27 @@ compiler_case!(component_prop_has_call_multi, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_prop_has_call_mixed, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_prop_concat_call_memo);
+compiler_case!(component_prop_concat_call_memo, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_component_prop_concat_legacy_ternary);
+compiler_case!(
+    diagnose_component_prop_concat_legacy_ternary,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_prop_concat_call_with_literal);
+compiler_case!(
+    component_prop_concat_call_with_literal,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_prop_concat_import_identifier);
+compiler_case!(
+    component_prop_concat_import_identifier,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(component_prop_concat_import_and_call);
+compiler_case!(
+    component_prop_concat_import_and_call,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(html_concat_call_with_literal, [prod, dev, ssr, ssr_dev]);
 
@@ -2527,7 +2695,7 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(component_dynamic_dotted);
+compiler_case!(component_dynamic_dotted, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_prop_memo_state, [prod, dev, ssr, ssr_dev]);
 
@@ -2595,9 +2763,9 @@ compiler_case!(inspect_trace_reactive_contexts, [prod, dev, ssr, ssr_dev]);
 // $props.id() rune tests
 // ---------------------------------------------------------------------------
 
-compiler_case!(props_id_basic);
+compiler_case!(props_id_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(props_id_with_props);
+compiler_case!(props_id_with_props, [prod, dev, ssr, ssr_dev]);
 
 // ---------------------------------------------------------------------------
 // {@debug} tests
@@ -2605,7 +2773,7 @@ compiler_case!(props_id_with_props);
 
 compiler_case!(debug_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(debug_in_blocks);
+compiler_case!(debug_in_blocks, [prod, dev, ssr, ssr_dev]);
 
 // ---------------------------------------------------------------------------
 // TypeScript stripping tests
@@ -2671,7 +2839,7 @@ compiler_case!(html_tag_controlled, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(html_tag_svg, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(html_tag_nested_svg);
+compiler_case!(html_tag_nested_svg, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(html_tag_nested_mathml, [prod, dev, ssr, ssr_dev]);
 
@@ -2701,23 +2869,26 @@ compiler_case!(bind_function_checked, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(bind_use_deferral, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_contenteditable_flag);
+compiler_case!(bind_contenteditable_flag, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_each);
+compiler_case!(bind_group_each, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_keyed_each);
+compiler_case!(bind_group_keyed_each, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_nested_each);
+compiler_case!(bind_group_nested_each, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_value_attr);
+compiler_case!(bind_group_value_attr, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_value_attr_before_bind);
+compiler_case!(bind_group_value_attr_before_bind, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_each_legacy_item_member_untrack);
+compiler_case!(
+    bind_group_each_legacy_item_member_untrack,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(bind_group_each_var);
+compiler_case!(bind_group_each_var, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_each_var_keyed);
+compiler_case!(bind_group_each_var_keyed, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(each_fallback, [prod, dev, ssr, ssr_dev]);
 
@@ -2756,7 +2927,10 @@ compiler_case!(each_destructured_array_with_rest, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(each_destructured_array_rest_only, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_legacy_each_component_css_prop_hoist_derived);
+compiler_case!(
+    diagnose_legacy_each_component_css_prop_hoist_derived,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(style_attr_object, [prod, dev, ssr, ssr_dev]);
 
@@ -2800,7 +2974,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_class_directive_named_slot_let_classes_order_legacy);
+compiler_case!(
+    diagnose_class_directive_named_slot_let_classes_order_legacy,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(derived_inside_function, [prod, dev, ssr, ssr_dev]);
 
@@ -2830,28 +3007,40 @@ compiler_case!(rest_props_member_access, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_spread_props, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_bind_prop_forward);
+compiler_case!(component_bind_prop_forward, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_bind_member_path);
+compiler_case!(component_bind_member_path, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(component_bind_member_path_bindable_root, [prod, dev_todo]);
 
-compiler_case!(component_bind_member_path_dev);
+compiler_case!(component_bind_member_path_dev, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_bind_function);
+compiler_case!(component_bind_function, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(component_bind_function_anchor_order);
+compiler_case!(
+    component_bind_function_anchor_order,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_component_bind_function_props_position);
+compiler_case!(
+    diagnose_component_bind_function_props_position,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_component_bind_derived_target_no_proxy_flag);
+compiler_case!(
+    diagnose_component_bind_derived_target_no_proxy_flag,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_fragment_id_after_component_with_snippet,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_fragment_id_in_snippet_used_as_expression);
+compiler_case!(
+    diagnose_fragment_id_in_snippet_used_as_expression,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_fragment_id_in_sibling_named_slot_after_component,
@@ -2865,7 +3054,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_component_prop_const_tag_destructured_shorthand);
+compiler_case!(
+    diagnose_component_prop_const_tag_destructured_shorthand,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_each_const_tag_shorthand_prop_to_component,
@@ -2882,7 +3074,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_slot_let_array_destructure_dep_read);
+compiler_case!(
+    diagnose_legacy_slot_let_array_destructure_dep_read,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_svelte_fragment_let_inside_named_slot_component,
@@ -2943,7 +3138,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_each_collection_member_outer_each_item_wraps);
+compiler_case!(
+    diagnose_legacy_each_collection_member_outer_each_item_wraps,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_each_collection_member_export_let_prop_wraps,
@@ -3057,17 +3255,17 @@ compiler_case!(async_render_tag, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(async_render_tag_complex_args, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(async_boundary_const);
+compiler_case!(async_boundary_const, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(async_const_derived_chain, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(attach_on_component);
+compiler_case!(attach_on_component, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(attach_on_component_dynamic);
+compiler_case!(attach_on_component_dynamic, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(attach_on_document, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(each_keyed_destructure);
+compiler_case!(each_keyed_destructure, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(await_then_text_before_element, [prod, dev, ssr, ssr_dev]);
 
@@ -3085,11 +3283,11 @@ compiler_case!(await_nested_await, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(fragment_counter_with_nested_if, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_group_radio_basic);
+compiler_case!(bind_group_radio_basic, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(bind_multiple_on_element);
+compiler_case!(bind_multiple_on_element, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(if_else_chain_with_const);
+compiler_case!(if_else_chain_with_const, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(event_mixed_delegation, [prod, dev, ssr, ssr_dev]);
 
@@ -3127,7 +3325,7 @@ compiler_case!(tag_state_unmutated, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(tag_state_unmutated_no_proxy, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(tag_bindable_proxy);
+compiler_case!(tag_bindable_proxy, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(tag_class_field_public, [prod, dev, ssr, ssr_dev]);
 
@@ -3196,22 +3394,31 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_props_bindable_icon_component);
+compiler_case!(
+    diagnose_props_bindable_icon_component,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_props_identifier_in_snippet_body);
+compiler_case!(
+    diagnose_props_identifier_in_snippet_body,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_filename_name_collides_with_ts_type_import,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(props_bindable_checkbox_disabled_shorthand_ts);
+compiler_case!(
+    props_bindable_checkbox_disabled_shorthand_ts,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(diagnose_component_onclick_state, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(diagnose_svg_city_icon);
 
-compiler_case!(clock_svg_derived_onmount);
+compiler_case!(clock_svg_derived_onmount, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     diagnose_component_default_and_named_slot_expr,
@@ -3233,27 +3440,36 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_component_named_slot_svelte_component_child_kept);
+compiler_case!(
+    diagnose_component_named_slot_svelte_component_child_kept,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_svelte_component_named_slot_expression_binds);
+compiler_case!(
+    diagnose_svelte_component_named_slot_expression_binds,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_slot_forward_inflates_template_root_ids,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_dev_benchmark);
+compiler_case!(diagnose_legacy_dev_benchmark, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     component_dev_default_children_wrap_snippet,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(component_dev_named_slot_no_wrap_snippet);
+compiler_case!(
+    component_dev_named_slot_no_wrap_snippet,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_dev_benchmark);
+compiler_case!(diagnose_dev_benchmark, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(dev_binary_equals_wrap);
+compiler_case!(dev_binary_equals_wrap, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(dev_filename_relative_to_root_dir, [prod, dev, ssr, ssr_dev]);
 
@@ -3347,7 +3563,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_component_bind_group_emits_array);
+compiler_case!(
+    diagnose_component_bind_group_emits_array,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_html_template_preserves_nbsp,
@@ -3394,7 +3613,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_snippet_inside_if_consequent);
+compiler_case!(
+    diagnose_snippet_inside_if_consequent,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_snippet_hoistable_with_script_import,
@@ -3421,7 +3643,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_component_on_directive_shorthand_forward);
+compiler_case!(
+    diagnose_component_on_directive_shorthand_forward,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_pre_effect_order_after_functions,
@@ -3478,11 +3703,20 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_each_store_bind_value_item_member);
+compiler_case!(
+    diagnose_legacy_each_store_bind_value_item_member,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_each_store_bind_checked_item_member);
+compiler_case!(
+    diagnose_legacy_each_store_bind_checked_item_member,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_each_store_bind_group_item_member);
+compiler_case!(
+    diagnose_legacy_each_store_bind_group_item_member,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_each_store_bind_value_element_item_member,
@@ -3514,13 +3748,25 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_each_css_props_member_coarse_wrap);
+compiler_case!(
+    diagnose_legacy_each_css_props_member_coarse_wrap,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_each_css_props_concat_member_coarse_wrap);
+compiler_case!(
+    diagnose_legacy_each_css_props_concat_member_coarse_wrap,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_each_css_wrapper_root_order);
+compiler_case!(
+    diagnose_each_css_wrapper_root_order,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_component_bind_store_derived_base);
+compiler_case!(
+    diagnose_component_bind_store_derived_base,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_nested_delegated_transition_order,
@@ -3542,7 +3788,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_component_prop_call_with_prop_arg_coarse_wrap);
+compiler_case!(
+    diagnose_legacy_component_prop_call_with_prop_arg_coarse_wrap,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_component_prop_ternary_arrow_no_coarse_wrap,
@@ -3682,7 +3931,7 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(ts_bindable_default_as);
+compiler_case!(ts_bindable_default_as, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(
     ts_bindable_default_identifier_paren,
@@ -3722,7 +3971,10 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_component_on_directive_legacy_reactive_handler);
+compiler_case!(
+    diagnose_component_on_directive_legacy_reactive_handler,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_legacy_reactive_store_value_passed_as_bare_prop,
@@ -3734,9 +3986,15 @@ compiler_case!(
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_bind_store_member_keeps_writable_plain);
+compiler_case!(
+    diagnose_legacy_bind_store_member_keeps_writable_plain,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_legacy_component_bind_base_store_unsub);
+compiler_case!(
+    diagnose_legacy_component_bind_base_store_unsub,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_component_prop_call_fold_global_inlined,
@@ -3852,16 +4110,25 @@ compiler_case!(legacy_await_member_chain_promise, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(legacy_await_call_with_state_arg, [prod, dev, ssr, ssr_dev]);
 
-compiler_case!(diagnose_css_custom_prop_component_concat_literal_const_fold);
+compiler_case!(
+    diagnose_css_custom_prop_component_concat_literal_const_fold,
+    [prod, dev, ssr, ssr_dev]
+);
 
-compiler_case!(diagnose_slot_element_let_directive_alias_in_named_slot_fill);
+compiler_case!(
+    diagnose_slot_element_let_directive_alias_in_named_slot_fill,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     diagnose_on_directive_optional_chain_handler_wrap,
     [prod, dev, ssr, ssr_dev]
 );
 
-compiler_case!(diagnose_legacy_slot_let_const_tag_ordering);
+compiler_case!(
+    diagnose_legacy_slot_let_const_tag_ordering,
+    [prod, dev, ssr, ssr_dev]
+);
 
 compiler_case!(
     legacy_bindable_export_with_api_export,

@@ -5,7 +5,7 @@ use crate::types::data::{
 };
 use crate::{
     AttributeSemantics, BlockSemantics, ClassSemantics, EachIndexStrategy, EachItemStrategy,
-    OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
+    GroupBindValue, OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
     SnippetParamStrategy,
 };
 use oxc_ast::ast::{
@@ -2328,7 +2328,11 @@ fn bind_group_records_expression_value_attr_only() {
         .expect("no expression value attr on first input");
 
     let actual = match data.attributes.get(bind_id) {
-        AttributeSemantics::ElementBind(b) => b.group_value.map(|v| v.data),
+        AttributeSemantics::ElementBind(b) => match b.group_value {
+            Some(GroupBindValue::Expression { data, .. }) => Some(data),
+            Some(GroupBindValue::Static { node }) => Some(node),
+            None => None,
+        },
         _ => None,
     };
     assert_eq!(actual, Some(value_attr_id));
@@ -3416,11 +3420,11 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
-                bindable: false,
                 updated: false,
                 default_lowering: PropDefaultKind::Eager,
                 default_needs_proxy: false,
             },
+            bindable: false,
         })
     );
     assert_eq!(
@@ -3428,11 +3432,11 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
-                bindable: true,
                 updated: false,
                 default_lowering: PropDefaultKind::Eager,
                 default_needs_proxy: false,
             },
+            bindable: true,
         })
     );
     assert_eq!(
@@ -3440,6 +3444,7 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::NonSource,
+            bindable: false,
         })
     );
     assert_eq!(
@@ -3447,6 +3452,7 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Rest,
+            bindable: false,
         })
     );
     let store_sym = data
@@ -3485,11 +3491,11 @@ fn reactivity_semantics_prop_declaration_semantics_include_updated() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
-                bindable: false,
                 updated: true,
                 default_lowering: PropDefaultKind::None,
                 default_needs_proxy: false,
             },
+            bindable: false,
         })
     );
 }
@@ -3514,6 +3520,7 @@ fn reactivity_semantics_prop_used_only_via_store_is_non_source() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::NonSource,
+            bindable: false,
         })
     );
 }
@@ -3536,11 +3543,11 @@ fn reactivity_semantics_prop_declaration_semantics_include_default_proxy() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
-                bindable: true,
                 updated: false,
                 default_lowering: PropDefaultKind::Lazy,
                 default_needs_proxy: true,
             },
+            bindable: true,
         })
     );
 }

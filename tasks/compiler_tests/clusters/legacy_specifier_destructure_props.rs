@@ -32,15 +32,18 @@ compiler_case!(
 );
 compiler_case!(
     object_prop_plain,
-    "legacy_specifier_destructure_props/object_prop_plain"
+    "legacy_specifier_destructure_props/object_prop_plain",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     object_prop_plain_nomut,
-    "legacy_specifier_destructure_props/object_prop_plain_nomut"
+    "legacy_specifier_destructure_props/object_prop_plain_nomut",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     object_prop_state_leaf,
-    "legacy_specifier_destructure_props/object_prop_state_leaf"
+    "legacy_specifier_destructure_props/object_prop_state_leaf",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     object_prop_store,
@@ -54,5 +57,6 @@ compiler_case!(
 );
 compiler_case!(
     object_rest,
-    "legacy_specifier_destructure_props/object_rest"
+    "legacy_specifier_destructure_props/object_rest",
+    [prod, dev, ssr, ssr_dev]
 );

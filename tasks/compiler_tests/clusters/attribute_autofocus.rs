@@ -15,7 +15,11 @@ compiler_case!(
     "attribute_autofocus/dynamic_state",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(literal_false, "attribute_autofocus/literal_false");
+compiler_case!(
+    literal_false,
+    "attribute_autofocus/literal_false",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     static_string,
     "attribute_autofocus/static_string",

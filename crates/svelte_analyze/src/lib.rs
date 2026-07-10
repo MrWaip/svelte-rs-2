@@ -3,8 +3,10 @@ pub mod block_semantics;
 pub(crate) mod css;
 pub mod element_semantics;
 pub mod expression_semantics;
+pub mod fragment_semantics;
 pub(crate) mod passes;
 pub mod reactivity_semantics;
+pub mod runtime_semantics;
 pub mod value_evaluation;
 
 pub use attribute_semantics::{
@@ -14,9 +16,9 @@ pub use attribute_semantics::{
     ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
     ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
     DefaultAttrSemantics, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
-    EventEmit, EventSemantics, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics,
-    SkipCause, SpecialValueKind, SpecialValueSemantics, StyleSemantics,
-    SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
+    EventEmit, EventSemantics, GroupBindValue, GroupReflection, HandlerEmit, HtmlBindKind,
+    HtmlConcatPart, HtmlConcatSemantics, SkipCause, SpecialValueKind, SpecialValueSemantics,
+    StyleSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 pub use expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, KnownValue,
@@ -41,10 +43,13 @@ pub use block_semantics::{
     SnippetSlotKey,
 };
 pub use element_semantics::{
-    BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementSemantics, ElementSemanticsStore,
-    ElementValueRole, LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics,
-    RegularElementSemantics, SvelteElementSemantics,
+    BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementReplayEvent, ElementSemantics,
+    ElementSemanticsStore, ElementValueRole, LegacyComponentSlotsSemantics, LegacyDefaultSlot,
+    LegacySlotSemantics, RegularElementSemantics, SvelteElementSemantics, TextareaBody,
+    TextareaSegment,
 };
+pub use fragment_semantics::{FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace};
+pub use runtime_semantics::{ChildPropMode, RuntimeSemantics, RuntimeSemanticsStore};
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,

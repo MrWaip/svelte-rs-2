@@ -74,9 +74,9 @@ impl<'a> ServerCodegen<'a> {
             return Ok(self.b.null_expr());
         }
         let fragment = el.fragment;
-        let preserve = self.analysis.script.preserve_whitespace;
         let body = self.child_statements(|codegen| {
-            codegen.fragment_children_only(fragment, FragmentParent::Block, preserve)
+            codegen.emit_fragment_const_tags_hoisted(fragment)?;
+            codegen.fragment_children_only(fragment, FragmentParent::Block)
         })?;
         Ok(self.b.arrow_block_expr(self.b.no_params(), body))
     }
@@ -100,9 +100,14 @@ impl<'a> ServerCodegen<'a> {
         fragment: FragmentId,
         wrap_block: bool,
     ) -> Result<Option<Expression<'a>>> {
-        let preserve = self.analysis.script.preserve_whitespace;
+        let parent = if wrap_block {
+            FragmentParent::Block
+        } else {
+            FragmentParent::Component
+        };
         let inner = self.child_statements(|codegen| {
-            codegen.fragment_children_only(fragment, FragmentParent::Component, preserve)
+            codegen.emit_fragment_const_tags_hoisted(fragment)?;
+            codegen.fragment_children_only(fragment, parent)
         })?;
         if inner.is_empty() {
             return Ok(None);
@@ -120,16 +125,17 @@ impl<'a> ServerCodegen<'a> {
         fill_node_id: NodeId,
         slot_fragment: FragmentId,
     ) -> Result<Vec<Statement<'a>>> {
-        let preserve = self.analysis.script.preserve_whitespace;
         if let Node::SvelteFragmentLegacy(el) = self.component.store.get(fill_node_id) {
             let inner_fragment = el.fragment;
             let inner = self.child_statements(|codegen| {
-                codegen.fragment_children_only(inner_fragment, FragmentParent::Component, preserve)
+                codegen.emit_fragment_const_tags_hoisted(inner_fragment)?;
+                codegen.fragment_children_only(inner_fragment, FragmentParent::Block)
             })?;
             return Ok(vec![self.b.block_stmt(inner)]);
         }
         self.child_statements(|codegen| {
-            codegen.fragment_children_only(slot_fragment, FragmentParent::Component, preserve)
+            codegen.emit_fragment_const_tags_hoisted(slot_fragment)?;
+            codegen.fragment_children_only(slot_fragment, FragmentParent::Component)
         })
     }
 
@@ -207,6 +213,7 @@ impl<'a> ServerCodegen<'a> {
             Node::Element(el) => &el.attributes,
             Node::SvelteElement(el) => &el.attributes,
             Node::SvelteFragmentLegacy(el) => &el.attributes,
+            Node::SlotElementLegacy(el) => &el.attributes,
             _ => match node.as_component_like() {
                 Some(view) => view.attributes,
                 None => return Vec::new(),

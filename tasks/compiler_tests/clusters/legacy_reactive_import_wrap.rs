@@ -17,7 +17,8 @@ compiler_case!(
 );
 compiler_case!(
     reactive_import_wrap_instance_store_sub,
-    "legacy/reactive_import_wrap/instance_store_sub"
+    "legacy/reactive_import_wrap/instance_store_sub",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     reactive_import_wrap_module_import_mutated,

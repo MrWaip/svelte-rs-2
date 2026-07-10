@@ -35,9 +35,21 @@ compiler_case!(
     "bind_this/member_prop_computed",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(component_prop_ident, "bind_this/component_prop_ident");
-compiler_case!(component_each_member, "bind_this/component_each_member");
-compiler_case!(component_runes_state, "bind_this/component_runes_state");
+compiler_case!(
+    component_prop_ident,
+    "bind_this/component_prop_ident",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    component_each_member,
+    "bind_this/component_each_member",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    component_runes_state,
+    "bind_this/component_runes_state",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     export_const_each_member,
     "bind_this/export_const_each_member",
@@ -96,7 +108,8 @@ compiler_case!(
 );
 compiler_case!(
     legacy_each_collection_untrack,
-    "bind_this/legacy_each_collection_untrack"
+    "bind_this/legacy_each_collection_untrack",
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
@@ -106,7 +119,8 @@ compiler_case!(
 );
 compiler_case!(
     seq_component_runes_state,
-    "bind_this/seq_component_runes_state"
+    "bind_this/seq_component_runes_state",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     seq_each_member,

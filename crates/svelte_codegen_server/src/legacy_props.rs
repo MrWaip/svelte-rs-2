@@ -39,7 +39,7 @@ impl<'a> ServerCodegen<'a> {
             .unwrap_or_else(|| self.api_export_local(export))
     }
 
-    pub(crate) fn legacy_bind_props_object(&self) -> Option<Expression<'a>> {
+    fn legacy_bind_props_entries(&self) -> Vec<ObjProp<'a>> {
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         for &symbol in self.analysis.reactivity.legacy_bindable_prop_symbols() {
             let key = self.legacy_prop_key(symbol);
@@ -51,10 +51,42 @@ impl<'a> ServerCodegen<'a> {
             let key = self.api_export_key(export);
             props.push(self.prop_entry(&key, &local));
         }
+        props
+    }
+
+    fn runes_bind_props_entries(&self) -> Vec<ObjProp<'a>> {
+        let mut props: Vec<ObjProp<'a>> = Vec::new();
+        for symbol in self.analysis.reactivity.iter_runes_prop_symbols() {
+            if !self
+                .analysis
+                .reactivity
+                .binding_semantics(symbol)
+                .is_bindable()
+            {
+                continue;
+            }
+            let local = self.analysis.scoping.symbol_name(symbol).to_string();
+            let key = self
+                .analysis
+                .binding_origin_key(symbol)
+                .map(|(k, _)| k.to_string())
+                .unwrap_or_else(|| local.clone());
+            props.push(self.prop_entry(&key, &local));
+        }
+        props
+    }
+
+    pub(crate) fn bind_props_object(&self) -> Option<Expression<'a>> {
+        let mut props = self.runes_bind_props_entries();
+        props.extend(self.legacy_bind_props_entries());
         if props.is_empty() {
             return None;
         }
         Some(self.b.object_expr(props))
+    }
+
+    pub(crate) fn has_runes_bind_props(&self) -> bool {
+        !self.runes_bind_props_entries().is_empty()
     }
 
     fn prop_entry(&self, key: &str, local: &str) -> ObjProp<'a> {

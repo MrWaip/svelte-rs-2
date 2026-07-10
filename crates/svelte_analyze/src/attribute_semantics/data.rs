@@ -41,6 +41,7 @@ pub enum SkipCause {
     TagCarrier,
     Member,
     SlotName,
+    SlotBindingLegacy,
 }
 
 impl AttributeSemantics {
@@ -304,6 +305,9 @@ pub enum ComponentBindKind {
     StoreSubscribed {
         base_symbol: SymbolId,
     },
+    StoreMemberMutation {
+        store_symbol: SymbolId,
+    },
     This {
         symbol: Option<SymbolId>,
         target: ComponentBindTarget,
@@ -323,9 +327,15 @@ pub enum ComponentBindTarget {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GroupBindValue {
-    pub expression: OxcNodeId,
-    pub data: NodeId,
+pub enum GroupBindValue {
+    Expression { expression: OxcNodeId, data: NodeId },
+    Static { node: NodeId },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroupReflection {
+    Equality,
+    Includes,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -336,6 +346,7 @@ pub struct ElementBindSemantics {
     pub parent_each_blocks: SmallVec<[NodeId; 4]>,
     pub each_context_vars: SmallVec<[SymbolId; 4]>,
     pub group_value: Option<GroupBindValue>,
+    pub group_reflection: Option<GroupReflection>,
     pub group_id: Option<u32>,
     pub needs_binding_validation: bool,
     pub reflects_as_attribute: bool,

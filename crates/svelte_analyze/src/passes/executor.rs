@@ -5,7 +5,10 @@ use crate::reactivity_semantics::{ReactivityInputs, build_v2, finalize_reactivit
 use crate::types::markers::ScopingBuilt;
 use crate::utils::ce_config;
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
-use crate::{attribute_semantics, block_semantics, element_semantics, expression_semantics};
+use crate::{
+    attribute_semantics, block_semantics, element_semantics, expression_semantics,
+    fragment_semantics, runtime_semantics,
+};
 
 use super::{bundles, finalize_component_name, fragment_topology, js_analyze};
 
@@ -133,6 +136,12 @@ pub(crate) fn execute_pass<'a>(
                 diags,
                 &mut visitors,
             );
+        }
+        super::PassKey::BuildFragmentSemantics => {
+            data.fragment_semantics = fragment_semantics::build(component, data);
+        }
+        super::PassKey::BuildRuntimeSemantics => {
+            data.runtime_semantics = runtime_semantics::build(component);
         }
         super::PassKey::JsAnalyzePostTemplate => {
             js_analyze::calculate_instance_blockers(parsed, data);

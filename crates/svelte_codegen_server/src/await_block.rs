@@ -10,19 +10,15 @@ use crate::fragment::FragmentParent;
 use crate::model::ServerCodegen;
 
 impl<'a> ServerCodegen<'a> {
-    pub(crate) fn await_block(
-        &mut self,
-        block: &'a AwaitBlock,
-        preserve_whitespace: bool,
-    ) -> Result<()> {
+    pub(crate) fn await_block(&mut self, block: &'a AwaitBlock) -> Result<()> {
         let sem = match self.analysis.block_semantics(block.id) {
             BlockSemantics::Await(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(block.id, "await block")),
         };
 
         let expression = self.build_await_expression(block, &sem)?;
-        let pending_fn = self.build_await_pending_fn(block, preserve_whitespace)?;
-        let then_fn = self.build_await_then_fn(block, &sem, preserve_whitespace)?;
+        let pending_fn = self.build_await_pending_fn(block)?;
+        let then_fn = self.build_await_then_fn(block, &sem)?;
 
         let await_stmt = self.b.call_stmt(
             "$.await",
@@ -76,15 +72,11 @@ impl<'a> ServerCodegen<'a> {
         }
     }
 
-    fn build_await_pending_fn(
-        &mut self,
-        block: &'a AwaitBlock,
-        preserve_whitespace: bool,
-    ) -> Result<Expression<'a>> {
+    fn build_await_pending_fn(&mut self, block: &'a AwaitBlock) -> Result<Expression<'a>> {
         let body = match block.pending {
-            Some(fragment) => self.child_statements(|cg| {
-                cg.fragment(fragment, FragmentParent::Block, preserve_whitespace)
-            })?,
+            Some(fragment) => {
+                self.child_statements(|cg| cg.fragment(fragment, FragmentParent::Block))?
+            }
             None => Vec::new(),
         };
         Ok(self.b.arrow_block_expr(self.b.no_params(), body))
@@ -94,13 +86,12 @@ impl<'a> ServerCodegen<'a> {
         &mut self,
         block: &'a AwaitBlock,
         sem: &AwaitBlockSemantics,
-        preserve_whitespace: bool,
     ) -> Result<Expression<'a>> {
         let params = self.build_await_then_params(block, &sem.then)?;
         let body = match block.then {
-            Some(fragment) => self.child_statements(|cg| {
-                cg.fragment(fragment, FragmentParent::Block, preserve_whitespace)
-            })?,
+            Some(fragment) => {
+                self.child_statements(|cg| cg.fragment(fragment, FragmentParent::Block))?
+            }
             None => Vec::new(),
         };
         Ok(self.b.arrow_block_expr(params, body))

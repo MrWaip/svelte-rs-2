@@ -187,9 +187,14 @@ compiler_case!(
 );
 compiler_case!(
     order_legacy_forward_dependency,
-    "const_tag/order/legacy/forward_dependency"
+    "const_tag/order/legacy/forward_dependency",
+    [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(order_legacy_deep_chain, "const_tag/order/legacy/deep_chain");
+compiler_case!(
+    order_legacy_deep_chain,
+    "const_tag/order/legacy/deep_chain",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     order_legacy_forward_reactive,
     "const_tag/order/legacy/forward_reactive",
@@ -197,17 +202,21 @@ compiler_case!(
 );
 compiler_case!(
     order_legacy_in_order_guard,
-    "const_tag/order/legacy/in_order_guard"
+    "const_tag/order/legacy/in_order_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     order_legacy_independent_guard,
-    "const_tag/order/legacy/independent_guard"
+    "const_tag/order/legacy/independent_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     order_legacy_single_guard,
-    "const_tag/order/legacy/single_guard"
+    "const_tag/order/legacy/single_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     order_runes_in_order_guard,
-    "const_tag/order/runes/in_order_guard"
+    "const_tag/order/runes/in_order_guard",
+    [prod, dev, ssr, ssr_dev]
 );

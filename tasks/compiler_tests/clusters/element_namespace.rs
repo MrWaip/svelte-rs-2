@@ -12,7 +12,8 @@ compiler_case!(
 );
 compiler_case!(
     green_a_in_svg_snippet,
-    "element_namespace/green_a_in_svg_snippet"
+    "element_namespace/green_a_in_svg_snippet",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     green_mathml,

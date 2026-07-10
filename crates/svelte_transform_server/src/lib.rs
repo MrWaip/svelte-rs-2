@@ -29,6 +29,7 @@ pub fn transform_component<'a>(
         fn_depth: 0,
         dev: options.dev,
         strip_exports: false,
+        enclosing_stmt_start: Vec::new(),
     };
     if let Some(module_program) = ctx.js_arena.module_program.as_mut() {
         transform.strip_exports = false;
@@ -53,6 +54,9 @@ pub fn transform_component<'a>(
             program.body.extend(split);
         }
     }
+    for statement in ctx.js_arena.iter_stmts_mut() {
+        transform.visit_statement(statement);
+    }
     for expression in ctx.js_arena.iter_exprs_mut() {
         transform.visit_expression(expression);
     }
@@ -73,6 +77,7 @@ pub fn transform_module<'a>(
         fn_depth: 0,
         dev: options.dev,
         strip_exports: false,
+        enclosing_stmt_start: Vec::new(),
     };
     transform.visit_program(program);
 }

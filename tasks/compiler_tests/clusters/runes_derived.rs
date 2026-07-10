@@ -101,7 +101,11 @@ compiler_case!(
     "runes/derived/write/compound_assign",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(write_bind_value, "runes/derived/write/bind_value");
+compiler_case!(
+    write_bind_value,
+    "runes/derived/write/bind_value",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     write_plain_assign_guard,
     "runes/derived/write/plain_assign_guard",
@@ -120,11 +124,13 @@ compiler_case!(
 
 compiler_case!(
     read_var_declared_safe_get,
-    "runes/derived/read/var_declared_safe_get"
+    "runes/derived/read/var_declared_safe_get",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     read_derived_by_var_declared_safe_get,
-    "runes/derived/read/derived_by_var_declared_safe_get"
+    "runes/derived/read/derived_by_var_declared_safe_get",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     read_let_declared_get_guard,

@@ -7,7 +7,7 @@ use crate::fragment::FragmentParent;
 use crate::model::ServerCodegen;
 
 impl<'a> ServerCodegen<'a> {
-    pub(crate) fn if_block(&mut self, block: &'a IfBlock, preserve_whitespace: bool) -> Result<()> {
+    pub(crate) fn if_block(&mut self, block: &'a IfBlock) -> Result<()> {
         let sem = match self.analysis.block_semantics(block.id) {
             BlockSemantics::If(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(block.id, "if block")),
@@ -18,7 +18,7 @@ impl<'a> ServerCodegen<'a> {
             IfAsyncKind::Deferred { blockers } => (Some(blockers.clone()), false),
         };
 
-        let mut chain = self.build_if_alternate(&sem, preserve_whitespace)?;
+        let mut chain = self.build_if_alternate(&sem)?;
 
         for (index, branch) in sem.branches.iter().enumerate().rev() {
             let (consequent, test_ref) = match self.component.store.get(branch.block_id) {
@@ -29,9 +29,8 @@ impl<'a> ServerCodegen<'a> {
             if async_blockers.is_some() {
                 test = self.save_block_await(test);
             }
-            let mut body = self.child_statements(|cg| {
-                cg.fragment(consequent, FragmentParent::Block, preserve_whitespace)
-            })?;
+            let mut body =
+                self.child_statements(|cg| cg.fragment(consequent, FragmentParent::Block))?;
             let marker = self.renderer_push_string_stmt(&format!("<!--[{index}-->"));
             body.insert(0, marker);
             let consequent_block = self.b.block_stmt(body);
@@ -54,11 +53,7 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn build_if_alternate(
-        &mut self,
-        sem: &IfBlockSemantics,
-        preserve_whitespace: bool,
-    ) -> Result<Option<Statement<'a>>> {
+    fn build_if_alternate(&mut self, sem: &IfBlockSemantics) -> Result<Option<Statement<'a>>> {
         let alternate_fragment = match sem.final_alternate {
             IfAlternate::Fragment {
                 last_branch_block_id,
@@ -70,9 +65,9 @@ impl<'a> ServerCodegen<'a> {
         };
 
         let mut body = match alternate_fragment {
-            Some(fragment) => self.child_statements(|cg| {
-                cg.fragment(fragment, FragmentParent::Block, preserve_whitespace)
-            })?,
+            Some(fragment) => {
+                self.child_statements(|cg| cg.fragment(fragment, FragmentParent::Block))?
+            }
             None => Vec::new(),
         };
         let marker = self.renderer_push_string_stmt("<!--[-1-->");

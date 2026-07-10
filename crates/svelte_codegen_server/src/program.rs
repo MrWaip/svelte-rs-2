@@ -1,8 +1,11 @@
+use std::iter::empty;
 use std::mem;
 
 use oxc_ast::ast::{ExportDefaultDeclarationKind, Statement};
 use oxc_codegen::Codegen;
 use oxc_span::{SPAN, Span};
+use oxc_syntax::operator::UnaryOperator;
+use svelte_analyze::ChildPropMode;
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::JsOutput;
 
@@ -11,11 +14,48 @@ use crate::fragment::FragmentParent;
 use crate::model::ServerCodegen;
 
 impl<'a> ServerCodegen<'a> {
+    fn wrap_settled_loop(&self, inner_body: Vec<Statement<'a>>) -> Vec<Statement<'a>> {
+        let b = &self.b;
+        let render_inner = b.function_decl(
+            b.bid("$$render_inner"),
+            inner_body,
+            b.params(["$$renderer"]),
+            Span::default(),
+        );
+        let loop_body = b.block_stmt(vec![
+            b.assign_stmt(
+                AssignLeft::Ident("$$settled".to_string()),
+                b.bool_expr(true),
+            ),
+            b.assign_stmt(
+                AssignLeft::Ident("$$inner_renderer".to_string()),
+                b.call_expr("$$renderer.copy", empty::<Arg<'a, '_>>()),
+            ),
+            b.call_stmt("$$render_inner", [Arg::Ident("$$inner_renderer")]),
+        ]);
+        let test = b
+            .ast
+            .expression_unary(SPAN, UnaryOperator::LogicalNot, b.rid_expr("$$settled"));
+        let do_while = b.ast.statement_do_while(SPAN, loop_body, test);
+        vec![
+            b.let_init_stmt("$$settled", b.bool_expr(true)),
+            b.let_stmt("$$inner_renderer"),
+            Statement::FunctionDeclaration(b.alloc(render_inner)),
+            do_while,
+            b.call_stmt("$$renderer.subsume", [Arg::Ident("$$inner_renderer")]),
+        ]
+    }
+
     pub(crate) fn generate(mut self) -> Result<JsOutput> {
         let root = self.component.root;
-        let preserve_whitespace = self.analysis.script.preserve_whitespace;
-        self.fragment(root, FragmentParent::Root, preserve_whitespace)?;
-        let template_body = self.take_renderer_statements();
+        self.reserve_each_index_names();
+        self.fragment(root, FragmentParent::Root)?;
+        let mut template_body = self.take_render_hoists();
+        template_body.extend(self.take_renderer_statements());
+        let template_body = match self.analysis.runtime_semantics.query().child_prop_mode() {
+            ChildPropMode::InOut => self.wrap_settled_loop(template_body),
+            ChildPropMode::In => template_body,
+        };
         let hoisted_snippets = mem::take(&mut self.hoisted);
 
         let mut hoisted_imports: Vec<Statement<'a>> = Vec::new();
@@ -44,8 +84,9 @@ impl<'a> ServerCodegen<'a> {
         let has_runes_props = self.analysis.reactivity.summary().props.has_props;
         let needs_sanitized_props = self.needs_sanitized_legacy_props();
         let needs_rest_props = self.needs_legacy_rest_props();
-        let bind_props_object = self.legacy_bind_props_object();
+        let bind_props_object = self.bind_props_object();
         let has_bind_props = bind_props_object.is_some();
+        let has_runes_bind_props = self.has_runes_bind_props();
 
         let reactive_hoist = self.legacy_reactive_hoist();
 
@@ -57,7 +98,8 @@ impl<'a> ServerCodegen<'a> {
         }
 
         if has_stores {
-            component_block.insert(0, b.var_uninit_stmt("$$store_subs"));
+            let after_props_id = usize::from(self.analysis.script.props_id.is_some());
+            component_block.insert(after_props_id, b.var_uninit_stmt("$$store_subs"));
             let unsubscribe = b.call_stmt("$.unsubscribe_stores", [Arg::Ident("$$store_subs")]);
             component_block.push(b.if_stmt(b.rid_expr("$$store_subs"), unsubscribe, None));
         }
@@ -67,7 +109,7 @@ impl<'a> ServerCodegen<'a> {
                 .push(b.call_stmt("$.bind_props", [Arg::Ident("$$props"), Arg::Expr(object)]));
         }
 
-        let inject_context = self.dev || self.analysis.output.needs_context;
+        let inject_context = self.dev || self.analysis.output.needs_context || has_runes_bind_props;
         if inject_context {
             let arrow = b.arrow_block(b.params(["$$renderer"]), component_block);
             let mut args = vec![Arg::Arrow(arrow)];
@@ -104,7 +146,8 @@ impl<'a> ServerCodegen<'a> {
             || has_runes_props
             || needs_sanitized_props
             || needs_sanitized_slots
-            || renders_slot;
+            || renders_slot
+            || self.analysis.output.legacy_has_export_declaration;
         let params = if needs_props_param {
             b.params(["$$renderer", "$$props"])
         } else {
@@ -125,8 +168,8 @@ impl<'a> ServerCodegen<'a> {
         }
         program_body.push(b.import_all("$", "svelte/internal/server"));
         program_body.extend(hoisted_imports);
-        program_body.extend(module_body);
         program_body.extend(hoisted_snippets);
+        program_body.extend(module_body);
 
         if let Some(code) = inject_css {
             let hash: &str = b.alloc_str(self.analysis.css_hash());

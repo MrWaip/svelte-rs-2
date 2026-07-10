@@ -35,6 +35,8 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 - `legacy_bindable_prop_symbols()` — `export let`-props (LEGACY(svelte4)); компонент-уровневый флаг наличия — `summary().legacy.has_bindable_prop`.
 - `legacy_bindable_prop_alias(SymbolId) -> Option<&str>` — exported-алиас `export { foo as bar }` для bindable-prop (LEGACY(svelte4)). Известное отступление от «identity by id» — хранит строку; кандидат на перенос источника в `ComponentSemantics`.
 
+Синтаксическая bindability runes-пропа (`let { x = $bindable() } = $props()`) — **стабильная ось** `PropBindingSemantics.bindable`, независимая от оптимизации `PropBindingKind`: незаписанный `$bindable()` без default демотируется в `NonSource`, но `bindable` переживает демоцию. Читается тотальным `binding_semantics(sym).is_bindable()`; перечисление bindable-пропов для server-эмита `$.bind_props` — `iter_runes_prop_symbols().filter(is_bindable)`. Отдельный membership-индекс bindability рядом с вердиктом запрещён — он дублирует ось и десинхронизируется при демоции.
+
 Узкие предикаты — методы на самих енамах семантик, каждый с exhaustive match по всем вариантам (новый вариант — ошибка компиляции, никаких `_`-проваливаний). У потребителей `matches!` по этим енамам запрещён: либо метод енама, либо локальный exhaustive `match` для сайт-специфичного набора.
 
 `BindingSemantics`:
@@ -42,6 +44,7 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 - `is_reactive()` — биндинг есть **Реактивный источник** по глоссарию: чтение идёт через реактивную ячейку рантайма либо трактуется реактивно (state/derived/prop/legacy-state/store/contextual/maybe-reactive). False — статичные чтения: `OptimizedDerived`/`OptimizedRune` (демотированы в плоские значения), `RuntimeRune` (статичные runtime-значения), `Const`, `NonReactive`, `LegacyApiExport`, `Unresolved`. `is_reactive() == false` — только про ось реактивного источника. Демотация (`OptimizedRune`/`OptimizedDerived`) оптимизирует *объявление* (убирает runtime-ячейку), но не делает чтение биндинга ненаблюдаемым; читать это как `Static`-изменчивость нельзя — чтение остаётся изменчивым, пока значение не свёрнуто в `Known`-константу, по той же причине, по которой Оригинал держит здесь `has_state`.
 - `is_store()` — биндинг стор-подписки (`Store(_)` пишется только на `$`-символ).
 - `is_props()` — проп любого вида: `$props()` или `export let` (LEGACY(svelte4)); `is_runes_prop()` / `is_legacy_prop()` — точные половины; `is_rest_props()` — `...rest` в `$props()`.
+- `is_bindable()` — проп синтаксически объявлен `$bindable()`; тотальный по `PropBindingSemantics.bindable`, стабилен под демоцией `Source → NonSource`.
 - `is_derived()`, `is_optimized_rune()`, `is_maybe_reactive()`, `is_non_reactive()`, `is_legacy_state()`, `is_reactive_const_tag()` — точечные вопросы.
 - Аксессоры payload: `state() -> Option<StateDeclarationSemantics>`, `legacy_state() -> Option<LegacyStateSemantics>` — для вопросов с гардом (`kind == StateEager`, `var_declared`, `is_signal_source`).
 

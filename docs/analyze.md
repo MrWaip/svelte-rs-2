@@ -3,7 +3,7 @@
 label: analyze
 topics: analyze, smart analyzer, passes, dynamism, build order, analyze phases, semantics frame, semantic diagnostics
 
-Корневой PRD для слоя анализа (`crates/svelte_analyze`). Описывает рамку слоя и принцип **smart analyzer**; per-subsystem семантика — в дочерних PRD `component-semantics`, `reactivity-semantics`, `expression-semantics`, `attribute-semantics`, `block-semantics`.
+Корневой PRD для слоя анализа (`crates/svelte_analyze`). Описывает рамку слоя и принцип **smart analyzer**; per-subsystem семантика — в дочерних PRD `component-semantics`, `reactivity-semantics`, `expression-semantics`, `attribute-semantics`, `block-semantics`, `fragment-semantics`.
 
 ## Назначение
 
@@ -15,7 +15,7 @@ topics: analyze, smart analyzer, passes, dynamism, build order, analyze phases, 
 
 Анализ делится на два класса:
 
-- **3.A семантические подсистемы** — `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, `AttributeSemantics`, `BlockSemantics`. Каждая поглощает несколько raw-индексов внутри и выдаёт query-API на один конкретный вопрос за вызов. Не течёт raw-флагами наружу.
+- **3.A семантические подсистемы** — `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, `AttributeSemantics`, `BlockSemantics`, `FragmentSemantics`, `RuntimeSemantics`. Каждая поглощает несколько raw-индексов внутри и выдаёт query-API на один конкретный вопрос за вызов. Не течёт raw-флагами наружу.
 - **3.B аналитические side-таблицы** — `ScriptAnalysis`, `ElementAnalysis`, `TemplateAnalysis`, `BlockAnalysis`, `OutputPlanData`, `DynamismData`, `PickledAwaits`. Плоские таблицы на `AnalysisData`, ещё не свёрнутые в 3.A-подсистему. Трекаются в `debt.md`.
 
 Новые факты идут в 3.A-подсистему (или мотивируют новую), **никогда** не в 3.B.

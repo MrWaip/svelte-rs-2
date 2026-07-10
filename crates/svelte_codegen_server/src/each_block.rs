@@ -16,11 +16,81 @@ const LENGTH_NAME: &str = "$$length";
 const INTERNAL_INDEX_NAME: &str = "$$index";
 
 impl<'a> ServerCodegen<'a> {
-    pub(crate) fn each_block(
-        &mut self,
-        block: &'a EachBlock,
-        preserve_whitespace: bool,
-    ) -> Result<()> {
+    pub(crate) fn reserve_each_index_names(&mut self) {
+        let root = self.component.root;
+        self.reserve_each_index_in_fragment(root);
+    }
+
+    fn reserve_each_index_in_fragment(&mut self, fragment: svelte_ast::FragmentId) {
+        let node_ids: Vec<svelte_ast::NodeId> =
+            self.component.store.fragment(fragment).nodes.to_vec();
+        for id in node_ids {
+            self.reserve_each_index_in_node(id);
+        }
+    }
+
+    fn reserve_each_index_in_node(&mut self, id: svelte_ast::NodeId) {
+        use svelte_ast::Node;
+        match self.component.store.get(id) {
+            Node::Element(el) => self.reserve_each_index_in_fragment(el.fragment),
+            Node::SlotElementLegacy(el) => self.reserve_each_index_in_fragment(el.fragment),
+            Node::SvelteElement(el) => self.reserve_each_index_in_fragment(el.fragment),
+            Node::SvelteFragmentLegacy(el) => self.reserve_each_index_in_fragment(el.fragment),
+            Node::SvelteHead(head) => self.reserve_each_index_in_fragment(head.fragment),
+            Node::SvelteBoundary(b) => self.reserve_each_index_in_fragment(b.fragment),
+            Node::KeyBlock(block) => self.reserve_each_index_in_fragment(block.fragment),
+            Node::SnippetBlock(block) => self.reserve_each_index_in_fragment(block.body),
+            Node::IfBlock(block) => {
+                self.reserve_each_index_in_fragment(block.consequent);
+                if let Some(alt) = block.alternate {
+                    self.reserve_each_index_in_fragment(alt);
+                }
+            }
+            Node::AwaitBlock(block) => {
+                if let Some(p) = block.pending {
+                    self.reserve_each_index_in_fragment(p);
+                }
+                if let Some(t) = block.then {
+                    self.reserve_each_index_in_fragment(t);
+                }
+                if let Some(c) = block.catch {
+                    self.reserve_each_index_in_fragment(c);
+                }
+            }
+            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_) => {
+                if let Some(view) = self.component.store.get(id).as_component_like() {
+                    self.reserve_each_index_in_fragment(view.fragment);
+                    for slot in view.legacy_slots {
+                        self.reserve_each_index_in_fragment(slot.fragment);
+                    }
+                }
+            }
+            Node::EachBlock(block) => {
+                let body = block.body;
+                let fallback = block.fallback;
+                let block_id = block.id;
+                self.reserve_each_index_in_fragment(body);
+                if let Some(fb) = fallback {
+                    self.reserve_each_index_in_fragment(fb);
+                }
+                let name = self.ident_gen.generate("$$index");
+                self.each_index_names.insert(block_id, name);
+            }
+            Node::Text(_)
+            | Node::Comment(_)
+            | Node::ExpressionTag(_)
+            | Node::RenderTag(_)
+            | Node::HtmlTag(_)
+            | Node::ConstTag(_)
+            | Node::DebugTag(_)
+            | Node::SvelteWindow(_)
+            | Node::SvelteDocument(_)
+            | Node::SvelteBody(_)
+            | Node::Error(_) => {}
+        }
+    }
+
+    pub(crate) fn each_block(&mut self, block: &'a EachBlock) -> Result<()> {
         let sem = match self.analysis.block_semantics(block.id) {
             BlockSemantics::Each(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(block.id, "each block")),
@@ -49,15 +119,14 @@ impl<'a> ServerCodegen<'a> {
             .call_expr("$.ensure_array_like", [Arg::Expr(collection)]);
         let array_decl = self.b.const_stmt(&array_name, ensure);
 
-        let for_loop = self.build_each_for_loop(block, &sem, &array_name, preserve_whitespace)?;
+        let for_loop = self.build_each_for_loop(block, &sem, &array_name)?;
 
         if let Some(blockers) = async_blockers {
             self.push_text("<!--[-->");
             let wrapped = self.wrap_async_block(vec![array_decl, for_loop], &blockers);
             self.push_stmt(wrapped);
         } else if block.fallback.is_some() {
-            let guard =
-                self.build_each_fallback(block, &array_name, for_loop, preserve_whitespace)?;
+            let guard = self.build_each_fallback(block, &array_name, for_loop)?;
             self.push_stmt(array_decl);
             self.push_stmt(guard);
         } else {
@@ -74,26 +143,29 @@ impl<'a> ServerCodegen<'a> {
         block: &'a EachBlock,
         sem: &EachBlockSemantics,
         array_name: &str,
-        preserve_whitespace: bool,
     ) -> Result<Statement<'a>> {
+        let internal_index = self
+            .each_index_names
+            .get(&block.id)
+            .cloned()
+            .unwrap_or_else(|| INTERNAL_INDEX_NAME.to_string());
         let (loop_index_name, group_rebind) = match (sem.flavor, &sem.index) {
             (EachFlavor::BindGroup, EachIndexKind::Declared { sym, .. }) => (
-                INTERNAL_INDEX_NAME.to_string(),
+                internal_index,
                 Some(self.analysis.scoping.symbol_name(*sym).to_string()),
             ),
             (EachFlavor::Regular, EachIndexKind::Declared { sym, .. }) => {
                 (self.analysis.scoping.symbol_name(*sym).to_string(), None)
             }
             (EachFlavor::BindGroup | EachFlavor::Regular, EachIndexKind::Absent) => {
-                (INTERNAL_INDEX_NAME.to_string(), None)
+                (internal_index, None)
             }
         };
 
         let context_pattern = self.take_each_context_pattern(block)?;
 
-        let content = self.child_statements(|cg| {
-            cg.fragment(block.body, FragmentParent::EachBlock, preserve_whitespace)
-        })?;
+        let content =
+            self.child_statements(|cg| cg.fragment(block.body, FragmentParent::EachBlock))?;
 
         let mut body: Vec<Statement<'a>> = Vec::new();
         if let Some(pattern) = context_pattern {
@@ -117,7 +189,6 @@ impl<'a> ServerCodegen<'a> {
         block: &'a EachBlock,
         array_name: &str,
         for_loop: Statement<'a>,
-        preserve_whitespace: bool,
     ) -> Result<Statement<'a>> {
         let length = self
             .b
@@ -135,9 +206,8 @@ impl<'a> ServerCodegen<'a> {
         let Some(fallback) = block.fallback else {
             return Err(CodegenError::Unsupported(block.id, "each fallback"));
         };
-        let mut fallback_body = self.child_statements(|cg| {
-            cg.fragment(fallback, FragmentParent::EachBlock, preserve_whitespace)
-        })?;
+        let mut fallback_body =
+            self.child_statements(|cg| cg.fragment(fallback, FragmentParent::EachBlock))?;
         let else_marker = self.renderer_push_string_stmt("<!--[!-->");
         fallback_body.insert(0, else_marker);
         let alternate = self.b.block_stmt(fallback_body);

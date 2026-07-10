@@ -61,7 +61,11 @@ compiler_case!(
     "customizable_select/single_each_block",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(single_component, "customizable_select/single_component");
+compiler_case!(
+    single_component,
+    "customizable_select/single_component",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     multi_first_block,
     "customizable_select/multi_first_block",

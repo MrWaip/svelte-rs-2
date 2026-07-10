@@ -67,13 +67,16 @@ compiler_case!(
 );
 compiler_case!(
     each_index_concat_unkeyed,
-    "component_props/each_index_concat_unkeyed"
+    "component_props/each_index_concat_unkeyed",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     each_index_concat_keyed_guard,
-    "component_props/each_index_concat_keyed_guard"
+    "component_props/each_index_concat_keyed_guard",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     each_item_concat_guard,
-    "component_props/each_item_concat_guard"
+    "component_props/each_item_concat_guard",
+    [prod, dev, ssr, ssr_dev]
 );

@@ -69,7 +69,12 @@ impl<'a> ServerTransform<'_, 'a> {
             let Some(symbol) = id.symbol_id.get() else {
                 continue;
             };
-            if !self.analysis.binding_semantics(symbol).is_bindable() {
+            if !self
+                .analysis
+                .reactivity
+                .binding_semantics(symbol)
+                .is_bindable()
+            {
                 continue;
             }
             self.unwrap_bindable_default(&mut assign.right);
@@ -95,19 +100,27 @@ impl<'a> ServerTransform<'_, 'a> {
 }
 
 impl<'a> ServerTransform<'_, 'a> {
-    pub(crate) fn rewrite_legacy_prop(&mut self, declarator: &mut VariableDeclarator<'a>) {
+    pub(crate) fn legacy_prop_symbol(
+        &self,
+        declarator: &VariableDeclarator<'a>,
+    ) -> Option<SymbolId> {
         let BindingPattern::BindingIdentifier(id) = &declarator.id else {
-            return;
+            return None;
         };
-        let Some(symbol) = id.symbol_id.get() else {
+        let symbol = id.symbol_id.get()?;
+        if !self.analysis.binding_semantics(symbol).is_legacy_prop() {
+            return None;
+        }
+        Some(symbol)
+    }
+
+    pub(crate) fn finish_legacy_prop(&mut self, declarator: &mut VariableDeclarator<'a>) {
+        let Some(symbol) = self.legacy_prop_symbol(declarator) else {
             return;
         };
         let prop = self.legacy_prop_member(symbol);
-        let init = match declarator.init.as_mut() {
-            Some(default) => {
-                let default = unwrap_paren_and_ts(self.b.move_expr(default));
-                build_fallback_legacy(self.b, prop, default)
-            }
+        let init = match declarator.init.take() {
+            Some(default) => build_fallback_legacy(self.b, prop, unwrap_paren_and_ts(default)),
             None => prop,
         };
         declarator.init = Some(init);
@@ -168,6 +181,11 @@ impl<'a> ServerTransform<'_, 'a> {
             .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name));
         let pattern = mem::replace(&mut declarator.id, placeholder);
 
+        let declaration_is_props = self
+            .analysis
+            .declarator_semantics(declarator.node_id())
+            .is_legacy_props();
+
         walk_bindings(&pattern, |v| {
             let root = self.b.rid_expr(tmp_name);
             let access = self.server_unfold_carrier_access(
@@ -182,7 +200,7 @@ impl<'a> ServerTransform<'_, 'a> {
             let name: &'a str = self
                 .b
                 .alloc_str(self.analysis.scoping.symbol_name(v.symbol));
-            let value = if self.analysis.binding_semantics(v.symbol).is_legacy_prop() {
+            let value = if declaration_is_props {
                 let prop = self.legacy_prop_member(v.symbol);
                 build_fallback_legacy(self.b, prop, access)
             } else {

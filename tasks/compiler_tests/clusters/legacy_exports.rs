@@ -42,7 +42,8 @@ compiler_case!(
 );
 compiler_case!(
     exports_specifier_string_exported,
-    "legacy/exports/specifier_string_exported"
+    "legacy/exports/specifier_string_exported",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     exports_specifier_class_read_in_template,

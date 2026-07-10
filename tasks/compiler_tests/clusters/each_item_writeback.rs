@@ -5,7 +5,11 @@ compiler_case!(
     "each_item_writeback/legacy_store_readonly_guard",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(legacy_store_bind, "each_item_writeback/legacy_store_bind");
+compiler_case!(
+    legacy_store_bind,
+    "each_item_writeback/legacy_store_bind",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     legacy_store_assign,
     "each_item_writeback/legacy_store_assign",
@@ -13,11 +17,13 @@ compiler_case!(
 );
 compiler_case!(
     legacy_reactive_array_bind,
-    "each_item_writeback/legacy_reactive_array_bind"
+    "each_item_writeback/legacy_reactive_array_bind",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_store_destructure_bind,
-    "each_item_writeback/legacy_store_destructure_bind"
+    "each_item_writeback/legacy_store_destructure_bind",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_store_assign_noindex,
@@ -26,15 +32,18 @@ compiler_case!(
 );
 compiler_case!(
     legacy_store_bind_noindex,
-    "each_item_writeback/legacy_store_bind_noindex"
+    "each_item_writeback/legacy_store_bind_noindex",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_reactive_array_bind_noindex,
-    "each_item_writeback/legacy_reactive_array_bind_noindex"
+    "each_item_writeback/legacy_reactive_array_bind_noindex",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_store_destructure_bind_noindex,
-    "each_item_writeback/legacy_store_destructure_bind_noindex"
+    "each_item_writeback/legacy_store_destructure_bind_noindex",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_reactive_array_item_assign,
@@ -63,7 +72,8 @@ compiler_case!(
 );
 compiler_case!(
     legacy_keyed_index_bind,
-    "each_item_writeback/legacy_keyed_index_bind"
+    "each_item_writeback/legacy_keyed_index_bind",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_reassigned_collection_expr,
@@ -152,15 +162,18 @@ compiler_case!(
 );
 compiler_case!(
     legacy_reactive_nested_parent_collection_mutate,
-    "each_item_writeback/legacy_reactive_nested_parent_collection_mutate"
+    "each_item_writeback/legacy_reactive_nested_parent_collection_mutate",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_reactive_nested_destructure_parent_collection,
-    "each_item_writeback/legacy_reactive_nested_destructure_parent_collection"
+    "each_item_writeback/legacy_reactive_nested_destructure_parent_collection",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_reactive_nested_member_arg_value,
-    "each_item_writeback/legacy_reactive_nested_member_arg_value"
+    "each_item_writeback/legacy_reactive_nested_member_arg_value",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_prop_item_member_read_assign,

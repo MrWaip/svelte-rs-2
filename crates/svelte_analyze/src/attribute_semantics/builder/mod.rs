@@ -6,9 +6,9 @@ use super::data::{
     ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
     ConcatPartEmit, DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics,
     ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, GroupBindValue,
-    HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SkipCause, SpecialValueKind,
-    SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics, TemplateEffect,
-    WindowBindSemantics, is_component_css_property,
+    GroupReflection, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SkipCause,
+    SpecialValueKind, SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics,
+    TemplateEffect, WindowBindSemantics, is_component_css_property,
 };
 use crate::expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
@@ -35,7 +35,7 @@ use crate::value_evaluation::{
 use compact_str::CompactString;
 use oxc_ast::ast::{
     ArrayExpressionElement, ArrowFunctionExpression, AssignmentExpression, CallExpression,
-    ChainElement, Expression, Function, ObjectPropertyKind, UpdateExpression,
+    ChainElement, Expression, Function, IdentifierReference, ObjectPropertyKind, UpdateExpression,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_semantic::ScopeFlags;
@@ -524,17 +524,22 @@ fn classify_element_attrs(
                         bind_kind(ctx, d)
                     };
                     let blockers = derive_blockers(ctx, d);
-                    let (parent_each_blocks, group_value) =
-                        if matches!(property, ElementBindPropertyKind::Group) {
-                            (
-                                derive_parent_each_blocks(ctx, state, d),
-                                el.and_then(find_group_bind_value),
-                            )
-                        } else if is_this {
-                            (derive_parent_each_blocks(ctx, state, d), None)
-                        } else {
-                            (SmallVec::new(), None)
-                        };
+                    let is_group = matches!(property, ElementBindPropertyKind::Group);
+                    let (parent_each_blocks, group_value) = if is_group {
+                        (
+                            derive_parent_each_blocks(ctx, state, d),
+                            el.and_then(find_group_bind_value),
+                        )
+                    } else if is_this {
+                        (derive_parent_each_blocks(ctx, state, d), None)
+                    } else {
+                        (SmallVec::new(), None)
+                    };
+                    let group_reflection = if is_group {
+                        el.map(|el| find_group_reflection(el, ctx.component.source.as_str()))
+                    } else {
+                        None
+                    };
                     let each_context_vars = if is_this {
                         derive_each_context_vars(ctx, d)
                     } else {
@@ -556,6 +561,7 @@ fn classify_element_attrs(
                             parent_each_blocks,
                             each_context_vars,
                             group_value,
+                            group_reflection,
                             group_id: None,
                             needs_binding_validation,
                             reflects_as_attribute,
@@ -987,14 +993,24 @@ fn bind_reflects_as_attribute(
     property: ElementBindPropertyKind,
 ) -> bool {
     match property {
-        ElementBindPropertyKind::Checked => true,
+        ElementBindPropertyKind::Checked
+        | ElementBindPropertyKind::Open
+        | ElementBindPropertyKind::Group
+        | ElementBindPropertyKind::Focused => true,
         ElementBindPropertyKind::Value => {
             let Some(el) = el else {
                 return true;
             };
             !(el.name == "select" || el.name == "textarea" || is_file_input(ctx, el))
         }
-        _ => false,
+        ElementBindPropertyKind::Files
+        | ElementBindPropertyKind::Indeterminate
+        | ElementBindPropertyKind::This
+        | ElementBindPropertyKind::ContentEditable(_)
+        | ElementBindPropertyKind::ElementSize(_)
+        | ElementBindPropertyKind::ResizeObserver(_)
+        | ElementBindPropertyKind::Media(_)
+        | ElementBindPropertyKind::ImageNaturalSize(_) => false,
     }
 }
 
@@ -1100,19 +1116,36 @@ fn special_value_kind_for(el: Option<&Element>, attr_name: &str) -> Option<Speci
 
 fn find_group_bind_value(el: &Element) -> Option<GroupBindValue> {
     el.attributes.iter().find_map(|attr| match attr {
-        Attribute::ExpressionAttribute(a) if a.name == "value" => Some(GroupBindValue {
-            expression: a.expression.id(),
-            data: a.id,
-        }),
+        Attribute::StringAttribute(a) if a.name == "value" => {
+            Some(GroupBindValue::Static { node: a.id })
+        }
+        Attribute::ExpressionAttribute(a) if a.name == "value" => {
+            Some(GroupBindValue::Expression {
+                expression: a.expression.id(),
+                data: a.id,
+            })
+        }
         Attribute::ConcatenationAttribute(a) if a.name == "value" => match a.parts.as_slice() {
-            [ConcatPart::Dynamic { id, expr }] => Some(GroupBindValue {
+            [ConcatPart::Dynamic { id, expr }] => Some(GroupBindValue::Expression {
                 expression: expr.id(),
                 data: *id,
             }),
+            [ConcatPart::Static(_)] => Some(GroupBindValue::Static { node: a.id }),
             _ => None,
         },
         _ => None,
     })
+}
+
+fn find_group_reflection(el: &Element, source: &str) -> GroupReflection {
+    let is_radio = el.attributes.iter().any(|attr| {
+        matches!(attr, Attribute::StringAttribute(a) if a.name == "type" && a.value(source) == "radio")
+    });
+    if is_radio {
+        GroupReflection::Equality
+    } else {
+        GroupReflection::Includes
+    }
 }
 
 fn bind_kind_member_aware(ctx: &Ctx<'_, '_>, d: &BindDirective) -> HtmlBindKind {
@@ -1516,6 +1549,9 @@ fn classify_component_attrs(
                         emit: EventEmit::Component { handler },
                     }),
                 );
+            }
+            Attribute::LetDirectiveLegacy(d) => {
+                store.set(d.id, AttributeSemantics::Skip(SkipCause::SlotBindingLegacy));
             }
             _ => {}
         }
@@ -2012,6 +2048,10 @@ fn derive_component_bind_kind(ctx: &Ctx<'_, '_>, d: &BindDirective) -> Component
         return ComponentBindKind::StoreSubscribed { base_symbol };
     }
 
+    if let Some(store_symbol) = bind_member_root_store_symbol(ctx, d) {
+        return ComponentBindKind::StoreMemberMutation { store_symbol };
+    }
+
     let Some(sym) = symbol else {
         if let Some(Expression::SequenceExpression(seq)) = ctx
             .parsed
@@ -2086,6 +2126,38 @@ fn derive_component_bind_target(
         ComponentBindTarget::PropSourceOwned
     } else {
         base
+    }
+}
+
+fn member_root_identifier<'b, 'a>(
+    mut expr: &'b Expression<'a>,
+) -> Option<&'b IdentifierReference<'a>> {
+    loop {
+        match expr {
+            Expression::StaticMemberExpression(member) => expr = &member.object,
+            Expression::ComputedMemberExpression(member) => expr = &member.object,
+            Expression::ParenthesizedExpression(paren) => expr = &paren.expression,
+            Expression::Identifier(id) => return Some(id),
+            _ => return None,
+        }
+    }
+}
+
+fn bind_member_root_store_symbol(ctx: &Ctx<'_, '_>, d: &BindDirective) -> Option<SymbolId> {
+    let inner = ctx.parsed.expr(d.expression.id())?.get_inner_expression();
+    if !matches!(
+        inner,
+        Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_)
+    ) {
+        return None;
+    }
+    let root = member_root_identifier(inner)?;
+    let ref_id = root.reference_id.get()?;
+    match ctx.reactivity.reference_semantics(ref_id) {
+        ReferenceSemantics::StoreRead { symbol }
+        | ReferenceSemantics::StoreWrite { symbol }
+        | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
+        _ => None,
     }
 }
 

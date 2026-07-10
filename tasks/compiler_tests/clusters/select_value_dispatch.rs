@@ -22,5 +22,6 @@ compiler_case!(
 );
 compiler_case!(
     runes_bindable_select,
-    "select_value_dispatch/runes_bindable_select"
+    "select_value_dispatch/runes_bindable_select",
+    [prod, dev, ssr, ssr_dev]
 );

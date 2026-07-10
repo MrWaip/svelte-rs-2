@@ -20,7 +20,7 @@ impl<'a> ServerCodegen<'a> {
         } else {
             let name = self.gen_ident("$$tag");
             let decl = self.b.const_stmt(&name, tag_expr);
-            self.push_stmt(decl);
+            self.hoist_stmt(decl);
             name
         };
 
@@ -28,14 +28,14 @@ impl<'a> ServerCodegen<'a> {
         let validate = self
             .b
             .call_stmt("$.validate_dynamic_element_tag", [Arg::Expr(validate_tag)]);
-        self.push_stmt(validate);
+        self.hoist_stmt(validate);
 
         if self.analysis.fragment_has_children_by_id(el.fragment) {
             let void_tag = self.b.thunk(self.b.rid_expr(&ref_name));
             let validate_void = self
                 .b
                 .call_stmt("$.validate_void_dynamic_element", [Arg::Expr(void_tag)]);
-            self.push_stmt(validate_void);
+            self.hoist_stmt(validate_void);
         }
 
         self.svelte_element_tag_refs.insert(el.id, ref_name);
@@ -45,9 +45,8 @@ impl<'a> ServerCodegen<'a> {
     pub(crate) fn svelte_element(&mut self, el: &'a SvelteElement) -> Result<()> {
         let attrs_stmts =
             self.child_statements(|cg| cg.emit_element_attributes(el.id, &el.attributes))?;
-        let children_stmts = self.child_statements(|cg| {
-            cg.fragment(el.fragment, FragmentParent::SvelteElement, false)
-        })?;
+        let children_stmts =
+            self.child_statements(|cg| cg.fragment(el.fragment, FragmentParent::SvelteElement))?;
 
         let async_blockers = self.element_async_blockers(el.id);
 

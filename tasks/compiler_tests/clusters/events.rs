@@ -3,7 +3,7 @@ use super::*;
 compiler_case!(
     legacy_dev_arrow_handler_return,
     "events/legacy_dev_arrow_handler_return",
-    ignore = "divergence: legacy dev arrow handler expression body loses implicit return — on:click={() => n++} emits $.update(n) instead of return $.update(n); reproduces unquoted too, unrelated to quoted directives"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     snippet_param,
@@ -128,7 +128,8 @@ compiler_case!(
 );
 compiler_case!(
     spread_order_runes_onclick,
-    "events/spread_order_runes_onclick"
+    "events/spread_order_runes_onclick",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     spread_order_runes_onclick_no_spread,
@@ -163,7 +164,8 @@ compiler_case!(
 );
 compiler_case!(
     textarea_remove_child_memo_on,
-    "events/textarea_remove_child_memo_on"
+    "events/textarea_remove_child_memo_on",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     input_defaults_plain_on,

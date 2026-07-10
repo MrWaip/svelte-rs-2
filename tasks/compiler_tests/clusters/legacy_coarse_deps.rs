@@ -130,7 +130,8 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_attr_dollar_slots_bare,
-    "legacy/coarse_deps/attr_dollar_slots_bare"
+    "legacy/coarse_deps/attr_dollar_slots_bare",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     coarse_deps_if_prop_bare,

@@ -18,6 +18,7 @@ use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
 use std::f64::consts;
+use svelte_ast::{Component, Node};
 use svelte_component_semantics::{ComponentSemantics, SymbolId};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -208,6 +209,32 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
 
     pub(crate) fn function_declaration_symbols(&self) -> impl Iterator<Item = SymbolId> + '_ {
         self.function_decls.iter().copied()
+    }
+
+    pub(crate) fn ingest_const_tag_bindings(
+        &mut self,
+        component: &Component,
+        parsed: &'c JsAst<'a>,
+    ) {
+        for node in component.store.iter_nodes() {
+            let Node::ConstTag(tag) = node else {
+                continue;
+            };
+            let Some(Statement::VariableDeclaration(vd)) = parsed.stmt(tag.decl.id()) else {
+                continue;
+            };
+            for decl in &vd.declarations {
+                let Some(init) = decl.init.as_ref() else {
+                    continue;
+                };
+                let BindingPattern::BindingIdentifier(id) = &decl.id else {
+                    continue;
+                };
+                if let Some(sym) = id.symbol_id.get() {
+                    self.bindings_init.insert(sym, init);
+                }
+            }
+        }
     }
 }
 
@@ -1138,6 +1165,7 @@ fn eval_binary(
         bin.operator,
         Equality | StrictEquality | Inequality | StrictInequality
     ) && ctx.dev
+        && ctx.read_context == ReadContext::Runtime
         && ctx.binding_depth.get() == 0
     {
         return smallvec![EvalAtom::Unknown];

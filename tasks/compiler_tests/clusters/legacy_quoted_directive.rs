@@ -45,9 +45,13 @@ compiler_case!(
     "legacy/quoted_directive/animate_quoted",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(let_quoted, "legacy/quoted_directive/let_quoted");
+compiler_case!(
+    let_quoted,
+    "legacy/quoted_directive/let_quoted",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     style_quoted_expr,
     "legacy/quoted_directive/style_quoted_expr",
-    ignore = "divergence: style: directive emits literal instead of reactive expression for quoted value style:color=\"{c}\" — separate codegen fork, not the directive-parsing fix"
+    [prod, dev, ssr, ssr_dev]
 );

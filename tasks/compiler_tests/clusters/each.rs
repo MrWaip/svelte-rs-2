@@ -57,11 +57,13 @@ compiler_case!(
 );
 compiler_case!(
     declaration_legacy_unkeyed_index_component_prop,
-    "each/declaration/legacy/unkeyed_index_component_prop"
+    "each/declaration/legacy/unkeyed_index_component_prop",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_legacy_item_closure_component_prop,
-    "each/declaration/legacy/item_closure_component_prop"
+    "each/declaration/legacy/item_closure_component_prop",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     declaration_legacy_import_collection,

@@ -117,11 +117,13 @@ compiler_case!(
 );
 compiler_case!(
     proxy_flag_red_raw_component_bind_this,
-    "runes/state/proxy_flag/red_raw_component_bind_this"
+    "runes/state/proxy_flag/red_raw_component_bind_this",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     proxy_flag_red_raw_bindable_prop,
-    "runes/state/proxy_flag/red_raw_bindable_prop"
+    "runes/state/proxy_flag/red_raw_bindable_prop",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     proxy_flag_guard_opaque_rhs_proxies,
@@ -180,7 +182,8 @@ compiler_case!(
 );
 compiler_case!(
     class_field_derived_member_init_in_ctor,
-    "runes/state/class_field/derived_member_init_in_ctor"
+    "runes/state/class_field/derived_member_init_in_ctor",
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     class_field_compound_assign_private_in_ctor,

@@ -1,18 +1,33 @@
 use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, Expression};
 use oxc_span::SPAN;
 use oxc_syntax::reference::ReferenceId;
-use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{AnalysisData, BindingSemantics, ReferenceSemantics, SignalReferenceKind};
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::SymbolId;
 
+fn reads_via_derived_getter(semantics: BindingSemantics) -> bool {
+    match semantics {
+        BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_) => true,
+        BindingSemantics::NonReactive
+        | BindingSemantics::MaybeReactive
+        | BindingSemantics::State(_)
+        | BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::Prop(_)
+        | BindingSemantics::LegacyBindableProp(_)
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyState(_)
+        | BindingSemantics::Store(_)
+        | BindingSemantics::Const(_)
+        | BindingSemantics::Contextual(_)
+        | BindingSemantics::RuntimeRune { .. }
+        | BindingSemantics::Unresolved => false,
+    }
+}
+
 fn reads_runtime_derived(analysis: &AnalysisData<'_>, ref_id: ReferenceId) -> bool {
-    analysis.symbol_for_reference(ref_id).is_some_and(|sym| {
-        matches!(
-            analysis.binding_semantics(sym),
-            BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_)
-        )
-    })
+    analysis
+        .symbol_for_reference(ref_id)
+        .is_some_and(|sym| reads_via_derived_getter(analysis.binding_semantics(sym)))
 }
 
 pub fn store_base_symbol(analysis: &AnalysisData<'_>, store_symbol: SymbolId) -> Option<SymbolId> {
@@ -28,15 +43,11 @@ pub fn server_store_base_read<'a>(
     base_symbol: SymbolId,
 ) -> Expression<'a> {
     let base_name = analysis.scoping.symbol_name(base_symbol);
-    if analysis
-        .reactivity
-        .legacy_reactive()
-        .is_mutated_import(base_symbol)
-    {
-        let wrapper: &str = b.alloc_str(&legacy_reactive_import_wrapper_name(base_name));
-        return b.call_expr_callee(b.rid_expr(wrapper), []);
+    let base = b.rid_expr(base_name);
+    if reads_via_derived_getter(analysis.binding_semantics(base_symbol)) {
+        return b.call_expr_callee(base, []);
     }
-    b.rid_expr(base_name)
+    base
 }
 
 fn store_subs_assign<'a>(b: &Builder<'a>) -> Expression<'a> {
@@ -140,25 +151,45 @@ pub fn rewrite_identifier_read<'a>(
         ReferenceSemantics::LegacyPropsIdentifierRead => {
             *expr = b.rid_expr("$$sanitized_props");
         }
-        ReferenceSemantics::StoreRead { symbol }
-        | ReferenceSemantics::ImportSubscribedRead {
-            store_symbol: symbol,
-        } => {
+        ReferenceSemantics::StoreRead { symbol } => {
             if let Some(read) = store_read_of_symbol(b, analysis, symbol) {
                 *expr = read;
             }
         }
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::Derived(_),
-            ..
+            safe,
         } => {
             if reads_runtime_derived(analysis, ref_id) {
                 let callee = b.rid_expr(id.name.as_str());
-                *expr = b.call_expr_callee(callee, []);
+                *expr = if safe {
+                    b.maybe_call_expr(callee, [])
+                } else {
+                    b.call_expr_callee(callee, [])
+                };
             }
         }
         _ => {}
     }
+}
+
+pub fn force_derived_read<'a>(
+    b: &Builder<'a>,
+    analysis: &AnalysisData<'a>,
+    expr: &mut Expression<'a>,
+) -> bool {
+    let Expression::Identifier(id) = &*expr else {
+        return false;
+    };
+    let Some(ref_id) = id.reference_id.get() else {
+        return false;
+    };
+    if reads_runtime_derived(analysis, ref_id) {
+        let callee = b.rid_expr(id.name.as_str());
+        *expr = b.call_expr_callee(callee, []);
+        return true;
+    }
+    false
 }
 
 pub fn force_store_read<'a>(

@@ -9,11 +9,7 @@ use crate::fragment::FragmentParent;
 use crate::model::ServerCodegen;
 
 impl<'a> ServerCodegen<'a> {
-    pub(crate) fn svelte_boundary(
-        &mut self,
-        boundary: &'a SvelteBoundary,
-        preserve_whitespace: bool,
-    ) -> Result<()> {
+    pub(crate) fn svelte_boundary(&mut self, boundary: &'a SvelteBoundary) -> Result<()> {
         let sem = match self.analysis.element_semantics.query(boundary.id) {
             ElementSemantics::Boundary(sem) => *sem,
             _ => return Err(CodegenError::Unsupported(boundary.id, "boundary")),
@@ -23,16 +19,14 @@ impl<'a> ServerCodegen<'a> {
             (sem.failed, sem.pending)
             && self.boundary_pending_nullish(boundary, attr_id)
         {
-            return self.emit_boundary_nullish_pending(boundary, attr_id, preserve_whitespace);
+            return self.emit_boundary_nullish_pending(boundary, attr_id);
         }
 
         let has_failed = !matches!(sem.failed, BoundaryBranch::None);
         let excluded = boundary_branch_snippets(&sem);
         let inner = match sem.pending {
-            BoundaryBranch::None => {
-                self.boundary_children_body(boundary, preserve_whitespace, has_failed, &excluded)?
-            }
-            branch => self.boundary_pending_body(boundary, branch, preserve_whitespace)?,
+            BoundaryBranch::None => self.boundary_children_body(boundary, has_failed, &excluded)?,
+            branch => self.boundary_pending_body(boundary, branch)?,
         };
 
         match sem.failed {
@@ -72,7 +66,6 @@ impl<'a> ServerCodegen<'a> {
         &mut self,
         boundary: &'a SvelteBoundary,
         attr_id: NodeId,
-        preserve_whitespace: bool,
     ) -> Result<()> {
         let callee = self.take_boundary_attr_expr(boundary, attr_id)?;
         let test = callee.clone_in(self.b.ast.allocator);
@@ -82,13 +75,8 @@ impl<'a> ServerCodegen<'a> {
             self.b.expr_stmt(call),
             self.renderer_push_template_stmt("<!--]-->"),
         ]);
-        let content = self.child_statements(|cg| {
-            cg.fragment(
-                boundary.fragment,
-                FragmentParent::Block,
-                preserve_whitespace,
-            )
-        })?;
+        let content =
+            self.child_statements(|cg| cg.fragment(boundary.fragment, FragmentParent::Boundary))?;
         let children_body = self.b.block_stmt(vec![
             self.renderer_push_template_stmt("<!--[-->"),
             self.b.block_stmt(content),
@@ -102,7 +90,6 @@ impl<'a> ServerCodegen<'a> {
     fn boundary_children_body(
         &mut self,
         boundary: &'a SvelteBoundary,
-        preserve_whitespace: bool,
         children_only: bool,
         excluded: &[NodeId],
     ) -> Result<Vec<Statement<'a>>> {
@@ -110,17 +97,9 @@ impl<'a> ServerCodegen<'a> {
             if children_only {
                 cg.emit_fragment_const_tags(boundary.fragment)?;
                 cg.emit_boundary_child_snippets(boundary.fragment, excluded)?;
-                cg.fragment_children_only(
-                    boundary.fragment,
-                    FragmentParent::Block,
-                    preserve_whitespace,
-                )
+                cg.fragment_children_only(boundary.fragment, FragmentParent::Boundary)
             } else {
-                cg.fragment(
-                    boundary.fragment,
-                    FragmentParent::Block,
-                    preserve_whitespace,
-                )
+                cg.fragment(boundary.fragment, FragmentParent::Boundary)
             }
         })?;
         Ok(vec![
@@ -134,7 +113,6 @@ impl<'a> ServerCodegen<'a> {
         &mut self,
         boundary: &'a SvelteBoundary,
         branch: BoundaryBranch,
-        preserve_whitespace: bool,
     ) -> Result<Vec<Statement<'a>>> {
         let open = self.renderer_push_template_stmt("<!--[!-->");
         let close = self.renderer_push_template_stmt("<!--]-->");
@@ -146,9 +124,8 @@ impl<'a> ServerCodegen<'a> {
                         "boundary pending snippet",
                     ));
                 };
-                let content = self.child_statements(|cg| {
-                    cg.fragment(block.body, FragmentParent::Block, preserve_whitespace)
-                })?;
+                let content =
+                    self.child_statements(|cg| cg.fragment(block.body, FragmentParent::Block))?;
                 self.b.block_stmt(content)
             }
             BoundaryBranch::Attribute(attr_id) => {
@@ -182,7 +159,7 @@ impl<'a> ServerCodegen<'a> {
                 let mut decls = Vec::new();
                 self.emit_snippet_into(snippet_id, &mut decls)?;
                 for decl in decls {
-                    self.push_stmt(decl);
+                    self.hoist_stmt(decl);
                 }
                 Ok(ObjProp::Shorthand(name))
             }

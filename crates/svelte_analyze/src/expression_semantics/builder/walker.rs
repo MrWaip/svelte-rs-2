@@ -42,7 +42,7 @@ pub(super) fn populate<'a>(
         ReadContext::Runtime,
         dev,
     );
-    let declared_evaluator = ValueEvaluator::new(
+    let mut declared_evaluator = ValueEvaluator::new(
         parsed,
         scoping,
         semantics,
@@ -51,6 +51,7 @@ pub(super) fn populate<'a>(
         ReadContext::Declaration,
         dev,
     );
+    declared_evaluator.ingest_const_tag_bindings(component, parsed);
     let ctx = Ctx {
         parsed,
         semantics,

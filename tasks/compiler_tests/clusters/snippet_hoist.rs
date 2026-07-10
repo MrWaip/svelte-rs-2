@@ -5,9 +5,21 @@ compiler_case!(
     "snippet_hoist/pure_no_export",
     [prod, dev, ssr, ssr_dev]
 );
-compiler_case!(export_simple, "snippet_hoist/export_simple");
-compiler_case!(export_cross_snippet, "snippet_hoist/export_cross_snippet");
-compiler_case!(export_with_instance, "snippet_hoist/export_with_instance");
+compiler_case!(
+    export_simple,
+    "snippet_hoist/export_simple",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    export_cross_snippet,
+    "snippet_hoist/export_cross_snippet",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    export_with_instance,
+    "snippet_hoist/export_with_instance",
+    [prod, dev, ssr, ssr_dev]
+);
 compiler_case!(
     non_hoistable_instance_ref,
     "snippet_hoist/non_hoistable_instance_ref",
