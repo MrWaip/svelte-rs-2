@@ -345,6 +345,9 @@ impl<'a> Ctx<'a> {
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
         self.query.view.needs_textarea_value_lowering(id)
     }
+    pub fn needs_textarea_content_reset(&self, id: NodeId) -> bool {
+        self.query.view.needs_textarea_content_reset(id)
+    }
     pub fn is_customizable_select(&self, id: NodeId) -> bool {
         self.query.view.is_customizable_select(id)
     }

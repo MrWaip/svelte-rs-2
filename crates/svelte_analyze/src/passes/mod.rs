@@ -27,6 +27,8 @@ pub(crate) enum PassKey {
     ExtractCeConfig,
     TemplateSideTables,
     CollectSymbols,
+    BuildFragmentSemantics,
+    BuildRuntimeSemantics,
     JsAnalyzePostTemplate,
     BuildReactivitySemantics,
     BuildValueEvaluation,
@@ -36,6 +38,7 @@ pub(crate) enum PassKey {
     BuildExpressionSemantics,
     BuildAttributeSemantics,
     BuildBlockSemantics,
+    BuildElementSemantics,
     ValidateTemplate,
     Validate,
 }
@@ -50,6 +53,8 @@ pub(crate) enum DataToken {
     TemplateSemantics,
     TemplateSideTables,
     SymbolRefs,
+    FragmentSemantics,
+    RuntimeSemantics,
     JsAnalyzePostTemplate,
     ReactivitySemantics,
     ValueEvaluation,
@@ -57,6 +62,7 @@ pub(crate) enum DataToken {
     ExpressionSemantics,
     AttributeSemantics,
     BlockSemantics,
+    ElementSemantics,
     FragmentTopology,
     TemplateClassification,
     TemplateValidation,
@@ -115,6 +121,16 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::SymbolRefs],
     },
     PassDescriptor {
+        key: PassKey::BuildFragmentSemantics,
+        requires: &[DataToken::TemplateSideTables],
+        produces: &[DataToken::FragmentSemantics],
+    },
+    PassDescriptor {
+        key: PassKey::BuildRuntimeSemantics,
+        requires: &[DataToken::TemplateSemantics],
+        produces: &[DataToken::RuntimeSemantics],
+    },
+    PassDescriptor {
         key: PassKey::JsAnalyzePostTemplate,
         requires: &[],
         produces: &[DataToken::JsAnalyzePostTemplate],
@@ -169,6 +185,15 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::BlockSemantics],
     },
     PassDescriptor {
+        key: PassKey::BuildElementSemantics,
+        requires: &[
+            DataToken::BlockSemantics,
+            DataToken::ExpressionSemantics,
+            DataToken::AttributeSemantics,
+        ],
+        produces: &[DataToken::ElementSemantics],
+    },
+    PassDescriptor {
         key: PassKey::ValidateTemplate,
         requires: &[DataToken::SymbolRefs],
         produces: &[DataToken::TemplateValidation],
@@ -189,8 +214,12 @@ pub(crate) const PRE_TEMPLATE_SCRIPT_STAGE: &[PassKey] = &[
     PassKey::ExtractCeConfig,
 ];
 
-pub(crate) const INDEX_BUILD_STAGE: &[PassKey] =
-    &[PassKey::TemplateSideTables, PassKey::CollectSymbols];
+pub(crate) const INDEX_BUILD_STAGE: &[PassKey] = &[
+    PassKey::TemplateSideTables,
+    PassKey::CollectSymbols,
+    PassKey::BuildFragmentSemantics,
+    PassKey::BuildRuntimeSemantics,
+];
 
 pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::JsAnalyzePostTemplate,
@@ -204,6 +233,7 @@ pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
     PassKey::BuildFragmentTopology,
     PassKey::TemplateClassificationWalk,
     PassKey::BuildBlockSemantics,
+    PassKey::BuildElementSemantics,
 ];
 
 pub(crate) const VALIDATION_STAGE: &[PassKey] = &[PassKey::ValidateTemplate, PassKey::Validate];

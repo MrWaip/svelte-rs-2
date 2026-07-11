@@ -1,24 +1,23 @@
 use oxc_ast::ast::Expression;
 use svelte_ast::{
-    Attribute, ComponentNode, Element, Node, NodeId, SlotElementLegacy, is_mathml, is_svg, is_void,
+    Attribute, ComponentNode, ConcatPart, Element, NodeId, SlotElementLegacy, is_mathml, is_svg,
+    is_void,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::attribute_semantics::data::ComponentPropMemo;
+use crate::attribute_semantics::data::is_component_css_property;
 use crate::expression_semantics::Volatility;
 use crate::types::data::{
-    BindTargetSemantics, BindingSemantics, ComponentBindMode, ComponentCssProp,
-    ComponentCssPropValue, ComponentPropInfo, ComponentPropKind, EventHandlerMode, EventModifier,
-    JsAst, LegacyDefaultSlot, ParentKind, PropBindingKind, PropBindingSemantics,
-    RichContentParentKind,
+    BindTargetSemantics, BindingSemantics, ComponentBindMode, ComponentPropInfo, ComponentPropKind,
+    EventHandlerMode, EventModifier, ParentKind, PropBindingKind, PropBindingSemantics,
+    RichContentParentKind, SvelteElementTag,
 };
 use crate::utils::{
-    concat_single_dynamic_expr, expression_calls_or_awaits, is_delegatable_event, is_passive_event,
-    is_simple_identifier, strip_capture_event,
+    concat_single_dynamic_expr, is_delegatable_event, is_passive_event, is_simple_identifier,
+    strip_capture_event,
 };
 use crate::walker::{TemplateVisitor, VisitContext};
-use svelte_component_semantics::OxcNodeId;
 
 pub(crate) struct ElementFlagsVisitor<'src> {
     source: &'src str,
@@ -89,6 +88,23 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                     .elements
                     .flags
                     .needs_textarea_value_lowering
+                    .insert(el.id);
+            }
+        }
+
+        if el.name == "textarea" {
+            let needs_reset = ctx.data.has_spread(el.id)
+                || el.attributes.iter().any(|attr| match attr {
+                    Attribute::BindDirective(b) => b.name == "value",
+                    Attribute::ExpressionAttribute(a) => a.name == "value",
+                    Attribute::ConcatenationAttribute(a) => a.name == "value",
+                    _ => false,
+                });
+            if needs_reset {
+                ctx.data
+                    .elements
+                    .flags
+                    .needs_textarea_content_reset
                     .insert(el.id);
             }
         }
@@ -169,6 +185,14 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         el: &svelte_ast::SvelteElement,
         ctx: &mut VisitContext<'_, '_>,
     ) {
+        if let Some(tag) = svelte_element_tag(el, self.source) {
+            ctx.data
+                .elements
+                .flags
+                .svelte_element_tag
+                .insert(el.id, tag);
+        }
+
         if ctx.data.script.dev
             && ctx
                 .data
@@ -283,33 +307,24 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     ) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
-        self.record_legacy_default_slot(cn.id, &cn.attributes, cn.fragment, ctx);
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
-        self.record_legacy_default_slot(cn.id, &cn.attributes, cn.fragment, ctx);
     }
 
     fn visit_svelte_self(&mut self, cn: &svelte_ast::SvelteSelf, ctx: &mut VisitContext<'_, '_>) {
         self.process_component_like(cn.id, &cn.attributes, ctx);
         self.mark_bind_group_if_present(cn.id, &cn.attributes, ctx);
-        self.record_legacy_default_slot(cn.id, &cn.attributes, cn.fragment, ctx);
     }
 
     fn visit_slot_element_legacy(
         &mut self,
-        el: &SlotElementLegacy,
+        _el: &SlotElementLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        if !ctx.store.fragment_nodes(el.fragment).is_empty() {
-            ctx.data
-                .elements
-                .flags
-                .legacy_slot_has_fallback
-                .insert(el.id);
-        }
+        ctx.data.output.renders_legacy_slot = true;
     }
 
     fn visit_js_expression(
@@ -348,46 +363,6 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 }
 
 impl<'src> ElementFlagsVisitor<'src> {
-    fn record_legacy_default_slot(
-        &self,
-        cn_id: svelte_ast::NodeId,
-        attributes: &[Attribute],
-        fragment: svelte_ast::FragmentId,
-        ctx: &mut VisitContext<'_, '_>,
-    ) {
-        let has_children_attr = attributes.iter().any(|a| match a {
-            Attribute::StringAttribute(x) => x.name == "children",
-            Attribute::BooleanAttribute(x) => x.name == "children",
-            Attribute::ExpressionAttribute(x) => x.name == "children",
-            Attribute::ConcatenationAttribute(x) => x.name == "children",
-            _ => false,
-        });
-        let has_let = attributes
-            .iter()
-            .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_)))
-            || ctx.store.fragment_nodes(fragment).iter().any(|&child_id| {
-                match ctx.store.get(child_id) {
-                    Node::SvelteFragmentLegacy(el) => el
-                        .attributes
-                        .iter()
-                        .any(|a| matches!(a, Attribute::LetDirectiveLegacy(_))),
-                    _ => false,
-                }
-            });
-        let form = if has_children_attr {
-            LegacyDefaultSlot::SlotDefault
-        } else if has_let {
-            LegacyDefaultSlot::SlotDefaultInvalid
-        } else {
-            LegacyDefaultSlot::ChildrenProp
-        };
-        ctx.data
-            .elements
-            .flags
-            .legacy_default_slot
-            .insert(cn_id, form);
-    }
-
     fn mark_bind_group_if_present(
         &self,
         node_id: svelte_ast::NodeId,
@@ -413,46 +388,10 @@ impl<'src> ElementFlagsVisitor<'src> {
         attributes: &[Attribute],
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        let parsed = ctx.parsed;
         let data = &mut *ctx.data;
         for attr in attributes {
-            let css_prop_name: Option<&str> = match attr {
-                Attribute::ExpressionAttribute(a) if a.name.starts_with("--") => Some(&a.name),
-                Attribute::StringAttribute(a) if a.name.starts_with("--") => Some(&a.name),
-                Attribute::ConcatenationAttribute(a) if a.name.starts_with("--") => Some(&a.name),
-                _ => None,
-            };
-            if let Some(name) = css_prop_name {
-                let (value, memo) = match attr {
-                    Attribute::ExpressionAttribute(a) => {
-                        let memo = derive_css_prop_memo(data, parsed, a.id, a.expression.id());
-                        (
-                            Some(ComponentCssPropValue::Expression(a.expression.id())),
-                            memo,
-                        )
-                    }
-                    Attribute::StringAttribute(a) => (
-                        Some(ComponentCssPropValue::StaticString(a.value_span)),
-                        ComponentPropMemo::Inline,
-                    ),
-                    Attribute::ConcatenationAttribute(_) => (
-                        Some(ComponentCssPropValue::Concatenation),
-                        ComponentPropMemo::Inline,
-                    ),
-                    _ => (None, ComponentPropMemo::Inline),
-                };
-                if let Some(value) = value {
-                    data.elements
-                        .flags
-                        .component_css_props
-                        .get_or_default(cn_id)
-                        .push(ComponentCssProp {
-                            name: name.to_string(),
-                            attr_id: attr.id(),
-                            value,
-                            memo,
-                        });
-                }
+            if is_component_css_property(attr) {
+                data.elements.flags.components_with_css_props.insert(cn_id);
                 continue;
             }
             let kind = match attr {
@@ -608,21 +547,19 @@ impl<'src> ElementFlagsVisitor<'src> {
     }
 }
 
-fn derive_css_prop_memo(
-    data: &crate::types::data::AnalysisData,
-    parsed: Option<&JsAst>,
-    attr_id: svelte_ast::NodeId,
-    expr_id: OxcNodeId,
-) -> ComponentPropMemo {
-    let calls_or_awaits = parsed
-        .and_then(|p| p.expr(expr_id))
-        .is_some_and(expression_calls_or_awaits);
-    let has_blockers = data
-        .expression_data(attr_id)
-        .is_some_and(|d| !d.blockers.is_empty());
-    if calls_or_awaits || has_blockers {
-        ComponentPropMemo::Derived
-    } else {
-        ComponentPropMemo::Inline
+fn svelte_element_tag(el: &svelte_ast::SvelteElement, source: &str) -> Option<SvelteElementTag> {
+    if el.static_tag {
+        return Some(SvelteElementTag::Known(
+            el.tag_span.source_text(source).to_string(),
+        ));
+    }
+    let this = el.attributes.iter().find(|a| a.is_svelte_element_this())?;
+    match this {
+        Attribute::ExpressionAttribute(a) => Some(SvelteElementTag::Dynamic(a.expression.id())),
+        Attribute::ConcatenationAttribute(a) => match a.parts.first()? {
+            ConcatPart::Static(value) => Some(SvelteElementTag::Known(value.clone())),
+            ConcatPart::Dynamic { expr, .. } => Some(SvelteElementTag::Dynamic(expr.id())),
+        },
+        _ => None,
     }
 }

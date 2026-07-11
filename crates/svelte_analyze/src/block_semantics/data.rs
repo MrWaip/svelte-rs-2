@@ -31,6 +31,16 @@ pub enum BlockSemantics {
 pub struct HtmlTagSemantics {
     pub parent_strategy: HtmlTagNamespace,
     pub hydration_html_changed_ignored: bool,
+    pub async_kind: HtmlTagAsyncKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HtmlTagAsyncKind {
+    Sync,
+
+    Awaited { blockers: SmallVec<[u32; 2]> },
+
+    Deferred { blockers: SmallVec<[u32; 2]> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -198,6 +208,12 @@ impl SnippetPlacement {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnippetSlotKey {
+    Default,
+    Named,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SnippetBlockSemantics {
     pub name: SymbolId,
@@ -205,6 +221,8 @@ pub struct SnippetBlockSemantics {
     pub placement: SnippetPlacement,
 
     pub params: SmallVec<[SnippetParam; 4]>,
+
+    pub slot_key: SnippetSlotKey,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -238,6 +256,8 @@ pub struct RenderTagBlockSemantics {
 
     pub callee_sym: Option<SymbolId>,
 
+    pub callee_volatility: Volatility,
+
     pub args: SmallVec<[RenderArgKind; 4]>,
 
     pub async_kind: RenderAsyncKind,
@@ -265,7 +285,9 @@ pub enum RenderArgKind {
 pub enum RenderAsyncKind {
     Sync,
 
-    Async { blockers: SmallVec<[u32; 2]> },
+    Awaited { blockers: SmallVec<[u32; 2]> },
+
+    Deferred { blockers: SmallVec<[u32; 2]> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -9,6 +9,10 @@ impl<'a> Builder<'a> {
         Statement::DebuggerStatement(self.alloc(self.ast.debugger_statement(SPAN)))
     }
 
+    pub fn empty_stmt(&self) -> Statement<'a> {
+        self.ast.statement_empty(SPAN)
+    }
+
     pub fn var_stmt(&self, name: &str, init: Expression<'a>) -> Statement<'a> {
         self.var_decl_stmt(name, init, VariableDeclarationKind::Var)
     }

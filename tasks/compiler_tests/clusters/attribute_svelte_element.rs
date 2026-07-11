@@ -18,8 +18,7 @@ compiler_case!(
 );
 compiler_case!(
     static_element_class_style_guard,
-    "attribute/svelte_element/static_element_class_style_guard",
-    [prod, dev, ssr, ssr_dev]
+    "attribute/svelte_element/static_element_class_style_guard"
 );
 compiler_case!(
     dynamic_class_reactive_guard,

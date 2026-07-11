@@ -6,7 +6,7 @@ use crate::types::data::{
 };
 use compact_str::CompactString;
 use smallvec::SmallVec;
-use svelte_ast::{NodeId, OxcNodeId, StyleDirective};
+use svelte_ast::{Attribute, NodeId, OxcNodeId, Span, StyleDirective};
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum AttributeSemantics {
@@ -20,6 +20,7 @@ pub enum AttributeSemantics {
 
     Event(EventSemantics),
     ComponentProp(ComponentPropSemantics),
+    ComponentCssProp(ComponentCssPropValue),
     SvelteComponentThis(SvelteComponentThisSemantics),
     ComponentSpread(ComponentSpreadSemantics),
     ComponentAttach(ComponentAttachSemantics),
@@ -30,9 +31,17 @@ pub enum AttributeSemantics {
     SpecialValueAttr(SpecialValueSemantics),
     Class(ClassSemantics),
     Style(StyleSemantics),
-    Skip,
+    Skip(SkipCause),
     Autofocus,
     RuntimeBehavior,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SkipCause {
+    TagCarrier,
+    Member,
+    SlotName,
+    SlotBindingLegacy,
 }
 
 impl AttributeSemantics {
@@ -40,7 +49,7 @@ impl AttributeSemantics {
         match self {
             AttributeSemantics::NonSpecial
             | AttributeSemantics::StaticAttr
-            | AttributeSemantics::Skip
+            | AttributeSemantics::Skip(_)
             | AttributeSemantics::RuntimeBehavior => false,
             AttributeSemantics::Class(class) => {
                 class.attr.is_some() || !class.directives.is_empty()
@@ -54,6 +63,7 @@ impl AttributeSemantics {
             | AttributeSemantics::ComponentBind(_)
             | AttributeSemantics::Event(_)
             | AttributeSemantics::ComponentProp(_)
+            | AttributeSemantics::ComponentCssProp(_)
             | AttributeSemantics::SvelteComponentThis(_)
             | AttributeSemantics::ComponentSpread(_)
             | AttributeSemantics::ComponentAttach(_)
@@ -63,6 +73,33 @@ impl AttributeSemantics {
             | AttributeSemantics::SpecialValueAttr(_)
             | AttributeSemantics::Autofocus => true,
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComponentCssPropValue {
+    Expression(OxcNodeId),
+    StaticString(Span),
+    Concatenation(SmallVec<[ConcatPartEmit; 4]>),
+    Boolean,
+}
+
+pub fn is_component_css_property(attribute: &Attribute) -> bool {
+    match attribute {
+        Attribute::ExpressionAttribute(expression) => expression.name.starts_with("--"),
+        Attribute::StringAttribute(string) => string.name.starts_with("--"),
+        Attribute::ConcatenationAttribute(concatenation) => concatenation.name.starts_with("--"),
+        Attribute::BooleanAttribute(boolean) => boolean.name.starts_with("--"),
+        Attribute::SpreadAttribute(_)
+        | Attribute::ClassDirective(_)
+        | Attribute::StyleDirective(_)
+        | Attribute::BindDirective(_)
+        | Attribute::LetDirectiveLegacy(_)
+        | Attribute::UseDirective(_)
+        | Attribute::OnDirectiveLegacy(_)
+        | Attribute::TransitionDirective(_)
+        | Attribute::AnimateDirective(_)
+        | Attribute::AttachTag(_) => false,
     }
 }
 
@@ -100,7 +137,8 @@ pub struct DefaultAttrSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DefaultAttrKind {
     PlainProperty,
-    ReconcileWithValue,
+    ReconcileValue,
+    ReconcileChecked,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -267,6 +305,9 @@ pub enum ComponentBindKind {
     StoreSubscribed {
         base_symbol: SymbolId,
     },
+    StoreMemberMutation {
+        store_symbol: SymbolId,
+    },
     This {
         symbol: Option<SymbolId>,
         target: ComponentBindTarget,
@@ -286,9 +327,15 @@ pub enum ComponentBindTarget {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GroupBindValue {
-    pub expression: OxcNodeId,
-    pub data: NodeId,
+pub enum GroupBindValue {
+    Expression { expression: OxcNodeId, data: NodeId },
+    Static { node: NodeId },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroupReflection {
+    Equality,
+    Includes,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -299,6 +346,7 @@ pub struct ElementBindSemantics {
     pub parent_each_blocks: SmallVec<[NodeId; 4]>,
     pub each_context_vars: SmallVec<[SymbolId; 4]>,
     pub group_value: Option<GroupBindValue>,
+    pub group_reflection: Option<GroupReflection>,
     pub group_id: Option<u32>,
     pub needs_binding_validation: bool,
     pub reflects_as_attribute: bool,

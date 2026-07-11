@@ -14,7 +14,6 @@ pub fn is_dom_boolean_attribute(name: &str) -> bool {
             | "default"
             | "disabled"
             | "formnovalidate"
-            | "hidden"
             | "indeterminate"
             | "inert"
             | "ismap"

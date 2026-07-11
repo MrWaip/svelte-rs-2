@@ -17,7 +17,7 @@ use oxc_ast::ast::{
 use oxc_span::{SPAN, Span};
 use oxc_traverse::TraverseCtx;
 
-use svelte_analyze::{DeclaratorSemantics, DerivedEmit, RuntimeRuneKind};
+use svelte_analyze::{DeclaratorSemantics, DerivedAsyncKind, RuntimeRuneKind};
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{Access, Step};
 use svelte_emit_builders::binding_pattern as bp;
@@ -133,12 +133,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 }
                 DeclaratorSemantics::RuneDerived {
                     kind,
-                    emit: DerivedEmit::Sync,
+                    async_kind: DerivedAsyncKind::Sync,
                     source,
                 } => self.rewrite_derived(decl_kind, declarator, kind, source, &mut pending),
 
                 DeclaratorSemantics::RuneDerived {
-                    emit: DerivedEmit::Async,
+                    async_kind: DerivedAsyncKind::Async,
                     ..
                 } => {
                     if matches!(&declarator.id, BindingPattern::BindingIdentifier(_)) {

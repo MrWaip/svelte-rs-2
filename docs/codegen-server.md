@@ -1,14 +1,14 @@
 # PRD: Серверный кодген (корневой)
 
 label: codegen-server
-topics: server codegen, SSR emit, target, renderer, $$renderer, escape, static HTML accumulator, element, attribute, text, interpolation, fragment, if, each, component, snippet, boundary, hoisted, svelte_codegen_server
+topics: server codegen, SSR emit, target, renderer, $$renderer, escape, static HTML accumulator, element, attribute, text, interpolation, fragment, if, each, component, snippet, boundary, hoisted, css scoping, scoped class, injected styles, svelte_codegen_server
 
 Корневой PRD для слоя серверного кодгена (`svelte_codegen_server`) — template-половины backend'а `generate: server`. Клиентский аналог — `codegen.md`.
 Принцип: **dumb codegen** — один запрос к анализу на один use case → одно однозначное решение эмита.
 
 ## Назначение
 
-Печатает серверный JS: рендер-функция `function App($$renderer)` под рантайм `svelte/internal/server`. Целевая механика — линейный обход шаблона с аккумулятором статического HTML, который flush'ится в `$$renderer.push` на синтаксических границах (блок, компонент, boundary). Правила «вердикт → форма» живут здесь; канонические: интерполяция со свёрнутым `Known`-значением печатается статическим текстом, остальные — через `$.escape`; фрагмент, начинающийся с текста/интерполяции, открывается маркером `<!---->`; `$$renderer.component`-обёртка эмитится по доменному вердикту потребности компонента в контексте (в dev — всегда).
+Печатает серверный JS: рендер-функция `function App($$renderer)` под рантайм `svelte/internal/server`. Целевая механика — линейный обход шаблона с аккумулятором статического HTML, который flush'ится в `$$renderer.push` на синтаксических границах (блок, компонент, boundary). Правила «вердикт → форма» живут здесь; канонические: интерполяция со свёрнутым `Known`-значением печатается статическим текстом, остальные — через `$.escape`; фрагмент, начинающийся с текста/интерполяции, открывается маркером `<!---->`; `$$renderer.component`-обёртка эмитится по доменному вердикту потребности компонента в контексте (в dev — всегда); CSS-scoping — scoped-элемент (вердикт `is_css_scoped`) несёт класс `svelte-<hash>`, слитый в существующий `class` или синтезированный отдельным атрибутом при отсутствии class-семантики; при `css: injected` (вердикт `inject_styles`) `const $$css` эмитится на уровне модуля, а `$$renderer.global.css.add($$css)` — первым стейтментом render-функции, кроме custom-element target.
 
 ## Скелет обхода
 

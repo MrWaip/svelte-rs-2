@@ -94,7 +94,7 @@ fn wrap_lazy<'a>(b: &Builder<'a>, expr: Expression<'a>) -> Expression<'a> {
     b.arrow_expr(b.no_params(), [b.expr_stmt(expr)])
 }
 
-fn unwrap_paren_and_ts<'a>(expr: Expression<'a>) -> Expression<'a> {
+pub fn unwrap_paren_and_ts<'a>(expr: Expression<'a>) -> Expression<'a> {
     let mut inner = expr.into_inner_expression();
     match &mut inner {
         Expression::ArrowFunctionExpression(arrow) => arrow.pife = false,

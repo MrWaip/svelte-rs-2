@@ -7,6 +7,7 @@ use svelte_ast::NodeId;
 #[derive(Debug)]
 pub enum CodegenError {
     MissingExpression(NodeId),
+    Unsupported(NodeId, &'static str),
 }
 
 impl fmt::Display for CodegenError {
@@ -14,6 +15,9 @@ impl fmt::Display for CodegenError {
         match self {
             CodegenError::MissingExpression(id) => {
                 write!(f, "server codegen: missing expression for node {id:?}")
+            }
+            CodegenError::Unsupported(id, what) => {
+                write!(f, "server codegen: unsupported {what} for node {id:?}")
             }
         }
     }

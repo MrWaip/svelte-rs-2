@@ -23,7 +23,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .arrow_block_expr(self.ctx.b.params(["$$anchor"]), body);
-        let hash_str = head_hash(self.ctx.state.filename);
+        let hash_str = svelte_analyze::head_hash(self.ctx.state.filename);
         state.init.push(
             self.ctx
                 .b
@@ -31,29 +31,4 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         );
         Ok(())
     }
-}
-
-fn head_hash(s: &str) -> String {
-    let mut h: u32 = 5381;
-    for &b in s.as_bytes().iter().rev() {
-        if b == b'\r' {
-            continue;
-        }
-        h = (h.wrapping_shl(5).wrapping_sub(h)) ^ (b as u32);
-    }
-    to_base36(h)
-}
-
-fn to_base36(mut n: u32) -> String {
-    if n == 0 {
-        return "0".to_string();
-    }
-    const CHARS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
-    let mut result = Vec::new();
-    while n > 0 {
-        result.push(CHARS[(n % 36) as usize]);
-        n /= 36;
-    }
-    result.reverse();
-    String::from_utf8(result).unwrap_or_default()
 }

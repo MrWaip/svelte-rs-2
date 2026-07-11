@@ -2,8 +2,8 @@ use std::mem;
 use svelte_emit_builders::runes::rune_get;
 
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::NamespaceKind;
-use svelte_ast::{Attribute, ConcatPart, Node, NodeId};
+use svelte_analyze::{AttributeSemantics, NamespaceKind, SkipCause, SvelteElementTag};
+use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::Arg;
 
 use super::super::attributes::AttributeOwnerKind;
@@ -14,23 +14,15 @@ use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn svelte_element_tag_expr(&mut self, el_id: NodeId) -> Result<Expression<'a>> {
-        let el = self.ctx.query.svelte_element(el_id);
-        let Some(this) = el.attributes.iter().find(|a| a.is_svelte_element_this()) else {
-            return CodegenError::missing_expression(el_id);
-        };
-
-        match this {
-            Attribute::ExpressionAttribute(ea) => self.take_attr_expr(el_id, &ea.expression),
-            Attribute::ConcatenationAttribute(ca) => {
-                let Some(first) = ca.parts.first() else {
-                    return CodegenError::missing_expression(el_id);
-                };
-                match first {
-                    ConcatPart::Static(value) => Ok(self.ctx.b.str_expr(value)),
-                    ConcatPart::Dynamic { expr, .. } => self.take_attr_expr(el_id, expr),
+        match self.ctx.query.analysis.svelte_element_tag(el_id).cloned() {
+            Some(SvelteElementTag::Known(name)) => Ok(self.ctx.b.str_expr(&name)),
+            Some(SvelteElementTag::Dynamic(oxc_id)) => {
+                match self.ctx.state.parsed.take_expr(oxc_id) {
+                    Some(expr) => Ok(expr),
+                    None => CodegenError::missing_expression(el_id),
                 }
             }
-            _ => CodegenError::missing_expression(el_id),
+            None => CodegenError::missing_expression(el_id),
         }
     }
 
@@ -42,12 +34,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         _existing_var: Option<&str>,
     ) -> Result<String> {
         let el = self.ctx.query.svelte_element(el_id);
-        let static_tag = el.static_tag;
-        let tag_span = el.tag_span;
         let attributes: Vec<Attribute> = el
             .attributes
             .iter()
-            .filter(|a| !a.is_svelte_element_this())
+            .filter(|a| {
+                !matches!(
+                    self.ctx.query.analysis.attributes.get(a.id()),
+                    AttributeSemantics::Skip(SkipCause::TagCarrier)
+                )
+            })
             .cloned()
             .collect();
 
@@ -55,12 +50,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let anchor_node = self.comment_anchor_node_name(state, ctx)?;
 
-        let tag_expr = if static_tag {
-            let value = self.ctx.query.component.source_text(tag_span);
-            self.ctx.b.str_expr(value)
-        } else {
-            self.svelte_element_tag_expr(el_id)?
-        };
+        let tag_expr = self.svelte_element_tag_expr(el_id)?;
 
         let el_span_start = el.span.start;
         let dev_loc: Option<(usize, usize)> = if self.ctx.state.dev {

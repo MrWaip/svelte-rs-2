@@ -16,11 +16,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         state: &mut EmitState<'a>,
         owner_id: NodeId,
-        owner_tag: &str,
+        _owner_tag: &str,
         owner_var: &str,
         attr: &ConcatenationAttribute,
     ) -> Result<()> {
-        if attr.name == "class" {
+        if matches!(
+            self.ctx.query.analysis.attributes.get(attr.id),
+            AttributeSemantics::Class(_)
+        ) {
             return Ok(());
         }
 
@@ -79,7 +82,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let html_attr_namespace = self.is_html_attr_namespace(owner_id);
         let attr_name = normalize_regular_attribute_name(&attr.name, html_attr_namespace);
-        let attr_update = self.regular_attr_update(owner_id, owner_tag, &attr_name);
+        let attr_update = self.regular_attr_update(&attr_name);
 
         let target = match semantics.effect {
             TemplateEffect::None => &mut state.init,

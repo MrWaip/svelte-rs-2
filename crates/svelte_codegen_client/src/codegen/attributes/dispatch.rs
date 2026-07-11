@@ -54,7 +54,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 match a {
                     Attribute::SpreadAttribute(_) => true,
                     Attribute::BooleanAttribute(_) => true,
-                    Attribute::StringAttribute(s) => s.name != "class",
+                    Attribute::StringAttribute(s) => !matches!(
+                        self.ctx.query.analysis.attributes.get(s.id),
+                        AttributeSemantics::Class(_)
+                    ),
                     Attribute::ExpressionAttribute(_) => true,
                     Attribute::ConcatenationAttribute(_) => true,
                     _ => false,
@@ -164,6 +167,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 | AttributeSemantics::DocumentBind(_)
                 | AttributeSemantics::ComponentBind(_)
                 | AttributeSemantics::ComponentProp(_)
+                | AttributeSemantics::ComponentCssProp(_)
                 | AttributeSemantics::SvelteComponentThis(_)
                 | AttributeSemantics::ComponentSpread(_)
                 | AttributeSemantics::ComponentAttach(_)
@@ -207,43 +211,42 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
                 AttributeSemantics::CannotBeStatic(sem) => {
-                    let kind = &sem.kind;
-                    let property = attr.name().unwrap_or_default().to_string();
-                    let value_expr = match attr {
-                        Attribute::BooleanAttribute(_) => self.ctx.b.bool_expr(true),
-                        Attribute::StringAttribute(a) => {
-                            let text = a.value(&self.ctx.query.component.source).to_string();
-                            self.ctx.b.str_expr(&text)
-                        }
-                        _ => {
-                            return CodegenError::semantic_mismatch(
-                                attr_id,
-                                "CannotBeStatic requires boolean or string attribute",
-                            );
-                        }
-                    };
-                    let setter_fn = match (property.as_str(), *kind) {
-                        ("defaultValue", DefaultAttrKind::ReconcileWithValue) => {
-                            Some("$.set_default_value")
-                        }
-                        ("defaultChecked", DefaultAttrKind::ReconcileWithValue) => {
-                            Some("$.set_default_checked")
-                        }
-                        _ => None,
-                    };
-                    let b = &self.ctx.b;
-                    match setter_fn {
-                        Some(setter_fn) => {
-                            state.init.push(b.call_stmt(
-                                setter_fn,
-                                [Arg::Ident(owner_var), Arg::Expr(value_expr)],
-                            ));
-                        }
-                        None => {
-                            let target = AssignLeft::StaticMember(
-                                b.static_member(b.rid_expr(owner_var), &property),
-                            );
-                            state.init.push(b.assign_stmt(target, value_expr));
+                    if let Attribute::ExpressionAttribute(a) = attr {
+                        self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
+                    } else {
+                        let property = attr.name().unwrap_or_default().to_string();
+                        let value_expr = match attr {
+                            Attribute::BooleanAttribute(_) => self.ctx.b.bool_expr(true),
+                            Attribute::StringAttribute(a) => {
+                                let text = a.value(&self.ctx.query.component.source).to_string();
+                                self.ctx.b.str_expr(&text)
+                            }
+                            _ => {
+                                return CodegenError::semantic_mismatch(
+                                    attr_id,
+                                    "CannotBeStatic requires boolean, string, or expression attribute",
+                                );
+                            }
+                        };
+                        let setter_fn = match sem.kind {
+                            DefaultAttrKind::ReconcileValue => Some("$.set_default_value"),
+                            DefaultAttrKind::ReconcileChecked => Some("$.set_default_checked"),
+                            DefaultAttrKind::PlainProperty => None,
+                        };
+                        let b = &self.ctx.b;
+                        match setter_fn {
+                            Some(setter_fn) => {
+                                state.init.push(b.call_stmt(
+                                    setter_fn,
+                                    [Arg::Ident(owner_var), Arg::Expr(value_expr)],
+                                ));
+                            }
+                            None => {
+                                let target = AssignLeft::StaticMember(
+                                    b.static_member(b.rid_expr(owner_var), &property),
+                                );
+                                state.init.push(b.assign_stmt(target, value_expr));
+                            }
                         }
                     }
                 }
@@ -307,7 +310,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         )?;
                     }
                 }
-                AttributeSemantics::Skip => {}
+                AttributeSemantics::Skip(_) => {}
                 AttributeSemantics::RuntimeBehavior => {}
                 AttributeSemantics::NonSpecial
                     if self.ctx.query.view.is_custom_element(owner_id) =>

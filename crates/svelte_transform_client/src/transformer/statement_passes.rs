@@ -59,8 +59,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     }
                 }
                 Statement::VariableDeclaration(decl) => {
-                    if Self::is_props_id_declaration(decl) || self.is_eager_state_declaration(decl)
-                    {
+                    if self.is_props_id_declaration(decl) || self.is_eager_state_declaration(decl) {
                         continue;
                     }
                 }

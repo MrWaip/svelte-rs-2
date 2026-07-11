@@ -1,8 +1,10 @@
 use crate::codegen::expr::coarse_wrap;
 use svelte_analyze::{
-    AttributeSemantics, EventEmit, EventSemantics, SpecialValueKind, Volatility,
+    AttributeSemantics, DefaultAttrKind, EventEmit, EventSemantics, SpecialValueKind, Volatility,
     normalize_regular_attribute_name,
 };
+
+use super::regular::RegularAttrUpdate;
 use svelte_ast::{ConcatenationAttribute, ExprRef, ExpressionAttribute, NodeId};
 use svelte_ast_builder::Arg;
 
@@ -15,11 +17,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         state: &mut EmitState<'a>,
         owner_id: NodeId,
-        owner_tag: &str,
+        _owner_tag: &str,
         owner_var: &str,
         attr: &ExpressionAttribute,
     ) -> Result<()> {
-        if attr.name == "class" {
+        if matches!(
+            self.ctx.query.analysis.attributes.get(attr.id),
+            AttributeSemantics::Class(_)
+        ) {
             return Ok(());
         }
 
@@ -89,7 +94,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let html_attr_namespace = self.is_html_attr_namespace(owner_id);
         let attr_name = normalize_regular_attribute_name(&attr.name, html_attr_namespace);
-        let attr_update = self.regular_attr_update(owner_id, owner_tag, &attr_name);
+        let attr_update = match self.ctx.query.analysis.attributes.get(attr_id) {
+            AttributeSemantics::CannotBeStatic(sem) => match sem.kind {
+                DefaultAttrKind::ReconcileValue => RegularAttrUpdate::Call {
+                    setter_fn: "$.set_default_value",
+                    attr_name: None,
+                },
+                DefaultAttrKind::ReconcileChecked => RegularAttrUpdate::Call {
+                    setter_fn: "$.set_default_checked",
+                    attr_name: None,
+                },
+                DefaultAttrKind::PlainProperty => RegularAttrUpdate::Assignment {
+                    property: attr_name.to_string(),
+                },
+            },
+            _ => self.regular_attr_update(&attr_name),
+        };
 
         match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
             Some(Volatility::Heavy | Volatility::Asynchronous) => {

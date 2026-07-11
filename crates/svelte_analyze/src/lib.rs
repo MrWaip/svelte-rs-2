@@ -1,19 +1,23 @@
 pub mod attribute_semantics;
 pub mod block_semantics;
 pub(crate) mod css;
+pub mod element_semantics;
 pub mod expression_semantics;
+pub mod fragment_semantics;
 pub(crate) mod passes;
 pub mod reactivity_semantics;
+pub mod runtime_semantics;
 pub mod value_evaluation;
 
 pub use attribute_semantics::{
     AttributeSemantics, AttributeSemanticsStore, BoundaryPropSemantics, ClassSemantics,
     ComponentAttachEmit, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
-    ComponentBindTarget, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
-    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
-    ConcatPartEmit, DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics,
-    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, HandlerEmit,
-    HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind, SpecialValueSemantics,
+    ComponentBindTarget, ComponentCssPropValue, ComponentPropConcatSemantics,
+    ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
+    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
+    DefaultAttrSemantics, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
+    EventEmit, EventSemantics, GroupBindValue, GroupReflection, HandlerEmit, HtmlBindKind,
+    HtmlConcatPart, HtmlConcatSemantics, SkipCause, SpecialValueKind, SpecialValueSemantics,
     StyleSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
 pub use expression_semantics::{
@@ -21,6 +25,7 @@ pub use expression_semantics::{
     LegacyWrap, SyntheticPropsCarrier, ValueClass, Volatility,
 };
 
+pub use css::head_hash;
 pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
 pub mod types;
@@ -32,30 +37,39 @@ pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
     EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
-    EachKeyKind, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
-    KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
-    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
+    EachKeyKind, HtmlTagAsyncKind, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch,
+    IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind,
+    RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
+    SnippetSlotKey,
 };
+pub use element_semantics::{
+    BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementReplayEvent, ElementSemantics,
+    ElementSemanticsStore, ElementValueRole, LegacyComponentSlotsSemantics, LegacyDefaultSlot,
+    LegacySlotSemantics, RegularElementSemantics, SvelteElementSemantics, TextareaBody,
+    TextareaSegment,
+};
+pub use fragment_semantics::{FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace};
+pub use runtime_semantics::{ChildPropMode, RuntimeSemantics, RuntimeSemanticsStore};
 pub use scope::ComponentScoping;
 pub use types::data::{
     AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
     BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
     ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
-    CodegenView, ComponentBindMode, ComponentCssProp, ComponentCssPropValue, ComponentPropInfo,
-    ComponentPropKind, ConstBindingSemantics, ContentEditableKind, ContextualBindingSemantics,
-    ContextualReadKind, ContextualReadSemantics, CssAnalysis, DeclaratorGroup, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DerivedSource, DocumentBindKind,
-    EachIndexStrategy, EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry,
-    ElementFlags, ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts,
-    FragmentFactsEntry, IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics,
-    LegacyDefaultSlot, LegacyDependency, LegacyInit, LegacySummary, MediaBindKind, NamespaceKind,
-    OptimizedRuneSemantics, OutputData, ParentKind, ParentRef, PickledAwaits, PropBindingKind,
-    PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics, PropsSummary,
-    ReactivitySemantics, ReactivitySummary, ReferenceSemantics, ResizeObserverKind,
-    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimeInfo, RuntimeRuneKind,
-    ScriptAnalysis, SignalReferenceKind, SnippetData, SnippetParamStrategy,
-    StateDeclarationSemantics, StateKind, StoreBindingSemantics, TemplateAnalysis,
-    TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
+    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
+    ContentEditableKind, ContextualBindingSemantics, ContextualReadKind, ContextualReadSemantics,
+    CssAnalysis, DeclaratorGroup, DeclaratorSemantics, DerivedAsyncKind,
+    DerivedDeclarationSemantics, DerivedKind, DerivedSource, DocumentBindKind, EachIndexStrategy,
+    EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags,
+    ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry,
+    IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDependency,
+    LegacyInit, LegacySummary, MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData,
+    ParentKind, ParentRef, PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind,
+    PropEmitMode, PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
+    ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
+    RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind,
+    SnippetData, SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
+    SvelteElementTag, TemplateAnalysis, TemplateElementEntry, TemplateElementIndex,
+    TemplateTopology, WindowBindKind,
 };
 
 bitflags::bitflags! {
@@ -344,6 +358,9 @@ fn needs_props_param(
         return true;
     }
     if data.output.legacy_has_export_declaration {
+        return true;
+    }
+    if data.output.renders_legacy_slot || data.output.needs_sanitized_legacy_slots {
         return true;
     }
     has_legacy_event_forward(component)

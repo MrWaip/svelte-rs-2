@@ -18,16 +18,13 @@ compiler_case!(
 );
 compiler_case!(
     runes_prop_input_value_dev,
-    "bind_prop_accessor/runes_prop_input_value_dev",
-    ignore = "dev prop bind must emit named get/set functions reading value(); separate gap that also affects $bindable props in dev"
+    "bind_prop_accessor/runes_prop_input_value_dev"
 );
 compiler_case!(
     runes_state_input_value_guard,
-    "bind_prop_accessor/runes_state_input_value_guard",
-    [prod, dev, ssr, ssr_dev]
+    "bind_prop_accessor/runes_state_input_value_guard"
 );
 compiler_case!(
     runes_member_input_value_guard,
-    "bind_prop_accessor/runes_member_input_value_guard",
-    [prod, dev, ssr, ssr_dev]
+    "bind_prop_accessor/runes_member_input_value_guard"
 );

@@ -18,11 +18,7 @@ compiler_case!(
     "attribute/memo/concat_reactive_with_directive"
 );
 compiler_case!(expression_call, "attribute/memo/expression_call");
-compiler_case!(
-    literal_root_call,
-    "attribute/memo/literal_root_call",
-    [prod, dev, ssr, ssr_dev]
-);
+compiler_case!(literal_root_call, "attribute/memo/literal_root_call");
 compiler_case!(
     expression_call_with_directive,
     "attribute/memo/expression_call_with_directive"

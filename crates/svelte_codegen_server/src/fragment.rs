@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
-use svelte_ast::{Element, FragmentId, Node};
+use svelte_analyze::BlockSemantics;
+use svelte_ast::{Element, FragmentId, Node, NodeId};
 
 use crate::error::Result;
 use crate::escape::escape_text;
@@ -10,24 +11,66 @@ use crate::model::ServerCodegen;
 pub(crate) enum FragmentParent<'n> {
     Root,
     Element(&'n Element),
+    Component,
+    Snippet,
+    EachBlock,
+    Block,
+    Boundary,
+    SvelteElement,
+    SvelteHead,
 }
 
 impl<'a> ServerCodegen<'a> {
-    pub(crate) fn fragment(
+    pub(crate) fn fragment(&mut self, id: FragmentId, parent: FragmentParent<'a>) -> Result<()> {
+        self.fragment_impl(id, parent, true)
+    }
+
+    pub(crate) fn fragment_children_only(
         &mut self,
         id: FragmentId,
         parent: FragmentParent<'a>,
-        preserve_whitespace: bool,
+    ) -> Result<()> {
+        self.fragment_impl(id, parent, false)
+    }
+
+    fn fragment_impl(
+        &mut self,
+        id: FragmentId,
+        parent: FragmentParent<'a>,
+        emit_snippets: bool,
     ) -> Result<()> {
         let component = self.component;
         let source = component.source.as_str();
         let preserve_comments = self.analysis.script.preserve_comments;
+        let preserve_whitespace = self
+            .analysis
+            .fragment_semantics
+            .query(id)
+            .whitespace
+            .is_preserved();
+
+        if emit_snippets {
+            self.emit_fragment_hoisted(id)?;
+        }
+
+        if self.dev {
+            self.emit_svelte_element_dev_inits(id)?;
+        }
+
+        let title_ids: Vec<NodeId> = self
+            .analysis
+            .title_elements_for_fragment_by_id(id)
+            .cloned()
+            .unwrap_or_default();
 
         let fragment = component.store.fragment(id);
         let mut kept: Vec<&'a Node> = Vec::with_capacity(fragment.nodes.len());
         for &node_id in &fragment.nodes {
             let node = component.store.get(node_id);
             if is_filtered_out(node, preserve_comments) {
+                continue;
+            }
+            if title_ids.contains(&node_id) {
                 continue;
             }
             kept.push(node);
@@ -44,12 +87,18 @@ impl<'a> ServerCodegen<'a> {
             self.push_text("<!---->");
         }
 
-        let can_remove_space = space_only_text_removable(parent);
+        let is_standalone = self.fragment_is_standalone(parent, window);
+        let can_remove_space = self
+            .analysis
+            .fragment_semantics
+            .query(id)
+            .whitespace
+            .is_removable();
         let mut prev_text_ends_ws = false;
         for (i, node) in window.iter().enumerate() {
             let Node::Text(text) = node else {
                 prev_text_ends_ws = false;
-                self.node(node, preserve_whitespace)?;
+                self.node(node, is_standalone)?;
                 continue;
             };
 
@@ -86,35 +135,148 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn node(&mut self, node: &'a Node, preserve_whitespace: bool) -> Result<()> {
+    fn node(&mut self, node: &'a Node, is_standalone: bool) -> Result<()> {
         match node {
             Node::Comment(comment) => self.comment(comment),
             Node::ExpressionTag(tag) => return self.expression_tag(tag),
-            Node::Element(element) => return self.element(element, preserve_whitespace),
+            Node::Element(element) => return self.element(element),
+            Node::ComponentNode(component) => {
+                return self.component_node(component, is_standalone);
+            }
+            Node::RenderTag(tag) => return self.render_tag(tag, is_standalone),
+            Node::IfBlock(block) => return self.if_block(block),
+            Node::EachBlock(block) => return self.each_block(block),
+            Node::KeyBlock(block) => return self.key_block(block),
+            Node::HtmlTag(tag) => return self.html_tag(tag),
+            Node::SvelteElement(el) => return self.svelte_element(el),
+            Node::AwaitBlock(block) => return self.await_block(block),
+            Node::SvelteBoundary(boundary) => {
+                return self.svelte_boundary(boundary);
+            }
+            Node::SlotElementLegacy(el) => return self.slot_element_legacy(el),
+            Node::SvelteSelf(node) => return self.svelte_self(node, is_standalone),
+            Node::SvelteComponentLegacy(node) => return self.svelte_component_legacy(node),
             Node::Text(_)
-            | Node::SlotElementLegacy(_)
-            | Node::ComponentNode(_)
-            | Node::IfBlock(_)
-            | Node::EachBlock(_)
             | Node::SnippetBlock(_)
-            | Node::RenderTag(_)
-            | Node::HtmlTag(_)
             | Node::ConstTag(_)
             | Node::DebugTag(_)
-            | Node::KeyBlock(_)
             | Node::SvelteHead(_)
             | Node::SvelteFragmentLegacy(_)
-            | Node::SvelteComponentLegacy(_)
-            | Node::SvelteElement(_)
             | Node::SvelteWindow(_)
             | Node::SvelteDocument(_)
             | Node::SvelteBody(_)
-            | Node::SvelteSelf(_)
-            | Node::SvelteBoundary(_)
-            | Node::AwaitBlock(_)
             | Node::Error(_) => {}
         }
         Ok(())
+    }
+
+    pub(crate) fn emit_fragment_const_tags(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+        let mut const_tags: Vec<(u32, NodeId)> = node_ids
+            .iter()
+            .copied()
+            .filter_map(|nid| match self.analysis.block_semantics(nid) {
+                BlockSemantics::ConstTag(sem) => Some((sem.order_rank, nid)),
+                _ => None,
+            })
+            .collect();
+        const_tags.sort_by_key(|(rank, _)| *rank);
+        for (_, nid) in const_tags {
+            self.const_tag(nid)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn emit_fragment_hoisted(&mut self, id: FragmentId) -> Result<()> {
+        self.emit_fragment_titles(id)?;
+        self.emit_fragment_const_tags_hoisted(id)?;
+        self.emit_fragment_snippets_debug_head(id)?;
+        Ok(())
+    }
+
+    pub(crate) fn emit_fragment_const_tags_hoisted(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+
+        let mut const_tags: Vec<(u32, NodeId, bool)> = node_ids
+            .iter()
+            .copied()
+            .filter_map(|nid| match self.analysis.block_semantics(nid) {
+                BlockSemantics::ConstTag(sem) => {
+                    let is_async =
+                        !matches!(sem.async_kind, svelte_analyze::ConstTagAsyncKind::Sync);
+                    Some((sem.order_rank, nid, is_async))
+                }
+                _ => None,
+            })
+            .collect();
+        const_tags.sort_by_key(|(rank, _, _)| *rank);
+        let has_async = const_tags.iter().any(|(_, _, is_async)| *is_async);
+        if has_async {
+            let ordered: Vec<NodeId> = const_tags.iter().map(|(_, nid, _)| *nid).collect();
+            self.emit_const_tags_async(&ordered)?;
+        } else {
+            for (_, nid, _) in &const_tags {
+                self.const_tag(*nid)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn emit_fragment_snippets_debug_head(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+
+        for &nid in &node_ids {
+            if matches!(self.component.store.get(nid), Node::SnippetBlock(_)) {
+                let mut local = Vec::new();
+                self.route_snippet(nid, &mut local)?;
+                for decl in local {
+                    self.hoist_stmt(decl);
+                }
+            }
+        }
+
+        for &nid in &node_ids {
+            if matches!(self.component.store.get(nid), Node::DebugTag(_)) {
+                self.debug_tag(nid)?;
+            }
+        }
+
+        for &nid in &node_ids {
+            if matches!(self.component.store.get(nid), Node::SvelteHead(_)) {
+                self.svelte_head(nid)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn emit_svelte_element_dev_inits(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+        for &nid in &node_ids {
+            if let Node::SvelteElement(el) = self.component.store.get(nid) {
+                self.svelte_element_dev_init(el)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn fragment_is_standalone(&self, parent: FragmentParent<'a>, window: &[&Node]) -> bool {
+        if matches!(parent, FragmentParent::Element(_)) {
+            return false;
+        }
+        let [only] = window else {
+            return false;
+        };
+        match only {
+            Node::ComponentNode(cn) => {
+                !self.expression_is_volatile(cn.id) && !self.analysis.has_component_css_props(cn.id)
+            }
+            Node::RenderTag(tag) => match self.analysis.block_semantics(tag.id) {
+                BlockSemantics::Render(sem) => !sem.callee_volatility.is_volatile(),
+                _ => false,
+            },
+            _ => false,
+        }
     }
 }
 
@@ -179,9 +341,17 @@ fn is_filtered_out(node: &Node, preserve_comments: bool) -> bool {
 }
 
 fn is_text_first(parent: FragmentParent<'_>, window: &[&Node]) -> bool {
-    let FragmentParent::Root = parent else {
-        return false;
-    };
+    match parent {
+        FragmentParent::Root
+        | FragmentParent::Component
+        | FragmentParent::Snippet
+        | FragmentParent::EachBlock
+        | FragmentParent::Boundary => {}
+        FragmentParent::Element(_)
+        | FragmentParent::Block
+        | FragmentParent::SvelteElement
+        | FragmentParent::SvelteHead => return false,
+    }
     let Some(first) = window.first() else {
         return false;
     };
@@ -241,16 +411,6 @@ fn strip_pre_first_newline<'w, 'n>(
         return &window[1..];
     }
     window
-}
-
-fn space_only_text_removable(parent: FragmentParent<'_>) -> bool {
-    let FragmentParent::Element(el) = parent else {
-        return false;
-    };
-    matches!(
-        el.name.as_str(),
-        "select" | "tr" | "table" | "tbody" | "thead" | "tfoot" | "colgroup" | "datalist"
-    )
 }
 
 fn trim_text<'s>(

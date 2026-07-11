@@ -262,19 +262,19 @@ fn classify_reference_semantics(
         BindingFacts::Store(_) => None,
         BindingFacts::Prop(prop) => match &prop.kind {
             PropBindingKind::Source {
-                bindable,
                 updated,
                 default_lowering,
                 ..
             } => {
+                let bindable = prop.bindable;
                 if is_member_mutation_root {
                     Some(ReferenceFacts::PropSourceMemberMutationRoot {
-                        bindable: *bindable,
+                        bindable,
                         symbol: sym,
                     })
                 } else if is_write {
                     Some(ReferenceFacts::PropMutation {
-                        bindable: *bindable,
+                        bindable,
                         symbol: sym,
                     })
                 } else if is_read {
@@ -282,7 +282,7 @@ fn classify_reference_semantics(
                         !bindable || *updated || !matches!(default_lowering, PropDefaultKind::None);
                     if reads_as_source {
                         Some(ReferenceFacts::PropRead(PropReferenceSemantics::Source {
-                            bindable: *bindable,
+                            bindable,
                             lowering_mode: prop.emit_mode,
                             symbol: sym,
                         }))

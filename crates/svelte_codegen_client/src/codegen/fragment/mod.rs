@@ -1,4 +1,3 @@
-use crate::codegen::blocks::render_tag::render_callee_is_static;
 use crate::codegen::expr::coarse_wrap;
 use svelte_emit_builders::runes::rune_get;
 mod legacy_slot_fragment;
@@ -8,10 +7,7 @@ mod types;
 
 use oxc_ast::ast::{Expression, Statement};
 use std::iter::empty;
-use svelte_analyze::{
-    AttributeSemantics, ComponentCssProp, ComponentCssPropValue, ComponentPropMemo,
-    ComponentPropSemantics, SnippetPlacement, Volatility,
-};
+use svelte_analyze::{AttributeSemantics, ComponentCssPropValue, SnippetPlacement, Volatility};
 use svelte_ast::{FragmentRole, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -71,16 +67,6 @@ pub(in crate::codegen) fn role_needs_text_first_next(role: FragmentRole) -> bool
             | FragmentRole::ComponentChildren
             | FragmentRole::SvelteBoundaryBody
     )
-}
-
-fn attribute_is_css_var(attr: &svelte_ast::Attribute) -> bool {
-    match attr {
-        svelte_ast::Attribute::StringAttribute(a) => a.name.starts_with("--"),
-        svelte_ast::Attribute::ExpressionAttribute(a) => a.name.starts_with("--"),
-        svelte_ast::Attribute::ConcatenationAttribute(a) => a.name.starts_with("--"),
-        svelte_ast::Attribute::BooleanAttribute(a) => a.name.starts_with("--"),
-        _ => false,
-    }
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -610,7 +596,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 
     fn is_standalone_static_component(&self, id: NodeId) -> bool {
-        let svelte_ast::Node::ComponentNode(cn) = self.ctx.query.component.store.get(id) else {
+        let svelte_ast::Node::ComponentNode(_) = self.ctx.query.component.store.get(id) else {
             return false;
         };
         match self.ctx.expression_data(id).map(|d| d.volatility) {
@@ -619,7 +605,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 return false;
             }
         }
-        !self.ctx.has_component_css_props(id) && !cn.attributes.iter().any(attribute_is_css_var)
+        !self.ctx.has_component_css_props(id)
     }
 
     fn is_css_wrapped_component(&self, id: NodeId) -> bool {
@@ -767,43 +753,68 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         node_ident: &str,
         namespace: svelte_ast::Namespace,
     ) -> Result<()> {
-        let css_props: Vec<ComponentCssProp> = self
-            .ctx
-            .query
-            .view
-            .component_css_props(component_id)
-            .to_vec();
+        let css_props: Vec<(NodeId, String, ComponentCssPropValue)> = {
+            let Some(view) = self
+                .ctx
+                .query
+                .component
+                .store
+                .get(component_id)
+                .as_component_like()
+            else {
+                return CodegenError::semantic_mismatch(
+                    component_id,
+                    "component-like node expected",
+                );
+            };
+            view.attributes
+                .iter()
+                .filter_map(|attribute| {
+                    let attribute_id = attribute.id();
+                    match self.ctx.query.analysis.attributes.get(attribute_id) {
+                        AttributeSemantics::ComponentCssProp(value) => {
+                            Some((attribute_id, attribute.name()?.to_string(), value.clone()))
+                        }
+                        _ => None,
+                    }
+                })
+                .collect()
+        };
         let mut prop_items: Vec<ObjProp<'a>> = Vec::with_capacity(css_props.len());
         let mut css_memo_decls: Vec<Statement<'a>> = Vec::new();
         let mut memo_counter: u32 = 0;
-        for prop in css_props {
-            let key = self.ctx.b.alloc_str(&prop.name);
-            let expr = match prop.value {
-                ComponentCssPropValue::Expression(expr_id) => {
-                    let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
-                        return CodegenError::missing_expression(prop.attr_id);
+        for (attribute_id, name, value) in css_props {
+            let key = self.ctx.b.alloc_str(&name);
+            let expr = match value {
+                ComponentCssPropValue::Expression(expression_id) => {
+                    let Some(expression) = self.ctx.state.parsed.take_expr(expression_id) else {
+                        return CodegenError::missing_expression(attribute_id);
                     };
-                    let data = self.ctx.expression_data(prop.attr_id).cloned();
-                    let expr = coarse_wrap(self.ctx, expr, data.as_ref());
-                    match prop.memo {
-                        ComponentPropMemo::Derived => {
+                    let expression_data = self.ctx.expression_data(attribute_id).cloned();
+                    let expression = coarse_wrap(self.ctx, expression, expression_data.as_ref());
+                    let volatility = expression_data
+                        .as_ref()
+                        .map(|data| data.volatility)
+                        .unwrap_or(Volatility::Static);
+                    match volatility {
+                        Volatility::Heavy | Volatility::Asynchronous => {
                             let helper = self.ctx.query.view.derived_helper();
                             let memo_name = format!("${memo_counter}");
                             memo_counter += 1;
-                            let thunk = self.ctx.b.thunk(expr);
+                            let thunk = self.ctx.b.thunk(expression);
                             let derived = self.ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
                             css_memo_decls.push(self.ctx.b.let_init_stmt(&memo_name, derived));
                             let memo_ref = self.ctx.b.alloc_str(&memo_name);
                             rune_get(&self.ctx.b, memo_ref)
                         }
-                        ComponentPropMemo::Inline | ComponentPropMemo::Getter => expr,
+                        Volatility::Static | Volatility::Reactive => expression,
                     }
                 }
                 ComponentCssPropValue::StaticString(span) => {
                     let value = self.ctx.query.component.source_text(span);
                     self.ctx.b.str_expr(value)
                 }
-                ComponentCssPropValue::Concatenation => {
+                ComponentCssPropValue::Concatenation(plan) => {
                     let Some(view) = self
                         .ctx
                         .query
@@ -812,31 +823,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .get(component_id)
                         .as_component_like()
                     else {
-                        return CodegenError::missing_expression(prop.attr_id);
+                        return CodegenError::missing_expression(attribute_id);
                     };
                     let Some(svelte_ast::Attribute::ConcatenationAttribute(concat)) =
-                        view.attributes.iter().find(|a| a.id() == prop.attr_id)
+                        view.attributes.iter().find(|a| a.id() == attribute_id)
                     else {
-                        return CodegenError::missing_expression(prop.attr_id);
+                        return CodegenError::missing_expression(attribute_id);
                     };
-                    let AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(
-                        concat_sem,
-                    )) = self.ctx.query.analysis.attributes.get(prop.attr_id)
-                    else {
-                        return CodegenError::semantic_mismatch(
-                            prop.attr_id,
-                            "ComponentCssProp::Concatenation requires ComponentProp::Concat semantics",
-                        );
-                    };
-                    let plan = concat_sem.plan.clone();
                     self.build_concat_expr_from_plan(
-                        prop.attr_id,
+                        attribute_id,
                         &concat.parts,
                         &plan,
                         &mut css_memo_decls,
                         &mut memo_counter,
                     )?
                 }
+                ComponentCssPropValue::Boolean => self.ctx.b.bool_expr(true),
             };
             prop_items.push(ObjProp::KeyValue(key, expr));
         }
@@ -882,9 +884,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return false;
         }
         match self.ctx.query.analysis.block_semantics(id) {
-            svelte_analyze::BlockSemantics::Render(sem) => {
-                render_callee_is_static(self.ctx, sem.callee_sym)
-            }
+            svelte_analyze::BlockSemantics::Render(sem) => !sem.callee_volatility.is_volatile(),
             _ => false,
         }
     }

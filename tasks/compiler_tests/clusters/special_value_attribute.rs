@@ -34,6 +34,5 @@ compiler_case!(
 );
 compiler_case!(
     input_default_value_in_static_parent,
-    "special_value_attribute/input_default_value_in_static_parent",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/input_default_value_in_static_parent"
 );

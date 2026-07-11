@@ -1,4 +1,6 @@
-use super::super::{BlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement};
+use super::super::{
+    BlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement, SnippetSlotKey,
+};
 use super::common::{binding_pattern_node_id, declarator_from_stmt};
 use super::walker::{Ctx, SnippetScope};
 use oxc_ast::ast::{
@@ -12,10 +14,17 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
 
     let declarator = stmt.and_then(declarator_from_stmt);
 
-    let name_sym = declarator.and_then(|d| match &d.id {
-        BindingPattern::BindingIdentifier(ident) => ident.symbol_id.get(),
+    let binding_ident = declarator.and_then(|d| match &d.id {
+        BindingPattern::BindingIdentifier(ident) => Some(ident),
         _ => None,
     });
+
+    let name_sym = binding_ident.and_then(|ident| ident.symbol_id.get());
+
+    let slot_key = match binding_ident {
+        Some(ident) if ident.name == "children" => SnippetSlotKey::Default,
+        _ => SnippetSlotKey::Named,
+    };
 
     let arrow = declarator.and_then(arrow_from_declarator);
     let params = arrow.map(|arrow| collect_params(arrow)).unwrap_or_default();
@@ -34,6 +43,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &SnippetBlock) {
             name,
             placement: SnippetPlacement::Local,
             params,
+            slot_key,
         }),
     );
 

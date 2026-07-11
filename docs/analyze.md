@@ -3,7 +3,7 @@
 label: analyze
 topics: analyze, smart analyzer, passes, dynamism, build order, analyze phases, semantics frame, semantic diagnostics
 
-Корневой PRD для слоя анализа (`crates/svelte_analyze`). Описывает рамку слоя и принцип **smart analyzer**; per-subsystem семантика — в дочерних PRD `component-semantics`, `reactivity-semantics`, `expression-semantics`, `attribute-semantics`, `block-semantics`.
+Корневой PRD для слоя анализа (`crates/svelte_analyze`). Описывает рамку слоя и принцип **smart analyzer**; per-subsystem семантика — в дочерних PRD `component-semantics`, `reactivity-semantics`, `expression-semantics`, `attribute-semantics`, `block-semantics`, `fragment-semantics`.
 
 ## Назначение
 
@@ -15,7 +15,7 @@ topics: analyze, smart analyzer, passes, dynamism, build order, analyze phases, 
 
 Анализ делится на два класса:
 
-- **3.A семантические подсистемы** — `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, `AttributeSemantics`, `BlockSemantics`. Каждая поглощает несколько raw-индексов внутри и выдаёт query-API на один конкретный вопрос за вызов. Не течёт raw-флагами наружу.
+- **3.A семантические подсистемы** — `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, `AttributeSemantics`, `BlockSemantics`, `FragmentSemantics`, `RuntimeSemantics`. Каждая поглощает несколько raw-индексов внутри и выдаёт query-API на один конкретный вопрос за вызов. Не течёт raw-флагами наружу.
 - **3.B аналитические side-таблицы** — `ScriptAnalysis`, `ElementAnalysis`, `TemplateAnalysis`, `BlockAnalysis`, `OutputPlanData`, `DynamismData`, `PickledAwaits`. Плоские таблицы на `AnalysisData`, ещё не свёрнутые в 3.A-подсистему. Трекаются в `debt.md`.
 
 Новые факты идут в 3.A-подсистему (или мотивируют новую), **никогда** не в 3.B.
@@ -33,6 +33,18 @@ ComponentSemantics
 ```
 
 `BlockSemantics::build` читает `ExpressionSemantics` для per-expression фактов (collection / callee / promise legacy-wrap, async-kind, blockers) вместо параллельной классификации.
+
+## Контракт пассов (гейт)
+
+Порядок пассов не хардкод, а разрешается из контракта — precondition/postcondition на каждом пассе. Каждый пасс объявлен как `PassDescriptor { key, requires, produces }` в `PASS_DESCRIPTORS` (`passes/mod.rs`): `requires` — какие `DataToken` должны быть построены **до** него (precondition), `produces` — какие он гарантирует **после** (postcondition). `resolve_execution_order` строит topo-порядок из этих рёбер и отказывает на трёх нарушениях:
+
+- `MissingRequirement` — `requires`-токен, который никто не `produces` (висячая зависимость);
+- `DuplicateProducedToken` — два пасса претендуют на один `DataToken` (конфликт слота-ключа: вердикт приписан не тому владельцу либо два несвязанных факта слиты под один ключ);
+- `DependencyCycle` — цикл в графе.
+
+Гейт исполняется, а не декларативен: `analyze()` держит `debug_assert_eq!(resolve_default_execution_order(), default_stage_execution_order())` — статический стейджинг (`PRE_TEMPLATE_SCRIPT_STAGE` … `VALIDATION_STAGE`) обязан совпадать с порядком, разрешённым из контракта; плюс юнит-тесты в `passes/mod.rs`. Новый факт входит как `produces` ровно одного пасса под своим `DataToken`; иначе гейт красный.
+
+Границы гейта: он проверяет **гранулярность ключа и порядок построения**, не **содержание** вердикта. «Element-level агрегат, втиснутый в один вариант» токен-граф не ловит — это остаётся на дизайн-ревью принципа codegen-агностичности (`context.md` §«Codegen-агностичность анализа»).
 
 ## Архитектурные инварианты
 
