@@ -103,6 +103,8 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
 
     pub(crate) in_bind_setter_traverse: bool,
 
+    pub(crate) dispatched_member_assignments: rustc_hash::FxHashSet<u32>,
+
     pub(crate) destructure_lhs_depth: u32,
 
     pub(crate) gen_arrow_scope: Option<ScopeId>,

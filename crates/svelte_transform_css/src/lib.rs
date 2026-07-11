@@ -490,6 +490,7 @@ fn expand_inline_global_with_combinators(node: &mut ComplexSelector) {
         else {
             unreachable!()
         };
+        let mut trailing = mem::take(&mut rel.selectors);
         let args_span = args.span;
         let inner_complex = args.children.remove(0);
         let inner_len = inner_complex.children.len();
@@ -523,6 +524,9 @@ fn expand_inline_global_with_combinators(node: &mut ComplexSelector) {
             };
             let mut new_selectors = svelte_css::SimpleSelectorVec::new();
             new_selectors.push(wrapped_global);
+            if i == inner_len - 1 {
+                new_selectors.append(&mut trailing);
+            }
             out.push(RelativeSelector {
                 id: inner_id,
                 span: inner_span,
@@ -535,12 +539,9 @@ fn expand_inline_global_with_combinators(node: &mut ComplexSelector) {
 }
 
 fn is_expandable_global(rel: &RelativeSelector) -> bool {
-    if rel.selectors.len() != 1 {
-        return false;
-    }
-    let SimpleSelector::Global {
+    let Some(SimpleSelector::Global {
         args: Some(args), ..
-    } = &rel.selectors[0]
+    }) = rel.selectors.first()
     else {
         return false;
     };
@@ -597,17 +598,22 @@ fn unwrap_global(complex: &mut ComplexSelector) {
 }
 
 fn pseudo_only_compound_is_scopable(selectors: &[SimpleSelector]) -> bool {
-    let SimpleSelector::PseudoClass(first) = &selectors[0] else {
-        return true;
-    };
-    let name = first.name.as_str();
-    if matches!(name, "root" | "host") {
-        return false;
+    match &selectors[0] {
+        SimpleSelector::PseudoElement(pe) => {
+            !svelte_css::is_view_transition_pseudo_element(pe.name.as_str())
+        }
+        SimpleSelector::PseudoClass(first) => {
+            let name = first.name.as_str();
+            if matches!(name, "root" | "host") {
+                return false;
+            }
+            if selectors.len() == 1 && matches!(name, "is" | "where") {
+                return false;
+            }
+            true
+        }
+        _ => true,
     }
-    if selectors.len() == 1 && matches!(name, "is" | "where") {
-        return false;
-    }
-    true
 }
 
 fn is_scopable(sel: &SimpleSelector) -> bool {

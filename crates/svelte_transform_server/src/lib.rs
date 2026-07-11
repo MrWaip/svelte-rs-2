@@ -8,6 +8,7 @@ mod props;
 mod runtime_rune;
 mod state;
 mod store;
+mod store_destructure;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{Program, Statement};
@@ -30,6 +31,7 @@ pub fn transform_component<'a>(
         dev: options.dev,
         strip_exports: false,
         enclosing_stmt_start: Vec::new(),
+        parent_is_expr_statement: false,
     };
     if let Some(module_program) = ctx.js_arena.module_program.as_mut() {
         transform.strip_exports = false;
@@ -78,6 +80,7 @@ pub fn transform_module<'a>(
         dev: options.dev,
         strip_exports: false,
         enclosing_stmt_start: Vec::new(),
+        parent_is_expr_statement: false,
     };
     transform.visit_program(program);
 }

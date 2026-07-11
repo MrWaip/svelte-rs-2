@@ -10,6 +10,8 @@ pub enum ElementSemantics {
 
     RegularElement(RegularElementSemantics),
 
+    HeadTitle,
+
     Boundary(BoundarySemantics),
 
     SvelteElement(SvelteElementSemantics),
@@ -37,6 +39,7 @@ pub enum LegacyDefaultSlot {
     ChildrenProp,
     SlotDefaultInvalid,
     SlotDefault,
+    OwnLetDisplaced,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,6 +47,7 @@ pub struct RegularElementSemantics {
     pub async_kind: ElementAsyncKind,
     pub value_role: ElementValueRole,
     pub replay_events: SmallVec<[ElementReplayEvent; 2]>,
+    pub opaque_content: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,6 +90,7 @@ pub enum ElementValueRole {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextareaBody {
     Single(OxcNodeId),
+    Static(String),
     Segments(Vec<TextareaSegment>),
 }
 
@@ -143,27 +148,21 @@ pub enum BoundaryBranch {
 
 #[derive(Debug, Default, Clone)]
 pub struct ElementSemanticsStore {
-    entries: Vec<ElementSemantics>,
+    entries: rustc_hash::FxHashMap<u32, ElementSemantics>,
 }
 
 impl ElementSemanticsStore {
-    pub(crate) fn new(node_count: u32) -> Self {
-        let mut entries = Vec::with_capacity(node_count as usize);
-        entries.resize_with(node_count as usize, ElementSemantics::default);
-        Self { entries }
+    pub(crate) fn new(_node_count: u32) -> Self {
+        Self {
+            entries: rustc_hash::FxHashMap::default(),
+        }
     }
 
     pub fn query(&self, id: NodeId) -> &ElementSemantics {
-        self.entries
-            .get(id.0 as usize)
-            .unwrap_or(&ElementSemantics::None)
+        self.entries.get(&id.0).unwrap_or(&ElementSemantics::None)
     }
 
     pub(crate) fn set(&mut self, id: NodeId, value: ElementSemantics) {
-        let idx = id.0 as usize;
-        if idx >= self.entries.len() {
-            self.entries.resize_with(idx + 1, ElementSemantics::default);
-        }
-        self.entries[idx] = value;
+        self.entries.insert(id.0, value);
     }
 }

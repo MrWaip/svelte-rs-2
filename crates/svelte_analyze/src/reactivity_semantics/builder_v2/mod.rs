@@ -25,21 +25,23 @@ use crate::utils::expression_has_await;
 use crate::utils::is_let_or_var;
 use crate::value_evaluation::{Evaluation, ValueEvaluation};
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentTarget,
-    BindingPattern, CallExpression, Class, ClassElement, ExportNamedDeclaration, Expression,
-    Function, IdentifierReference, ImportDeclarationSpecifier, MemberExpression, MethodDefinition,
-    MethodDefinitionKind, NewExpression, PrivateFieldExpression, Program, PropertyDefinition,
-    PropertyKey, Statement, StaticMemberExpression, TaggedTemplateExpression, UpdateExpression,
-    VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
+    ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentPattern,
+    AssignmentTarget, BindingPattern, CallExpression, Class, ClassElement, ExportNamedDeclaration,
+    Expression, Function, IdentifierReference, ImportDeclarationSpecifier, MemberExpression,
+    MethodDefinition, MethodDefinitionKind, NewExpression, PrivateFieldExpression, Program,
+    PropertyDefinition, PropertyKey, Statement, StaticMemberExpression, TaggedTemplateExpression,
+    UpdateExpression, VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_assignment_expression, walk_call_expression, walk_class,
-    walk_export_named_declaration, walk_function, walk_member_expression, walk_method_definition,
-    walk_new_expression, walk_private_field_expression, walk_program, walk_property_definition,
+    walk_arrow_function_expression, walk_assignment_expression, walk_assignment_pattern,
+    walk_call_expression, walk_class, walk_export_named_declaration, walk_function,
+    walk_member_expression, walk_method_definition, walk_new_expression,
+    walk_private_field_expression, walk_program, walk_property_definition,
     walk_static_member_expression, walk_tagged_template_expression, walk_update_expression,
     walk_variable_declaration, walk_variable_declarator,
 };
+use oxc_syntax::operator::BinaryOperator;
 use oxc_syntax::scope::ScopeFlags;
 use std::mem;
 
@@ -247,6 +249,8 @@ pub(crate) fn build_v2<'a>(
         data.script.immutable,
     );
 
+    finalize_legacy_signal_sources(data);
+
     data.reactivity.consolidate_legacy_state_declarators();
 
     let reference_count = data.scoping.references_len();
@@ -269,9 +273,10 @@ pub(crate) fn finalize_reactivity(
     reactivity: &mut ReactivitySemantics,
     value_evaluation: &ValueEvaluation,
     semantics: &ComponentSemantics<'_>,
+    dev: bool,
 ) {
     optimize_derived(reactivity, value_evaluation, semantics);
-    finalize_proxy(parsed, reactivity, semantics);
+    finalize_proxy(parsed, reactivity, semantics, dev);
 }
 
 fn promote_legacy_exported_const_state(
@@ -311,8 +316,28 @@ fn promote_legacy_exported_const_state(
         LegacyStateSemantics {
             var_declared: false,
             immutable,
+            is_signal_source: false,
         },
     );
+}
+
+fn finalize_legacy_signal_sources(data: &mut AnalysisData<'_>) {
+    use super::data::BindingSemantics;
+
+    let symbols: Vec<SymbolId> = data.scoping.semantics().symbol_ids().collect();
+    for sym in symbols {
+        if !matches!(
+            data.reactivity.binding_semantics(sym),
+            BindingSemantics::LegacyState(_)
+        ) {
+            continue;
+        }
+        let is_signal_source = data.script.is_state_source(
+            data.scoping.is_mutated(sym) || data.scoping.is_reexported_specifier_local(sym),
+        );
+        data.reactivity
+            .set_legacy_state_signal_source(sym, is_signal_source);
+    }
 }
 
 fn legacy_export_has_template_reference(scoping: &ComponentScoping<'_>, sym: SymbolId) -> bool {
@@ -389,12 +414,15 @@ fn promote_each_sources_transitive_legacy(
             LegacyStateSemantics {
                 var_declared: false,
                 immutable,
+                is_signal_source: false,
             },
         );
     }
     for (item_sym, reached) in &additions {
         for &sym in reached {
-            reactivity.add_each_item_indirect_source(*item_sym, sym);
+            if legacy_reactive::is_reactive_legacy_dep(reactivity.binding_semantics(sym)) {
+                reactivity.add_each_item_indirect_source(*item_sym, sym);
+            }
         }
     }
 
@@ -474,6 +502,9 @@ fn is_promotable_legacy_let(
     if !scoping.is_component_top_level_symbol(sym) {
         return false;
     }
+    if !scoping.is_reassignable_declaration(sym) {
+        return false;
+    }
     if symbol_is_function_declaration(scoping, sym) {
         return false;
     }
@@ -536,17 +567,19 @@ pub(crate) fn finalize_proxy(
     parsed: &JsAst<'_>,
     reactivity: &mut ReactivitySemantics,
     semantics: &ComponentSemantics<'_>,
+    dev: bool,
 ) {
     if !reactivity.uses_runes() {
         return;
     }
 
+    let init_proxyable = reactivity.take_init_proxyable();
     let (binding_inits, field_inits, signal_writes, class_fields) = {
-        let init_proxyable = collect_init_proxyable(parsed);
         let mut collector = ProxyCollector {
             reactivity,
             semantics,
             init_proxyable: &init_proxyable,
+            dev,
             binding_inits: Vec::new(),
             field_inits: Vec::new(),
             signal_writes: Vec::new(),
@@ -592,6 +625,7 @@ struct ProxyCollector<'c, 'a> {
     reactivity: &'c ReactivitySemantics,
     semantics: &'c ComponentSemantics<'a>,
     init_proxyable: &'c FxHashMap<SymbolId, bool>,
+    dev: bool,
     binding_inits: Vec<(SymbolId, bool)>,
     field_inits: Vec<(OxcNodeId, bool)>,
     signal_writes: Vec<ReferenceId>,
@@ -749,7 +783,7 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
         if self.signal_write_state_kind(ref_id) != Some(StateKind::State) {
             return;
         }
-        if is_non_coercive(operator) && self.should_proxy(right) {
+        if is_non_coercive(operator) && self.should_proxy(right, false) {
             self.signal_writes.push(ref_id);
         }
     }
@@ -847,7 +881,7 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
 
     fn write_value_proxies(&self, operator: AssignmentOperator, right: &Expression<'a>) -> bool {
         match operator {
-            AssignmentOperator::Assign => self.should_proxy(right),
+            AssignmentOperator::Assign => self.should_proxy(right, false),
             AssignmentOperator::LogicalAnd
             | AssignmentOperator::LogicalOr
             | AssignmentOperator::LogicalNullish => true,
@@ -870,7 +904,10 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
         let Some(arg) = call.arguments.first().and_then(|a| a.as_expression()) else {
             return false;
         };
-        self.should_proxy(arg)
+        if self.dev && is_dev_rewritten_equality(arg.get_inner_expression()) {
+            return true;
+        }
+        self.should_proxy(arg, true)
     }
 
     fn signal_write_state_kind(&self, ref_id: ReferenceId) -> Option<StateKind> {
@@ -879,7 +916,7 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
             .signal_write_kind()
     }
 
-    fn should_proxy(&self, expr: &Expression<'a>) -> bool {
+    fn should_proxy(&self, expr: &Expression<'a>, props_opaque: bool) -> bool {
         let expr = expr.get_inner_expression();
         let Expression::Identifier(id) = expr else {
             return should_proxy_node_only(expr);
@@ -893,8 +930,24 @@ impl<'c, 'a> ProxyCollector<'c, 'a> {
         if self.semantics.is_mutated(symbol) {
             return true;
         }
+        if props_opaque && self.reactivity.binding_semantics(symbol).is_props() {
+            return true;
+        }
         self.init_proxyable.get(&symbol).copied().unwrap_or(true)
     }
+}
+
+fn is_dev_rewritten_equality(expr: &Expression) -> bool {
+    let Expression::BinaryExpression(binary) = expr else {
+        return false;
+    };
+    matches!(
+        binary.operator,
+        BinaryOperator::Equality
+            | BinaryOperator::Inequality
+            | BinaryOperator::StrictEquality
+            | BinaryOperator::StrictInequality
+    )
 }
 
 fn should_proxy_node_only(expr: &Expression) -> bool {
@@ -918,42 +971,6 @@ fn should_proxy_node_only(expr: &Expression) -> bool {
         return false;
     }
     true
-}
-
-fn collect_init_proxyable(parsed: &JsAst<'_>) -> FxHashMap<SymbolId, bool> {
-    let mut collector = InitProxyableCollector {
-        proxyable: FxHashMap::default(),
-    };
-    for program in [parsed.program.as_ref(), parsed.module_program.as_ref()]
-        .into_iter()
-        .flatten()
-    {
-        collector.visit_program(program);
-    }
-    for expression in parsed.iter_exprs() {
-        collector.visit_expression(expression);
-    }
-    for statement in parsed.iter_stmts() {
-        collector.visit_statement(statement);
-    }
-    collector.proxyable
-}
-
-struct InitProxyableCollector {
-    proxyable: FxHashMap<SymbolId, bool>,
-}
-
-impl<'a> Visit<'a> for InitProxyableCollector {
-    fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
-        if let BindingPattern::BindingIdentifier(id) = &declarator.id
-            && let Some(init) = &declarator.init
-            && let Some(symbol) = id.symbol_id.get()
-        {
-            let proxyable = should_proxy_node_only(init.get_inner_expression());
-            self.proxyable.insert(symbol, proxyable);
-        }
-        walk_variable_declarator(self, declarator);
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -1148,9 +1165,8 @@ fn compute_const_tag_reactivity<'a>(
 
         let is_destructured =
             syms.len() > 1 || !matches!(&declarator.id, BindingPattern::BindingIdentifier(_));
-        let legacy_destructured_signal_read = is_destructured && !data.script.runes();
 
-        let reactive = legacy_destructured_signal_read
+        let reactive = is_destructured
             || eager_rune
             || init_is_impure_member_or_call
             || refs.iter().any(|&ref_id| {
@@ -1252,13 +1268,17 @@ fn build_script_semantics_v2<'a>(
     data: &mut AnalysisData<'a>,
     prop_lowering_mode: PropEmitMode,
 ) -> LegacyReactiveCollected {
-    let reactive_body_refs = parsed
-        .program
-        .as_ref()
-        .map(|program| legacy_reactive::collect_reactive_body_symbol_refs(program, data))
-        .unwrap_or_default();
+    let reactive_body_refs = if data.script.runes() {
+        FxHashSet::default()
+    } else {
+        parsed
+            .program
+            .as_ref()
+            .map(|program| legacy_reactive::collect_reactive_body_symbol_refs(program, data))
+            .unwrap_or_default()
+    };
     let mut collector = ScriptSemanticCollector::new(data, prop_lowering_mode, reactive_body_refs);
-    collector.collect_bind_this_legacy_state_promotion_roots(component, parsed);
+    collector.collect_bind_directive_roots(component, parsed);
     if let Some(program) = parsed.program.as_ref() {
         collector.visit_instance_program(program);
     }
@@ -1272,7 +1292,6 @@ fn build_script_semantics_v2<'a>(
     for stmt in parsed.iter_stmts() {
         collector.visit_statement(stmt);
     }
-    collector.mark_bind_member_mutation_roots(component, parsed);
     let labeled_nodes = mem::take(&mut collector.legacy_reactive_labeled_nodes);
     let implicit_names = mem::take(&mut collector.legacy_reactive_implicit_names);
     collector.finish();
@@ -1307,6 +1326,8 @@ struct ScriptSemanticCollector<'d, 'a> {
     deferred_const_destructured_legacy_decls: Vec<(OxcNodeId, SmallVec<[SymbolId; 4]>)>,
     reactive_body_refs: FxHashSet<SymbolId>,
     store_shadow_rune_candidates: Vec<(OxcNodeId, SymbolId, ReferenceId, bool)>,
+    collect_init_proxyable: bool,
+    init_proxyable: FxHashMap<SymbolId, bool>,
 }
 
 impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
@@ -1315,6 +1336,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         prop_lowering_mode: PropEmitMode,
         reactive_body_refs: FxHashSet<SymbolId>,
     ) -> Self {
+        let collect_init_proxyable = data.script.runes();
         Self {
             data,
             current_decl_kind: None,
@@ -1333,6 +1355,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             deferred_const_destructured_legacy_decls: Vec::new(),
             reactive_body_refs,
             store_shadow_rune_candidates: Vec::new(),
+            collect_init_proxyable,
+            init_proxyable: FxHashMap::default(),
         }
     }
 
@@ -1347,59 +1371,19 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         self.visit_program(program);
     }
 
-    fn collect_bind_this_legacy_state_promotion_roots(
-        &mut self,
-        component: &Component,
-        parsed: &JsAst<'a>,
-    ) {
-        if self.data.script.runes() {
-            return;
-        }
+    fn collect_bind_directive_roots(&mut self, component: &Component, parsed: &JsAst<'a>) {
+        let collect_bind_this = !self.data.script.runes();
         for node in component.store.iter_nodes() {
-            let attrs: &[svelte_ast::Attribute] = match node {
-                svelte_ast::Node::Element(n) => &n.attributes,
-                svelte_ast::Node::SvelteElement(n) => &n.attributes,
-                svelte_ast::Node::ComponentNode(n) => &n.attributes,
-                svelte_ast::Node::SvelteComponentLegacy(n) => &n.attributes,
-                svelte_ast::Node::SvelteSelf(n) => &n.attributes,
-                _ => continue,
-            };
-            for attr in attrs {
-                let svelte_ast::Attribute::BindDirective(d) = attr else {
-                    continue;
-                };
-                if d.name != "this" {
-                    continue;
-                }
-                let Some(expr) = parsed.expr(d.expression.id()) else {
-                    continue;
-                };
-                if !matches!(expr, Expression::Identifier(_)) {
-                    continue;
-                }
-                let Some(ref_id) = expression_root_reference_id(expr) else {
-                    continue;
-                };
-                let Some(sym) = self.data.scoping.symbol_for_reference(ref_id) else {
-                    continue;
-                };
-                self.bind_this_legacy_state_root_syms.insert(sym);
-            }
-        }
-    }
-
-    fn mark_bind_member_mutation_roots(&mut self, component: &Component, parsed: &JsAst<'a>) {
-        for node in component.store.iter_nodes() {
-            let attrs: &[svelte_ast::Attribute] = match node {
-                svelte_ast::Node::Element(n) => &n.attributes,
-                svelte_ast::Node::SvelteElement(n) => &n.attributes,
-                svelte_ast::Node::ComponentNode(n) => &n.attributes,
-                svelte_ast::Node::SvelteComponentLegacy(n) => &n.attributes,
-                svelte_ast::Node::SvelteSelf(n) => &n.attributes,
-                svelte_ast::Node::SvelteWindow(n) => &n.attributes,
-                svelte_ast::Node::SvelteDocument(n) => &n.attributes,
-                svelte_ast::Node::SvelteBody(n) => &n.attributes,
-                svelte_ast::Node::SlotElementLegacy(n) => &n.attributes,
+            let (attrs, node_takes_bind_this): (&[svelte_ast::Attribute], bool) = match node {
+                svelte_ast::Node::Element(n) => (&n.attributes, true),
+                svelte_ast::Node::SvelteElement(n) => (&n.attributes, true),
+                svelte_ast::Node::ComponentNode(n) => (&n.attributes, true),
+                svelte_ast::Node::SvelteComponentLegacy(n) => (&n.attributes, true),
+                svelte_ast::Node::SvelteSelf(n) => (&n.attributes, true),
+                svelte_ast::Node::SvelteWindow(n) => (&n.attributes, false),
+                svelte_ast::Node::SvelteDocument(n) => (&n.attributes, false),
+                svelte_ast::Node::SvelteBody(n) => (&n.attributes, false),
+                svelte_ast::Node::SlotElementLegacy(n) => (&n.attributes, false),
                 _ => continue,
             };
             for attr in attrs {
@@ -1409,14 +1393,23 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 let Some(expr) = parsed.expr(d.expression.id()) else {
                     continue;
                 };
-                if !matches!(
-                    expr,
-                    Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_)
-                ) {
-                    continue;
-                }
-                if let Some(ref_id) = expression_root_reference_id(expr) {
-                    self.prop_member_mutation_root_refs.insert(ref_id);
+                match expr {
+                    Expression::Identifier(_)
+                        if collect_bind_this && node_takes_bind_this && d.name == "this" =>
+                    {
+                        if let Some(ref_id) = expression_root_reference_id(expr)
+                            && let Some(sym) = self.data.scoping.symbol_for_reference(ref_id)
+                        {
+                            self.bind_this_legacy_state_root_syms.insert(sym);
+                        }
+                    }
+                    Expression::StaticMemberExpression(_)
+                    | Expression::ComputedMemberExpression(_) => {
+                        if let Some(ref_id) = expression_root_reference_id(expr) {
+                            self.prop_member_mutation_root_refs.insert(ref_id);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -1488,6 +1481,12 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         }
 
         self.compute_derived_reactivity();
+
+        if self.collect_init_proxyable {
+            self.data
+                .reactivity
+                .set_init_proxyable(mem::take(&mut self.init_proxyable));
+        }
     }
 
     fn compute_derived_reactivity(&mut self) {
@@ -1773,6 +1772,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 super::data::LegacyStateSemantics {
                     var_declared,
                     immutable,
+                    is_signal_source: false,
                 },
             );
             promoted_leaves.push(sym);
@@ -1814,6 +1814,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                 super::data::LegacyStateSemantics {
                     var_declared: false,
                     immutable,
+                    is_signal_source: false,
                 },
             );
         }
@@ -1853,6 +1854,7 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
                     super::data::LegacyStateSemantics {
                         var_declared: false,
                         immutable,
+                        is_signal_source: false,
                     },
                 );
                 promoted.push(sym);
@@ -2341,6 +2343,14 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
 
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         self.record_rune_declarator(declarator);
+        if self.collect_init_proxyable
+            && let BindingPattern::BindingIdentifier(id) = &declarator.id
+            && let Some(init) = &declarator.init
+            && let Some(symbol) = id.symbol_id.get()
+        {
+            let proxyable = should_proxy_node_only(init.get_inner_expression());
+            self.init_proxyable.insert(symbol, proxyable);
+        }
         if self.is_instance_program {
             self.record_legacy_state_declarator(declarator);
             let node = declarator.node_id();
@@ -2351,6 +2361,17 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
             });
         }
         walk_variable_declarator(self, declarator);
+    }
+
+    fn visit_assignment_pattern(&mut self, pattern: &AssignmentPattern<'a>) {
+        if self.collect_init_proxyable
+            && let BindingPattern::BindingIdentifier(id) = &pattern.left
+            && let Some(symbol) = id.symbol_id.get()
+        {
+            let proxyable = should_proxy_node_only(pattern.right.get_inner_expression());
+            self.init_proxyable.insert(symbol, proxyable);
+        }
+        walk_assignment_pattern(self, pattern);
     }
 
     fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
@@ -2615,9 +2636,13 @@ fn prop_default_is_bindable(expr: &Expression<'_>) -> bool {
 
 impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
     fn prop_default_emit(&self, expr: &Expression<'_>) -> PropDefaultKind {
-        let default_expr = bindable_default_arg(expr).unwrap_or(expr);
-        if bindable_default_arg(expr).is_none() && prop_default_is_bindable(expr) {
+        let bindable_arg = bindable_default_arg(expr);
+        let default_expr = bindable_arg.unwrap_or(expr);
+        if bindable_arg.is_none() && prop_default_is_bindable(expr) {
             return PropDefaultKind::None;
+        }
+        if bindable_arg.is_some() && state_expression_is_proxyable(default_expr) {
+            return PropDefaultKind::Lazy;
         }
         if !is_simple_expression(default_expr) {
             return PropDefaultKind::Lazy;

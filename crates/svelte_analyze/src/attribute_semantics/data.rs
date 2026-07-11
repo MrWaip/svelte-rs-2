@@ -260,38 +260,46 @@ pub enum ComponentPropMemo {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EventSemantics {
+    pub name: String,
     pub modifiers: EventModifier,
-    pub emit: EventEmit,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EventEmit {
-    HtmlDelegated {
-        handler: HandlerEmit,
-    },
-    HtmlDirect {
-        capture: bool,
-        passive: Option<bool>,
-        handler: HandlerEmit,
-    },
-    HtmlBubble,
-    Component {
-        handler: HandlerEmit,
-    },
+    pub delegatable: bool,
+    pub capture: bool,
+    pub passive: bool,
+    pub handler: EventHandler,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HandlerEmit {
-    Direct,
-    WrappedInert,
-    WrappedSideEffects,
-    WrappedMemoized,
+pub enum EventHandler {
+    Forwarded,
+    FunctionValue,
+    LooseReference,
+    Expression(HandlerEffect),
+}
+
+impl EventHandler {
+    pub fn is_user(&self) -> bool {
+        match self {
+            EventHandler::FunctionValue
+            | EventHandler::LooseReference
+            | EventHandler::Expression(_) => true,
+            EventHandler::Forwarded => false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HandlerEffect {
+    Pure,
+    Mutation,
+    Call,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ComponentBindSemantics {
     pub kind: ComponentBindKind,
     pub each_context_vars: SmallVec<[SymbolId; 4]>,
+    pub ownership_root: Option<SymbolId>,
+    pub each_item_store_backed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -372,6 +380,24 @@ pub enum ElementBindPropertyKind {
 impl ElementBindPropertyKind {
     pub fn is_this(self) -> bool {
         matches!(self, ElementBindPropertyKind::This)
+    }
+
+    pub fn reflects_in_html(self) -> bool {
+        match self {
+            ElementBindPropertyKind::Value
+            | ElementBindPropertyKind::Checked
+            | ElementBindPropertyKind::Group
+            | ElementBindPropertyKind::Open
+            | ElementBindPropertyKind::Focused
+            | ElementBindPropertyKind::ContentEditable(_) => true,
+            ElementBindPropertyKind::Files
+            | ElementBindPropertyKind::Indeterminate
+            | ElementBindPropertyKind::This
+            | ElementBindPropertyKind::ElementSize(_)
+            | ElementBindPropertyKind::ResizeObserver(_)
+            | ElementBindPropertyKind::Media(_)
+            | ElementBindPropertyKind::ImageNaturalSize(_) => false,
+        }
     }
 }
 

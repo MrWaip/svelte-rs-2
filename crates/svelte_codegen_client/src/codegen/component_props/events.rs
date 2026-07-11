@@ -46,15 +46,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .find_map(|(id, offset)| (*id == ev.attr_id).then_some(*offset))
                     .ok_or(CodegenError::MissingExpression(ev.attr_id))?;
                 let handler_emit = match self.ctx.query.analysis.attributes.get(ev.attr_id) {
-                    svelte_analyze::AttributeSemantics::Event(esem) => match &esem.emit {
-                        svelte_analyze::EventEmit::HtmlDelegated { handler }
-                        | svelte_analyze::EventEmit::HtmlDirect { handler, .. }
-                        | svelte_analyze::EventEmit::Component { handler } => *handler,
-                        svelte_analyze::EventEmit::HtmlBubble => {
-                            svelte_analyze::HandlerEmit::Direct
-                        }
-                    },
-                    _ => svelte_analyze::HandlerEmit::Direct,
+                    svelte_analyze::AttributeSemantics::Event(esem) => esem.handler,
+                    _ => svelte_analyze::EventHandler::FunctionValue,
                 };
                 let Some(handler_expr) = self.ctx.state.parsed.take_expr(expr_id) else {
                     return CodegenError::missing_expression(ev.attr_id);

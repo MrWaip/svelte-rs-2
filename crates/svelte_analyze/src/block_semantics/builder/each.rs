@@ -107,8 +107,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
         None => EachIndexKind::Absent,
     };
 
-    let body_nodes = ctx.component.fragment_nodes(block.body).to_vec();
-    let has_animate = body_has_direct_animate(ctx, &body_nodes);
+    let has_animate = body_has_direct_animate(ctx, ctx.component.fragment_nodes(block.body));
 
     let shadows_outer = body_scope
         .and_then(|child| {

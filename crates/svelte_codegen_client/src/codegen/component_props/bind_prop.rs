@@ -2,7 +2,7 @@ use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKind, Statement};
 use oxc_span::SPAN;
 use svelte_analyze::scope::SymbolId;
-use svelte_analyze::{ComponentBindSemantics, ComponentBindTarget};
+use svelte_analyze::{ComponentBindKind, ComponentBindSemantics, ComponentBindTarget};
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 use svelte_emit_builders::each_item;
@@ -10,7 +10,7 @@ use svelte_emit_builders::runes::rune_get;
 use svelte_emit_builders::store::build_store_base_read;
 
 use super::super::Codegen;
-use super::dispatch::{OwnershipBinding, PropOrSpread};
+use super::dispatch::{OwnershipBinding, OwnershipGetter, PropOrSpread};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(super) fn emit_bind_member_expr(
@@ -20,6 +20,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         expr: Expression<'a>,
         items: &mut Vec<PropOrSpread<'a>>,
         validate_binding_stmts: &mut Vec<Statement<'a>>,
+        ownership_bindings: &mut Vec<OwnershipBinding<'a>>,
     ) -> super::super::Result<()> {
         let Expression::ObjectExpression(obj) = expr else {
             return super::super::CodegenError::unexpected_node(
@@ -28,8 +29,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             );
         };
         let obj = obj.unbox();
+        if let Some(root) = bind.ownership_root
+            && let Some(binding) = self.build_member_ownership_binding(root, &obj.properties)
+        {
+            ownership_bindings.push(binding);
+        }
         if self.ctx.state.dev
             && self.ctx.query.runes()
+            && matches!(bind.kind, ComponentBindKind::Expression)
             && !self.ctx.binding_property_non_reactive_ignored(directive.id)
             && let Some(stmt) = self.build_validate_binding_stmt(directive, bind, &obj.properties)
         {
@@ -41,25 +48,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
+    fn build_member_ownership_binding(
+        &self,
+        root: SymbolId,
+        properties: &oxc_allocator::Vec<'a, ObjectPropertyKind<'a>>,
+    ) -> Option<OwnershipBinding<'a>> {
+        let member_expr = getter_return_expr(properties)?;
+        let alloc = self.ctx.b.ast.allocator;
+        let thunk = self.ctx.b.thunk(member_expr.clone_in(alloc));
+        let name = self.ctx.query.view.symbol_name(root);
+        let name_ref = self.ctx.b.alloc_str(name);
+        Some(OwnershipBinding {
+            name: name_ref,
+            getter: OwnershipGetter::Thunk(thunk),
+        })
+    }
+
     fn build_validate_binding_stmt(
         &self,
         directive: &BindDirective,
         bind: &ComponentBindSemantics,
         properties: &oxc_allocator::Vec<'a, ObjectPropertyKind<'a>>,
     ) -> Option<Statement<'a>> {
-        let getter_prop = properties.iter().find_map(|p| match p {
-            ObjectPropertyKind::ObjectProperty(op) if op.kind == PropertyKind::Get => Some(op),
-            _ => None,
-        })?;
-        let Expression::FunctionExpression(func) = &getter_prop.value else {
-            return None;
-        };
-        let body = func.body.as_ref()?;
-        let return_stmt = body.statements.iter().find_map(|s| match s {
-            Statement::ReturnStatement(r) => Some(r),
-            _ => None,
-        })?;
-        let member_expr = return_stmt.argument.as_ref()?;
+        let member_expr = getter_return_expr(properties)?;
         let alloc = self.ctx.b.ast.allocator;
         let (object_clone, property_thunk) = match member_expr {
             Expression::StaticMemberExpression(m) => {
@@ -75,29 +86,27 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             _ => return None,
         };
-        let object_thunk = self.ctx.b.thunk(object_clone);
+        let object_body = if bind.each_item_store_backed {
+            self.ctx.b.seq_expr([
+                self.ctx.b.call_expr("$.mark_store_binding", []),
+                object_clone,
+            ])
+        } else {
+            object_clone
+        };
+        let object_thunk = self.ctx.b.thunk(object_body);
         let source_text = self
             .ctx
             .query
             .component
             .source_text(directive.span)
             .to_string();
-        let each_ids: Vec<Expression<'a>> = bind
-            .each_context_vars
-            .iter()
-            .map(|sym| {
-                let name = self.ctx.query.view.symbol_name(*sym);
-                let alloc_name = self.ctx.b.alloc_str(name);
-                self.ctx.b.rid_expr(alloc_name)
-            })
-            .collect();
-        let each_array = self.ctx.b.array_expr(each_ids);
         let (line, col) = self.ctx.state.line_index.line_col(directive.span.start);
         Some(self.ctx.b.call_stmt(
             "$.validate_binding",
             [
                 Arg::Str(source_text),
-                Arg::Expr(each_array),
+                Arg::Expr(self.ctx.b.empty_array_expr()),
                 Arg::Expr(object_thunk),
                 Arg::Expr(property_thunk),
                 Arg::Num(line as f64),
@@ -202,7 +211,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 )));
                 if matches!(target, ComponentBindTarget::PropSourceOwned) {
                     ownership_bindings.push(OwnershipBinding {
-                        source_ident: source_ref,
+                        name: source_ref,
+                        getter: OwnershipGetter::Ident(source_ref),
                     });
                 }
             }
@@ -422,4 +432,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             vec![self.ctx.b.expr_stmt(set_body)],
         )));
     }
+}
+
+fn getter_return_expr<'p, 'a>(
+    properties: &'p oxc_allocator::Vec<'a, ObjectPropertyKind<'a>>,
+) -> Option<&'p Expression<'a>> {
+    let getter_prop = properties.iter().find_map(|p| match p {
+        ObjectPropertyKind::ObjectProperty(op) if op.kind == PropertyKind::Get => Some(op),
+        _ => None,
+    })?;
+    let Expression::FunctionExpression(func) = &getter_prop.value else {
+        return None;
+    };
+    let body = func.body.as_ref()?;
+    let return_stmt = body.statements.iter().find_map(|s| match s {
+        Statement::ReturnStatement(r) => Some(r),
+        _ => None,
+    })?;
+    return_stmt.argument.as_ref()
 }

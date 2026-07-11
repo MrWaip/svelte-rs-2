@@ -1,12 +1,10 @@
 use oxc_ast::AstKind;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AssignmentTarget, Declaration, Expression, Function,
-    IdentifierReference, LabeledStatement, ModuleExportName, Program, Statement,
-    VariableDeclarationKind,
+    AssignmentTarget, Declaration, Expression, IdentifierReference, ModuleExportName, Program,
+    Statement, VariableDeclarationKind,
 };
 use oxc_semantic::{ReferenceId, SymbolId};
 use oxc_span::{GetSpan, Span as OxcSpan};
-use oxc_syntax::scope::ScopeFlags;
 use rustc_hash::FxHashSet;
 use svelte_component_semantics::OxcNodeId;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
@@ -26,47 +24,9 @@ pub(super) fn validate_legacy_diagnostics(
         validate_legacy_rest_props_invalid(data, diags);
     } else {
         validate_export_let_unused(data, program, diags);
-        validate_reactive_declaration_invalid_placement(program, diags);
         validate_reactive_declaration_cycle(data, diags);
         validate_reactive_declaration_module_script_dependency(data, program, diags);
     }
-}
-
-fn validate_reactive_declaration_invalid_placement(
-    program: &Program<'_>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    use oxc_ast_visit::Visit;
-    use oxc_ast_visit::walk::{
-        walk_arrow_function_expression, walk_function, walk_labeled_statement,
-    };
-    struct Visitor<'a> {
-        diags: &'a mut Vec<Diagnostic>,
-        depth: u32,
-    }
-    impl<'v, 'a> Visit<'a> for Visitor<'v> {
-        fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
-            self.depth += 1;
-            walk_function(self, func, flags);
-            self.depth -= 1;
-        }
-        fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-            self.depth += 1;
-            walk_arrow_function_expression(self, arrow);
-            self.depth -= 1;
-        }
-        fn visit_labeled_statement(&mut self, stmt: &LabeledStatement<'a>) {
-            if self.depth > 0 && stmt.label.name == "$" {
-                self.diags.push(Diagnostic::warning(
-                    DiagnosticKind::ReactiveDeclarationInvalidPlacement,
-                    Span::new(stmt.span.start, stmt.span.end),
-                ));
-            }
-            walk_labeled_statement(self, stmt);
-        }
-    }
-    let mut v = Visitor { diags, depth: 0 };
-    v.visit_program(program);
 }
 
 fn validate_reactive_declaration_cycle(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
@@ -233,7 +193,10 @@ fn validate_export_let_unused(
     program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let symbols: Vec<SymbolId> = data.reactivity.legacy_bindable_prop_symbols().to_vec();
+    let symbols: Vec<SymbolId> = data
+        .reactivity
+        .iter_legacy_bindable_prop_symbols()
+        .collect();
     let export_specifier_refs = collect_export_specifier_refs(program);
     for sym in symbols {
         let decl_node = data.scoping.symbol_declaration(sym);

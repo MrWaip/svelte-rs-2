@@ -187,6 +187,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     unreachable!();
                 };
                 self.b.rid_expr(id.name.as_str())
+            } else if self.derived_thunk_call_reads_signal(&arg) {
+                let arrow = self
+                    .b
+                    .arrow_expr(self.b.no_params(), [self.b.expr_stmt(arg)]);
+                self.b.seed_arrow_scope(&arrow, self.gen_arrow_scope);
+                arrow
             } else {
                 let thunk = self.b.thunk(arg);
                 self.b.seed_arrow_scope(&thunk, self.gen_arrow_scope);
@@ -374,6 +380,23 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ),
         );
         self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)])
+    }
+
+    fn derived_thunk_call_reads_signal(&self, arg: &Expression<'a>) -> bool {
+        let Expression::CallExpression(call) = arg else {
+            return false;
+        };
+        if !call.arguments.is_empty() || call.optional {
+            return false;
+        }
+        let Expression::Identifier(id) = &call.callee else {
+            return false;
+        };
+        let Some(sym) = self.component_scoping.symbol_for_identifier_reference(id) else {
+            return false;
+        };
+        self.binding_semantics_for_symbol(sym)
+            .is_some_and(|sem| sem.is_reactive())
     }
 
     fn derived_source_is_whole_props(&self, call: &CallExpression<'a>) -> bool {

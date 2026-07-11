@@ -1041,8 +1041,7 @@ fn collect_element_handlers(attrs: &[Attribute]) -> Vec<String> {
 }
 
 fn has_content(fragment_id: svelte_ast::FragmentId, ctx: &VisitContext<'_, '_>) -> bool {
-    let nodes = ctx.store.fragment_nodes(fragment_id).to_vec();
-    for child_id in nodes {
+    for child_id in ctx.store.fragment_nodes(fragment_id).iter().copied() {
         let child = ctx.store.get(child_id);
         match child {
             Node::Text(text) if text.value(ctx.source).trim().is_empty() => continue,
@@ -1085,9 +1084,10 @@ fn static_attr_value_text(value: Option<StaticAttributeValue<'_>>) -> Option<&st
 }
 
 fn has_associated_control(fragment_id: svelte_ast::FragmentId, ctx: &VisitContext<'_, '_>) -> bool {
-    let nodes = ctx.store.fragment_nodes(fragment_id).to_vec();
-    nodes
-        .into_iter()
+    ctx.store
+        .fragment_nodes(fragment_id)
+        .iter()
+        .copied()
         .any(|child_id| node_has_associated_control(ctx.store.get(child_id), ctx))
 }
 
@@ -1164,7 +1164,7 @@ fn video_has_caption_track(
     fragment_id: svelte_ast::FragmentId,
     ctx: &VisitContext<'_, '_>,
 ) -> bool {
-    let nodes = ctx.store.fragment_nodes(fragment_id).to_vec();
+    let nodes = ctx.store.fragment_nodes(fragment_id);
     let Some(track_id) = nodes.iter().copied().find(|&child_id| {
         ctx.store
             .get(child_id)

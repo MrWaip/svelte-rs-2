@@ -173,6 +173,18 @@ pub struct PseudoElementSelector {
     pub args: Option<Box<SelectorList>>,
 }
 
+pub const VIEW_TRANSITION_PSEUDO_ELEMENTS: &[&str] = &[
+    "view-transition",
+    "view-transition-group",
+    "view-transition-old",
+    "view-transition-new",
+    "view-transition-image-pair",
+];
+
+pub fn is_view_transition_pseudo_element(name: &str) -> bool {
+    VIEW_TRANSITION_PSEUDO_ELEMENTS.contains(&name)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttributeSelector {
     pub span: Span,

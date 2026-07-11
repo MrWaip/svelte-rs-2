@@ -33,8 +33,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ctx: &FragmentCtx<'a>,
         el_id: NodeId,
     ) -> Result<String> {
-        let attrs = match self.ctx.query.component.store.get(el_id) {
-            Node::SlotElementLegacy(el) => el.attributes.clone(),
+        let component = self.ctx.query.component;
+        let attrs: &[Attribute] = match component.store.get(el_id) {
+            Node::SlotElementLegacy(el) => el.attributes.as_slice(),
             _ => return CodegenError::unexpected_node(el_id, "SlotElementLegacy"),
         };
 
@@ -49,7 +50,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
         let derived_fn = self.ctx.query.view.derived_helper();
 
-        for attr in &attrs {
+        for attr in attrs {
             let attr_id = attr.id();
             if matches!(
                 self.ctx.query.analysis.attributes.get(attr_id),

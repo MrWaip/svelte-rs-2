@@ -9,6 +9,10 @@ compiler_case!(
     "bind_this/runes_prop_each_member_writeback"
 );
 compiler_case!(each_index_keyed, "bind_this/each_index_keyed");
+compiler_case!(
+    keyed_each_item_member_validate,
+    "bind_this/keyed_each_item_member_validate"
+);
 compiler_case!(member_prop_computed, "bind_this/member_prop_computed");
 compiler_case!(component_prop_ident, "bind_this/component_prop_ident");
 compiler_case!(component_each_member, "bind_this/component_each_member");
@@ -61,4 +65,10 @@ compiler_case!(
 compiler_case!(
     guard_value_seq_non_this,
     "bind_this/guard_value_seq_non_this"
+);
+
+compiler_case!(
+    server_select_bind_this,
+    "bind_this/server_select_bind_this",
+    [prod, dev, ssr, ssr_dev]
 );

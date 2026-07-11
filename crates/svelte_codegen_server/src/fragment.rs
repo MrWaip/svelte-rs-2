@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use svelte_analyze::BlockSemantics;
+use svelte_analyze::{BlockSemantics, ElementSemantics};
 use svelte_ast::{Element, FragmentId, Node, NodeId};
 
 use crate::error::Result;
@@ -57,12 +57,6 @@ impl<'a> ServerCodegen<'a> {
             self.emit_svelte_element_dev_inits(id)?;
         }
 
-        let title_ids: Vec<NodeId> = self
-            .analysis
-            .title_elements_for_fragment_by_id(id)
-            .cloned()
-            .unwrap_or_default();
-
         let fragment = component.store.fragment(id);
         let mut kept: Vec<&'a Node> = Vec::with_capacity(fragment.nodes.len());
         for &node_id in &fragment.nodes {
@@ -70,8 +64,14 @@ impl<'a> ServerCodegen<'a> {
             if is_filtered_out(node, preserve_comments) {
                 continue;
             }
-            if title_ids.contains(&node_id) {
-                continue;
+            match self.analysis.element_semantics.query(node_id) {
+                ElementSemantics::HeadTitle => continue,
+                ElementSemantics::None
+                | ElementSemantics::RegularElement(_)
+                | ElementSemantics::Boundary(_)
+                | ElementSemantics::SvelteElement(_)
+                | ElementSemantics::LegacySlot(_)
+                | ElementSemantics::LegacyComponentSlots(_) => {}
             }
             kept.push(node);
         }
@@ -269,7 +269,9 @@ impl<'a> ServerCodegen<'a> {
         };
         match only {
             Node::ComponentNode(cn) => {
-                !self.expression_is_volatile(cn.id) && !self.analysis.has_component_css_props(cn.id)
+                !self.hmr
+                    && !self.expression_is_volatile(cn.id)
+                    && !self.analysis.has_component_css_props(cn.id)
             }
             Node::RenderTag(tag) => match self.analysis.block_semantics(tag.id) {
                 BlockSemantics::Render(sem) => !sem.callee_volatility.is_volatile(),

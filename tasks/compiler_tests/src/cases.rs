@@ -145,6 +145,9 @@ fn load_case(base: &str, case: &str) -> (String, CompileOptions) {
         if let Some(pw) = config.get("preserveWhitespace").and_then(|v| v.as_bool()) {
             opts.preserve_whitespace = pw;
         }
+        if let Some(hmr) = config.get("hmr").and_then(|v| v.as_bool()) {
+            opts.hmr = hmr;
+        }
     }
 
     (input, opts)

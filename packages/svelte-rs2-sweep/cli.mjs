@@ -9,6 +9,7 @@ import { transform as lightningTransform } from 'lightningcss';
 import { compile as refCompile, compileModule as refCompileModule } from 'svelte/compiler';
 import { compile as ourCompile, compileModule as ourCompileModule } from '@mrwaip/svelte-rs2/compiler';
 import { transformSync as oxcTransformSync } from 'oxc-transform';
+import { parse as acornParse } from 'acorn';
 
 function stripTsToJs(source) {
   return oxcTransformSync('input.ts', source).code;
@@ -122,8 +123,8 @@ for (const file of files) {
     continue;
   }
 
-  const ourJsRaw = stripBanner(ours.js, isModule);
-  const theirJsRaw = stripBanner(theirs.js, isModule);
+  const ourJsRaw = stripComments(stripBanner(ours.js, isModule));
+  const theirJsRaw = stripComments(stripBanner(theirs.js, isModule));
   const jsFormatted = await tryFormatBoth(formatJs, ourJsRaw, theirJsRaw);
   if (jsFormatted.kind === 'both-failed') {
     if (normalizeWs(ourJsRaw) === normalizeWs(theirJsRaw)) {
@@ -278,6 +279,25 @@ function formatCss(code) {
 
 function stripLineComments(code) {
   return code.replace(/^[ \t]*\/\/.*$/gm, '');
+}
+
+function stripComments(code) {
+  const comments = [];
+  try {
+    acornParse(code, { ecmaVersion: 'latest', sourceType: 'module', onComment: comments });
+  } catch {
+    return code;
+  }
+  if (comments.length === 0) return code;
+  let out = '';
+  let cursor = 0;
+  for (const comment of comments) {
+    if (comment.start < cursor) continue;
+    out += code.slice(cursor, comment.start);
+    cursor = comment.end;
+  }
+  out += code.slice(cursor);
+  return out;
 }
 
 function formatCodes(codes) {

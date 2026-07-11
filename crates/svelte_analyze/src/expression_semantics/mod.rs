@@ -24,17 +24,15 @@ bitflags! {
 
 #[derive(Debug, Default, Clone)]
 pub struct ExpressionSemanticsStore {
-    entries: Vec<ExpressionSemantics>,
+    entries: FxHashMap<u32, ExpressionSemantics>,
     by_oxc: FxHashMap<OxcNodeId, ExpressionSemantics>,
     context_signals: ContextSignal,
 }
 
 impl ExpressionSemanticsStore {
-    pub(crate) fn new(node_count: u32) -> Self {
-        let mut entries = Vec::with_capacity(node_count as usize);
-        entries.resize_with(node_count as usize, ExpressionSemantics::default);
+    pub(crate) fn new(_node_count: u32) -> Self {
         Self {
-            entries,
+            entries: FxHashMap::default(),
             by_oxc: FxHashMap::default(),
             context_signals: ContextSignal::empty(),
         }
@@ -42,7 +40,7 @@ impl ExpressionSemanticsStore {
 
     pub fn get(&self, id: NodeId) -> &ExpressionSemantics {
         self.entries
-            .get(id.0 as usize)
+            .get(&id.0)
             .unwrap_or(&ExpressionSemantics::NonSpecial)
     }
 
@@ -57,12 +55,7 @@ impl ExpressionSemanticsStore {
     }
 
     pub(crate) fn set(&mut self, id: NodeId, value: ExpressionSemantics) {
-        let idx = id.0 as usize;
-        if idx >= self.entries.len() {
-            self.entries
-                .resize_with(idx + 1, ExpressionSemantics::default);
-        }
-        self.entries[idx] = value;
+        self.entries.insert(id.0, value);
     }
 
     pub(crate) fn set_by_oxc(&mut self, id: OxcNodeId, value: ExpressionSemantics) {

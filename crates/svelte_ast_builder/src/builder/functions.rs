@@ -305,6 +305,10 @@ impl<'a> Builder<'a> {
         )
     }
 
+    pub fn function_decl_stmt(&self, func: Function<'a>) -> Statement<'a> {
+        Statement::FunctionDeclaration(self.alloc(func))
+    }
+
     pub fn function_expr(
         &self,
         params: FormalParameters<'a>,

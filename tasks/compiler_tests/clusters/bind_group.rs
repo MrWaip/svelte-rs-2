@@ -41,3 +41,8 @@ compiler_case!(
     legacy_referenced_plain_guard,
     "bind_group/legacy/referenced_plain_guard"
 );
+
+compiler_case!(
+    group_value_literal_guard,
+    "bind_group/group_value_literal_guard"
+);

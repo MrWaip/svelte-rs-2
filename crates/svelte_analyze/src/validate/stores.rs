@@ -168,25 +168,6 @@ impl StandaloneModuleStoreValidator<'_> {
     }
 }
 
-impl<'ast> Visit<'ast> for ModuleStoreValidator<'_> {
-    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'ast>) {
-        let Some(ref_id) = ident.reference_id.get() else {
-            return;
-        };
-        if self
-            .data
-            .reactivity
-            .reference_semantics(ref_id)
-            .is_store_subscription()
-        {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::StoreInvalidSubscription,
-                self.span(ident.span()),
-            ));
-        }
-    }
-}
-
 impl<'ast> Visit<'ast> for StandaloneModuleStoreValidator<'_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'ast>) {
         let name = ident.name.as_str();
@@ -195,6 +176,13 @@ impl<'ast> Visit<'ast> for StandaloneModuleStoreValidator<'_> {
         }
 
         if svelte_ast::is_rune_name(name) {
+            return;
+        }
+
+        if let Some(ref_id) = ident.reference_id.get()
+            && let Some(sym) = self.data.scoping.symbol_for_reference(ref_id)
+            && self.data.scoping.symbol_name(sym) == name
+        {
             return;
         }
 
@@ -211,6 +199,25 @@ impl<'ast> Visit<'ast> for StandaloneModuleStoreValidator<'_> {
             DiagnosticKind::StoreInvalidSubscriptionModule,
             self.span(ident.span()),
         ));
+    }
+}
+
+impl<'ast> Visit<'ast> for ModuleStoreValidator<'_> {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'ast>) {
+        let Some(ref_id) = ident.reference_id.get() else {
+            return;
+        };
+        if self
+            .data
+            .reactivity
+            .reference_semantics(ref_id)
+            .is_store_subscription()
+        {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::StoreInvalidSubscription,
+                self.span(ident.span()),
+            ));
+        }
     }
 }
 

@@ -3,7 +3,9 @@ mod boundary;
 mod legacy_slot;
 mod value_role;
 
-use svelte_ast::{Attribute, Component, ComponentLikeView, Element, Node};
+use svelte_ast::{
+    AstStore, Attribute, Component, ComponentLikeView, Element, FragmentId, FragmentRole, Node,
+};
 
 use smallvec::SmallVec;
 
@@ -30,13 +32,21 @@ pub(crate) fn build(
                     let boundary = boundary::classify(component, parsed, el);
                     store.set(el.id, ElementSemantics::Boundary(boundary));
                 }
+                Node::Element(el)
+                    if el.name == "title" && title_inside_head(&component.store, fragment.id) =>
+                {
+                    store.set(el.id, ElementSemantics::HeadTitle);
+                }
                 Node::Element(el) => {
                     let async_kind = async_kind::from_attributes(expressions, &el.attributes);
                     let value_role = value_role::classify(component, data, el);
                     let replay_events = replay_events(data, el);
+                    let opaque_content =
+                        data.elements.flags.is_customizable_select(el.id) || el.name == "noscript";
                     if !async_kind.is_sync()
                         || value_role != ElementValueRole::Plain
                         || !replay_events.is_empty()
+                        || opaque_content
                     {
                         store.set(
                             el.id,
@@ -44,6 +54,7 @@ pub(crate) fn build(
                                 async_kind,
                                 value_role,
                                 replay_events,
+                                opaque_content,
                             }),
                         );
                     }
@@ -79,6 +90,23 @@ pub(crate) fn build(
         }
     }
     store
+}
+
+fn title_inside_head(store: &AstStore, fragment_id: FragmentId) -> bool {
+    let mut current = fragment_id;
+    loop {
+        let fragment = store.fragment(current);
+        if fragment.role == FragmentRole::SvelteHeadBody {
+            return true;
+        }
+        let Some(owner) = fragment.owner else {
+            return false;
+        };
+        let Some(parent) = store.node_fragment(owner) else {
+            return false;
+        };
+        current = parent;
+    }
 }
 
 fn is_load_error_element(name: &str) -> bool {

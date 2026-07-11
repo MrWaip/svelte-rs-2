@@ -300,7 +300,9 @@ pub(super) fn legacy_wrap(
     if !uses_legacy_coarse_wrap {
         return LegacyWrap::None;
     }
-    let needs_coarse = facts.has_call
+    let call_is_reactive =
+        facts.has_impure_call || (facts.has_call && !facts.references.is_empty());
+    let needs_coarse = call_is_reactive
         || facts.has_member
         || matches!(
             facts.top_level_form,

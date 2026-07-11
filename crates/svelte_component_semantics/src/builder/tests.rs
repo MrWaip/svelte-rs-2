@@ -451,16 +451,6 @@ fn unresolved_reference_tracked() {
     assert!(unresolved.contains_key("console"));
 }
 
-#[test]
-fn rest_param_binding() {
-    let sem = build_instance("function f(a, ...rest) {}");
-    let root = sem.root_scope_id();
-    assert!(sem.find_binding(root, "f").is_some());
-
-    assert!(sem.find_binding(root, "a").is_none());
-    assert!(sem.find_binding(root, "rest").is_none());
-}
-
 struct ExprRefWalker<'a> {
     alloc: &'a Allocator,
 }

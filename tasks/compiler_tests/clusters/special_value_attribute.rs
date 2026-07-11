@@ -1,6 +1,14 @@
 use super::*;
 
 compiler_case!(
+    option_value_immutable_each_coarse,
+    "special_value_attribute/option_value_immutable_each_coarse"
+);
+compiler_case!(
+    option_value_runes_no_coarse_guard,
+    "special_value_attribute/option_value_runes_no_coarse_guard"
+);
+compiler_case!(
     select_oneway_prop,
     "special_value_attribute/select_oneway_prop"
 );

@@ -213,12 +213,26 @@ impl<'a> ServerCodegen<'a> {
             ContentEditableKind::InnerText | ContentEditableKind::TextContent => true,
             ContentEditableKind::InnerHtml => false,
         };
+        let body_expr = if escape {
+            self.b.call_expr("$.escape", [Arg::Expr(expression)])
+        } else {
+            expression
+        };
+        let else_block = self.contenteditable_else_block(element)?;
 
-        if escape {
-            let escaped = self.b.call_expr("$.escape", [Arg::Expr(expression)]);
+        if let Expression::Identifier(_) = &body_expr {
+            let test = body_expr.clone_in(self.b.ast.allocator);
+            let template = self
+                .b
+                .template_parts_expr([TemplatePart::Expr(body_expr, true)]);
+            let push = self.b.call_stmt("$$renderer.push", [Arg::Expr(template)]);
+            let if_stmt = self
+                .b
+                .if_stmt(test, self.b.block_stmt(vec![push]), Some(else_block));
+            self.push_stmt(if_stmt);
+        } else {
             let body_name: &str = self.b.alloc_str(&self.ident_gen.generate("$$body"));
-            let body_decl = self.b.const_stmt(body_name, escaped);
-            let else_block = self.contenteditable_else_block(element)?;
+            let body_decl = self.b.const_stmt(body_name, body_expr);
             let template = self
                 .b
                 .template_parts_expr([TemplatePart::Expr(self.b.rid_expr(body_name), true)]);
@@ -229,17 +243,6 @@ impl<'a> ServerCodegen<'a> {
                 Some(else_block),
             );
             self.push_stmt(body_decl);
-            self.push_stmt(if_stmt);
-        } else {
-            let test = expression.clone_in(self.b.ast.allocator);
-            let else_block = self.contenteditable_else_block(element)?;
-            let template = self
-                .b
-                .template_parts_expr([TemplatePart::Expr(expression, true)]);
-            let push = self.b.call_stmt("$$renderer.push", [Arg::Expr(template)]);
-            let if_stmt = self
-                .b
-                .if_stmt(test, self.b.block_stmt(vec![push]), Some(else_block));
             self.push_stmt(if_stmt);
         }
         Ok(())
@@ -271,6 +274,7 @@ impl<'a> ServerCodegen<'a> {
     fn emit_textarea_value_body(&mut self, owner: NodeId, body: &TextareaBody) -> Result<()> {
         let expression = match body {
             TextareaBody::Single(oxc_id) => self.take_expr_by_oxc_id(owner, *oxc_id)?,
+            TextareaBody::Static(text) => self.b.str_expr(text),
             TextareaBody::Segments(segments) => self.textarea_segments_expr(segments)?,
         };
         let escaped = self.b.call_expr("$.escape", [Arg::Expr(expression)]);

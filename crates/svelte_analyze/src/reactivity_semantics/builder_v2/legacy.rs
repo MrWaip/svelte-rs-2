@@ -215,8 +215,6 @@ fn classify_variable_declaration<'a>(data: &mut AnalysisData<'a>, decl: &Variabl
             };
             data.reactivity
                 .record_legacy_bindable_prop_binding(visit.symbol, semantics);
-            data.reactivity
-                .record_legacy_bindable_prop_symbol(visit.symbol, None);
         });
 
         data.reactivity
@@ -273,7 +271,7 @@ fn classify_specifiers<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDecl
             },
         );
         data.reactivity
-            .record_legacy_bindable_prop_symbol(symbol, alias.map(|a| a.to_string()));
+            .record_legacy_bindable_prop_alias(symbol, alias.map(|a| a.to_string()));
 
         if let Some(node) = destructure_node {
             data.reactivity
@@ -359,7 +357,10 @@ pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
     if data.script.runes() {
         return;
     }
-    let symbols: Vec<SymbolId> = data.reactivity.legacy_bindable_prop_symbols().to_vec();
+    let symbols: Vec<SymbolId> = data
+        .reactivity
+        .iter_legacy_bindable_prop_symbols()
+        .collect();
 
     let is_non_store_ref = |data: &AnalysisData<'_>, r| {
         !data

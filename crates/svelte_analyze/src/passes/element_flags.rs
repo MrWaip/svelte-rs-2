@@ -496,7 +496,12 @@ impl<'src> ElementFlagsVisitor<'src> {
                                     }
                                 })
                                 .unwrap_or(ComponentBindMode::Plain);
+                            let is_identifier_bind = match &expr_text {
+                                Some(text) => is_simple_identifier(text.trim()),
+                                None => true,
+                            };
                             let requires_ownership_emit = data.script.dev
+                                && is_identifier_bind
                                 && matches!(mode, ComponentBindMode::PropSource)
                                 && !data
                                     .output

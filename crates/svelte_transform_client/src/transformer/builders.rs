@@ -192,7 +192,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
         let &block_id = self
             .transform_data
-            .each_index_block_by_item
+            .each_block_by_item_legacy
             .get(&item_sym)?;
         let Node::EachBlock(block) = self.component?.store.get(block_id) else {
             return None;

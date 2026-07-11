@@ -74,11 +74,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         if !has_dirs {
             if let Some(attr_id) = style_attr_id {
-                let attrs = self.ctx.node_attributes(owner_id).to_vec();
+                let attrs = self.ctx.node_attributes(owner_id);
                 match self
                     .ctx
                     .attr_index(owner_id)
-                    .and_then(|index| index.find_by_id(&attrs, attr_id))
+                    .and_then(|index| index.find_by_id(attrs, attr_id))
                 {
                     Some(Attribute::ExpressionAttribute(a)) => {
                         self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
@@ -161,11 +161,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
         style_attr_id: NodeId,
     ) -> Result<(Expression<'a>, bool)> {
-        let attributes = self.ctx.node_attributes(owner_id).to_vec();
+        let attributes = self.ctx.node_attributes(owner_id);
         let Some(attr) = self
             .ctx
             .attr_index(owner_id)
-            .and_then(|index| index.find_by_id(&attributes, style_attr_id))
+            .and_then(|index| index.find_by_id(attributes, style_attr_id))
         else {
             return CodegenError::unexpected_node(
                 style_attr_id,

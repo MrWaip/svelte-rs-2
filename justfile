@@ -2,6 +2,12 @@
 generate:
     cargo run -p generate_test_cases
 
+# Rebuild napi in release and benchmark our compiler vs svelte/compiler across all .svelte files
+bench-compare:
+    cargo build --release -p napi_compiler
+    node packages/svelte-rs2/scripts/stage-native-dev.mjs
+    node tasks/compiler_bench/compare.mjs
+
 # Run all diagnostic integration tests (aggregated summary via nextest)
 test-diagnostics:
     cargo nextest run -p diagnostic_tests --status-level fail

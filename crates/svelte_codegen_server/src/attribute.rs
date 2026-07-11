@@ -9,8 +9,8 @@ use svelte_analyze::{
     AttributeSemantics, ClassSemantics, ComponentBindKind, ComponentBindSemantics,
     ComponentBindTarget, ComponentPropSemantics, ElementBindPropertyKind, ElementBindSemantics,
     ElementSemantics, ElementValueRole, GroupBindValue, GroupReflection, NamespaceKind,
-    SpecialValueKind, StyleSemantics, TextareaBody, collapse_attribute_whitespace,
-    emit_html_attribute_name, is_dom_boolean_attribute,
+    SpecialValueKind, StyleSemantics, collapse_attribute_whitespace, emit_html_attribute_name,
+    is_dom_boolean_attribute,
 };
 use svelte_ast::{
     Attribute, BindDirective, ClassDirective, ConcatPart, ExprRef, NodeId, StyleDirective,
@@ -26,6 +26,15 @@ use crate::model::ServerCodegen;
 pub(crate) enum PropOrSpread<'a> {
     Prop(ObjProp<'a>),
     Spread(Expression<'a>),
+}
+
+fn attr_is_plain_value(attr: &Attribute) -> bool {
+    match attr {
+        Attribute::ExpressionAttribute(a) => a.name == "value",
+        Attribute::ConcatenationAttribute(a) => a.name == "value",
+        Attribute::StringAttribute(a) => a.name == "value",
+        _ => false,
+    }
 }
 
 const ELEMENT_IS_NAMESPACED: u32 = 1;
@@ -47,30 +56,14 @@ impl<'a> ServerCodegen<'a> {
             return self.emit_spread_attributes(owner_id, attributes);
         }
 
-        let textarea_value = match self.analysis.element_semantics.query(owner_id) {
-            ElementSemantics::RegularElement(sem) => match &sem.value_role {
-                ElementValueRole::TextareaValue { body } => match body {
-                    TextareaBody::Single(oxc_id) => Some(*oxc_id),
-                    TextareaBody::Segments(_) => None,
-                },
-                ElementValueRole::Plain
-                | ElementValueRole::Select { .. }
-                | ElementValueRole::Option { .. }
-                | ElementValueRole::ContentEditable { .. }
-                | ElementValueRole::RichContainer
-                | ElementValueRole::RawText => None,
-            },
-            _ => None,
-        };
+        let is_textarea_value = self.is_textarea_value_element(owner_id);
 
         let mut group_value = self.capture_group_value(attributes)?;
         let mut deferred_class: Option<ClassSemantics> = None;
         let mut deferred_style: Option<StyleSemantics> = None;
 
         for attr in attributes {
-            if let Attribute::ExpressionAttribute(a) = attr
-                && Some(a.expression.id()) == textarea_value
-            {
+            if is_textarea_value && attr_is_plain_value(attr) {
                 continue;
             }
             match self.analysis.attributes.get(attr.id()).clone() {
@@ -125,20 +118,27 @@ impl<'a> ServerCodegen<'a> {
 
         if let Some(class) = deferred_class {
             self.emit_class(owner_id, attributes, &class)?;
-        }
-        if let Some(style) = deferred_style {
-            self.emit_style(owner_id, attributes, &style)?;
-        }
-
-        if self.analysis.is_css_scoped(owner_id) && self.find_class_semantics(attributes).is_none()
+        } else if self.analysis.is_css_scoped(owner_id)
+            && self.find_class_semantics(attributes).is_none()
         {
             let hash = self.analysis.css_hash();
             if !hash.is_empty() {
                 self.push_text(&format!(" class=\"{}\"", escape_attribute(hash)));
             }
         }
+        if let Some(style) = deferred_style {
+            self.emit_style(owner_id, attributes, &style)?;
+        }
 
         Ok(())
+    }
+
+    fn is_textarea_value_element(&self, owner_id: NodeId) -> bool {
+        matches!(
+            self.analysis.element_semantics.query(owner_id),
+            ElementSemantics::RegularElement(sem)
+                if matches!(sem.value_role, ElementValueRole::TextareaValue { .. })
+        )
     }
 
     fn emit_plain_attribute(&mut self, owner_id: NodeId, attr: &'a Attribute) -> Result<()> {
@@ -171,6 +171,26 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
+    fn take_class_template_literal(
+        &mut self,
+        class_attr_id: Option<NodeId>,
+        attributes: &'a [Attribute],
+    ) -> Option<Expression<'a>> {
+        let attr = class_attr_id.and_then(|id| self.find_attribute(attributes, id))?;
+        let Attribute::ExpressionAttribute(a) = attr else {
+            return None;
+        };
+        if !matches!(
+            self.js_arena.expr(a.expression.id()),
+            Some(Expression::TemplateLiteral(_))
+        ) {
+            return None;
+        }
+        let node_id = a.id;
+        let oxc_id = a.expression.id();
+        self.take_expr_by_oxc_id(node_id, oxc_id).ok()
+    }
+
     fn push_named_value(&mut self, name: &str, value: AttrValue<'a>) {
         match value {
             AttrValue::Static(s) => {
@@ -198,7 +218,9 @@ impl<'a> ServerCodegen<'a> {
         {
             Some(attr) => self.attr_value_of(attr, true)?,
             None => match &class.static_base {
-                Some(base) => AttrValue::Static(collapse_attribute_whitespace(base).into_owned()),
+                Some(base) => {
+                    AttrValue::Static(collapse_attribute_whitespace(base).trim().to_string())
+                }
                 None => AttrValue::Static(String::new()),
             },
         };
@@ -218,16 +240,29 @@ impl<'a> ServerCodegen<'a> {
             return Ok(());
         }
 
-        let mut value_expr = match value {
-            AttrValue::Static(s) => self.b.str_expr(&s),
-            AttrValue::Dynamic(expr) => expr,
+        let template_expr = self.take_class_template_literal(class.attr, attributes);
+        let mut value_expr = match template_expr {
+            Some(expr) => expr,
+            None => match value {
+                AttrValue::Static(s) => self.b.str_expr(&s),
+                AttrValue::Dynamic(expr) => expr,
+            },
         };
         if class.needs_clsx {
             value_expr = self.b.call_expr("$.clsx", [Arg::Expr(value_expr)]);
         }
 
+        let value_is_expr_string_literal = matches!(
+            class.attr.and_then(|id| self.find_attribute(attributes, id)),
+            Some(Attribute::ExpressionAttribute(a))
+                if matches!(
+                    self.js_arena.expr(a.expression.id()),
+                    Some(Expression::StringLiteral(_))
+                )
+        );
+
         let mut css_hash_arg: Option<Expression<'a>> = None;
-        if scoped && !hash.is_empty() {
+        if scoped && !hash.is_empty() && !value_is_expr_string_literal {
             if let Expression::StringLiteral(lit) = &value_expr {
                 let merged = format!("{} {}", lit.value.as_str(), hash);
                 value_expr = self.b.str_expr(merged.trim());
@@ -270,7 +305,9 @@ impl<'a> ServerCodegen<'a> {
         {
             Some(attr) => self.attr_value_of(attr, true)?,
             None => match &style.static_base {
-                Some(base) => AttrValue::Static(collapse_attribute_whitespace(base).into_owned()),
+                Some(base) => {
+                    AttrValue::Static(collapse_attribute_whitespace(base).trim().to_string())
+                }
                 None => AttrValue::Static(String::new()),
             },
         };
@@ -490,8 +527,13 @@ impl<'a> ServerCodegen<'a> {
                         "component bind pair",
                     ));
                 };
-                let get_name: &'a str = self.b.alloc_str(&self.ident_gen.generate("bind_get"));
-                let set_name: &'a str = self.b.alloc_str(&self.ident_gen.generate("bind_set"));
+                let (get_name, set_name) = match self.bind_pair_names.get(&directive.id) {
+                    Some((g, s)) => (self.b.alloc_str(g), self.b.alloc_str(s)),
+                    None => (
+                        self.b.alloc_str(&self.ident_gen.generate("bind_get")),
+                        self.b.alloc_str(&self.ident_gen.generate("bind_set")),
+                    ),
+                };
                 self.hoist_stmt(self.b.var_stmt(get_name, get_fn));
                 self.hoist_stmt(self.b.var_stmt(set_name, set_fn));
                 let get_call = self.b.call_expr(get_name, empty::<Arg<'a, '_>>());
@@ -520,7 +562,10 @@ impl<'a> ServerCodegen<'a> {
                 let dollar_name = self.analysis.scoping.symbol_name(*store_symbol).to_string();
                 let base_sym = server_refs::store_base_symbol(self.analysis, *store_symbol)
                     .unwrap_or(*store_symbol);
-                let base = server_refs::server_store_base_read(&self.b, self.analysis, base_sym);
+                let base_name: &str = self
+                    .b
+                    .alloc_str(self.analysis.scoping.symbol_name(base_sym));
+                let base = self.b.rid_expr(base_name);
                 let mutation =
                     server_refs::server_store_mutate(&self.b, &dollar_name, base, assign);
                 let settled = self.b.assign_stmt(
@@ -577,7 +622,11 @@ impl<'a> ServerCodegen<'a> {
                 self.push_named_value("value", value);
             }
             Attribute::ConcatenationAttribute(a) => {
-                let value = self.attr_value_concat(&a.parts, false)?;
+                let value = if let [ConcatPart::Dynamic { id, expr }] = a.parts.as_slice() {
+                    self.attr_value_single(*id, expr)?
+                } else {
+                    self.attr_value_concat(&a.parts, false)?
+                };
                 self.push_named_value("value", value);
             }
             _ => {}
@@ -679,20 +728,20 @@ impl<'a> ServerCodegen<'a> {
         let source = self.component.source.as_str();
         let mut props: Vec<ObjProp<'a>> = Vec::new();
 
-        let textarea_value = match self.analysis.element_semantics.query(owner_id) {
-            ElementSemantics::RegularElement(sem) => match &sem.value_role {
-                ElementValueRole::TextareaValue { body } => match body {
-                    TextareaBody::Single(oxc_id) => Some(*oxc_id),
-                    TextareaBody::Segments(_) => None,
-                },
-                ElementValueRole::Plain
-                | ElementValueRole::Select { .. }
-                | ElementValueRole::Option { .. }
-                | ElementValueRole::ContentEditable { .. }
-                | ElementValueRole::RichContainer
-                | ElementValueRole::RawText => None,
-            },
-            _ => None,
+        let is_textarea_value = self.is_textarea_value_element(owner_id);
+
+        let is_select_or_option = matches!(
+            self.analysis.element_semantics.query(owner_id),
+            ElementSemantics::RegularElement(sem)
+                if matches!(
+                    sem.value_role,
+                    ElementValueRole::Select { .. } | ElementValueRole::Option { .. }
+                )
+        );
+
+        let (class_attr_id, class_needs_clsx) = match self.find_class_semantics(attributes) {
+            Some(class) => (class.attr, class.needs_clsx),
+            None => (None, false),
         };
 
         for attr in attributes {
@@ -702,12 +751,15 @@ impl<'a> ServerCodegen<'a> {
             ) {
                 continue;
             }
-            let attr_value_expr = match attr {
-                Attribute::BindDirective(d) => Some(d.expression.id()),
-                Attribute::ExpressionAttribute(a) => Some(a.expression.id()),
-                _ => None,
-            };
-            if attr_value_expr.is_some() && attr_value_expr == textarea_value {
+            if let AttributeSemantics::CannotBeStatic(sem) = self.analysis.attributes.get(attr.id())
+                && !sem.reflects_in_html
+            {
+                continue;
+            }
+            if is_textarea_value
+                && (attr_is_plain_value(attr)
+                    || matches!(attr, Attribute::BindDirective(d) if d.name == "value"))
+            {
                 continue;
             }
             match attr {
@@ -734,9 +786,12 @@ impl<'a> ServerCodegen<'a> {
                 }
                 Attribute::ExpressionAttribute(a) => {
                     let name = self.attribute_name(owner_id, &a.name);
-                    let expr = self.take_expression(a.id, &a.expression)?;
+                    let mut expr = self.take_expression(a.id, &a.expression)?;
                     let key = self.b.alloc_str(&name);
-                    if self.analysis.elements.flags.is_expression_shorthand(a.id)
+                    if class_needs_clsx && class_attr_id == Some(a.id) {
+                        expr = self.b.call_expr("$.clsx", [Arg::Expr(expr)]);
+                        props.push(ObjProp::KeyValue(key, expr));
+                    } else if self.analysis.elements.flags.is_expression_shorthand(a.id)
                         && expr_is_ident_named(&expr, &name)
                     {
                         props.push(ObjProp::Shorthand(key));
@@ -755,19 +810,22 @@ impl<'a> ServerCodegen<'a> {
                     props.push(ObjProp::KeyValue(key, value));
                 }
                 Attribute::BindDirective(directive) => {
-                    let property = match self.analysis.attributes.get(directive.id) {
-                        AttributeSemantics::ElementBind(sem) => Some(sem.property),
-                        _ => None,
-                    };
-                    let (group_value, group_reflection) =
+                    let (property, group_value, group_reflection) =
                         match self.analysis.attributes.get(directive.id) {
                             AttributeSemantics::ElementBind(sem) => {
-                                (sem.group_value, sem.group_reflection)
+                                (Some(sem.property), sem.group_value, sem.group_reflection)
                             }
-                            _ => (None, None),
+                            _ => (None, None, None),
                         };
                     match property {
-                        Some(ElementBindPropertyKind::This) => continue,
+                        Some(ElementBindPropertyKind::This) => {
+                            if is_select_or_option {
+                                let expr =
+                                    self.take_expression(directive.id, &directive.expression)?;
+                                props.push(ObjProp::KeyValue("this", expr));
+                            }
+                            continue;
+                        }
                         Some(ElementBindPropertyKind::Group) => {
                             let reflection = group_reflection.unwrap_or(GroupReflection::Includes);
                             if let Some(checked) = self.group_bind_checked_expr(
@@ -782,6 +840,11 @@ impl<'a> ServerCodegen<'a> {
                         }
                         _ => {}
                     }
+                    if let Some(property) = property
+                        && !property.reflects_in_html()
+                    {
+                        continue;
+                    }
                     let name = self.attribute_name(owner_id, &directive.name);
                     let expr = self.bind_reflected_expr(directive)?;
                     let key = self.b.alloc_str(&name);
@@ -791,14 +854,6 @@ impl<'a> ServerCodegen<'a> {
             }
         }
 
-        let is_select_or_option = matches!(
-            self.analysis.element_semantics.query(owner_id),
-            ElementSemantics::RegularElement(sem)
-                if matches!(
-                    sem.value_role,
-                    ElementValueRole::Select { .. } | ElementValueRole::Option { .. }
-                )
-        );
         let hash_str = self.analysis.css_hash().to_string();
         let scoped = self.analysis.is_css_scoped(owner_id) && !hash_str.is_empty();
         let has_class_attr = self

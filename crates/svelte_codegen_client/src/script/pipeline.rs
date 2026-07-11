@@ -83,6 +83,10 @@ pub fn transform_module_program<'a, 'b>(
     line_index: &'b svelte_span::LineIndex,
     dev: bool,
 ) -> ScriptOutput<'a> {
+    let ignore_query = match analysis {
+        Some(analysis) => IgnoreQuery::new(analysis),
+        None => IgnoreQuery::empty(),
+    };
     run_transform(
         allocator,
         program,
@@ -98,7 +102,7 @@ pub fn transform_module_program<'a, 'b>(
         false,
         false,
         false,
-        IgnoreQuery::empty(),
+        ignore_query,
         false,
     )
 }

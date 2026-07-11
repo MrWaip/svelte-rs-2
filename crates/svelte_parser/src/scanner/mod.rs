@@ -25,6 +25,7 @@ pub struct Scanner<'a> {
     prev: usize,
     current: usize,
     fragment_depth: usize,
+    open_elements: Vec<&'a str>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,6 +59,7 @@ impl<'a> Scanner<'a> {
             current: 0,
             start: 0,
             fragment_depth: 0,
+            open_elements: Vec::new(),
         }
     }
 
@@ -141,6 +143,36 @@ impl<'a> Scanner<'a> {
 
     fn leave_fragment(&mut self) {
         self.fragment_depth = self.fragment_depth.saturating_sub(1);
+    }
+
+    fn checkpoint(&self) -> (usize, usize) {
+        (self.current, self.prev)
+    }
+
+    fn restore(&mut self, checkpoint: (usize, usize)) {
+        (self.current, self.prev) = checkpoint;
+    }
+
+    fn eat_equals(&mut self) -> bool {
+        let checkpoint = self.checkpoint();
+        self.skip_whitespace();
+        if self.match_char('=') {
+            self.skip_whitespace();
+            return true;
+        }
+        self.restore(checkpoint);
+        false
+    }
+
+    fn close_element(&mut self, name: &str) {
+        let Some(pos) = self.open_elements.iter().rposition(|open| *open == name) else {
+            self.leave_fragment();
+            return;
+        };
+        for _ in pos..self.open_elements.len() {
+            self.leave_fragment();
+        }
+        self.open_elements.truncate(pos);
     }
 
     fn advance(&mut self) -> char {
@@ -443,6 +475,7 @@ impl<'a> Scanner<'a> {
             self_closing,
         }));
         if !self_closing {
+            self.open_elements.push(name);
             self.enter_fragment();
         }
 
@@ -525,7 +558,7 @@ impl<'a> Scanner<'a> {
     fn html_attribute(&mut self, name_span: Span) -> Result<Attribute, Diagnostic> {
         let mut value: AttributeValue = AttributeValue::Empty;
 
-        if self.match_char('=') {
+        if self.eat_equals() {
             value = self.attribute_value()?;
         }
 
@@ -537,7 +570,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn class_directive(&mut self, name_span: Span, _name: &str) -> Result<Attribute, Diagnostic> {
-        if self.match_char('=') {
+        if self.eat_equals() {
             let res = self.directive_expression()?;
 
             return Ok(Attribute::ClassDirective(ClassDirective {
@@ -576,7 +609,7 @@ impl<'a> Scanner<'a> {
             false
         };
 
-        if self.match_char('=') {
+        if self.eat_equals() {
             let value = self.attribute_value()?;
 
             return Ok(Attribute::StyleDirective(StyleDirective {
@@ -598,7 +631,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn bind_directive(&mut self, name_span: Span, _name: &str) -> Result<Attribute, Diagnostic> {
-        if self.match_char('=') {
+        if self.eat_equals() {
             let res = self.directive_expression()?;
 
             return Ok(Attribute::BindDirective(BindDirective {
@@ -622,7 +655,7 @@ impl<'a> Scanner<'a> {
         name_span: Span,
         _name: &str,
     ) -> Result<Attribute, Diagnostic> {
-        if self.match_char('=') {
+        if self.eat_equals() {
             let res = self.directive_expression()?;
 
             return Ok(Attribute::LetDirectiveLegacy(LetDirectiveLegacy {
@@ -653,7 +686,7 @@ impl<'a> Scanner<'a> {
             name_span = Span::new(name_span.start, self.current as u32);
         }
 
-        if self.match_char('=') {
+        if self.eat_equals() {
             let res = self.directive_expression()?;
 
             return Ok(Attribute::UseDirective(UseDirective {
@@ -682,7 +715,7 @@ impl<'a> Scanner<'a> {
             modifiers.push(self.span(start, self.current));
         }
 
-        if self.match_char('=') {
+        if self.eat_equals() {
             let res = self.directive_expression()?;
             return Ok(Attribute::OnDirectiveLegacy(OnDirectiveLegacy {
                 span: SPAN,
@@ -724,7 +757,7 @@ impl<'a> Scanner<'a> {
             modifiers.push(self.span(start, self.current));
         }
 
-        if self.match_char('=') {
+        if self.eat_equals() {
             let res = self.directive_expression()?;
             return Ok(Attribute::TransitionDirective(TransitionDirective {
                 span: SPAN,
@@ -755,7 +788,7 @@ impl<'a> Scanner<'a> {
             name_span = Span::new(name_span.start, self.current as u32);
         }
 
-        if self.match_char('=') {
+        if self.eat_equals() {
             let res = self.directive_expression()?;
             return Ok(Attribute::AnimateDirective(AnimateDirective {
                 span: SPAN,
@@ -987,7 +1020,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.add_token(TokenType::EndTag(token::EndTag { name_span }));
-        self.leave_fragment();
+        self.close_element(name);
 
         Ok(())
     }
@@ -1727,8 +1760,7 @@ impl<'a> Scanner<'a> {
     fn end_template(&mut self) -> Result<(), Diagnostic> {
         debug_assert_eq!(self.peek(), Some('/'));
 
-        let saved_current = self.current;
-        let saved_prev = self.prev;
+        let checkpoint = self.checkpoint();
 
         self.advance();
 
@@ -1812,8 +1844,7 @@ impl<'a> Scanner<'a> {
                 Ok(())
             }
             _ => {
-                self.current = saved_current;
-                self.prev = saved_prev;
+                self.restore(checkpoint);
                 self.interpolation()
             }
         }
@@ -2315,7 +2346,7 @@ impl<'a> Scanner<'a> {
         if last_char == "," {
             self.skip_whitespace();
             let idx_start = self.current;
-            let idx_name = self.identifier();
+            let idx_name = self.js_identifier_segment();
             if idx_name.is_empty() {
                 return Diagnostic::unexpected_token(Span::new(
                     self.current as u32,

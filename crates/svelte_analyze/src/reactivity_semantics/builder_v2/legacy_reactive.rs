@@ -305,6 +305,7 @@ fn record_implicit_state_bindings(
             LegacyStateSemantics {
                 var_declared: false,
                 immutable,
+                is_signal_source: false,
             },
         );
     }

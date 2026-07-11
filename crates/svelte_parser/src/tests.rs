@@ -527,6 +527,76 @@ fn nested_style_tag_inside_block_stays_in_fragment() {
     );
 }
 
+#[track_caller]
+fn assert_element_attributes(c: &Component, index: usize, expected: &[&str]) {
+    let Node::Element(element) = node_at(c, index) else {
+        panic!("node {index}: expected Element");
+    };
+    let spans: Vec<_> = element
+        .attributes
+        .iter()
+        .map(|attr| c.source_text(attr.span()))
+        .collect();
+    assert_eq!(
+        spans, expected,
+        "element {index} attributes: expected {expected:?}, got {spans:?}"
+    );
+}
+
+#[test]
+fn attribute_value_allows_whitespace_after_equals() {
+    let c = parse("<div a= {b}></div>");
+    assert_element_attributes(&c, 0, &["a= {b}"]);
+}
+
+#[test]
+fn attribute_value_allows_whitespace_before_equals() {
+    let c = parse("<div a ={b}></div>");
+    assert_element_attributes(&c, 0, &["a ={b}"]);
+}
+
+#[test]
+fn attribute_value_allows_whitespace_around_equals() {
+    let c = parse("<div a = {b}></div>");
+    assert_element_attributes(&c, 0, &["a = {b}"]);
+}
+
+#[test]
+fn directive_value_allows_whitespace_after_equals() {
+    let c = parse("<div class:x= {b}></div>");
+    assert_element_attributes(&c, 0, &["class:x= {b}"]);
+}
+
+#[test]
+fn quoted_attribute_value_allows_whitespace_after_equals() {
+    let c = parse(r#"<div a= "b"></div>"#);
+    assert_element_attributes(&c, 0, &[r#"a= "b""#]);
+}
+
+#[test]
+fn boolean_attribute_span_excludes_trailing_whitespace() {
+    let c = parse("<div foo bar></div>");
+    assert_element_attributes(&c, 0, &["foo", "bar"]);
+}
+
+#[test]
+fn style_is_extracted_after_implicitly_closed_element() {
+    let (c, _) = parse_with_diagnostics("<div><span>x</div><style>.foo { color: red; }</style>");
+    assert_css(&c, ".foo { color: red; }");
+}
+
+#[test]
+fn style_is_extracted_after_double_implicitly_closed_element() {
+    let (c, _) = parse_with_diagnostics("<div><span><b>x</div><style>.foo { color: red; }</style>");
+    assert_css(&c, ".foo { color: red; }");
+}
+
+#[test]
+fn script_is_extracted_after_implicitly_closed_element() {
+    let (c, _) = parse_with_diagnostics("<div><span>x</div><script>let a = 1;</script>");
+    assert_script(&c, "let a = 1;");
+}
+
 fn assert_each_block(c: &Component, index: usize, expected_expr: &str, expected_key: Option<&str>) {
     if let Node::EachBlock(eb) = node_at(c, index) {
         assert_eq!(c.source_text(eb.expression.span), expected_expr);

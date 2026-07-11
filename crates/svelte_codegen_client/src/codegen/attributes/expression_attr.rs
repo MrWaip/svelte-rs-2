@@ -1,6 +1,6 @@
 use crate::codegen::expr::coarse_wrap;
 use svelte_analyze::{
-    AttributeSemantics, DefaultAttrKind, EventEmit, EventSemantics, SpecialValueKind, Volatility,
+    AttributeSemantics, DefaultAttrKind, EventSemantics, SpecialValueKind, Volatility,
     normalize_regular_attribute_name,
 };
 
@@ -28,21 +28,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
 
-        if let AttributeSemantics::Event(EventSemantics { emit, .. }) =
-            self.ctx.query.analysis.attributes.get(attr.id)
-        {
-            let raw_event_name = attr
-                .event_name
-                .as_deref()
-                .expect("Event semantics requires event_name on AST node");
-            return self.emit_event_attribute(
-                state,
-                owner_var,
-                attr.id,
-                &attr.expression,
-                raw_event_name,
-                emit,
-            );
+        if let AttributeSemantics::Event(event) = self.ctx.query.analysis.attributes.get(attr.id) {
+            return self.emit_event_attribute(state, owner_var, attr.id, &attr.expression, event);
         }
 
         if let AttributeSemantics::SpecialValueAttr(s) =
@@ -70,6 +57,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 SpecialValueKind::Option => {
                     let val = self.take_attr_expr(attr.id, &attr.expression)?;
+                    let val = {
+                        let data = self.ctx.expression_data(attr.id).cloned();
+                        coarse_wrap(self.ctx, val, data.as_ref())
+                    };
                     let form = OptionValueForm::Reflected { coalesce };
                     self.emit_option_value(state, owner_var, val, form, volatile);
                     return Ok(());
@@ -161,15 +152,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(expr) = svelte_analyze::concat_single_dynamic_expr(attr) else {
             return Ok(());
         };
-        let Some(raw_event_name) = attr.name.strip_prefix("on") else {
-            return Ok(());
-        };
-        let AttributeSemantics::Event(EventSemantics { emit, .. }) =
-            self.ctx.query.analysis.attributes.get(attr.id)
+        let AttributeSemantics::Event(event) = self.ctx.query.analysis.attributes.get(attr.id)
         else {
             return Ok(());
         };
-        self.emit_event_attribute(state, owner_var, attr.id, expr, raw_event_name, emit)
+        self.emit_event_attribute(state, owner_var, attr.id, expr, event)
     }
 
     fn emit_event_attribute(
@@ -178,71 +165,59 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_var: &str,
         attr_id: NodeId,
         expression: &ExprRef,
-        raw_event_name: &str,
-        emit: &EventEmit,
+        event: &EventSemantics,
     ) -> Result<()> {
-        let event_name = svelte_analyze::strip_capture_event(raw_event_name)
-            .unwrap_or(raw_event_name)
-            .to_string();
+        let capture = event.capture;
+        let passive = event.passive;
+        let delegated = event.delegatable;
+        let event_name = event.name.clone();
 
-        let handler_emit = match emit {
-            EventEmit::HtmlDelegated { handler } | EventEmit::HtmlDirect { handler, .. } => {
-                *handler
-            }
-            EventEmit::HtmlBubble | EventEmit::Component { .. } => return Ok(()),
-        };
+        if !event.handler.is_user() {
+            return Ok(());
+        }
 
         let expr_offset = expression.span.start;
         let expr = self.take_attr_expr(attr_id, expression)?;
 
         let handler =
-            self.build_event_handler_s5(attr_id, expr, handler_emit, &mut state.init, expr_offset);
+            self.build_event_handler_s5(attr_id, expr, event.handler, &mut state.init, expr_offset);
         let handler = self.dev_event_handler(attr_id, handler, &event_name)?;
 
-        match emit {
-            EventEmit::HtmlDelegated { .. } => {
-                let passive = matches!(emit, EventEmit::HtmlDelegated { .. })
-                    && svelte_analyze::is_passive_event(&event_name);
-                let mut args: Vec<Arg<'a, '_>> = vec![
-                    Arg::StrRef(&event_name),
-                    Arg::Ident(owner_var),
-                    Arg::Expr(handler),
-                ];
-                if passive {
-                    args.push(Arg::Expr(self.ctx.b.void_zero_expr()));
-                    args.push(Arg::Bool(true));
-                }
-                state
-                    .after_update
-                    .push(self.ctx.b.call_stmt("$.delegated", args));
-                self.ctx.add_delegated_event(event_name);
+        if delegated {
+            let mut args: Vec<Arg<'a, '_>> = vec![
+                Arg::StrRef(&event_name),
+                Arg::Ident(owner_var),
+                Arg::Expr(handler),
+            ];
+            if passive {
+                args.push(Arg::Expr(self.ctx.b.void_zero_expr()));
+                args.push(Arg::Bool(true));
             }
-            EventEmit::HtmlDirect {
-                capture, passive, ..
-            } => {
-                let capture = *capture;
-                let passive = passive.unwrap_or(false);
-                let mut args: Vec<Arg<'a, '_>> = vec![
-                    Arg::Str(event_name),
-                    Arg::Ident(owner_var),
-                    Arg::Expr(handler),
-                ];
-                if capture || passive {
-                    args.push(if capture {
-                        Arg::Bool(true)
-                    } else {
-                        Arg::Expr(self.ctx.b.void_zero_expr())
-                    });
-                }
-                if passive {
-                    args.push(Arg::Bool(true));
-                }
-                state
-                    .after_update
-                    .push(self.ctx.b.call_stmt("$.event", args));
-            }
-            EventEmit::HtmlBubble | EventEmit::Component { .. } => {}
+            state
+                .after_update
+                .push(self.ctx.b.call_stmt("$.delegated", args));
+            self.ctx.add_delegated_event(event_name);
+            return Ok(());
         }
+
+        let mut args: Vec<Arg<'a, '_>> = vec![
+            Arg::Str(event_name),
+            Arg::Ident(owner_var),
+            Arg::Expr(handler),
+        ];
+        if capture || passive {
+            args.push(if capture {
+                Arg::Bool(true)
+            } else {
+                Arg::Expr(self.ctx.b.void_zero_expr())
+            });
+        }
+        if passive {
+            args.push(Arg::Bool(true));
+        }
+        state
+            .after_update
+            .push(self.ctx.b.call_stmt("$.event", args));
         Ok(())
     }
 }

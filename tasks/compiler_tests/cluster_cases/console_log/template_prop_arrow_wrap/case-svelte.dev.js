@@ -1,0 +1,10 @@
+App[$.FILENAME] = "(unknown)";
+import * as $ from "svelte/internal/client";
+import Child from "./Child.svelte";
+export default function App($$anchor, $$props) {
+	$.check_target(new.target);
+	$.push($$props, true, App);
+	var $$exports = { ...$.legacy_api() };
+	$.add_svelte_meta(() => Child($$anchor, { onSelect: ({ detail }) => console.log(...$.log_if_contains_state("log", "selected", detail)) }), "component", App, 5, 0, { componentTag: "Child" });
+	return $.pop($$exports);
+}

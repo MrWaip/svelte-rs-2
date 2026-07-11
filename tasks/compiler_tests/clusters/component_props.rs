@@ -1,6 +1,18 @@
 use super::*;
 
 compiler_case!(
+    exported_fn_prop_inline,
+    "component_props/exported_fn_prop_inline"
+);
+compiler_case!(
+    exported_const_prop_inline,
+    "component_props/exported_const_prop_inline"
+);
+compiler_case!(
+    css_props_static_guard,
+    "component_props/css_props_static_guard"
+);
+compiler_case!(
     state_literal_shorthand,
     "component_props/state_literal_shorthand"
 );
@@ -57,4 +69,56 @@ compiler_case!(
 compiler_case!(
     each_item_concat_guard,
     "component_props/each_item_concat_guard"
+);
+compiler_case!(
+    bind_member_path_legacy_prop_ownership,
+    "component_props/bind_member_path_legacy_prop_ownership"
+);
+compiler_case!(
+    bind_member_path_plain_prop_ownership,
+    "component_props/bind_member_path_plain_prop_ownership"
+);
+compiler_case!(
+    bind_member_path_slot_index_ownership,
+    "component_props/bind_member_path_slot_index_ownership"
+);
+compiler_case!(
+    bind_member_path_const_index_guard,
+    "component_props/bind_member_path_const_index_guard"
+);
+compiler_case!(
+    bind_function_pair_prop_name_no_ownership,
+    "component_props/bind_function_pair_prop_name_no_ownership"
+);
+compiler_case!(
+    prop_member_mutation_stmt_plain_guard,
+    "component_props/prop_member_mutation_stmt_plain_guard"
+);
+compiler_case!(
+    prop_member_mutation_expr_assign,
+    "component_props/prop_member_mutation_expr_assign"
+);
+compiler_case!(
+    bind_prop_each_item_member_validate,
+    "component_props/bind_prop_each_item_member_validate"
+);
+compiler_case!(
+    bind_prop_store_each_mark_store,
+    "component_props/bind_prop_store_each_mark_store"
+);
+compiler_case!(
+    prop_function_alias_getter,
+    "component_props/prop_function_alias_getter"
+);
+compiler_case!(
+    prop_function_literal_static_guard,
+    "component_props/prop_function_literal_static_guard"
+);
+compiler_case!(
+    prop_unmutated_state_undefined_static,
+    "component_props/prop_unmutated_state_undefined_static"
+);
+compiler_case!(
+    bind_store_member_no_ownership,
+    "component_props/bind_store_member_no_ownership"
 );

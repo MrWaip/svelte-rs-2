@@ -1572,6 +1572,14 @@ mod stores {
         "stores/validate_store_invalid_scoped_subscription"
     );
     diagnostic_case!(
+        scoped_subscription_shadows_top_level,
+        "stores/scoped_subscription_shadows_top_level"
+    );
+    diagnostic_case!(
+        top_level_store_in_nested_fn_guard,
+        "stores/top_level_store_in_nested_fn_guard"
+    );
+    diagnostic_case!(
         scoped_sub_rune_state_nested_decl,
         "stores/scoped_sub_rune_state_nested_decl"
     );
@@ -1850,6 +1858,14 @@ mod slots {
     diagnostic_case!(
         let_directive_invalid_placement_svelte_body,
         "slots/let_directive_invalid_placement_svelte_body"
+    );
+    diagnostic_case!(
+        let_directive_on_svelte_component,
+        "slots/let_directive_on_svelte_component"
+    );
+    diagnostic_case!(
+        let_directive_on_svelte_self,
+        "slots/let_directive_on_svelte_self"
     );
 }
 

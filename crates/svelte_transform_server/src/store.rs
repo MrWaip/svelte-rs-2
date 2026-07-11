@@ -50,7 +50,7 @@ impl<'a> ServerTransform<'_, 'a> {
         }
     }
 
-    fn rewrite_store_assignment(&mut self, node: &mut Expression<'a>) -> bool {
+    pub(crate) fn rewrite_store_assignment(&mut self, node: &mut Expression<'a>) -> bool {
         let (store_symbol, operator) = {
             let Expression::AssignmentExpression(assign) = &*node else {
                 return false;
@@ -92,7 +92,10 @@ impl<'a> ServerTransform<'_, 'a> {
             let left_read = server_refs::server_store_get(self.b, &dollar_name, base_read);
             build_compound_value(self.b, operator, left_read, right)
         };
-        let base = server_refs::server_store_base_read(self.b, self.analysis, base_sym);
+        let base_name: &str = self
+            .b
+            .alloc_str(self.analysis.scoping.symbol_name(base_sym));
+        let base = self.b.rid_expr(base_name);
         *node = server_refs::server_store_set(self.b, base, value);
         true
     }
@@ -137,12 +140,14 @@ impl<'a> ServerTransform<'_, 'a> {
         let member = assign.left.as_member_expression()?;
         let root = find_member_root(member.object())?;
         let ref_id = root.reference_id.get()?;
-        let ReferenceSemantics::StoreRead { symbol } = self.analysis.reference_semantics(ref_id)
-        else {
-            return None;
-        };
-        let base_sym = server_refs::store_base_symbol(self.analysis, symbol)?;
-        let dollar_name = self.analysis.scoping.symbol_name(symbol).to_string();
+        if let ReferenceSemantics::StoreRead { symbol } = self.analysis.reference_semantics(ref_id)
+        {
+            let base_sym = server_refs::store_base_symbol(self.analysis, symbol)?;
+            let dollar_name = self.analysis.scoping.symbol_name(symbol).to_string();
+            return Some((dollar_name, base_sym));
+        }
+        let base_sym = self.analysis.scoping.shadowed_store_member_root(ref_id)?;
+        let dollar_name = format!("${}", self.analysis.scoping.symbol_name(base_sym));
         Some((dollar_name, base_sym))
     }
 
@@ -152,7 +157,10 @@ impl<'a> ServerTransform<'_, 'a> {
         dollar_name: &str,
         base_sym: SymbolId,
     ) {
-        let base = server_refs::server_store_base_read(self.b, self.analysis, base_sym);
+        let base_name: &str = self
+            .b
+            .alloc_str(self.analysis.scoping.symbol_name(base_sym));
+        let base = self.b.rid_expr(base_name);
         let mutation = self.b.move_expr(node);
         *node = server_refs::server_store_mutate(self.b, dollar_name, base, mutation);
     }

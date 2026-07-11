@@ -1,5 +1,12 @@
 use super::*;
 
+compiler_case!(props_id_declaration, "runes/props/id");
+compiler_case!(slots_deconflict_ident, "runes/props/slots_deconflict_ident");
+compiler_case!(slots_deconflict_rest, "runes/props/slots_deconflict_rest");
+compiler_case!(
+    slots_no_deconflict_guard,
+    "runes/props/slots_no_deconflict_guard"
+);
 compiler_case!(assignment_array, "runes/props/assignment/array");
 compiler_case!(assignment_array_rest, "runes/props/assignment/array_rest");
 compiler_case!(
@@ -22,6 +29,10 @@ compiler_case!(
 compiler_case!(
     declaration_bindable_default,
     "runes/props/declaration/bindable_default"
+);
+compiler_case!(
+    bindable_proxy_default_lazy,
+    "runes/props/bindable_proxy_default_lazy"
 );
 compiler_case!(
     declaration_default_alias,
@@ -53,4 +64,12 @@ compiler_case!(
 compiler_case!(
     static_member_derived_guard,
     "runes/props/static_member_derived_guard"
+);
+compiler_case!(
+    fn_default_before_plain_prop,
+    "runes/props/fn_default_before_plain_prop"
+);
+compiler_case!(
+    arrow_default_before_bindable_prop,
+    "runes/props/arrow_default_before_bindable_prop"
 );

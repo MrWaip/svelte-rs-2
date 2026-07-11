@@ -45,6 +45,13 @@ pub(crate) fn rewrite_template_exit<'a>(
 ) {
     t.rewrite_call_expression(it);
 
+    if t.dev
+        && let Some(replacement) = t.transform_console_log(it)
+    {
+        *it = replacement;
+        return;
+    }
+
     let analysis = t.analysis.expect("Template mode requires analysis");
 
     if let Expression::AwaitExpression(await_expr) = it {

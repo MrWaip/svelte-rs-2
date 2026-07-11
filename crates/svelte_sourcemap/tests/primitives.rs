@@ -1,9 +1,48 @@
 use svelte_sourcemap::{
     SourceMap, SourceMapBuilder, Sourcemap, get_basename, get_relative_path, get_source_name,
+    merge_with_preprocessor, parse_input_map,
 };
 
 fn empty_map() -> SourceMap {
     SourceMapBuilder::default().into_sourcemap()
+}
+
+fn base_map(tokens: &[(u32, u32, u32, u32)]) -> SourceMap {
+    let mut builder = SourceMapBuilder::default();
+    let source_id = builder.add_source_and_content("App.svelte", "");
+    builder.set_file("App.svelte");
+    for &(dst_line, dst_col, src_line, src_col) in tokens {
+        builder.add_token(dst_line, dst_col, src_line, src_col, Some(source_id), None);
+    }
+    builder.into_sourcemap()
+}
+
+fn preprocessor_map(source: &str, tokens: &[(u32, u32, u32, u32)]) -> SourceMap {
+    let mut builder = SourceMapBuilder::default();
+    let source_id = builder.add_source_and_content(source, "original contents");
+    for &(dst_line, dst_col, src_line, src_col) in tokens {
+        builder.add_token(dst_line, dst_col, src_line, src_col, Some(source_id), None);
+    }
+    builder.into_sourcemap()
+}
+
+#[track_caller]
+fn assert_sources(map: &SourceMap, expected: &[&str]) {
+    let sources: Vec<&str> = map.get_sources().map(|s| s.as_ref()).collect();
+    assert_eq!(
+        sources, expected,
+        "merged sources: expected {expected:?}, got {sources:?}"
+    );
+}
+
+#[track_caller]
+fn assert_first_token_src(map: &SourceMap, expected: (u32, u32)) {
+    let token = map.get_tokens().next().expect("merged map has a token");
+    let got = (token.get_src_line(), token.get_src_col());
+    assert_eq!(
+        got, expected,
+        "first token source position: expected {expected:?}, got {got:?}"
+    );
 }
 
 #[test]
@@ -30,6 +69,61 @@ fn set_source_name_writes_file_and_sources() {
     );
     let sources: Vec<&str> = map.get_sources().map(|s| s.as_ref()).collect();
     assert_eq!(sources, vec!["../src/Foo.svelte"]);
+}
+
+#[test]
+fn merge_resolves_source_through_preprocessor() {
+    let base = base_map(&[(0, 0, 0, 0)]);
+    let pre = preprocessor_map("foo.scss", &[(0, 0, 5, 2)]);
+    let merged = merge_with_preprocessor(base, &pre, "src/App.svelte", "App.svelte", (0, 0));
+    assert_sources(&merged, &["foo.scss"]);
+}
+
+#[test]
+fn merge_traces_position_into_original_source() {
+    let base = base_map(&[(0, 0, 0, 0)]);
+    let pre = preprocessor_map("foo.scss", &[(0, 0, 5, 2)]);
+    let merged = merge_with_preprocessor(base, &pre, "src/App.svelte", "App.svelte", (0, 0));
+    assert_first_token_src(&merged, (5, 2));
+}
+
+#[test]
+fn merge_applies_base_offset_for_css_block() {
+    let base = base_map(&[(0, 0, 0, 0)]);
+    let pre = preprocessor_map("foo.scss", &[(3, 0, 9, 4)]);
+    let merged = merge_with_preprocessor(base, &pre, "src/App.svelte", "App.svelte", (3, 0));
+    assert_first_token_src(&merged, (9, 4));
+}
+
+#[test]
+fn parse_input_map_tolerates_null_sources() {
+    let json = r#"{"version":3,"file":"App.svelte","sources":[null,"foo.scss"],"sourcesContent":[null,"orig"],"names":[],"mappings":"AAAA"}"#;
+    let map = parse_input_map(json).expect("null source must not fail parsing");
+    let sources: Vec<&str> = map.get_sources().map(|s| s.as_ref()).collect();
+    assert_eq!(
+        sources,
+        vec!["", "foo.scss"],
+        "null source should be coerced to empty string, got {sources:?}"
+    );
+}
+
+#[test]
+fn merge_skips_empty_source_from_null_entry() {
+    let base = base_map(&[(0, 0, 0, 0), (0, 5, 1, 0)]);
+    let pre = parse_input_map(
+        r#"{"version":3,"sources":[null,"foo.scss"],"names":[],"mappings":"AAAA;ACAA"}"#,
+    )
+    .expect("parse");
+    let merged = merge_with_preprocessor(base, &pre, "src/App.svelte", "App.svelte", (0, 0));
+    assert_sources(&merged, &["foo.scss"]);
+}
+
+#[test]
+fn merge_falls_back_to_basename_when_base_has_no_tokens() {
+    let base = base_map(&[]);
+    let pre = preprocessor_map("foo.scss", &[(0, 0, 5, 2)]);
+    let merged = merge_with_preprocessor(base, &pre, "src/App.svelte", "App.svelte", (0, 0));
+    assert_sources(&merged, &["App.svelte"]);
 }
 
 #[test]

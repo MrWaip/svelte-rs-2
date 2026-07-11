@@ -44,3 +44,28 @@ compiler_case!(
     boundary_component_snippet_const_guard,
     "boundary/component_snippet_const_guard"
 );
+
+compiler_case!(
+    boundary_pending_snippet_text_first,
+    "boundary/pending_snippet_text_first"
+);
+compiler_case!(
+    boundary_pending_snippet_expression_first,
+    "boundary/pending_snippet_expression_first"
+);
+compiler_case!(
+    boundary_pending_snippet_no_failed_text_first,
+    "boundary/pending_snippet_no_failed_text_first"
+);
+compiler_case!(
+    boundary_pending_snippet_element_first_guard,
+    "boundary/pending_snippet_element_first_guard"
+);
+compiler_case!(
+    boundary_failed_snippet_text_first_guard,
+    "boundary/failed_snippet_text_first_guard"
+);
+compiler_case!(
+    boundary_children_text_first_guard,
+    "boundary/children_text_first_guard"
+);

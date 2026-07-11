@@ -4,18 +4,13 @@ mod legacy;
 mod non_reactive_update;
 mod runes;
 mod stores;
+mod syntax_bundle;
 mod typescript;
 
 use oxc_ast::ast::{
-    ArrowFunctionExpression, BindingPattern, Declaration, ExportSpecifier, Expression, Function,
-    ImportDeclarationSpecifier, ModuleExportName, NewExpression, Program, Statement,
+    BindingPattern, Declaration, ExportSpecifier, ImportDeclarationSpecifier, ModuleExportName,
+    Program, Statement,
 };
-use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_declaration, walk_function, walk_new_expression,
-    walk_program,
-};
-use oxc_semantic::ScopeFlags;
 use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -50,8 +45,7 @@ pub fn validate(
             diags,
         );
         stores::validate_module(data, module_program, diags);
-        validate_perf_class_warnings(module_program, 0, diags);
-        typescript::validate(module_program, diags);
+        syntax_bundle::validate_module(data, module_program, diags);
     }
     non_reactive_update::validate(component, data, parsed, runes, diags);
     validate_snippet_exports(component, data, parsed, diags);
@@ -100,12 +94,8 @@ pub fn validate_program(
     legacy::validate_legacy_diagnostics(data, program, runes, diags);
     runes::validate(data, program, runes, diags);
     stores::validate(data, program, diags);
-    validate_perf_class_warnings(program, 1, diags);
     experimental_async::validate_instance_program(data, program, diags);
-    if runes {
-        class_state_fields::validate(data, program, diags);
-    }
-    typescript::validate(program, diags);
+    syntax_bundle::validate_instance(data, program, runes, diags);
 }
 
 pub(crate) fn span_already_taken(diags: &[Diagnostic], span: Span) -> bool {
@@ -127,8 +117,7 @@ pub fn validate_standalone_module(
         diags,
     );
     stores::validate_standalone_module(data, program, diags);
-    validate_perf_class_warnings(program, 0, diags);
-    typescript::validate(program, diags);
+    syntax_bundle::validate_module(data, program, diags);
 }
 
 pub fn validate_module_experimental_async(
@@ -137,78 +126,6 @@ pub fn validate_module_experimental_async(
     diags: &mut Vec<Diagnostic>,
 ) {
     experimental_async::validate_module_program(data, program, diags);
-}
-
-fn validate_perf_class_warnings(
-    program: &Program<'_>,
-    base_function_depth: u32,
-    diags: &mut Vec<Diagnostic>,
-) {
-    let mut visitor = PerfClassWarningValidator {
-        diags,
-        base_function_depth,
-        function_depth: base_function_depth,
-    };
-    visitor.visit_program(program);
-}
-
-struct PerfClassWarningValidator<'a> {
-    diags: &'a mut Vec<Diagnostic>,
-    base_function_depth: u32,
-    function_depth: u32,
-}
-
-impl PerfClassWarningValidator<'_> {
-    fn span(&self, span: oxc_span::Span) -> Span {
-        Span::new(span.start, span.end)
-    }
-}
-
-impl<'a> Visit<'a> for PerfClassWarningValidator<'_> {
-    fn visit_program(&mut self, program: &Program<'a>) {
-        walk_program(self, program);
-    }
-
-    fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
-        self.function_depth += 1;
-        walk_function(self, function, flags);
-        self.function_depth -= 1;
-    }
-
-    fn visit_arrow_function_expression(&mut self, expr: &ArrowFunctionExpression<'a>) {
-        self.function_depth += 1;
-        walk_arrow_function_expression(self, expr);
-        self.function_depth -= 1;
-    }
-
-    fn visit_declaration(&mut self, decl: &Declaration<'a>) {
-        if let Declaration::ClassDeclaration(class) = decl
-            && self.function_depth > self.base_function_depth
-        {
-            self.diags.push(Diagnostic::warning(
-                DiagnosticKind::PerfAvoidNestedClass,
-                self.span(class.span),
-            ));
-        }
-
-        walk_declaration(self, decl);
-    }
-
-    fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
-        if self.function_depth > 0
-            && matches!(
-                expr.callee.get_inner_expression(),
-                Expression::ClassExpression(_)
-            )
-        {
-            self.diags.push(Diagnostic::warning(
-                DiagnosticKind::PerfAvoidInlineClass,
-                self.span(expr.span),
-            ));
-        }
-
-        walk_new_expression(self, expr);
-    }
 }
 
 fn validate_module_program(parsed: &JsAst, diags: &mut Vec<Diagnostic>) {

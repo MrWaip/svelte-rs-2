@@ -179,7 +179,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                     let defined = data
                         .as_ref()
-                        .map(|d| evaluation_is_defined(&d.evaluation))
+                        .map(|d| {
+                            evaluation_is_defined(&d.evaluation)
+                                && matches!(d.legacy_wrap, svelte_analyze::LegacyWrap::None)
+                        })
                         .unwrap_or(false);
                     let wrapped = coarse_wrap(self.ctx, expr, data.as_ref());
                     tpl_parts.push(TemplatePart::Expr(wrapped, defined));

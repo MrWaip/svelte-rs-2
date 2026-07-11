@@ -94,7 +94,7 @@ pub(super) fn prepare<'a>(
     };
 
     let mut filtered_slice = filtered_slice;
-    if ctx.parent_element_name.as_deref() == Some("pre")
+    if ctx.parent_element_name == Some("pre")
         && let Some(Node::Text(t)) = filtered_slice.first()
     {
         let raw = t.value(ctx.source);

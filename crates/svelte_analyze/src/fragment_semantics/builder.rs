@@ -41,7 +41,7 @@ fn walk(
     };
     out.record(fragment_id, FragmentSemantics { whitespace });
 
-    for id in store.fragment_nodes(fragment_id).to_vec() {
+    for id in store.fragment_nodes(fragment_id).iter().copied() {
         match store.get(id) {
             Node::Element(el) => {
                 let name = el.name.as_str();
@@ -98,7 +98,7 @@ fn walk(
             Node::SvelteFragmentLegacy(el) => {
                 walk_slot(el.fragment, ctx.preserve, store, data, out)
             }
-            Node::SlotElementLegacy(el) => walk(el.fragment, ctx, store, data, out),
+            Node::SlotElementLegacy(el) => walk_block(el.fragment, ctx, store, data, out),
             Node::IfBlock(block) => {
                 walk_block(block.consequent, ctx, store, data, out);
                 if let Some(alt) = block.alternate {
@@ -160,7 +160,7 @@ fn walk_block(
 ) {
     let in_svg =
         fragment_is_svg(fragment_id, data) || fragment_children_are_svg(fragment_id, store, data);
-    let removable = ctx.removable || (!ctx.svg_text && in_svg);
+    let removable = !ctx.svg_text && in_svg;
     walk(
         fragment_id,
         &WsContext {
@@ -184,7 +184,8 @@ fn walk_slot(
     let ctx = WsContext {
         preserve,
         svg_text: false,
-        removable: fragment_children_are_svg(fragment_id, store, data),
+        removable: fragment_is_svg(fragment_id, data)
+            || fragment_children_are_svg(fragment_id, store, data),
     };
     walk(fragment_id, &ctx, store, data, out);
 }

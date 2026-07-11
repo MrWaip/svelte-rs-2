@@ -352,46 +352,6 @@ fn find_html_tag_id(
     None
 }
 
-fn find_svelte_head_id(fragment: FragmentId, component: &Component) -> Option<NodeId> {
-    for id in frag_nodes(component, fragment) {
-        match component.store.get(id) {
-            Node::SvelteHead(head) => return Some(head.id),
-            Node::ComponentNode(node) => {
-                if let Some(found) = find_svelte_head_id(node.fragment, component) {
-                    return Some(found);
-                }
-            }
-            Node::Element(el) => {
-                if let Some(found) = find_svelte_head_id(el.fragment, component) {
-                    return Some(found);
-                }
-            }
-            Node::IfBlock(b) => {
-                if let Some(found) = find_svelte_head_id(b.consequent, component) {
-                    return Some(found);
-                }
-                if let Some(alt) = b.alternate
-                    && let Some(found) = find_svelte_head_id(alt, component)
-                {
-                    return Some(found);
-                }
-            }
-            Node::EachBlock(b) => {
-                if let Some(found) = find_svelte_head_id(b.body, component) {
-                    return Some(found);
-                }
-            }
-            Node::SvelteElement(el) => {
-                if let Some(found) = find_svelte_head_id(el.fragment, component) {
-                    return Some(found);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
 fn find_bind_directive_id(
     fragment: FragmentId,
     component: &Component,
@@ -2931,25 +2891,46 @@ let b = await fetch('/b');
     );
 }
 
+fn is_head_title(data: &crate::AnalysisData, id: NodeId) -> bool {
+    match data.element_semantics.query(id) {
+        crate::ElementSemantics::HeadTitle => true,
+        crate::ElementSemantics::None
+        | crate::ElementSemantics::RegularElement(_)
+        | crate::ElementSemantics::Boundary(_)
+        | crate::ElementSemantics::SvelteElement(_)
+        | crate::ElementSemantics::LegacySlot(_)
+        | crate::ElementSemantics::LegacyComponentSlots(_) => false,
+    }
+}
+
 #[test]
-fn title_elements_collected_for_svelte_head_fragment() {
+fn title_inside_head_is_head_title() {
     let (component, data) = analyze_source(
         r#"<svelte:head><title>Hello</title><meta name="x" content="y" /></svelte:head>"#,
     );
-    let head_id = find_svelte_head_id(component.root, &component)
-        .unwrap_or_else(|| panic!("no <svelte:head>"));
-    let head_fragment_id = match component.store.get(head_id) {
-        Node::SvelteHead(h) => h.fragment,
-        _ => unreachable!(),
-    };
     let title =
         find_element(component.root, &component, "title").unwrap_or_else(|| panic!("no <title>"));
-    assert_eq!(
-        data.template
-            .title_elements
-            .by_fragment_id(head_fragment_id),
-        Some(&vec![title.id])
-    );
+    let meta =
+        find_element(component.root, &component, "meta").unwrap_or_else(|| panic!("no <meta>"));
+    assert!(is_head_title(&data, title.id));
+    assert!(!is_head_title(&data, meta.id));
+}
+
+#[test]
+fn title_inside_head_block_is_head_title() {
+    let (component, data) =
+        analyze_source(r#"<svelte:head>{#if cond}<title>Hello</title>{/if}</svelte:head>"#);
+    let title =
+        find_element(component.root, &component, "title").unwrap_or_else(|| panic!("no <title>"));
+    assert!(is_head_title(&data, title.id));
+}
+
+#[test]
+fn title_outside_head_is_not_head_title() {
+    let (component, data) = analyze_source(r#"<title>Hello</title>"#);
+    let title =
+        find_element(component.root, &component, "title").unwrap_or_else(|| panic!("no <title>"));
+    assert!(!is_head_title(&data, title.id));
 }
 
 #[test]
@@ -5134,9 +5115,9 @@ fn legacy_export_let_promotes_when_only_read_in_legacy_reactive_block() {
     );
     assert!(
         data.reactivity
-            .legacy_bindable_prop_symbols()
-            .contains(&extra_sym),
-        "extra symbol must be present in legacy_bindable_prop_symbols set"
+            .iter_legacy_bindable_prop_symbols()
+            .any(|sym| sym == extra_sym),
+        "extra symbol must be present in legacy bindable prop set"
     );
 }
 
@@ -5166,7 +5147,10 @@ fn legacy_two_export_let_props_both_promote_with_legacy_reactive_block() {
         ),
         "extra must classify as LegacyBindableProp alongside items"
     );
-    let syms = data.reactivity.legacy_bindable_prop_symbols();
+    let syms: Vec<_> = data
+        .reactivity
+        .iter_legacy_bindable_prop_symbols()
+        .collect();
     assert!(syms.contains(&items_sym), "items in symbols set");
     assert!(syms.contains(&extra_sym), "extra in symbols set");
     let runtime = &data.output.runtime_plan;
@@ -6276,6 +6260,25 @@ fn analyze_module_reports_store_invalid_subscription_module() {
         .count();
 
     assert_eq!(store_diags, 1, "unexpected diagnostics: {diags:?}");
+}
+
+#[test]
+fn analyze_module_ignores_dollar_prefixed_callback_parameter() {
+    let alloc = oxc_allocator::Allocator::default();
+    let source = r#"
+        import { derived } from 'svelte/store';
+        import { page } from '$app/stores';
+        export const route = derived(page, ($page) => $page?.url);
+    "#;
+
+    let (_data, _parsed, diags) = analyze_module(&alloc, source, false, false);
+
+    assert!(
+        !diags
+            .iter()
+            .any(|diag| diag.kind.code() == "store_invalid_subscription_module"),
+        "unexpected diagnostics: {diags:?}"
+    );
 }
 
 #[test]
@@ -8768,7 +8771,7 @@ mod attribute_semantics_skeleton_tests {
     use crate::attribute_semantics::data::{
         ComponentAttachEmit, ComponentBindKind, ComponentBindTarget, ComponentPropMemo,
         ComponentPropSemantics, ComponentSpreadEmit, DocumentBindSemantics,
-        ElementBindPropertyKind, EventEmit, HandlerEmit, HtmlBindKind, WindowBindSemantics,
+        ElementBindPropertyKind, EventHandler, HandlerEffect, HtmlBindKind, WindowBindSemantics,
     };
     use crate::expression_semantics::Volatility;
     use crate::{DocumentBindKind, WindowBindKind};
@@ -9157,20 +9160,9 @@ mod attribute_semantics_skeleton_tests {
         let attr_id = find_event_attr(&component, "button", "onclick").expect("attr");
 
         match data.attributes.get(attr_id) {
-            AttributeSemantics::Event(ev) => match &ev.emit {
-                EventEmit::HtmlDelegated { handler } => {
-                    assert!(
-                        matches!(
-                            handler,
-                            HandlerEmit::WrappedInert
-                                | HandlerEmit::WrappedSideEffects
-                                | HandlerEmit::WrappedMemoized
-                        ),
-                        "wrap for member expression, got {handler:?}"
-                    );
-                }
-                other => panic!("expected HtmlDelegated, got {other:?}"),
-            },
+            AttributeSemantics::Event(ev) => {
+                assert_eq!(ev.handler, EventHandler::Expression(HandlerEffect::Pure));
+            }
             other => panic!("expected Event, got {other:?}"),
         }
     }
@@ -9182,12 +9174,9 @@ mod attribute_semantics_skeleton_tests {
         let attr_id = find_event_attr(&component, "button", "onclick").expect("attr");
 
         match data.attributes.get(attr_id) {
-            AttributeSemantics::Event(ev) => match &ev.emit {
-                EventEmit::HtmlDelegated { handler } => {
-                    assert_eq!(*handler, HandlerEmit::Direct);
-                }
-                other => panic!("expected HtmlDelegated, got {other:?}"),
-            },
+            AttributeSemantics::Event(ev) => {
+                assert_eq!(ev.handler, EventHandler::FunctionValue);
+            }
             other => panic!("expected Event, got {other:?}"),
         }
     }
@@ -9200,25 +9189,22 @@ mod attribute_semantics_skeleton_tests {
         let attr_id = find_event_attr(&component, "button", "onclick").expect("attr");
 
         match data.attributes.get(attr_id) {
-            AttributeSemantics::Event(ev) => match &ev.emit {
-                EventEmit::HtmlDelegated { handler } => {
-                    assert_eq!(*handler, HandlerEmit::WrappedInert);
-                }
-                other => panic!("expected HtmlDelegated, got {other:?}"),
-            },
+            AttributeSemantics::Event(ev) => {
+                assert_eq!(ev.handler, EventHandler::Expression(HandlerEffect::Pure));
+            }
             other => panic!("expected Event, got {other:?}"),
         }
     }
 
     #[test]
-    fn event_onclick_classified_html_delegated() {
+    fn event_onclick_identifier_function_direct() {
         let source = r#"<script>let f = () => {};</script><button onclick={f}>x</button>"#;
         let (component, data) = analyze_source(source);
         let attr_id = find_event_attr(&component, "button", "onclick").expect("attr");
 
         match data.attributes.get(attr_id) {
             AttributeSemantics::Event(ev) => {
-                assert!(matches!(ev.emit, EventEmit::HtmlDelegated { .. }));
+                assert_eq!(ev.handler, EventHandler::FunctionValue);
             }
             other => panic!("expected Event, got {other:?}"),
         }
@@ -9369,10 +9355,9 @@ const v = writable("");
         let attr_id = attr_id.expect("on:click attr");
 
         match data.attributes.get(attr_id) {
-            AttributeSemantics::Event(ev) => match &ev.emit {
-                EventEmit::Component { .. } => {}
-                other => panic!("expected Component emit, got {other:?}"),
-            },
+            AttributeSemantics::Event(ev) => {
+                assert_eq!(ev.handler, EventHandler::FunctionValue);
+            }
             other => panic!("expected Event, got {other:?}"),
         }
     }

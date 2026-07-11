@@ -16,7 +16,7 @@ pub use attribute_semantics::{
     ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
     ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
     DefaultAttrSemantics, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
-    EventEmit, EventSemantics, GroupBindValue, GroupReflection, HandlerEmit, HtmlBindKind,
+    EventHandler, EventSemantics, GroupBindValue, GroupReflection, HandlerEffect, HtmlBindKind,
     HtmlConcatPart, HtmlConcatSemantics, SkipCause, SpecialValueKind, SpecialValueSemantics,
     StyleSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
 };
@@ -91,10 +91,9 @@ pub const PROPS_IS_LAZY_INITIAL: u32 = PropsFlags::LAZY_INITIAL.bits();
 pub use utils::{IdentGen, IdentGenSnapshot};
 pub use utils::{
     collapse_attribute_whitespace, concat_single_dynamic_expr, emit_html_attribute_name,
-    event_attribute, expression_calls_or_awaits, is_capture_event, is_delegatable_event,
-    is_dom_boolean_attribute, is_let_or_var, is_passive_event, is_regular_dom_property,
-    is_simple_expression, is_simple_identifier, normalize_regular_attribute_name,
-    property_key_static_name, strip_capture_event,
+    event_attribute, expression_calls_or_awaits, is_dom_boolean_attribute, is_let_or_var,
+    is_regular_dom_property, is_simple_expression, is_simple_identifier,
+    normalize_regular_attribute_name, property_key_static_name,
 };
 
 use svelte_ast::Component;
@@ -234,10 +233,16 @@ pub fn analyze_module<'a>(
                 &parsed,
                 &mut data.reactivity,
                 data.scoping.semantics(),
+                dev,
             );
 
             data.script.dev = dev;
             if dev {
+                if let Some(program) = parsed.program.as_ref() {
+                    data.output
+                        .ignore_data
+                        .scan_program_comments(program, source, true);
+                }
                 data.value_evaluation = value_evaluation::build_module_console_calls(
                     &parsed,
                     &data.scoping,
@@ -327,9 +332,8 @@ fn has_legacy_accessor_props(data: &AnalysisData<'_>) -> bool {
         return false;
     }
     data.reactivity
-        .legacy_bindable_prop_symbols()
-        .iter()
-        .any(|&sym| !legacy_bindable_prop_key(data, sym).starts_with("$$"))
+        .iter_legacy_bindable_prop_symbols()
+        .any(|sym| !legacy_bindable_prop_key(data, sym).starts_with("$$"))
 }
 
 fn legacy_bindable_prop_key<'d>(

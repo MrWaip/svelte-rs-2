@@ -40,6 +40,7 @@ dev-debug.log
 **/case-rust.dev.js
 **/case-rust.css
 **/case-rust.json
+tmp
 # OS specific
 
 # Task files

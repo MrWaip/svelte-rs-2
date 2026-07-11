@@ -3,8 +3,9 @@ use std::mem;
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, Class, Declaration, ExportNamedDeclaration, Expression, Function,
-    ObjectProperty, Program, PropertyKind, Statement, VariableDeclaration, VariableDeclarator,
+    ArrowFunctionExpression, Class, Declaration, ExportNamedDeclaration, Expression,
+    ExpressionStatement, Function, ObjectProperty, Program, PropertyKind, Statement,
+    VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_ast_visit::{VisitMut, walk_mut};
 use oxc_semantic::ScopeFlags;
@@ -23,6 +24,7 @@ pub(crate) struct ServerTransform<'b, 'a> {
     pub dev: bool,
     pub strip_exports: bool,
     pub enclosing_stmt_start: Vec<u32>,
+    pub parent_is_expr_statement: bool,
 }
 
 impl<'a> ServerTransform<'_, 'a> {
@@ -78,11 +80,23 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
         self.fn_depth -= 1;
     }
 
+    fn visit_expression_statement(&mut self, it: &mut ExpressionStatement<'a>) {
+        self.parent_is_expr_statement = true;
+        walk_mut::walk_expression_statement(self, it);
+    }
+
     fn visit_expression(&mut self, it: &mut Expression<'a>) {
+        let is_standalone = mem::take(&mut self.parent_is_expr_statement);
         if self.rewrite_store_mutation(it) {
             return;
         }
+        if self.rewrite_store_destructure_assignment(it, is_standalone) {
+            return;
+        }
         if self.rewrite_derived_write(it) {
+            return;
+        }
+        if self.rewrite_derived_update(it) {
             return;
         }
         if self.rewrite_private_derived_write(it) {
@@ -90,6 +104,9 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
         }
         self.rewrite_runtime_rune_call(it);
         let member_mutation = self.detect_store_member_mutation(it);
+        if matches!(it, Expression::ParenthesizedExpression(_)) {
+            self.parent_is_expr_statement = is_standalone;
+        }
         walk_mut::walk_expression(self, it);
         self.rewrite_await(it);
         self.rewrite_private_derived_read(it);
@@ -218,7 +235,7 @@ impl<'a> ServerTransform<'_, 'a> {
                 }
             };
             if props_id.is_none() && self.is_props_id_declaration(&stmt) {
-                props_id = Some(stmt);
+                props_id = Some(force_props_id_const(stmt));
                 continue;
             }
             let rank = match &stmt {
@@ -281,6 +298,16 @@ impl<'a> ServerTransform<'_, 'a> {
             | DeclaratorSemantics::ClassFieldDerived(_) => {}
         }
     }
+}
+
+fn force_props_id_const(stmt: Statement<'_>) -> Statement<'_> {
+    let Statement::VariableDeclaration(mut decl) = stmt else {
+        return stmt;
+    };
+    if decl.declarations.len() == 1 {
+        decl.kind = VariableDeclarationKind::Const;
+    }
+    Statement::VariableDeclaration(decl)
 }
 
 fn is_multi_declarator_export(export: &ExportNamedDeclaration<'_>) -> bool {
