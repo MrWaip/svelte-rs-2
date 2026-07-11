@@ -184,13 +184,19 @@ impl<'a> Parser<'a> {
                                 (StyleDirectiveValue::String(value), *span)
                             }
                             token::AttributeValue::Concatenation(c) => {
-                                let span = c.span;
-                                (
-                                    StyleDirectiveValue::Concatenation(
-                                        self.convert_concat_parts(&c.parts),
-                                    ),
-                                    span,
-                                )
+                                if let [token::ConcatenationPart::Expression(et)] =
+                                    c.parts.as_slice()
+                                {
+                                    (StyleDirectiveValue::Expression, et.expression_span)
+                                } else {
+                                    let span = c.span;
+                                    (
+                                        StyleDirectiveValue::Concatenation(
+                                            self.convert_concat_parts(&c.parts),
+                                        ),
+                                        span,
+                                    )
+                                }
                             }
                             token::AttributeValue::Empty => {
                                 debug_assert!(

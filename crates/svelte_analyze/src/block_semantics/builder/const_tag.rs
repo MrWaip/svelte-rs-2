@@ -57,7 +57,7 @@ mod tests {
     use crate::tests::{analyze_source, analyze_source_experimental_async};
     use crate::{
         AnalysisData, BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics,
-        DeclaratorSemantics, DerivedEmit,
+        DeclaratorSemantics, DerivedAsyncKind,
     };
     use oxc_ast::{AstKind, ast::BindingPattern};
     use svelte_ast::{Component, ConstTag, Node};
@@ -217,7 +217,7 @@ mod tests {
             assert_eq!(
                 data.declarator_semantics(sem.decl_node_id),
                 DeclaratorSemantics::ConstTag {
-                    emit: DerivedEmit::Sync
+                    async_kind: DerivedAsyncKind::Sync
                 }
             );
         });
@@ -231,7 +231,7 @@ mod tests {
                 assert_eq!(
                     data.declarator_semantics(sem.decl_node_id),
                     DeclaratorSemantics::ConstTag {
-                        emit: DerivedEmit::Async
+                        async_kind: DerivedAsyncKind::Async
                     }
                 );
             },
@@ -246,7 +246,7 @@ mod tests {
                 assert_eq!(
                     data.declarator_semantics(sem.decl_node_id),
                     DeclaratorSemantics::ConstTag {
-                        emit: DerivedEmit::Sync
+                        async_kind: DerivedAsyncKind::Sync
                     }
                 );
             },

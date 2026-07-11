@@ -14,6 +14,7 @@ pub enum ExpressionSemantics {
 pub struct ExpressionData {
     pub volatility: Volatility,
     pub evaluation: Evaluation,
+    pub declared_evaluation: Evaluation,
     pub blockers: SmallVec<[u32; 2]>,
     pub legacy_wrap: LegacyWrap,
     pub references: SmallVec<[SymbolId; 2]>,

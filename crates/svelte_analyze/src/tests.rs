@@ -5,7 +5,7 @@ use crate::types::data::{
 };
 use crate::{
     AttributeSemantics, BlockSemantics, ClassSemantics, EachIndexStrategy, EachItemStrategy,
-    OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
+    GroupBindValue, OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
     SnippetParamStrategy,
 };
 use oxc_ast::ast::{
@@ -2328,7 +2328,11 @@ fn bind_group_records_expression_value_attr_only() {
         .expect("no expression value attr on first input");
 
     let actual = match data.attributes.get(bind_id) {
-        AttributeSemantics::ElementBind(b) => b.group_value.map(|v| v.data),
+        AttributeSemantics::ElementBind(b) => match b.group_value {
+            Some(GroupBindValue::Expression { data, .. }) => Some(data),
+            Some(GroupBindValue::Static { node }) => Some(node),
+            None => None,
+        },
         _ => None,
     };
     assert_eq!(actual, Some(value_attr_id));
@@ -3407,7 +3411,7 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         symbol_declaration_semantics(&data, "total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            emit: DerivedEmit::Sync,
+            async_kind: DerivedAsyncKind::Sync,
             ..
         })
     ));
@@ -3416,11 +3420,11 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
-                bindable: false,
                 updated: false,
                 default_lowering: PropDefaultKind::Eager,
                 default_needs_proxy: false,
             },
+            bindable: false,
         })
     );
     assert_eq!(
@@ -3428,11 +3432,11 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
-                bindable: true,
                 updated: false,
                 default_lowering: PropDefaultKind::Eager,
                 default_needs_proxy: false,
             },
+            bindable: true,
         })
     );
     assert_eq!(
@@ -3440,6 +3444,7 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::NonSource,
+            bindable: false,
         })
     );
     assert_eq!(
@@ -3447,6 +3452,7 @@ fn reactivity_semantics_declaration_semantics_cover_state_and_props() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Rest,
+            bindable: false,
         })
     );
     let store_sym = data
@@ -3485,11 +3491,11 @@ fn reactivity_semantics_prop_declaration_semantics_include_updated() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
-                bindable: false,
                 updated: true,
                 default_lowering: PropDefaultKind::None,
                 default_needs_proxy: false,
             },
+            bindable: false,
         })
     );
 }
@@ -3514,6 +3520,7 @@ fn reactivity_semantics_prop_used_only_via_store_is_non_source() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::NonSource,
+            bindable: false,
         })
     );
 }
@@ -3536,11 +3543,11 @@ fn reactivity_semantics_prop_declaration_semantics_include_default_proxy() {
         BindingSemantics::Prop(PropBindingSemantics {
             emit_mode: PropEmitMode::Standard,
             kind: PropBindingKind::Source {
-                bindable: true,
                 updated: false,
                 default_lowering: PropDefaultKind::Lazy,
                 default_needs_proxy: true,
             },
+            bindable: true,
         })
     );
 }
@@ -3564,7 +3571,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "sync_total"),
         BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            emit: DerivedEmit::Sync,
+            async_kind: DerivedAsyncKind::Sync,
             ..
         })
     ));
@@ -3572,7 +3579,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "async_total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            emit: DerivedEmit::Async,
+            async_kind: DerivedAsyncKind::Async,
             ..
         })
     ));
@@ -3580,7 +3587,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "mapped"),
         BindingSemantics::OptimizedDerived(DerivedDeclarationSemantics {
             kind: DerivedKind::DerivedBy,
-            emit: DerivedEmit::Sync,
+            async_kind: DerivedAsyncKind::Sync,
             ..
         })
     ));
@@ -7184,8 +7191,8 @@ mod is_state_source_formula {
 mod class_field_rune_semantics {
     use super::*;
     use crate::reactivity_semantics::data::{
-        ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics, DerivedEmit,
-        DerivedKind, StateKind,
+        ClassFieldDerivedSemantics, ClassFieldStateSemantics, DeclaratorSemantics,
+        DerivedAsyncKind, DerivedKind, StateKind,
     };
     use oxc_ast::ast::{
         AssignmentExpression, AssignmentTarget, Class, ClassElement, Expression,
@@ -7307,13 +7314,13 @@ class A {
         let semantics = data.declarator_semantics(prop_node_id);
         let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
             kind,
-            emit: lowering,
+            async_kind: lowering,
         }) = semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
         };
         assert_eq!(kind, DerivedKind::Derived);
-        assert_eq!(lowering, DerivedEmit::Sync);
+        assert_eq!(lowering, DerivedAsyncKind::Sync);
     }
 
     #[test]
@@ -7336,13 +7343,13 @@ class A {
         let semantics = data.declarator_semantics(prop_node_id);
         let DeclaratorSemantics::ClassFieldDerived(ClassFieldDerivedSemantics {
             kind,
-            emit: lowering,
+            async_kind: lowering,
         }) = semantics
         else {
             panic!("expected ClassFieldDerived, got {semantics:?}");
         };
         assert_eq!(kind, DerivedKind::DerivedBy);
-        assert_eq!(lowering, DerivedEmit::Sync);
+        assert_eq!(lowering, DerivedAsyncKind::Sync);
     }
 
     fn find_ctor_assign_node_id(
@@ -7603,10 +7610,15 @@ let a = new A();
 }
 
 mod block_semantics_html_tag_tests {
-    use super::{analyze_source, analyze_source_with_options, find_html_tag_id};
+    use super::{
+        analyze_source, analyze_source_experimental_async, analyze_source_with_options,
+        find_html_tag_id,
+    };
     use crate::AnalysisData;
     use crate::AnalyzeOptions;
-    use crate::block_semantics::{BlockSemantics, HtmlTagNamespace, HtmlTagSemantics};
+    use crate::block_semantics::{
+        BlockSemantics, HtmlTagAsyncKind, HtmlTagNamespace, HtmlTagSemantics,
+    };
 
     fn html_tag_semantics<'a>(
         component: &'a svelte_ast::Component,
@@ -7692,6 +7704,23 @@ mod block_semantics_html_tag_tests {
         );
         let sem = html_tag_semantics(&component, &data, "content");
         assert!(!sem.hydration_html_changed_ignored);
+    }
+
+    #[test]
+    fn sync_expression_yields_sync_async_kind() {
+        let (component, data) =
+            analyze_source(r#"<script>let content = '';</script><div>{@html content}</div>"#);
+        let sem = html_tag_semantics(&component, &data, "content");
+        assert!(matches!(sem.async_kind, HtmlTagAsyncKind::Sync));
+    }
+
+    #[test]
+    fn awaited_expression_yields_awaited_async_kind() {
+        let (component, data) = analyze_source_experimental_async(
+            r#"<script>async function load() { return ''; }</script><div>{@html await load()}</div>"#,
+        );
+        let sem = html_tag_semantics(&component, &data, "await load()");
+        assert!(matches!(sem.async_kind, HtmlTagAsyncKind::Awaited { .. }));
     }
 }
 

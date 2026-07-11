@@ -8,7 +8,7 @@ use std::iter;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{
     AttributeSemantics, BindPropertyKind, ElementBindPropertyKind, ElementBindSemantics,
-    HtmlBindKind, ImageNaturalSizeKind, MediaBindKind,
+    GroupBindValue, HtmlBindKind, ImageNaturalSizeKind, MediaBindKind,
 };
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::Arg;
@@ -378,10 +378,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 [Arg::Ident(el_name), Arg::Ident(var_alloc)],
             ),
             ElementBindPropertyKind::Group => {
-                let has_value_attr = matches!(
-                    self.ctx.query.analysis.attributes.get(bind.id),
-                    AttributeSemantics::ElementBind(b) if b.group_value.is_some()
-                );
+                let has_value_attr = match self.ctx.query.analysis.attributes.get(bind.id) {
+                    AttributeSemantics::ElementBind(b) => match b.group_value {
+                        Some(GroupBindValue::Expression { .. }) => true,
+                        Some(GroupBindValue::Static { .. }) | None => false,
+                    },
+                    _ => false,
+                };
                 let getter = if has_value_attr {
                     let call = self
                         .ctx

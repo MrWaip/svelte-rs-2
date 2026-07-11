@@ -65,6 +65,53 @@ pub fn assert_compiler_module_dev(case: &str) {
     );
 }
 
+pub fn assert_compiler_module_ssr(case: &str) {
+    let dir = cluster_case_dir(case);
+    let (input, opts) = load_cluster_module_case(case);
+
+    let mut server_opts = opts.clone();
+    server_opts.generate = GenerateMode::Server;
+    let server_js = compile_module(&input, &server_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] server compile_module produced no JS"))
+        .code;
+    let expected_server =
+        read_to_string(dir.join("case-svelte.server.js")).expect("test invariant");
+    File::create(dir.join("case-rust.server.js"))
+        .expect("test invariant")
+        .write_all(server_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(
+        strip_js_comments(&server_js),
+        strip_js_comments(&expected_server),
+        "[{case}] server JS mismatch"
+    );
+}
+
+pub fn assert_compiler_module_ssr_dev(case: &str) {
+    let dir = cluster_case_dir(case);
+    let (input, opts) = load_cluster_module_case(case);
+
+    let mut server_opts = opts.clone();
+    server_opts.generate = GenerateMode::Server;
+    server_opts.dev = true;
+    let server_js = compile_module(&input, &server_opts)
+        .js
+        .unwrap_or_else(|| panic!("[{case}] server dev compile_module produced no JS"))
+        .code;
+    let expected_server =
+        read_to_string(dir.join("case-svelte.server.dev.js")).expect("test invariant");
+    File::create(dir.join("case-rust.server.dev.js"))
+        .expect("test invariant")
+        .write_all(server_js.as_bytes())
+        .expect("test invariant");
+    assert_eq!(
+        strip_js_comments(&server_js),
+        strip_js_comments(&expected_server),
+        "[{case}] server dev JS mismatch"
+    );
+}
+
 pub fn assert_compiler_prod(case: &str) {
     let dir = cluster_case_dir(case);
     let (input, opts) = load_cluster_case(case);

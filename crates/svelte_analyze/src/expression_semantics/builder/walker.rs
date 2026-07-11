@@ -42,6 +42,16 @@ pub(super) fn populate<'a>(
         ReadContext::Runtime,
         dev,
     );
+    let mut declared_evaluator = ValueEvaluator::new(
+        parsed,
+        scoping,
+        semantics,
+        reactivity,
+        snippets,
+        ReadContext::Declaration,
+        dev,
+    );
+    declared_evaluator.ingest_const_tag_bindings(component, parsed);
     let ctx = Ctx {
         parsed,
         semantics,
@@ -52,6 +62,7 @@ pub(super) fn populate<'a>(
         blockers,
         uses_legacy_coarse_wrap: matches!(runes_mode, svelte_ast::RunesMode::HardLegacy),
         evaluator,
+        declared_evaluator,
     };
     let mut sink = Sink { store };
     visit_fragment(component, component.root, &ctx, &mut sink);
@@ -67,6 +78,7 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) blockers: &'c BlockerData,
     pub(super) uses_legacy_coarse_wrap: bool,
     pub(super) evaluator: ValueEvaluator<'c, 'a>,
+    pub(super) declared_evaluator: ValueEvaluator<'c, 'a>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -468,6 +480,7 @@ fn empty_data() -> ExpressionData {
     ExpressionData {
         volatility: Volatility::Static,
         evaluation: Evaluation::unknown(),
+        declared_evaluation: Evaluation::unknown(),
         blockers: SmallVec::new(),
         legacy_wrap: LegacyWrap::None,
         references: SmallVec::new(),
@@ -534,9 +547,11 @@ fn compute<'a>(
             }
         }
     };
+    let declared_evaluation = ctx.declared_evaluator.evaluate(expr);
     let data = ExpressionData {
         volatility,
         evaluation,
+        declared_evaluation,
         blockers,
         legacy_wrap: derive::legacy_wrap(
             ctx.uses_legacy_coarse_wrap,

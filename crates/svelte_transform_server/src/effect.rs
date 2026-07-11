@@ -1,45 +1,100 @@
-use oxc_ast::ast::{Expression, Statement};
+use std::mem;
+
+use oxc_ast::ast::{Argument, CallExpression, Expression, Statement};
 use svelte_analyze::{DeclaratorSemantics, RuntimeRuneKind};
+use svelte_ast_builder::Arg;
 
 use crate::model::ServerTransform;
 
-impl ServerTransform<'_, '_> {
-    pub(crate) fn keep_statement(&self, stmt: &Statement<'_>) -> bool {
-        let Statement::ExpressionStatement(es) = stmt else {
-            return true;
+pub(crate) enum RuneStatement<'a> {
+    Keep(Statement<'a>),
+    Replace(Vec<Statement<'a>>),
+}
+
+impl<'a> ServerTransform<'_, 'a> {
+    pub(crate) fn rewrite_rune_statement(&self, stmt: Statement<'a>) -> RuneStatement<'a> {
+        let Statement::ExpressionStatement(es) = &stmt else {
+            return RuneStatement::Keep(stmt);
         };
         let Expression::CallExpression(call) = &es.expression else {
-            return true;
+            return RuneStatement::Keep(stmt);
         };
-        match self.analysis.declarator_semantics(call.node_id()) {
-            DeclaratorSemantics::RuntimeRuneCall { kind } => match kind {
-                RuntimeRuneKind::Effect
-                | RuntimeRuneKind::EffectPre
-                | RuntimeRuneKind::EffectRoot
-                | RuntimeRuneKind::InspectTrace => false,
-                RuntimeRuneKind::PropsId
-                | RuntimeRuneKind::EffectTracking
-                | RuntimeRuneKind::EffectPending
-                | RuntimeRuneKind::Host
-                | RuntimeRuneKind::Inspect
-                | RuntimeRuneKind::InspectWith
-                | RuntimeRuneKind::StateSnapshot
-                | RuntimeRuneKind::StateEager
-                | RuntimeRuneKind::Bindable => true,
-            },
-            DeclaratorSemantics::None
-            | DeclaratorSemantics::RuneProps
-            | DeclaratorSemantics::LegacyProps
-            | DeclaratorSemantics::LegacyState
-            | DeclaratorSemantics::RuneState { .. }
-            | DeclaratorSemantics::RuneDerived { .. }
-            | DeclaratorSemantics::ConstTag { .. }
-            | DeclaratorSemantics::LetCarrier { .. }
-            | DeclaratorSemantics::EachItem
-            | DeclaratorSemantics::AwaitValue
-            | DeclaratorSemantics::SnippetParam
-            | DeclaratorSemantics::ClassFieldState(_)
-            | DeclaratorSemantics::ClassFieldDerived(_) => true,
+        let DeclaratorSemantics::RuntimeRuneCall { kind } =
+            self.analysis.declarator_semantics(call.node_id())
+        else {
+            return RuneStatement::Keep(stmt);
+        };
+        match kind {
+            RuntimeRuneKind::Effect
+            | RuntimeRuneKind::EffectPre
+            | RuntimeRuneKind::EffectRoot
+            | RuntimeRuneKind::InspectTrace => RuneStatement::Replace(Vec::new()),
+            RuntimeRuneKind::Inspect => self.rewrite_inspect(stmt, false),
+            RuntimeRuneKind::InspectWith => self.rewrite_inspect(stmt, true),
+            RuntimeRuneKind::PropsId
+            | RuntimeRuneKind::EffectTracking
+            | RuntimeRuneKind::EffectPending
+            | RuntimeRuneKind::Host
+            | RuntimeRuneKind::StateSnapshot
+            | RuntimeRuneKind::StateEager
+            | RuntimeRuneKind::Bindable => RuneStatement::Keep(stmt),
         }
+    }
+
+    fn rewrite_inspect(&self, mut stmt: Statement<'a>, with: bool) -> RuneStatement<'a> {
+        if !self.dev {
+            return RuneStatement::Replace(vec![self.b.empty_stmt(), self.b.empty_stmt()]);
+        }
+        let Statement::ExpressionStatement(es) = &mut stmt else {
+            return RuneStatement::Keep(stmt);
+        };
+        let Expression::CallExpression(call) = &mut es.expression else {
+            return RuneStatement::Keep(stmt);
+        };
+
+        let rewritten = if with {
+            let Some(rewritten) = self.rewrite_inspect_with(call) else {
+                return RuneStatement::Keep(stmt);
+            };
+            rewritten
+        } else {
+            self.rewrite_inspect_log(call)
+        };
+        RuneStatement::Replace(vec![self.b.expr_stmt(rewritten)])
+    }
+
+    fn rewrite_inspect_with(&self, call: &mut CallExpression<'a>) -> Option<Expression<'a>> {
+        if call.arguments.is_empty() {
+            return None;
+        }
+        let Expression::StaticMemberExpression(member) = &mut call.callee else {
+            return None;
+        };
+        let Expression::CallExpression(inner) = &mut member.object else {
+            return None;
+        };
+        let inner_args = mem::replace(&mut inner.arguments, self.b.ast.vec());
+        let mut taken = Argument::from(self.b.cheap_expr());
+        mem::swap(&mut call.arguments[0], &mut taken);
+        let inspector = taken.into_expression();
+        let mut args = vec![Arg::Str("init".to_string())];
+        args.extend(
+            inner_args
+                .into_iter()
+                .map(|arg| Arg::Expr(arg.into_expression())),
+        );
+        Some(self.b.call_expr_callee(inspector, args))
+    }
+
+    fn rewrite_inspect_log(&self, call: &mut CallExpression<'a>) -> Expression<'a> {
+        let call_args = mem::replace(&mut call.arguments, self.b.ast.vec());
+        let mut args = vec![Arg::Str("$inspect(".to_string())];
+        args.extend(
+            call_args
+                .into_iter()
+                .map(|arg| Arg::Expr(arg.into_expression())),
+        );
+        args.push(Arg::Str(")".to_string()));
+        self.b.call_expr("console.log", args)
     }
 }

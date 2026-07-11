@@ -24,27 +24,22 @@ compiler_case!(
 );
 compiler_case!(
     state_call_in_script_guard,
-    "template_runes/state_call_in_script_guard",
-    [prod, dev, ssr, ssr_dev]
+    "template_runes/state_call_in_script_guard"
 );
 
 compiler_case!(
     state_call_in_handler,
-    "template_runes/state_call_in_handler",
-    [prod, dev, ssr, ssr_dev]
+    "template_runes/state_call_in_handler"
 );
 compiler_case!(
     derived_call_in_handler,
-    "template_runes/derived_call_in_handler",
-    [prod, dev, ssr, ssr_dev]
+    "template_runes/derived_call_in_handler"
 );
 compiler_case!(
     state_primitive_in_handler,
-    "template_runes/state_primitive_in_handler",
-    [prod, dev, ssr, ssr_dev]
+    "template_runes/state_primitive_in_handler"
 );
 compiler_case!(
     state_call_in_nested_block_in_handler,
-    "template_runes/state_call_in_nested_block_in_handler",
-    [prod, dev, ssr, ssr_dev]
+    "template_runes/state_call_in_nested_block_in_handler"
 );

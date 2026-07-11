@@ -158,6 +158,10 @@ impl<'a> JsAst<'a> {
     pub fn iter_stmts(&self) -> impl Iterator<Item = &Statement<'a>> {
         self.stmts.iter().filter_map(Option::as_ref)
     }
+
+    pub fn iter_stmts_mut(&mut self) -> impl Iterator<Item = &mut Statement<'a>> {
+        self.stmts.iter_mut().filter_map(Option::as_mut)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

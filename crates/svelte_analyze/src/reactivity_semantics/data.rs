@@ -169,6 +169,26 @@ impl BindingSemantics {
         }
     }
 
+    pub fn is_bindable(&self) -> bool {
+        match self {
+            BindingSemantics::Prop(prop) => prop.bindable,
+            BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
     pub fn is_runes_prop(&self) -> bool {
         match self {
             BindingSemantics::Prop(_) => true,
@@ -459,6 +479,26 @@ impl BindingSemantics {
         }
     }
 
+    pub fn runtime_rune(&self) -> Option<RuntimeRuneKind> {
+        match self {
+            BindingSemantics::RuntimeRune { kind } => Some(*kind),
+            BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyApiExport
+            | BindingSemantics::Unresolved => None,
+        }
+    }
+
     pub fn legacy_state(&self) -> Option<LegacyStateSemantics> {
         match self {
             BindingSemantics::LegacyState(state) => Some(*state),
@@ -558,7 +598,7 @@ pub struct OptimizedRuneSemantics {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DerivedDeclarationSemantics {
     pub kind: DerivedKind,
-    pub emit: DerivedEmit,
+    pub async_kind: DerivedAsyncKind,
     pub var_declared: bool,
 }
 
@@ -570,7 +610,7 @@ pub enum DerivedKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DerivedEmit {
+pub enum DerivedAsyncKind {
     Sync,
 
     Async,
@@ -588,6 +628,7 @@ pub enum DerivedSource {
 pub struct PropBindingSemantics {
     pub emit_mode: PropEmitMode,
     pub kind: PropBindingKind,
+    pub bindable: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -624,7 +665,6 @@ pub enum PropBindingKind {
     Identifier,
 
     Source {
-        bindable: bool,
         updated: bool,
         default_lowering: PropDefaultKind,
 
@@ -739,12 +779,12 @@ pub enum DeclaratorSemantics {
 
     RuneDerived {
         kind: DerivedKind,
-        emit: DerivedEmit,
+        async_kind: DerivedAsyncKind,
         source: DerivedSource,
     },
 
     ConstTag {
-        emit: DerivedEmit,
+        async_kind: DerivedAsyncKind,
     },
 
     LetCarrier {
@@ -816,6 +856,28 @@ impl DeclaratorSemantics {
             DeclaratorSemantics::None
             | DeclaratorSemantics::RuntimeRuneCall { .. }
             | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyState
+            | DeclaratorSemantics::RuneState { .. }
+            | DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::ConstTag { .. }
+            | DeclaratorSemantics::LetCarrier { .. }
+            | DeclaratorSemantics::EachItem
+            | DeclaratorSemantics::AwaitValue
+            | DeclaratorSemantics::SnippetParam
+            | DeclaratorSemantics::ClassFieldState(_)
+            | DeclaratorSemantics::ClassFieldDerived(_) => false,
+        }
+    }
+
+    pub fn is_props_id_call(&self) -> bool {
+        match self {
+            DeclaratorSemantics::RuntimeRuneCall {
+                kind: RuntimeRuneKind::PropsId,
+            } => true,
+            DeclaratorSemantics::RuntimeRuneCall { .. }
+            | DeclaratorSemantics::None
+            | DeclaratorSemantics::RuneProps
+            | DeclaratorSemantics::LegacyProps
             | DeclaratorSemantics::LegacyState
             | DeclaratorSemantics::RuneState { .. }
             | DeclaratorSemantics::RuneDerived { .. }
@@ -927,12 +989,19 @@ impl ClassFieldSemantics {
             ClassFieldSemantics::None => false,
         }
     }
+
+    pub fn is_derived(&self) -> bool {
+        match self {
+            ClassFieldSemantics::Derived { .. } => true,
+            ClassFieldSemantics::None | ClassFieldSemantics::State { .. } => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ClassFieldDerivedSemantics {
     pub kind: DerivedKind,
-    pub emit: DerivedEmit,
+    pub async_kind: DerivedAsyncKind,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1133,6 +1202,48 @@ impl ReferenceSemantics {
             | ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::DerivedUpdate
+            | ReferenceSemantics::PropRead(_)
+            | ReferenceSemantics::PropMutation { .. }
+            | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::PropNonSourceMemberMutationRoot { .. }
+            | ReferenceSemantics::ConstAliasRead { .. }
+            | ReferenceSemantics::ContextualRead(_)
+            | ReferenceSemantics::CarrierMemberRead(_)
+            | ReferenceSemantics::RestPropMemberRewrite
+            | ReferenceSemantics::LegacyPropsIdentifierRead
+            | ReferenceSemantics::LegacyRestPropsIdentifierRead
+            | ReferenceSemantics::LegacySlotsIdentifierRead
+            | ReferenceSemantics::LegacyStateRead { .. }
+            | ReferenceSemantics::LegacyStateWrite
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedRead { .. }
+            | ReferenceSemantics::LegacyStateSubscribedWrite { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. }
+            | ReferenceSemantics::LegacyStateMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyReactiveImportRead
+            | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
+            | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
+            | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::IllegalWrite
+            | ReferenceSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_derived_write(&self) -> bool {
+        match self {
+            ReferenceSemantics::DerivedWrite => true,
+
+            ReferenceSemantics::NonReactive
+            | ReferenceSemantics::Proxy
+            | ReferenceSemantics::SignalRead { .. }
+            | ReferenceSemantics::SignalWrite { .. }
+            | ReferenceSemantics::SignalUpdate { .. }
+            | ReferenceSemantics::DerivedUpdate
+            | ReferenceSemantics::StoreRead { .. }
+            | ReferenceSemantics::StoreWrite { .. }
+            | ReferenceSemantics::StoreUpdate { .. }
+            | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::PropRead(_)
             | ReferenceSemantics::PropMutation { .. }
             | ReferenceSemantics::PropSourceMemberMutationRoot { .. }
@@ -1893,14 +2004,15 @@ impl ReactivitySemantics {
             if !is_passthrough {
                 continue;
             }
-            if let DeclaratorSemantics::RuneDerived { kind, emit, .. } =
-                self.declarator_semantics(node)
+            if let DeclaratorSemantics::RuneDerived {
+                kind, async_kind, ..
+            } = self.declarator_semantics(node)
             {
                 self.write_declarator(
                     node,
                     DeclaratorSemantics::RuneDerived {
                         kind,
-                        emit,
+                        async_kind,
                         source: DerivedSource::Passthrough,
                     },
                 );
@@ -2270,10 +2382,7 @@ impl ReactivitySemantics {
     }
 
     pub(crate) fn record_prop_binding(&mut self, sym: SymbolId, semantics: PropBindingSemantics) {
-        if matches!(
-            semantics.kind,
-            PropBindingKind::Source { bindable: true, .. }
-        ) {
+        if semantics.bindable {
             self.has_bindable_prop = true;
         }
         self.write_binding(sym, BindingFacts::Prop(semantics));

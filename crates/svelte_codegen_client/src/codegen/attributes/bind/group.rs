@@ -1,5 +1,6 @@
 use crate::codegen::expr::{coarse_wrap, evaluation_is_defined};
 use oxc_ast::ast::{BinaryOperator, Expression, Statement};
+use svelte_analyze::GroupBindValue;
 use svelte_analyze::types::data::binding_group_name;
 use svelte_ast::{BindDirective, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
@@ -51,30 +52,31 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             svelte_analyze::AttributeSemantics::ElementBind(b) => b.group_value,
             _ => None,
         };
-        let getter = if let Some(value) = group_value {
-            let val_expr = self
-                .ctx
-                .state
-                .parsed
-                .expr(value.expression)
-                .map(|expr| self.ctx.b.clone_expr(expr))
-                .unwrap_or_else(|| self.ctx.b.str_expr(""));
-            let data = self.ctx.expression_data(value.data).cloned();
-            let val_expr = coarse_wrap(self.ctx, val_expr, data.as_ref());
-            let val_stmt = self.ctx.b.expr_stmt(val_expr);
+        let getter = match group_value {
+            Some(GroupBindValue::Expression { expression, data }) => {
+                let val_expr = self
+                    .ctx
+                    .state
+                    .parsed
+                    .expr(expression)
+                    .map(|expr| self.ctx.b.clone_expr(expr))
+                    .unwrap_or_else(|| self.ctx.b.str_expr(""));
+                let data = self.ctx.expression_data(data).cloned();
+                let val_expr = coarse_wrap(self.ctx, val_expr, data.as_ref());
+                let val_stmt = self.ctx.b.expr_stmt(val_expr);
 
-            let Some(body_expr) = extract_getter_binding_expr(get_fn) else {
-                return CodegenError::unexpected_node(
-                    bind.id,
-                    "bind:group getter has no extractable binding expression",
-                );
-            };
-            let return_stmt = self.ctx.b.return_stmt(body_expr);
-            self.ctx
-                .b
-                .arrow_block_expr(self.ctx.b.no_params(), vec![val_stmt, return_stmt])
-        } else {
-            get_fn
+                let Some(body_expr) = extract_getter_binding_expr(get_fn) else {
+                    return CodegenError::unexpected_node(
+                        bind.id,
+                        "bind:group getter has no extractable binding expression",
+                    );
+                };
+                let return_stmt = self.ctx.b.return_stmt(body_expr);
+                self.ctx
+                    .b
+                    .arrow_block_expr(self.ctx.b.no_params(), vec![val_stmt, return_stmt])
+            }
+            Some(GroupBindValue::Static { .. }) | None => get_fn,
         };
 
         Ok(self.ctx.b.call_stmt(

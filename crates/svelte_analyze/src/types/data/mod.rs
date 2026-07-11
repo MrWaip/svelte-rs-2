@@ -30,7 +30,7 @@ pub use crate::reactivity_semantics::data::{
     BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics, ClassFieldSemantics,
     ClassFieldStateSemantics, ConstBindingSemantics, ContextualBindingSemantics,
     ContextualReadKind, ContextualReadSemantics, DeclaratorGroup, DeclaratorSemantics,
-    DerivedDeclarationSemantics, DerivedEmit, DerivedKind, DerivedSource, EachIndexStrategy,
+    DerivedAsyncKind, DerivedDeclarationSemantics, DerivedKind, DerivedSource, EachIndexStrategy,
     EachItemStrategy, LegacyBindablePropSemantics, LegacyDependency, LegacySummary,
     OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
     PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
@@ -48,8 +48,8 @@ pub use css::CssAnalysis;
 pub use directive_modifier_flags::EventModifier;
 pub use element_facts::{ElementFacts, ElementFactsEntry, NamespaceKind};
 pub use elements::{
-    ClassDirectiveInfo, ComponentBindMode, ComponentCssProp, ComponentCssPropValue,
-    ComponentPropInfo, ComponentPropKind, ElementFlags, EventHandlerMode, LegacyDefaultSlot,
+    ClassDirectiveInfo, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ElementFlags,
+    EventHandlerMode, SvelteElementTag,
 };
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragment_namespaces::FragmentNamespaces;

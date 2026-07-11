@@ -74,8 +74,7 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_module_unmutated_read_template,
-    "legacy/coarse_deps/module_unmutated_read_template",
-    [prod, dev, ssr, ssr_dev]
+    "legacy/coarse_deps/module_unmutated_read_template"
 );
 compiler_case!(
     coarse_deps_instance_mutated_read_template,
@@ -150,23 +149,19 @@ compiler_case!(
 );
 compiler_case!(
     coarse_deps_dep_order_plain_member_lhs_read,
-    "legacy/coarse_deps/dep_order_plain_member_lhs_read",
-    [prod, dev, ssr, ssr_dev]
+    "legacy/coarse_deps/dep_order_plain_member_lhs_read"
 );
 compiler_case!(
     coarse_deps_dep_order_ident_lhs_reassign_read,
-    "legacy/coarse_deps/dep_order_ident_lhs_reassign_read",
-    [prod, dev, ssr, ssr_dev]
+    "legacy/coarse_deps/dep_order_ident_lhs_reassign_read"
 );
 compiler_case!(
     coarse_deps_dep_order_ident_lhs_only,
-    "legacy/coarse_deps/dep_order_ident_lhs_only",
-    [prod, dev, ssr, ssr_dev]
+    "legacy/coarse_deps/dep_order_ident_lhs_only"
 );
 compiler_case!(
     coarse_deps_dep_order_compound_assign,
-    "legacy/coarse_deps/dep_order_compound_assign",
-    [prod, dev, ssr, ssr_dev]
+    "legacy/coarse_deps/dep_order_compound_assign"
 );
 compiler_case!(
     coarse_deps_dep_order_readonly_block,

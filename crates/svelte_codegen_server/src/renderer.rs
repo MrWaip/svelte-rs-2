@@ -25,6 +25,27 @@ impl<'a> ServerCodegen<'a> {
         self.items.push(TemplateItem::Stmt(stmt));
     }
 
+    pub(crate) fn hoist_stmt(&mut self, stmt: Statement<'a>) {
+        self.render_hoists.push(stmt);
+    }
+
+    pub(crate) fn take_render_hoists(&mut self) -> Vec<Statement<'a>> {
+        mem::take(&mut self.render_hoists)
+    }
+
+    pub(crate) fn renderer_push_string_stmt(&self, literal: &str) -> Statement<'a> {
+        self.b
+            .call_stmt("$$renderer.push", [Arg::Str(literal.to_string())])
+    }
+
+    pub(crate) fn renderer_push_template_stmt(&self, text: &str) -> Statement<'a> {
+        let template = self
+            .b
+            .template_parts_expr(vec![TemplatePart::Str(text.to_string())]);
+        self.b
+            .expr_stmt(self.b.call_expr("$$renderer.push", [Arg::Expr(template)]))
+    }
+
     pub(crate) fn push_expr(&mut self, expression: Expression<'a>) {
         self.items.push(TemplateItem::Expr(expression));
     }
@@ -38,12 +59,27 @@ impl<'a> ServerCodegen<'a> {
     where
         F: FnOnce(&mut Self) -> Result<()>,
     {
+        let saved_hoists = mem::take(&mut self.render_hoists);
         let parent_items = mem::take(&mut self.items);
         let outcome = fill(self);
         let child_items = mem::replace(&mut self.items, parent_items);
+        let child_hoists = mem::replace(&mut self.render_hoists, saved_hoists);
         outcome?;
-        Ok(renderer_statements(&self.b, child_items))
+        let mut rendered = renderer_statements(&self.b, child_items);
+        let split = leading_declaration_count(&rendered);
+        let tail = rendered.split_off(split);
+        let mut body = rendered;
+        body.extend(child_hoists);
+        body.extend(tail);
+        Ok(body)
     }
+}
+
+fn leading_declaration_count(statements: &[Statement<'_>]) -> usize {
+    statements
+        .iter()
+        .take_while(|stmt| matches!(stmt, Statement::VariableDeclaration(_)))
+        .count()
 }
 
 fn renderer_statements<'a>(b: &Builder<'a>, items: Vec<TemplateItem<'a>>) -> Vec<Statement<'a>> {

@@ -19,21 +19,6 @@ fn is_load_error_element(name: &str) -> bool {
     )
 }
 
-fn needs_textarea_content_reset(attributes: &[Attribute], has_spread: bool) -> bool {
-    if has_spread {
-        return true;
-    }
-    for attr in attributes {
-        match attr {
-            Attribute::BindDirective(b) if b.name == "value" => return true,
-            Attribute::ExpressionAttribute(a) if a.name == "value" => return true,
-            Attribute::ConcatenationAttribute(a) if a.name == "value" => return true,
-            _ => {}
-        }
-    }
-    false
-}
-
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn element_ident_prefix(&self, name: &str) -> String {
         let mut out = String::with_capacity(name.len());
@@ -157,7 +142,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if !is_ghost
             && el_name_hint == "textarea"
             && !self.ctx.needs_textarea_value_lowering(el_id)
-            && needs_textarea_content_reset(&attributes, has_spread)
+            && self.ctx.needs_textarea_content_reset(el_id)
         {
             state.init.push(
                 self.ctx

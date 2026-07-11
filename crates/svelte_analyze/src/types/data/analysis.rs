@@ -4,8 +4,11 @@ use crate::attribute_semantics::{
     data::{AttributeSemantics, ComponentPropMemo, ComponentPropSemantics},
 };
 use crate::block_semantics::{BlockSemantics, BlockSemanticsStore, EachIndexKind, EachItemKind};
+use crate::element_semantics::ElementSemanticsStore;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics, ExpressionSemanticsStore};
+use crate::fragment_semantics::FragmentSemanticsStore;
 use crate::passes::fragment_topology::fragment_items;
+use crate::runtime_semantics::RuntimeSemanticsStore;
 use crate::types::data::template_topology::Ancestors;
 use crate::types::data::{ClassFieldSemantics, DeclaratorSemantics};
 use crate::utils::node_id_utils::expression_node_id;
@@ -148,6 +151,7 @@ pub struct ApiExport {
 pub struct OutputData {
     pub needs_context: bool,
     pub needs_sanitized_legacy_slots: bool,
+    pub renders_legacy_slot: bool,
     pub custom_element_slot_names: Vec<String>,
     pub component_name: String,
     pub is_custom_element_target: bool,
@@ -166,6 +170,7 @@ impl OutputData {
         Self {
             needs_context: false,
             needs_sanitized_legacy_slots: false,
+            renders_legacy_slot: false,
             custom_element_slot_names: Vec::new(),
             component_name: String::new(),
             is_custom_element_target: false,
@@ -192,6 +197,9 @@ pub struct AnalysisData<'a> {
     pub output: OutputData,
     pub reactivity: ReactivitySemantics,
     pub(crate) block_semantics_store: BlockSemanticsStore,
+    pub element_semantics: ElementSemanticsStore,
+    pub fragment_semantics: FragmentSemanticsStore,
+    pub runtime_semantics: RuntimeSemanticsStore,
     pub(crate) value_evaluation: ValueEvaluation,
 }
 
@@ -209,6 +217,9 @@ impl<'a> AnalysisData<'a> {
             output: OutputData::new(node_count),
             reactivity: ReactivitySemantics::new(node_count),
             block_semantics_store: BlockSemanticsStore::new(node_count),
+            element_semantics: ElementSemanticsStore::new(node_count),
+            fragment_semantics: FragmentSemanticsStore::new(),
+            runtime_semantics: RuntimeSemanticsStore::new(),
             value_evaluation: ValueEvaluation::default(),
         }
     }
@@ -304,6 +315,12 @@ impl<'a> AnalysisData<'a> {
             .fragment_facts
             .lookup_by_id(id)
             .is_some_and(FragmentFactsEntry::has_children)
+    }
+    pub fn title_elements_for_fragment_by_id(
+        &self,
+        id: svelte_ast::FragmentId,
+    ) -> Option<&Vec<NodeId>> {
+        self.template.title_elements.by_fragment_id(id)
     }
     pub fn fragment_child_count_by_id(&self, id: svelte_ast::FragmentId) -> u32 {
         self.template
@@ -455,6 +472,12 @@ impl<'a> AnalysisData<'a> {
     }
     pub fn has_spread(&self, id: NodeId) -> bool {
         self.elements.facts.has_spread(id)
+    }
+    pub fn has_component_css_props(&self, id: NodeId) -> bool {
+        self.elements.flags.has_component_css_props(id)
+    }
+    pub fn svelte_element_tag(&self, id: NodeId) -> Option<&SvelteElementTag> {
+        self.elements.flags.svelte_element_tag(id)
     }
     pub fn has_runtime_attrs(&self, id: NodeId) -> bool {
         self.elements.facts.has_runtime_attrs(id)

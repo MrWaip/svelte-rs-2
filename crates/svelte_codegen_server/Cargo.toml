@@ -19,6 +19,8 @@ svelte_ast_builder = { workspace = true }
 svelte_sourcemap = { workspace = true }
 svelte_span = { workspace = true }
 memchr = { workspace = true }
+oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true }
+oxc_syntax = { workspace = true }
 oxc_codegen = { workspace = true }
 oxc_span = { workspace = true }
