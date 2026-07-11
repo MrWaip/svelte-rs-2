@@ -2,46 +2,37 @@ use super::*;
 
 compiler_case!(
     select_oneway_prop,
-    "special_value_attribute/select_oneway_prop",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/select_oneway_prop"
 );
 compiler_case!(
     option_value_static_text,
-    "special_value_attribute/option_value_static_text",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/option_value_static_text"
 );
 compiler_case!(
     option_value_static_null,
-    "special_value_attribute/option_value_static_null",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/option_value_static_null"
 );
 compiler_case!(
     option_value_reactive_each,
-    "special_value_attribute/option_value_reactive_each",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/option_value_reactive_each"
 );
 compiler_case!(
     option_value_prop_text,
-    "special_value_attribute/option_value_prop_text",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/option_value_prop_text"
 );
 compiler_case!(
     option_synthetic_reactive_each,
-    "special_value_attribute/option_synthetic_reactive_each",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/option_synthetic_reactive_each"
 );
 compiler_case!(
     option_value_member_prop,
-    "special_value_attribute/option_value_member_prop",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/option_value_member_prop"
 );
 compiler_case!(
     select_oneway_reactive_options,
-    "special_value_attribute/select_oneway_reactive_options",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/select_oneway_reactive_options"
 );
 compiler_case!(
     input_default_value_in_static_parent,
-    "special_value_attribute/input_default_value_in_static_parent",
-    [prod, dev, ssr, ssr_dev]
+    "special_value_attribute/input_default_value_in_static_parent"
 );

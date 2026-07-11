@@ -1,10 +1,10 @@
 #[macro_export]
 macro_rules! compiler_case {
     ($name:ident) => {
-        $crate::compiler_case!(@build $name, stringify!($name), [prod, dev, ssr_todo, ssr_dev_todo]);
+        $crate::compiler_case!(@build $name, stringify!($name), [prod, dev, ssr, ssr_dev]);
     };
     ($name:ident, $case:literal) => {
-        $crate::compiler_case!(@build $name, $case, [prod, dev, ssr_todo, ssr_dev_todo]);
+        $crate::compiler_case!(@build $name, $case, [prod, dev, ssr, ssr_dev]);
     };
     ($name:ident, [$($variant:ident),+ $(,)?]) => {
         $crate::compiler_case!(@build $name, stringify!($name), [$($variant),+]);
