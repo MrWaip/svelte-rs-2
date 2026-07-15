@@ -1,7 +1,7 @@
 # PRD: Compiler entry (корневой)
 
 label: compiler
-topics: compiler entry, compile/compile_module, pipeline orchestration, CompileOptions, diagnostics aggregation, standalone .svelte.js
+topics: compiler entry, compile/compile_module, pipeline orchestration, CompileOptions, diagnostics aggregation, standalone .svelte.js, hmr
 
 Корневой PRD для crate `svelte_compiler` — единственного оркестратора пайплайна.
 Public entry: `compile(source, &CompileOptions) -> CompileResult`. Module entry: `compile_module(source, &ModuleCompileOptions)`.
@@ -29,6 +29,7 @@ Public entry: `compile(source, &CompileOptions) -> CompileResult`. Module entry:
 1. **Compiler — единственный владелец `Allocator`.** Фаза-функции его заимствуют; второй `Allocator` посреди пайплайна не аллоцируется.
 2. **Сам compiler не производит диагностик** — агрегирует из парсера + анализа и возвращает единый `Vec<Diagnostic>`.
 3. **Standalone module path** (`compile_module`) роутится через `analyze_module` и пропускает template/css-шаги. После анализа ветвится по `generate` так же, как component path: `server` → `svelte_transform_server::transform_module` + `svelte_codegen_server::generate_module` (import `svelte/internal/server` + стёртое тело, без render-функции), иначе клиентский `generate_module`.
+4. **`hmr` — только backend-опция.** Протягивается в `CodegenOptions` (оба backend'а), но не в `AnalyzeOptions`/`TransformOptions`: анализ и трансформ hmr не наблюдают. Проверка: `grep -ri hmr crates/svelte_analyze crates/svelte_transform_client crates/svelte_transform_server` пуст.
 
 ## Анти-паттерны
 

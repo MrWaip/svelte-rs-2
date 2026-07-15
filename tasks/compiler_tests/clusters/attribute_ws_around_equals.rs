@@ -1,0 +1,55 @@
+use super::*;
+
+compiler_case!(
+    elem_expr_space_after,
+    "attribute/ws_around_equals/elem_expr_space_after"
+);
+compiler_case!(
+    elem_quoted_space_after,
+    "attribute/ws_around_equals/elem_quoted_space_after"
+);
+compiler_case!(
+    elem_unquoted_space_after,
+    "attribute/ws_around_equals/elem_unquoted_space_after"
+);
+compiler_case!(
+    elem_space_before,
+    "attribute/ws_around_equals/elem_space_before"
+);
+compiler_case!(
+    elem_space_both,
+    "attribute/ws_around_equals/elem_space_both"
+);
+compiler_case!(
+    class_directive_space_after,
+    "attribute/ws_around_equals/class_directive_space_after"
+);
+compiler_case!(
+    style_directive_space_after,
+    "attribute/ws_around_equals/style_directive_space_after"
+);
+compiler_case!(
+    prop_space_after,
+    "attribute/ws_around_equals/prop_space_after"
+);
+compiler_case!(
+    script_context_space_after_guard,
+    "attribute/ws_around_equals/script_context_space_after_guard"
+);
+
+compiler_case!(
+    elem_expr_guard,
+    "attribute/ws_around_equals/elem_expr_guard"
+);
+compiler_case!(
+    elem_quoted_guard,
+    "attribute/ws_around_equals/elem_quoted_guard"
+);
+compiler_case!(
+    elem_unquoted_guard,
+    "attribute/ws_around_equals/elem_unquoted_guard"
+);
+compiler_case!(
+    class_directive_guard,
+    "attribute/ws_around_equals/class_directive_guard"
+);

@@ -90,7 +90,7 @@ impl<'a> ServerCodegen<'a> {
             return Ok(None);
         };
         let body = self.slot_fill_body(fill_node_id, slot.fragment)?;
-        let arrow = self.slot_fill_arrow(fill_node_id, body)?;
+        let arrow = self.slot_fill_arrow(fill_node_id, body, true)?;
         Ok(Some(arrow))
     }
 
@@ -99,6 +99,7 @@ impl<'a> ServerCodegen<'a> {
         owner_id: NodeId,
         fragment: FragmentId,
         wrap_block: bool,
+        apply_let_scope: bool,
     ) -> Result<Option<Expression<'a>>> {
         let parent = if wrap_block {
             FragmentParent::Block
@@ -117,7 +118,11 @@ impl<'a> ServerCodegen<'a> {
         } else {
             inner
         };
-        Ok(Some(self.slot_fill_arrow(owner_id, body)?))
+        Ok(Some(self.slot_fill_arrow(
+            owner_id,
+            body,
+            apply_let_scope,
+        )?))
     }
 
     fn slot_fill_body(
@@ -143,8 +148,13 @@ impl<'a> ServerCodegen<'a> {
         &mut self,
         let_owner_id: NodeId,
         body: Vec<Statement<'a>>,
+        apply_let_scope: bool,
     ) -> Result<Expression<'a>> {
-        let let_pattern = self.build_let_object_pattern(let_owner_id)?;
+        let let_pattern = if apply_let_scope {
+            self.build_let_object_pattern(let_owner_id)?
+        } else {
+            None
+        };
         let params = match let_pattern {
             Some(pattern) => self.b.formal_parameters([
                 self.b.formal_parameter_from_str("$$renderer"),

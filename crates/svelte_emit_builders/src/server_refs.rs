@@ -151,7 +151,9 @@ pub fn rewrite_identifier_read<'a>(
         ReferenceSemantics::LegacyPropsIdentifierRead => {
             *expr = b.rid_expr("$$sanitized_props");
         }
-        ReferenceSemantics::StoreRead { symbol } => {
+        ReferenceSemantics::StoreRead { symbol }
+        | ReferenceSemantics::StoreWrite { symbol }
+        | ReferenceSemantics::StoreUpdate { symbol } => {
             if let Some(read) = store_read_of_symbol(b, analysis, symbol) {
                 *expr = read;
             }

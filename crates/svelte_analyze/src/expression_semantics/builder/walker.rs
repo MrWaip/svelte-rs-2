@@ -42,15 +42,7 @@ pub(super) fn populate<'a>(
         ReadContext::Runtime,
         dev,
     );
-    let mut declared_evaluator = ValueEvaluator::new(
-        parsed,
-        scoping,
-        semantics,
-        reactivity,
-        snippets,
-        ReadContext::Declaration,
-        dev,
-    );
+    let mut declared_evaluator = evaluator.duplicate_with_context(ReadContext::Declaration);
     declared_evaluator.ingest_const_tag_bindings(component, parsed);
     let ctx = Ctx {
         parsed,
@@ -116,9 +108,7 @@ fn visit_fragment(
     ctx: &Ctx<'_, '_>,
     sink: &mut Sink<'_>,
 ) {
-    let len = component.fragment_nodes(fragment_id).len();
-    for i in 0..len {
-        let id = component.fragment_nodes(fragment_id)[i];
+    for &id in component.fragment_nodes(fragment_id) {
         let node = component.store.get(id);
         match node {
             Node::ExpressionTag(tag) => {

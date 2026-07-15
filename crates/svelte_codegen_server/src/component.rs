@@ -38,6 +38,7 @@ impl<'a> ServerCodegen<'a> {
                 &cn.attributes,
                 &cn.legacy_slots,
                 callee,
+                None,
             );
         }
 
@@ -76,6 +77,7 @@ impl<'a> ServerCodegen<'a> {
                 &node.attributes,
                 &node.legacy_slots,
                 callee,
+                None,
             );
         }
         let (call_stmt, snippet_decls) = self.build_component_invocation(
@@ -97,9 +99,6 @@ impl<'a> ServerCodegen<'a> {
         &mut self,
         node: &'a svelte_ast::SvelteComponentLegacy,
     ) -> Result<()> {
-        if self.analysis.has_component_css_props(node.id) {
-            return Err(CodegenError::Unsupported(node.id, "component css props"));
-        }
         let this_expr_id =
             self.svelte_component_this_id(&node.attributes)
                 .ok_or(CodegenError::Unsupported(
@@ -107,6 +106,19 @@ impl<'a> ServerCodegen<'a> {
                     "svelte:component without this",
                 ))?;
         let this_expr = self.take_expr_by_oxc_id(node.id, this_expr_id)?;
+
+        if self.analysis.has_component_css_props(node.id) {
+            let callee = self.b.clone_expr(&this_expr);
+            return self.emit_component_css_props(
+                node.id,
+                node.fragment,
+                &node.attributes,
+                &node.legacy_slots,
+                callee,
+                Some(this_expr),
+            );
+        }
+
         self.emit_dynamic_component(
             node.id,
             node.fragment,
@@ -186,6 +198,7 @@ impl<'a> ServerCodegen<'a> {
         attributes: &'a [Attribute],
         legacy_slots: &'a [LegacySlot],
         callee: Expression<'a>,
+        dynamic_test: Option<Expression<'a>>,
     ) -> Result<()> {
         let (call_stmt, snippet_decls) =
             self.build_component_invocation(id, fragment, attributes, legacy_slots, callee)?;
@@ -198,18 +211,46 @@ impl<'a> ServerCodegen<'a> {
             Some(NamespaceKind::Svg) | Some(NamespaceKind::MathMl) => false,
         };
 
-        let mut body = snippet_decls;
-        body.push(call_stmt);
+        let is_dynamic = dynamic_test.is_some();
+        let tail_stmt = match dynamic_test {
+            Some(test) => {
+                let consequent = vec![
+                    self.renderer_push_string_stmt("<!--[-->"),
+                    call_stmt,
+                    self.renderer_push_string_stmt("<!--]-->"),
+                ];
+                let alternate = vec![
+                    self.renderer_push_string_stmt("<!--[!-->"),
+                    self.renderer_push_string_stmt("<!--]-->"),
+                ];
+                self.b.if_stmt(
+                    test,
+                    self.b.block_stmt(consequent),
+                    Some(self.b.block_stmt(alternate)),
+                )
+            }
+            None => call_stmt,
+        };
+
+        let body = if snippet_decls.is_empty() {
+            vec![tail_stmt]
+        } else {
+            let mut inner = snippet_decls;
+            inner.push(tail_stmt);
+            vec![self.b.block_stmt(inner)]
+        };
+
         let arrow = self.b.arrow_block_expr(self.b.no_params(), body);
-        let call = self.b.call_expr(
-            "$.css_props",
-            [
-                Arg::Ident("$$renderer"),
-                Arg::Bool(is_html),
-                Arg::Expr(props_obj),
-                Arg::Expr(arrow),
-            ],
-        );
+        let mut args = vec![
+            Arg::Ident("$$renderer"),
+            Arg::Bool(is_html),
+            Arg::Expr(props_obj),
+            Arg::Expr(arrow),
+        ];
+        if is_dynamic {
+            args.push(Arg::Bool(true));
+        }
+        let call = self.b.call_expr("$.css_props", args);
         self.push_stmt(self.b.expr_stmt(call));
         Ok(())
     }
@@ -379,12 +420,18 @@ impl<'a> ServerCodegen<'a> {
             None => (id, node_fragment, false),
         };
 
-        let Some(arrow) = self.build_default_slot_fill(owner_id, fragment, wrap_block)? else {
+        let apply_let_scope = !matches!(
+            default_slot,
+            LegacyDefaultSlot::ChildrenProp | LegacyDefaultSlot::OwnLetDisplaced
+        );
+        let Some(arrow) =
+            self.build_default_slot_fill(owner_id, fragment, wrap_block, apply_let_scope)?
+        else {
             return Ok(());
         };
 
         match default_slot {
-            LegacyDefaultSlot::ChildrenProp => {
+            LegacyDefaultSlot::ChildrenProp | LegacyDefaultSlot::OwnLetDisplaced => {
                 let arrow = if self.dev {
                     self.b
                         .call_expr("$.prevent_snippet_stringification", [Arg::Expr(arrow)])

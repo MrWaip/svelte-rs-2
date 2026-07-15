@@ -8,39 +8,35 @@ pub use data::{
     ComponentCssPropValue, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
     ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
     ConcatPartEmit, DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics,
-    ElementBindPropertyKind, ElementBindSemantics, EventEmit, EventSemantics, GroupBindValue,
-    GroupReflection, HandlerEmit, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SkipCause,
+    ElementBindPropertyKind, ElementBindSemantics, EventHandler, EventSemantics, GroupBindValue,
+    GroupReflection, HandlerEffect, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SkipCause,
     SpecialValueKind, SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics,
     TemplateEffect, WindowBindSemantics, is_component_css_property,
 };
 
+use rustc_hash::FxHashMap;
 use svelte_ast::NodeId;
 
 #[derive(Debug, Default, Clone)]
 pub struct AttributeSemanticsStore {
-    entries: Vec<AttributeSemantics>,
+    entries: FxHashMap<u32, AttributeSemantics>,
 }
 
 impl AttributeSemanticsStore {
-    pub(crate) fn new(node_count: u32) -> Self {
-        let mut entries = Vec::with_capacity(node_count as usize);
-        entries.resize_with(node_count as usize, AttributeSemantics::default);
-        Self { entries }
+    pub(crate) fn new(_node_count: u32) -> Self {
+        Self {
+            entries: FxHashMap::default(),
+        }
     }
 
     pub fn get(&self, id: NodeId) -> &AttributeSemantics {
         self.entries
-            .get(id.0 as usize)
+            .get(&id.0)
             .unwrap_or(&AttributeSemantics::NonSpecial)
     }
 
     #[allow(dead_code)]
     pub(crate) fn set(&mut self, id: NodeId, value: AttributeSemantics) {
-        let idx = id.0 as usize;
-        if idx >= self.entries.len() {
-            self.entries
-                .resize_with(idx + 1, AttributeSemantics::default);
-        }
-        self.entries[idx] = value;
+        self.entries.insert(id.0, value);
     }
 }

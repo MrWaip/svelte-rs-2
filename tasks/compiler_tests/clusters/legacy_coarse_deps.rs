@@ -167,3 +167,7 @@ compiler_case!(
     coarse_deps_dep_order_readonly_block,
     "legacy/coarse_deps/dep_order_readonly_block"
 );
+compiler_case!(
+    const_arrow_not_promoted_guard,
+    "legacy/coarse_deps/const_arrow_not_promoted_guard"
+);

@@ -120,9 +120,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         keys.extend(
             self.data
                 .reactivity
-                .legacy_bindable_prop_symbols()
-                .iter()
-                .copied()
+                .iter_legacy_bindable_prop_symbols()
                 .map(|sym| {
                     self.data
                         .reactivity
@@ -154,7 +152,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             }
             return accessors;
         }
-        for &sym in self.data.reactivity.legacy_bindable_prop_symbols() {
+        for sym in self.data.reactivity.iter_legacy_bindable_prop_symbols() {
             let key = match self.data.reactivity.legacy_bindable_prop_alias(sym) {
                 Some(alias) => Cow::Borrowed(alias),
                 None => Cow::Borrowed(self.data.scoping.symbol_name(sym)),
@@ -412,12 +410,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn binding_group_count(&self) -> u32 {
         self.data.template.bind_semantics.binding_group_count()
-    }
-    pub fn title_elements_for_fragment_by_id(
-        &self,
-        id: svelte_ast::FragmentId,
-    ) -> Option<&Vec<NodeId>> {
-        self.data.template.title_elements.by_fragment_id(id)
     }
     pub fn each_index_name(&self, id: NodeId) -> Option<&str> {
         self.data

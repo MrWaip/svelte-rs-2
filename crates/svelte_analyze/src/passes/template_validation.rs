@@ -593,10 +593,10 @@ const A11Y_GLOBAL_ROLE_SUPPORTED_PROPS: &[&str] = &[
     "aria-roledescription",
 ];
 
-struct BindParentInfo {
+struct BindParentInfo<'d> {
     id: svelte_ast::NodeId,
     name: String,
-    attrs: Vec<Attribute>,
+    attrs: &'d [Attribute],
     parent_kind: ParentKind,
 }
 
@@ -1359,6 +1359,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     | ParentKind::Element
                     | ParentKind::SlotElementLegacy
                     | ParentKind::SvelteElement
+                    | ParentKind::SvelteComponentLegacy
+                    | ParentKind::SvelteSelf
                     | ParentKind::SvelteFragmentLegacy
             )
         });
@@ -1770,45 +1772,48 @@ impl TemplateVisitor for TemplateValidationVisitor {
     }
 }
 
-fn current_bind_parent(bind_id: NodeId, ctx: &VisitContext<'_, '_>) -> Option<BindParentInfo> {
+fn current_bind_parent<'d>(
+    bind_id: NodeId,
+    ctx: &VisitContext<'d, '_>,
+) -> Option<BindParentInfo<'d>> {
     let parent = ctx.data.parent(bind_id)?;
     use crate::types::data::ParentKind;
     match ctx.store.get(parent.id) {
         Node::Element(el) => Some(BindParentInfo {
             id: el.id,
             name: el.name.clone(),
-            attrs: el.attributes.clone(),
+            attrs: &el.attributes,
             parent_kind: ParentKind::Element,
         }),
         Node::ComponentNode(node) => Some(BindParentInfo {
             id: node.id,
             name: ctx.source[node.name.span.start as usize..node.name.span.end as usize]
                 .to_string(),
-            attrs: node.attributes.clone(),
+            attrs: &node.attributes,
             parent_kind: ParentKind::ComponentNode,
         }),
         Node::SvelteElement(el) => Some(BindParentInfo {
             id: el.id,
             name: SVELTE_ELEMENT.to_string(),
-            attrs: el.attributes.clone(),
+            attrs: &el.attributes,
             parent_kind: ParentKind::SvelteElement,
         }),
         Node::SvelteWindow(el) => Some(BindParentInfo {
             id: el.id,
             name: SVELTE_WINDOW.to_string(),
-            attrs: el.attributes.clone(),
+            attrs: &el.attributes,
             parent_kind: ParentKind::SvelteWindow,
         }),
         Node::SvelteDocument(el) => Some(BindParentInfo {
             id: el.id,
             name: SVELTE_DOCUMENT.to_string(),
-            attrs: el.attributes.clone(),
+            attrs: &el.attributes,
             parent_kind: ParentKind::SvelteDocument,
         }),
         Node::SvelteBody(el) => Some(BindParentInfo {
             id: el.id,
             name: SVELTE_BODY.to_string(),
-            attrs: el.attributes.clone(),
+            attrs: &el.attributes,
             parent_kind: ParentKind::SvelteBody,
         }),
         _ => None,
@@ -1854,7 +1859,7 @@ fn emit_bind_error(ctx: &mut VisitContext<'_, '_>, span: Span, kind: DiagnosticK
 
 fn validate_bind_name_and_target(
     dir: &BindDirective,
-    parent: &BindParentInfo,
+    parent: &BindParentInfo<'_>,
     ctx: &mut VisitContext<'_, '_>,
 ) {
     let Some(bind_semantics) =
@@ -1935,7 +1940,7 @@ fn validate_bind_name_and_target(
 
 fn validate_bind_parent_specifics(
     dir: &BindDirective,
-    parent: &BindParentInfo,
+    parent: &BindParentInfo<'_>,
     ctx: &mut VisitContext<'_, '_>,
 ) {
     let bind_semantics =
@@ -1947,7 +1952,7 @@ fn validate_bind_parent_specifics(
     }
 
     if parent.name == "select" && bind_semantics.is_none_or(|semantics| !semantics.is_this()) {
-        let multiple = ctx.data.attribute(parent.id, &parent.attrs, "multiple");
+        let multiple = ctx.data.attribute(parent.id, parent.attrs, "multiple");
         if let Some(a) = multiple
             && !attr_is_text(a)
             && !matches!(a, Attribute::BooleanAttribute(_))
@@ -1980,7 +1985,7 @@ fn validate_bind_parent_specifics(
     if bind_semantics.is_some_and(|semantics| semantics.is_contenteditable()) {
         let contenteditable = ctx
             .data
-            .attribute(parent.id, &parent.attrs, "contenteditable");
+            .attribute(parent.id, parent.attrs, "contenteditable");
         match contenteditable {
             None => emit_bind_error(
                 ctx,
@@ -2002,13 +2007,13 @@ fn validate_bind_parent_specifics(
 
 fn validate_input_bindings(
     dir: &BindDirective,
-    parent: &BindParentInfo,
+    parent: &BindParentInfo<'_>,
     ctx: &mut VisitContext<'_, '_>,
 ) {
     let bind_property =
         BindTargetSemantics::from_parent_kind_and_name(parent.parent_kind, dir.name.as_str())
             .map(|semantics| semantics.property());
-    let Some(type_attr) = ctx.data.attribute(parent.id, &parent.attrs, "type") else {
+    let Some(type_attr) = ctx.data.attribute(parent.id, parent.attrs, "type") else {
         return;
     };
 
@@ -2026,7 +2031,7 @@ fn validate_input_bindings(
 
     let type_value = ctx
         .data
-        .static_text_attribute_value(parent.id, &parent.attrs, "type", ctx.source)
+        .static_text_attribute_value(parent.id, parent.attrs, "type", ctx.source)
         .unwrap_or_default();
     if bind_property == Some(BindPropertyKind::Checked) && type_value != "checkbox" {
         let elements = if type_value == "radio" {
@@ -3008,8 +3013,7 @@ fn component_has_implicit_default_children(
     excluded_child_id: Option<NodeId>,
     ctx: &VisitContext<'_, '_>,
 ) -> Option<Span> {
-    let cn_fragment_nodes = ctx.store.fragment_nodes(component.fragment).to_vec();
-    for child_id in cn_fragment_nodes {
+    for child_id in ctx.store.fragment_nodes(component.fragment).iter().copied() {
         if Some(child_id) == excluded_child_id {
             continue;
         }
@@ -3025,8 +3029,7 @@ fn component_has_implicit_default_children(
     }
 
     for slot in &component.legacy_slots {
-        let slot_nodes = ctx.store.fragment_nodes(slot.fragment).to_vec();
-        for wrapper_id in slot_nodes {
+        for wrapper_id in ctx.store.fragment_nodes(slot.fragment).iter().copied() {
             if Some(wrapper_id) == excluded_child_id {
                 continue;
             }

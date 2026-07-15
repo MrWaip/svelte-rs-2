@@ -22,3 +22,28 @@ compiler_case!(
     parent_children_prop_only,
     "legacy_slots/parent_children_prop_only"
 );
+
+compiler_case!(
+    component_slot_let_shorthand,
+    "legacy_slots/component_slot_let_shorthand"
+);
+compiler_case!(
+    component_slot_let_aliased,
+    "legacy_slots/component_slot_let_aliased"
+);
+compiler_case!(
+    component_slot_let_object_destructure,
+    "legacy_slots/component_slot_let_object_destructure"
+);
+compiler_case!(
+    component_slot_let_array_destructure,
+    "legacy_slots/component_slot_let_array_destructure"
+);
+compiler_case!(
+    element_slot_let_guard,
+    "legacy_slots/element_slot_let_guard"
+);
+compiler_case!(
+    svelte_fragment_slot_let_guard,
+    "legacy_slots/svelte_fragment_slot_let_guard"
+);

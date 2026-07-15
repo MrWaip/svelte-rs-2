@@ -77,20 +77,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         fragment_id: svelte_ast::FragmentId,
     ) -> Result<FragmentEmitKind> {
         let mut bucket = HoistedBucket::default();
-        let fragment_nodes: Vec<NodeId> = self
-            .ctx
-            .query
-            .component
-            .store
-            .fragment(fragment_id)
-            .nodes
-            .clone();
-        let (children, raw_strategy) = prepare(
-            &fragment_nodes,
-            &self.ctx.query.component.store,
-            ctx,
-            &mut bucket,
-        );
+        let component = self.ctx.query.component;
+        let fragment_nodes: &'a [NodeId] = &component.store.fragment(fragment_id).nodes;
+        let (children, raw_strategy) = prepare(fragment_nodes, &component.store, ctx, &mut bucket);
         let strategy = self.refine_strategy(raw_strategy, ctx);
 
         let bucket_effectively_empty = if state.skip_snippets {
@@ -498,7 +487,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         match node {
             svelte_ast::Node::Element(el) => {
-                if self.ctx.is_customizable_select(node_id) {
+                if self.ctx.opaque_content(node_id) {
                     out.push(self.single_location(el.span.start));
                 } else {
                     out.push(self.build_single_element_loc(ctx, el.span.start, el.fragment));
@@ -519,6 +508,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             svelte_ast::Node::ComponentNode(cn) if self.ctx.has_component_css_props(node_id) => {
                 out.push(self.single_location(cn.span.start));
+            }
+            svelte_ast::Node::SvelteComponentLegacy(cn)
+                if self.ctx.has_component_css_props(node_id) =>
+            {
+                out.push(self.single_location(cn.span.start));
+            }
+            svelte_ast::Node::SvelteElement(el) if self.ctx.has_component_css_props(node_id) => {
+                out.push(self.single_location(el.span.start));
             }
             _ => {}
         }
@@ -596,6 +593,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 
     fn is_standalone_static_component(&self, id: NodeId) -> bool {
+        if self.ctx.state.hmr {
+            return false;
+        }
         let svelte_ast::Node::ComponentNode(_) = self.ctx.query.component.store.get(id) else {
             return false;
         };
@@ -851,25 +851,44 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             var: format!("{}.lastChild", node_ident),
         };
         wrapper_ctx.namespace = namespace;
-        let mut hoisted_memo_decls: Vec<Statement<'a>> = Vec::new();
-        self.emit_component_with_hoisted_memo(
-            state,
-            &wrapper_ctx,
-            component_id,
-            None,
-            &mut hoisted_memo_decls,
-            memo_counter,
-        )?;
-        let component_stmts: Vec<_> = state.init.drain(prev_init_len..).collect();
+        self.emit_component_inline_memo(state, &wrapper_ctx, component_id, memo_counter)?;
+        let mut component_stmts: Vec<_> = state.init.drain(prev_init_len..).collect();
+
+        let css_props_call = self.ctx.b.call_stmt(
+            "$.css_props",
+            [Arg::Ident(node_ident), Arg::Expr(props_thunk)],
+        );
 
         let mut block: Vec<Statement<'a>> = Vec::new();
         block.extend(css_memo_decls);
-        block.extend(hoisted_memo_decls);
-        block.push(self.ctx.b.call_stmt(
-            "$.css_props",
-            [Arg::Ident(node_ident), Arg::Expr(props_thunk)],
-        ));
-        block.extend(component_stmts);
+
+        let inner_block = if component_stmts.len() == 1 {
+            match component_stmts.pop() {
+                Some(Statement::BlockStatement(inner)) => {
+                    Some(inner.unbox().body.into_iter().collect::<Vec<_>>())
+                }
+                Some(other) => {
+                    component_stmts.push(other);
+                    None
+                }
+                None => None,
+            }
+        } else {
+            None
+        };
+
+        if let Some(mut inner) = inner_block {
+            let component_call = inner.pop();
+            block.extend(inner);
+            block.push(css_props_call);
+            if let Some(call) = component_call {
+                block.push(call);
+            }
+        } else {
+            block.push(css_props_call);
+            block.extend(component_stmts);
+        }
+
         block.push(self.ctx.b.call_stmt("$.reset", [Arg::Ident(node_ident)]));
 
         state.init.push(self.ctx.b.block_stmt(block));

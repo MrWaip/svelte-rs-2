@@ -4,6 +4,10 @@ compiler_case!(
     legacy_dev_arrow_handler_return,
     "events/legacy_dev_arrow_handler_return"
 );
+compiler_case!(
+    legacy_dev_modifier_handler_arrow,
+    "events/legacy_dev_modifier_handler_arrow"
+);
 compiler_case!(snippet_param, "events/snippet_param");
 compiler_case!(store_handler_onclick, "events/store_handler_onclick");
 compiler_case!(store_handler_legacy_on, "events/store_handler_legacy_on");
@@ -120,4 +124,8 @@ compiler_case!(element_quoted_handler, "events/element_quoted_handler");
 compiler_case!(
     window_unquoted_handler_guard,
     "events/window_unquoted_handler_guard"
+);
+compiler_case!(
+    window_hyphenated_event_name,
+    "events/window_hyphenated_event_name"
 );

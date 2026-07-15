@@ -17,6 +17,10 @@ compiler_case!(
     "css_scope_svelte_fragment/descendant_through_svelte_head"
 );
 compiler_case!(
+    style_element_inside_head_guard,
+    "css_scope_svelte_fragment/style_element_inside_head_guard"
+);
+compiler_case!(
     descendant_through_snippet,
     "css_scope_svelte_fragment/descendant_through_snippet"
 );

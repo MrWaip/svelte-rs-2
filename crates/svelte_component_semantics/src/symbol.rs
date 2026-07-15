@@ -4,6 +4,9 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::reference::ReferenceId;
 use oxc_syntax::scope::ScopeId;
 use oxc_syntax::symbol::{SymbolFlags, SymbolId};
+use smallvec::SmallVec;
+
+type ResolvedReferences = SmallVec<[ReferenceId; 4]>;
 
 pub mod state {
 
@@ -29,7 +32,7 @@ pub(crate) struct SymbolTable {
     flags: Vec<SymbolFlags>,
     scope_ids: Vec<ScopeId>,
     declaration_node_ids: Vec<OxcNodeId>,
-    resolved_references: Vec<Vec<ReferenceId>>,
+    resolved_references: Vec<ResolvedReferences>,
     state: Vec<u32>,
     owners: Vec<SymbolOwner>,
 
@@ -70,7 +73,7 @@ impl SymbolTable {
         self.flags.push(flags);
         self.scope_ids.push(scope_id);
         self.declaration_node_ids.push(node_id);
-        self.resolved_references.push(Vec::with_capacity(2));
+        self.resolved_references.push(ResolvedReferences::new());
         self.state.push(0);
         self.owners.push(owner);
         id

@@ -1,5 +1,6 @@
 use super::*;
 
+compiler_case!(update, "runes/derived/update");
 compiler_case!(
     declaration_nested_function_sync,
     "runes/derived/declaration/nested_function_sync"
@@ -107,4 +108,31 @@ compiler_case!(
 compiler_case!(
     read_const_declared_get_guard,
     "runes/derived/read/const_declared_get_guard"
+);
+
+compiler_case!(
+    declaration_call_derived_callee,
+    "runes/derived/declaration/call_derived_callee",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    declaration_call_prop_callee,
+    "runes/derived/declaration/call_prop_callee",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    declaration_call_plain_function_guard,
+    "runes/derived/declaration/call_plain_function_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    declaration_server_destructure_member_uses_temp,
+    "runes/derived/declaration/server_destructure_member_uses_temp",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    declaration_server_destructure_ident_inline_guard,
+    "runes/derived/declaration/server_destructure_ident_inline_guard",
+    [prod, dev, ssr, ssr_dev]
 );

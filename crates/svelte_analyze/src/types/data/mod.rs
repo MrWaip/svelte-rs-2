@@ -61,8 +61,7 @@ pub use runtime::RuntimeInfo;
 pub use template_data::{
     BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,
     ContentEditableKind, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind, MediaBindKind,
-    ResizeObserverKind, SnippetData, TemplateSemanticsData, TitleElementData, WindowBindKind,
-    binding_group_name,
+    ResizeObserverKind, SnippetData, TemplateSemanticsData, WindowBindKind, binding_group_name,
 };
 pub use template_element_index::{TemplateElementEntry, TemplateElementIndex};
 pub use template_topology::{ParentKind, ParentRef, TemplateTopology};

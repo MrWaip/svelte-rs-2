@@ -135,11 +135,9 @@ mod tests {
                 let node = component.store.get(id);
                 if let Node::IfBlock(b) = node {
                     out.push(id);
-                    let cons = component.fragment_nodes(b.consequent).to_vec();
-                    walk(component, &cons, out);
+                    walk(component, component.fragment_nodes(b.consequent), out);
                     if let Some(alt) = b.alternate {
-                        let alt_nodes = component.fragment_nodes(alt).to_vec();
-                        walk(component, &alt_nodes, out);
+                        walk(component, component.fragment_nodes(alt), out);
                     }
                     continue;
                 }
@@ -150,16 +148,13 @@ mod tests {
                     Node::EachBlock(b) => Some(b.body),
                     Node::AwaitBlock(b) => {
                         if let Some(f) = b.pending {
-                            let nodes = component.fragment_nodes(f).to_vec();
-                            walk(component, &nodes, out);
+                            walk(component, component.fragment_nodes(f), out);
                         }
                         if let Some(f) = b.then {
-                            let nodes = component.fragment_nodes(f).to_vec();
-                            walk(component, &nodes, out);
+                            walk(component, component.fragment_nodes(f), out);
                         }
                         if let Some(f) = b.catch {
-                            let nodes = component.fragment_nodes(f).to_vec();
-                            walk(component, &nodes, out);
+                            walk(component, component.fragment_nodes(f), out);
                         }
                         continue;
                     }
@@ -170,14 +165,16 @@ mod tests {
                     _ => None,
                 };
                 if let Some(fid) = child_fragment {
-                    let nodes = component.fragment_nodes(fid).to_vec();
-                    walk(component, &nodes, out);
+                    walk(component, component.fragment_nodes(fid), out);
                 }
             }
         }
         let mut out = Vec::new();
-        let root_nodes = component.fragment_nodes(component.root).to_vec();
-        walk(component, &root_nodes, &mut out);
+        walk(
+            component,
+            component.fragment_nodes(component.root),
+            &mut out,
+        );
         out
     }
 

@@ -5,8 +5,8 @@ use svelte_emit_builders::store::build_store_base_read;
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{
-    AttributeSemantics, DocumentBindKind, DocumentBindSemantics, EventEmit, HandlerEmit,
-    HtmlBindKind, WindowBindKind, WindowBindSemantics, is_passive_event, strip_capture_event,
+    AttributeSemantics, DocumentBindKind, DocumentBindSemantics, HtmlBindKind, WindowBindKind,
+    WindowBindSemantics,
 };
 use svelte_ast::{Attribute, BindDirective, Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
@@ -23,24 +23,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         _existing_var: Option<&str>,
     ) -> Result<String> {
-        let node = self.ctx.query.component.store.get(el_id);
+        let component = self.ctx.query.component;
+        let node = component.store.get(el_id);
         match node {
             Node::SvelteHead(_) => self.emit_svelte_head(state, ctx, el_id),
             Node::SvelteWindow(w) => {
-                self.emit_special_target_with_owner(state, el_id, "$.window", &w.attributes.clone())
+                self.emit_special_target_with_owner(state, el_id, "$.window", &w.attributes)
             }
-            Node::SvelteDocument(d) => self.emit_special_target_with_owner(
-                state,
-                el_id,
-                "$.document",
-                &d.attributes.clone(),
-            ),
-            Node::SvelteBody(b) => self.emit_special_target_with_owner(
-                state,
-                el_id,
-                "$.document.body",
-                &b.attributes.clone(),
-            ),
+            Node::SvelteDocument(d) => {
+                self.emit_special_target_with_owner(state, el_id, "$.document", &d.attributes)
+            }
+            Node::SvelteBody(b) => {
+                self.emit_special_target_with_owner(state, el_id, "$.document.body", &b.attributes)
+            }
             _ => CodegenError::unexpected_node(el_id, "special target"),
         }
     }
@@ -59,27 +54,25 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let attr_id = attr.id();
             match attr {
                 Attribute::ExpressionAttribute(ea) => {
-                    if let Some(raw_event_name) = ea.event_name.as_deref() {
+                    if ea.event_name.is_some() {
                         self.emit_special_target_event_attr(
                             state,
                             attr_id,
                             ea.expression.id(),
                             owner_var,
-                            raw_event_name,
                             ea.expression.span.start,
                         )?;
                     }
                 }
                 Attribute::ConcatenationAttribute(ca) => {
                     if let Some(expr) = svelte_analyze::concat_single_dynamic_expr(ca)
-                        && let Some(raw_event_name) = ca.name.strip_prefix("on")
+                        && ca.name.strip_prefix("on").is_some()
                     {
                         self.emit_special_target_event_attr(
                             state,
                             attr_id,
                             expr.id(),
                             owner_var,
-                            raw_event_name,
                             expr.span.start,
                         )?;
                     }
@@ -330,32 +323,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         attr_id: NodeId,
         expr_id: OxcNodeId,
         owner_var: &str,
-        raw_event_name: &str,
         expr_offset: u32,
     ) -> Result<()> {
-        let (event_name, capture) = if let Some(base) = strip_capture_event(raw_event_name) {
-            (base.to_string(), true)
-        } else {
-            (raw_event_name.to_string(), false)
+        let AttributeSemantics::Event(event) = self.ctx.query.analysis.attributes.get(attr_id)
+        else {
+            return Ok(());
         };
-
-        let handler_emit = match self.ctx.query.analysis.attributes.get(attr_id) {
-            AttributeSemantics::Event(ev) => match &ev.emit {
-                EventEmit::HtmlDelegated { handler }
-                | EventEmit::HtmlDirect { handler, .. }
-                | EventEmit::Component { handler } => *handler,
-                EventEmit::HtmlBubble => HandlerEmit::Direct,
-            },
-            _ => HandlerEmit::Direct,
-        };
+        let capture = event.capture;
+        let passive = event.passive;
+        let event_name = event.name.clone();
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(attr_id);
         };
         let handler =
-            self.build_event_handler_s5(attr_id, expr, handler_emit, &mut state.init, expr_offset);
+            self.build_event_handler_s5(attr_id, expr, event.handler, &mut state.init, expr_offset);
         let handler = self.dev_event_handler(attr_id, handler, &event_name)?;
 
-        let passive = is_passive_event(&event_name);
         let mut args: Vec<Arg<'a, '_>> = vec![
             Arg::StrRef(&event_name),
             Arg::Ident(owner_var),

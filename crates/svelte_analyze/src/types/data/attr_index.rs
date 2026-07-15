@@ -6,20 +6,18 @@ use svelte_ast::{Attribute, NodeId};
 
 pub struct AttrIndex {
     by_name: FxHashMap<CompactString, SmallVec<[u16; 1]>>,
-    by_id: FxHashMap<NodeId, u16>,
 }
 
 impl AttrIndex {
     pub fn build(attrs: &[Attribute], source: &str) -> Self {
-        let mut by_name: FxHashMap<CompactString, SmallVec<[u16; 1]>> = FxHashMap::default();
-        let mut by_id = FxHashMap::default();
+        let mut by_name: FxHashMap<CompactString, SmallVec<[u16; 1]>> =
+            FxHashMap::with_capacity_and_hasher(attrs.len(), Default::default());
         for (i, attr) in attrs.iter().enumerate() {
-            by_id.insert(attr.id(), i as u16);
             if let Some(name) = attr_index_name(attr, source) {
                 by_name.entry(name).or_default().push(i as u16);
             }
         }
-        Self { by_name, by_id }
+        Self { by_name }
     }
 
     #[inline]
@@ -49,8 +47,7 @@ impl AttrIndex {
 
     #[inline]
     pub fn find_by_id<'a>(&self, attrs: &'a [Attribute], id: NodeId) -> Option<&'a Attribute> {
-        let pos = *self.by_id.get(&id)?;
-        Some(&attrs[pos as usize])
+        attrs.iter().find(|attr| attr.id() == id)
     }
 }
 

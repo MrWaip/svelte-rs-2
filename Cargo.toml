@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*", "tasks/*"]
+exclude = ["tasks/compiler_bench"]
 resolver = "2"
 
 [workspace.package]

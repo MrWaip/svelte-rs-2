@@ -2,13 +2,14 @@ use std::mem;
 
 use oxc_ast::ast::{
     Argument, AssignmentOperator, AssignmentTarget, BindingPattern, CallExpression, Expression,
-    IdentifierReference, PropertyKey, Statement, VariableDeclarator,
+    IdentifierReference, PropertyKey, SimpleAssignmentTarget, Statement, UpdateOperator,
+    VariableDeclarator,
 };
 use oxc_ast_visit::VisitMut;
 use oxc_span::SPAN;
 use svelte_analyze::{
     AnalysisData, BindingSemantics, DeclaratorSemantics, DerivedAsyncKind, DerivedKind,
-    DerivedSource, IdentGen,
+    DerivedSource, IdentGen, ReferenceSemantics,
 };
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::{Access, SymbolId, walk_bindings};
@@ -40,7 +41,30 @@ impl<'a> ServerTransform<'_, 'a> {
             return;
         }
         let _ = source;
+        if matches!(kind, DerivedKind::Derived)
+            && matches!(async_kind, DerivedAsyncKind::Sync)
+            && self.derived_call_reads_runtime_derived(&value)
+        {
+            let arrow = self
+                .b
+                .arrow_expr(self.b.no_params(), [self.b.expr_stmt(value)]);
+            declarator.init = Some(self.b.call_expr("$.derived", [Arg::Expr(arrow)]));
+            return;
+        }
         declarator.init = Some(build_derived_init(self.b, kind, async_kind, value));
+    }
+
+    fn derived_call_reads_runtime_derived(&self, value: &Expression<'a>) -> bool {
+        let Expression::CallExpression(call) = value else {
+            return false;
+        };
+        if !call.arguments.is_empty() || call.optional {
+            return false;
+        }
+        let Expression::Identifier(id) = &call.callee else {
+            return false;
+        };
+        self.reads_runtime_derived(id)
     }
 
     pub(crate) fn rewrite_derived_write(&mut self, node: &mut Expression<'a>) -> bool {
@@ -74,16 +98,61 @@ impl<'a> ServerTransform<'_, 'a> {
         true
     }
 
+    pub(crate) fn rewrite_derived_update(&mut self, node: &mut Expression<'a>) -> bool {
+        let (name, is_prefix, is_decrement) = {
+            let Expression::UpdateExpression(upd) = &*node else {
+                return false;
+            };
+            let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &upd.argument else {
+                return false;
+            };
+            let Some(ref_id) = id.reference_id.get() else {
+                return false;
+            };
+            if !matches!(
+                self.analysis.reference_semantics(ref_id),
+                ReferenceSemantics::DerivedUpdate
+            ) {
+                return false;
+            }
+            (
+                self.b.alloc_str(id.name.as_str()),
+                upd.prefix,
+                upd.operator == UpdateOperator::Decrement,
+            )
+        };
+
+        let fn_name = if is_prefix {
+            "$.update_derived_pre"
+        } else {
+            "$.update_derived"
+        };
+        let mut args = vec![Arg::Expr(self.b.rid_expr(name))];
+        if is_decrement {
+            args.push(Arg::Num(-1.0));
+        }
+        *node = self.b.call_expr(fn_name, args);
+        true
+    }
+
     fn reads_runtime_derived(&self, id: &IdentifierReference<'a>) -> bool {
-        id.reference_id
-            .get()
-            .and_then(|ref_id| self.analysis.symbol_for_reference(ref_id))
-            .is_some_and(|sym| {
-                matches!(
-                    self.analysis.binding_semantics(sym),
-                    BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_)
-                )
-            })
+        let Some(ref_id) = id.reference_id.get() else {
+            return false;
+        };
+        if self
+            .analysis
+            .reference_semantics(ref_id)
+            .is_store_subscription()
+        {
+            return false;
+        }
+        let Some(sym) = self.analysis.symbol_for_reference(ref_id) else {
+            return false;
+        };
+        matches!(
+            self.analysis.binding_semantics(sym),
+            BindingSemantics::Derived(_) | BindingSemantics::OptimizedDerived(_)
+        )
     }
 
     fn take_first_arg(&self, call: &mut CallExpression<'a>) -> Expression<'a> {

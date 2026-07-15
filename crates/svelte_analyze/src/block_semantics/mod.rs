@@ -18,32 +18,26 @@ use svelte_ast::NodeId;
 
 #[derive(Debug, Default, Clone)]
 pub struct BlockSemanticsStore {
-    entries: Vec<BlockSemantics>,
+    entries: FxHashMap<u32, BlockSemantics>,
     each_index_sym_to_block: FxHashMap<SymbolId, NodeId>,
 }
 
 impl BlockSemanticsStore {
-    pub(crate) fn new(node_count: u32) -> Self {
-        let mut entries = Vec::with_capacity(node_count as usize);
-        entries.resize_with(node_count as usize, BlockSemantics::default);
+    pub(crate) fn new(_node_count: u32) -> Self {
         Self {
-            entries,
+            entries: FxHashMap::default(),
             each_index_sym_to_block: FxHashMap::default(),
         }
     }
 
     pub fn get(&self, id: NodeId) -> &BlockSemantics {
         self.entries
-            .get(id.0 as usize)
+            .get(&id.0)
             .unwrap_or(&BlockSemantics::NonSpecial)
     }
 
     pub(crate) fn set(&mut self, id: NodeId, value: BlockSemantics) {
-        let idx = id.0 as usize;
-        if idx >= self.entries.len() {
-            self.entries.resize_with(idx + 1, BlockSemantics::default);
-        }
-        self.entries[idx] = value;
+        self.entries.insert(id.0, value);
     }
 
     pub(crate) fn record_each_index_sym(&mut self, sym: SymbolId, block: NodeId) {
@@ -59,8 +53,7 @@ impl BlockSemanticsStore {
     }
 
     pub(crate) fn set_snippet_placement(&mut self, id: NodeId, placement: SnippetPlacement) {
-        let idx = id.0 as usize;
-        if let Some(BlockSemantics::Snippet(sem)) = self.entries.get_mut(idx) {
+        if let Some(BlockSemantics::Snippet(sem)) = self.entries.get_mut(&id.0) {
             sem.placement = placement;
         }
     }

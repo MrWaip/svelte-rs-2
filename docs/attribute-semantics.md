@@ -29,7 +29,7 @@ topics: attribute, directive, bind/BindDirective, on/use/class/style/transition/
 - `RuntimeBehavior` — директива-поведение без проекции в разметку: `use:`, `transition:`/`in:`/`out:`, `animate:`, element-level `{@attach}`.
 - `NonSpecial` — default.
 
-Вариант несёт доменный вердикт; кодген ветвится на варианте и выбирает форму, не комбинирует. Ряд существующих вариантов пока несёт выбранную emit-форму (`EventEmit`, `ComponentSpreadEmit`, `ComponentAttachEmit`, `ConcatPartEmit`, `ComponentPropMemo`, …) — это долг по §«Codegen-агностичность анализа», не норма.
+Вариант несёт доменный вердикт; кодген ветвится на варианте и выбирает форму, не комбинирует. Ряд существующих вариантов пока несёт выбранную emit-форму (`ComponentSpreadEmit`, `ComponentAttachEmit`, `ConcatPartEmit`, `ComponentPropMemo`, …) — это долг по §«Codegen-агностичность анализа», не норма. `EventSemantics` носит доменные оси события — `name` (разрешённое имя DOM-события, capture-суффикс уже снят), `delegatable`/`capture`/`passive` (свойства DOM-доставки) и `EventHandler` (природа handler-выражения); выбор runtime-формы (`$.delegated` vs `$.event`, обёртка handler) — в кодгене.
 
 ## Архитектурные инварианты
 

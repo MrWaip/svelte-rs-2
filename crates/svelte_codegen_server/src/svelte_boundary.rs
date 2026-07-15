@@ -125,7 +125,7 @@ impl<'a> ServerCodegen<'a> {
                     ));
                 };
                 let content =
-                    self.child_statements(|cg| cg.fragment(block.body, FragmentParent::Block))?;
+                    self.child_statements(|cg| cg.fragment(block.body, FragmentParent::Boundary))?;
                 self.b.block_stmt(content)
             }
             BoundaryBranch::Attribute(attr_id) => {

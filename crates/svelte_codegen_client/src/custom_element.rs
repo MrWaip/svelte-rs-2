@@ -1,6 +1,6 @@
 use std::iter;
 
-use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey, Statement};
+use oxc_ast::ast::{BinaryOperator, Expression, ObjectPropertyKind, PropertyKey, Statement};
 use svelte_ast::CustomElementConfig;
 use svelte_parser::{CeDomMode, CePropConfig, ParsedCeConfig};
 
@@ -46,6 +46,7 @@ pub fn gen_custom_element<'a>(
     let delegates_focus = parsed.is_some_and(|o| o.delegates_focus);
 
     let extend_arg = take_extend_expr(ctx, ce_config);
+    let hmr = ctx.state.hmr;
     let b = &ctx.b;
 
     let mut args: Vec<Arg<'a, '_>> = vec![
@@ -75,7 +76,14 @@ pub fn gen_custom_element<'a>(
         let define_callee = b.static_member_expr(b.rid_expr("customElements"), "define");
         let define_call =
             b.call_expr_callee(define_callee, [Arg::StrRef(tag_str), Arg::Expr(create_ce)]);
-        stmts.push(b.expr_stmt(define_call));
+        let define_stmt = b.expr_stmt(define_call);
+        if hmr {
+            let get_call = b.call_expr("customElements.get", [Arg::StrRef(tag_str)]);
+            let test = b.binary_expr(BinaryOperator::Equality, get_call, b.null_expr());
+            stmts.push(b.if_stmt(test, define_stmt, None));
+        } else {
+            stmts.push(define_stmt);
+        }
     } else {
         stmts.push(b.expr_stmt(create_ce));
     }

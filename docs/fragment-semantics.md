@@ -24,7 +24,7 @@ topics: fragment, whitespace, whitespace trimming, preserve whitespace, fragment
 
 ## Построение
 
-Пасс `BuildFragmentSemantics` (`fragment_semantics/builder.rs`), `requires: TemplateSideTables` (читает `fragment_namespaces`), `produces: FragmentSemantics`. Attribute-grammar walk по шаблонному дереву (зеркалит `collect_fragment_namespaces_in`): наследуемый контекст (`preserve`, `svg_text`, `removable`) течёт сверху вниз, вердикт синтезируется на каждом фрагменте. Element-граница пересчитывает removable по имени/namespace; block-граница наследует (removable «липнет» сквозь блоки, как в клиентском `FragmentCtx`); component/slot-граница сбрасывает по `children_are_svg`.
+Пасс `BuildFragmentSemantics` (`fragment_semantics/builder.rs`), `requires: TemplateSideTables` (читает `fragment_namespaces`), `produces: FragmentSemantics`. Attribute-grammar walk по шаблонному дереву (зеркалит `collect_fragment_namespaces_in`): наследуемый контекст (`preserve`, `svg_text`, `removable`) течёт сверху вниз, вердикт синтезируется на каждом фрагменте. Element-граница пересчитывает removable по имени/namespace; block-граница наследует (removable «липнет» сквозь блоки, как в клиентском `FragmentCtx`); component/slot-граница пересчитывает removable по namespace самого фрагмента (`fragment_is_svg` из `fragment_namespaces`, который инферит svg и сквозь блоки-потомки — `{#each}`/`{#if}`/…), с shallow-`children_are_svg` как fallback.
 
 ## Потребители
 

@@ -41,7 +41,7 @@ impl<'a> ServerCodegen<'a> {
 
     fn legacy_bind_props_entries(&self) -> Vec<ObjProp<'a>> {
         let mut props: Vec<ObjProp<'a>> = Vec::new();
-        for &symbol in self.analysis.reactivity.legacy_bindable_prop_symbols() {
+        for symbol in self.analysis.reactivity.iter_legacy_bindable_prop_symbols() {
             let key = self.legacy_prop_key(symbol);
             let local = self.analysis.scoping.symbol_name(symbol).to_string();
             props.push(self.prop_entry(&key, &local));
@@ -102,7 +102,7 @@ impl<'a> ServerCodegen<'a> {
         for export in &self.analysis.output.api_exports {
             keys.push(self.b.str_expr(&self.api_export_key(export)));
         }
-        for &symbol in self.analysis.reactivity.legacy_bindable_prop_symbols() {
+        for symbol in self.analysis.reactivity.iter_legacy_bindable_prop_symbols() {
             keys.push(self.b.str_expr(&self.legacy_prop_key(symbol)));
         }
         keys

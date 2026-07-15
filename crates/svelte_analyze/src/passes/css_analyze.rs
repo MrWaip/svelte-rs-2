@@ -47,6 +47,7 @@ pub fn analyze_css_pass(
         inject_styles,
         keyframes,
         used_selectors: rustc_hash::FxHashSet::default(),
+        has_global: false,
     };
 
     let unused_selector_code = DiagnosticKind::CssUnusedSelector {

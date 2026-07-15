@@ -7,14 +7,25 @@ export type Warning = {
   frame: string | null;
 };
 
+export type SourceMap = {
+  version: 3;
+  file?: string;
+  sources: string[];
+  sourcesContent: Array<string | null>;
+  names: string[];
+  mappings: string;
+  toString(): string;
+  toUrl(): string;
+};
+
 export type CompileJsResult = {
   code: string;
-  map: object | null;
+  map: SourceMap | null;
 };
 
 export type CompileCssResult = {
   code: string;
-  map: object | null;
+  map: SourceMap | null;
   hasGlobal: boolean | null;
 };
 
@@ -23,8 +34,7 @@ export type CompileMetadata = {
   hasCss: boolean;
   unsupported: {
     ast: 'not_returned';
-    sourceMap: 'always_null';
-    unsupportedOptions: Array<'ast' | 'sourcemap' | 'outputFilename'>;
+    unsupportedOptions: Array<'ast' | 'outputFilename'>;
   };
 };
 
@@ -51,8 +61,8 @@ export interface CompileOptions {
   };
   generate?: 'client' | 'server' | false;
   modernAst?: boolean;
+  sourcemap?: string | object;
   ast?: never;
-  sourcemap?: never;
   outputFilename?: never;
 }
 
@@ -62,8 +72,8 @@ export interface ModuleCompileOptions {
   rootDir?: string;
   generate?: 'client' | 'server' | false;
   modernAst?: boolean;
+  sourcemap?: string | object;
   ast?: never;
-  sourcemap?: never;
   outputFilename?: never;
 }
 

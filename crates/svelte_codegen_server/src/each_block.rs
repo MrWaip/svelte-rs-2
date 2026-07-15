@@ -29,6 +29,27 @@ impl<'a> ServerCodegen<'a> {
         }
     }
 
+    fn reserve_bind_pairs_in_attributes(&mut self, attributes: &'a [svelte_ast::Attribute]) {
+        use svelte_analyze::{AttributeSemantics, ComponentBindKind};
+        use svelte_ast::Attribute;
+        for attr in attributes {
+            let Attribute::BindDirective(directive) = attr else {
+                continue;
+            };
+            let AttributeSemantics::ComponentBind(sem) = self.analysis.attributes.get(directive.id)
+            else {
+                continue;
+            };
+            if !matches!(sem.kind, ComponentBindKind::FunctionPair) {
+                continue;
+            }
+            let get_name = self.ident_gen.generate("bind_get");
+            let set_name = self.ident_gen.generate("bind_set");
+            self.bind_pair_names
+                .insert(directive.id, (get_name, set_name));
+        }
+    }
+
     fn reserve_each_index_in_node(&mut self, id: svelte_ast::NodeId) {
         use svelte_ast::Node;
         match self.component.store.get(id) {
@@ -57,7 +78,16 @@ impl<'a> ServerCodegen<'a> {
                     self.reserve_each_index_in_fragment(c);
                 }
             }
-            Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_) => {
+            Node::ComponentNode(cn) => {
+                self.reserve_bind_pairs_in_attributes(&cn.attributes);
+                if let Some(view) = self.component.store.get(id).as_component_like() {
+                    self.reserve_each_index_in_fragment(view.fragment);
+                    for slot in view.legacy_slots {
+                        self.reserve_each_index_in_fragment(slot.fragment);
+                    }
+                }
+            }
+            Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_) => {
                 if let Some(view) = self.component.store.get(id).as_component_like() {
                     self.reserve_each_index_in_fragment(view.fragment);
                     for slot in view.legacy_slots {
@@ -69,6 +99,8 @@ impl<'a> ServerCodegen<'a> {
                 let body = block.body;
                 let fallback = block.fallback;
                 let block_id = block.id;
+                let array_name = self.ident_gen.generate("each_array");
+                self.each_array_names.insert(block_id, array_name);
                 self.reserve_each_index_in_fragment(body);
                 if let Some(fb) = fallback {
                     self.reserve_each_index_in_fragment(fb);
@@ -109,7 +141,11 @@ impl<'a> ServerCodegen<'a> {
             ));
         }
 
-        let array_name = self.gen_ident("each_array");
+        let array_name = self
+            .each_array_names
+            .get(&block.id)
+            .cloned()
+            .unwrap_or_else(|| self.gen_ident("each_array"));
         let mut collection = self.take_expression(block.id, &block.expression)?;
         if async_blockers.is_some() {
             collection = self.save_block_await(collection);

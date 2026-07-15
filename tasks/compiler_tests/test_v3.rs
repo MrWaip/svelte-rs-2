@@ -363,6 +363,20 @@ compiler_case!(state_snapshot_reactive);
 
 compiler_case!(each_block);
 
+compiler_case!(each_index_underscore_identifier, [prod, dev, ssr, ssr_dev]);
+
+compiler_case!(
+    store_mutate_server_shadowed_dollar_param,
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(slot_svg_namespace_whitespace, [prod, dev, ssr, ssr_dev]);
+
+compiler_case!(
+    slot_element_svg_namespace_whitespace,
+    [prod, dev, ssr, ssr_dev]
+);
+
 compiler_case!(each_inner_shadow);
 
 compiler_case!(each_nested_array_destructure_no_inner_shadow);
@@ -852,6 +866,10 @@ compiler_case!(bind_content_editable);
 
 compiler_case!(bind_element_size);
 
+compiler_case!(bind_omit_in_ssr_spread, [prod, dev, ssr, ssr_dev]);
+
+compiler_case!(bind_natural_size_omit_ssr_spread, [ssr, ssr_dev]);
+
 compiler_case!(bind_element_size_bindable_prop_source);
 
 compiler_case!(bind_resize_observer);
@@ -1182,6 +1200,12 @@ fn assert_compiler_module_ssr_dev(case: &str) {
 compiler_module_case!(
     state_class_field_proxy_init,
     "state_class_field_proxy_init",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_module_case!(
+    module_store_dollar_param_no_subscription,
+    "module_store_dollar_param_no_subscription",
     [prod, dev, ssr, ssr_dev]
 );
 
@@ -2147,7 +2171,7 @@ compiler_case!(component_bind_prop_forward);
 
 compiler_case!(component_bind_member_path);
 
-compiler_case!(component_bind_member_path_bindable_root, [prod, dev_todo]);
+compiler_case!(component_bind_member_path_bindable_root, [prod, dev]);
 
 compiler_case!(component_bind_member_path_dev);
 

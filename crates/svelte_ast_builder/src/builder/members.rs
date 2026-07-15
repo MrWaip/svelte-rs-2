@@ -13,6 +13,25 @@ impl<'a> Builder<'a> {
         )))
     }
 
+    pub fn import_meta_expr(&self) -> Expression<'a> {
+        Expression::MetaProperty(self.alloc(self.ast.meta_property(
+            SPAN,
+            self.ast.identifier_name(SPAN, self.ast.atom("import")),
+            self.ast.identifier_name(SPAN, self.ast.atom("meta")),
+        )))
+    }
+
+    pub fn binary_expr(
+        &self,
+        operator: BinaryOperator,
+        left: Expression<'a>,
+        right: Expression<'a>,
+    ) -> Expression<'a> {
+        Expression::BinaryExpression(
+            self.alloc(self.ast.binary_expression(SPAN, left, operator, right)),
+        )
+    }
+
     pub fn computed_member(
         &self,
         object: Expression<'a>,

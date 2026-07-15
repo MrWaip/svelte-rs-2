@@ -51,6 +51,9 @@ pub struct CompileOptions {
     pub enable_sourcemap: Option<bool>,
     #[serde(skip)]
     pub sourcemap_kind: svelte_sourcemap::SourcemapKind,
+
+    #[serde(rename = "sourcemap")]
+    pub preprocessor_map: Option<String>,
 }
 
 impl Default for CompileOptions {
@@ -77,6 +80,7 @@ impl Default for CompileOptions {
             experimental: ExperimentalOptions::default(),
             enable_sourcemap: None,
             sourcemap_kind: svelte_sourcemap::SourcemapKind::default(),
+            preprocessor_map: None,
         }
     }
 }
@@ -156,6 +160,9 @@ pub struct ModuleCompileOptions {
     pub enable_sourcemap: Option<bool>,
     #[serde(skip)]
     pub sourcemap_kind: svelte_sourcemap::SourcemapKind,
+
+    #[serde(rename = "sourcemap")]
+    pub preprocessor_map: Option<String>,
 }
 
 impl Default for ModuleCompileOptions {
@@ -167,6 +174,7 @@ impl Default for ModuleCompileOptions {
             root_dir: None,
             enable_sourcemap: None,
             sourcemap_kind: svelte_sourcemap::SourcemapKind::default(),
+            preprocessor_map: None,
         }
     }
 }

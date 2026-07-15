@@ -60,6 +60,10 @@ compiler_case!(
 );
 compiler_case!(assignment_object_rest, "runes/state/assignment/object_rest");
 compiler_case!(
+    proxy_flag_red_primitive_default_prop_rhs,
+    "runes/state/proxy_flag/red_primitive_default_prop_rhs"
+);
+compiler_case!(
     proxy_flag_red_const_primitive_rhs,
     "runes/state/proxy_flag/red_const_primitive_rhs"
 );
@@ -98,6 +102,18 @@ compiler_case!(
 compiler_case!(
     proxy_flag_guard_coercive_operator,
     "runes/state/proxy_flag/guard_coercive_operator"
+);
+compiler_case!(
+    proxy_flag_red_equality_strict_dev,
+    "runes/state/proxy_flag/red_equality_strict_dev"
+);
+compiler_case!(
+    proxy_flag_red_equality_loose_dev,
+    "runes/state/proxy_flag/red_equality_loose_dev"
+);
+compiler_case!(
+    proxy_flag_guard_additive_binary_init,
+    "runes/state/proxy_flag/guard_additive_binary_init"
 );
 compiler_case!(
     proxy_flag_guard_private_field_literal_rhs,

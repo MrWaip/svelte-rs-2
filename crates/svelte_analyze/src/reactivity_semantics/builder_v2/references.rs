@@ -219,9 +219,7 @@ fn classify_reference_semantics(
             if state.kind == StateKind::StateEager {
                 return None;
             }
-            let is_signal_source = data.script.is_state_source(
-                data.scoping.is_mutated(sym) || data.scoping.is_reexported_specifier_local(sym),
-            );
+            let is_signal_source = state.is_signal_source;
             let store_unsub = data.reactivity.store_shadow_of_internal(sym);
             if is_write && is_read {
                 Some(ReferenceFacts::SignalUpdate {
@@ -377,7 +375,10 @@ fn classify_reference_semantics(
 
         BindingFacts::LegacyState(state) => {
             let store_shadow = data.reactivity.store_shadow_of_internal(sym);
-            if is_member_mutation_root {
+            let is_signal_source = state.is_signal_source;
+            if !is_signal_source && store_shadow.is_none() {
+                None
+            } else if is_member_mutation_root {
                 Some(ReferenceFacts::LegacyStateMemberMutationRoot { symbol: sym })
             } else if is_write && is_read {
                 if let Some(store_symbol) = store_shadow {

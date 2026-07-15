@@ -45,9 +45,9 @@ struct TemplateValidator<'a, 'b> {
 
 impl<'a> TemplateValidator<'a, '_> {
     fn visit_fragment(&mut self, fragment_id: FragmentId, in_dynamic_block: bool) {
-        let nodes = self.component.fragment_nodes(fragment_id).to_vec();
-        for id in nodes {
-            match self.component.store.get(id) {
+        let component = self.component;
+        for id in component.fragment_nodes(fragment_id).iter().copied() {
+            match component.store.get(id) {
                 Node::Text(_) | Node::Comment(_) | Node::DebugTag(_) | Node::Error(_) => {}
                 Node::ExpressionTag(tag) => {
                     self.visit_expr_ref(&tag.expression.clone(), false, in_dynamic_block);
@@ -63,32 +63,32 @@ impl<'a> TemplateValidator<'a, '_> {
                 }
                 Node::Element(el) => {
                     let f = el.fragment;
-                    let attrs = el.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &el.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SlotElementLegacy(el) => {
                     let f = el.fragment;
-                    let attrs = el.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &el.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::ComponentNode(node) => {
                     let f = node.fragment;
-                    let attrs = node.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &node.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SvelteComponentLegacy(node) => {
                     let f = node.fragment;
-                    let attrs = node.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &node.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SvelteSelf(node) => {
                     let f = node.fragment;
-                    let attrs = node.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &node.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::IfBlock(block) => {
@@ -141,36 +141,36 @@ impl<'a> TemplateValidator<'a, '_> {
                 }
                 Node::SvelteFragmentLegacy(node) => {
                     let f = node.fragment;
-                    let attrs = node.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &node.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SvelteElement(el) => {
                     let tag = el.this_expr().cloned();
                     let f = el.fragment;
-                    let attrs = el.attributes.clone();
+                    let attrs = &el.attributes;
                     if let Some(tag_ref) = tag.as_ref() {
                         self.visit_expr_ref(tag_ref, false, in_dynamic_block);
                     }
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    self.visit_attributes(attrs, in_dynamic_block);
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::SvelteWindow(node) => {
-                    let attrs = node.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &node.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                 }
                 Node::SvelteDocument(node) => {
-                    let attrs = node.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &node.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                 }
                 Node::SvelteBody(node) => {
-                    let attrs = node.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &node.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                 }
                 Node::SvelteBoundary(node) => {
                     let f = node.fragment;
-                    let attrs = node.attributes.clone();
-                    self.visit_attributes(&attrs, in_dynamic_block);
+                    let attrs = &node.attributes;
+                    self.visit_attributes(attrs, in_dynamic_block);
                     self.visit_fragment(f, in_dynamic_block);
                 }
                 Node::AwaitBlock(node) => {

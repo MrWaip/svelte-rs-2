@@ -23,7 +23,7 @@ impl<'a> ServerTransform<'_, 'a> {
         match &mut declarator.id {
             BindingPattern::ObjectPattern(obj) => {
                 if obj.rest.is_some() {
-                    let slots = self.shorthand_binding_property("$$slots");
+                    let slots = self.slots_binding_property();
                     let events = self.shorthand_binding_property("$$events");
                     obj.properties.push(slots);
                     obj.properties.push(events);
@@ -33,7 +33,7 @@ impl<'a> ServerTransform<'_, 'a> {
                 let rest_pattern = self.b.ast.binding_pattern_binding_identifier(SPAN, id.name);
                 let rest = self.b.ast.binding_rest_element(SPAN, rest_pattern);
                 let mut properties = self.b.ast.vec();
-                properties.push(self.shorthand_binding_property("$$slots"));
+                properties.push(self.slots_binding_property());
                 properties.push(self.shorthand_binding_property("$$events"));
                 let object =
                     self.b
@@ -53,6 +53,21 @@ impl<'a> ServerTransform<'_, 'a> {
             PropertyKey::StaticIdentifier(self.b.alloc(self.b.ast.identifier_name(SPAN, atom)));
         let value = self.b.ast.binding_pattern_binding_identifier(SPAN, atom);
         self.b.ast.binding_property(SPAN, key, value, true, false)
+    }
+
+    fn slots_binding_property(&self) -> BindingProperty<'a> {
+        if !self.analysis.output.needs_sanitized_legacy_slots {
+            return self.shorthand_binding_property("$$slots");
+        }
+        let key_atom = self.b.ast.atom("$$slots");
+        let key =
+            PropertyKey::StaticIdentifier(self.b.alloc(self.b.ast.identifier_name(SPAN, key_atom)));
+        let value_atom = self.b.ast.atom("$$slots_");
+        let value = self
+            .b
+            .ast
+            .binding_pattern_binding_identifier(SPAN, value_atom);
+        self.b.ast.binding_property(SPAN, key, value, false, false)
     }
 
     fn erase_bindable(&self, pattern: &mut BindingPattern<'a>) {

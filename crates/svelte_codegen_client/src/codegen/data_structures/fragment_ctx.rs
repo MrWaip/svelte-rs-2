@@ -33,7 +33,7 @@ pub(crate) struct FragmentCtx<'a> {
     pub inside_svg_text: bool,
     pub can_remove_entirely: bool,
     pub inside_head: bool,
-    pub parent_element_name: Option<String>,
+    pub parent_element_name: Option<&'a str>,
 
     pub namespace: Namespace,
     pub role: FragmentRole,
@@ -69,7 +69,7 @@ impl<'a> FragmentCtx<'a> {
     pub fn child_of_element(
         &self,
         ctx: &Ctx<'a>,
-        el_name: &str,
+        el_name: &'a str,
         fragment_id: svelte_ast::FragmentId,
         new_ns: Namespace,
         new_anchor: FragmentAnchor,
@@ -82,7 +82,7 @@ impl<'a> FragmentCtx<'a> {
             "script" => next.inside_script = true,
             _ => {}
         }
-        next.parent_element_name = Some(el_name.to_string());
+        next.parent_element_name = Some(el_name);
         if el_name == "foreignObject" {
             next.inside_svg_text = false;
         } else if el_name == "text" && matches!(new_ns, Namespace::Svg) {
@@ -127,12 +127,9 @@ impl<'a> FragmentCtx<'a> {
         let mut next = self.clone();
         next.parent_element_name = None;
         next.namespace = ctx.query.view.fragment_namespace(fragment_id);
-        if !next.inside_svg_text
+        next.can_remove_entirely = !next.inside_svg_text
             && (matches!(next.namespace, Namespace::Svg)
-                || fragment_children_are_svg(ctx, fragment_id))
-        {
-            next.can_remove_entirely = true;
-        }
+                || fragment_children_are_svg(ctx, fragment_id));
         next.role = role;
         next.anchor = new_anchor;
         next

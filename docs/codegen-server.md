@@ -1,7 +1,7 @@
 # PRD: Серверный кодген (корневой)
 
 label: codegen-server
-topics: server codegen, SSR emit, target, renderer, $$renderer, escape, static HTML accumulator, element, attribute, text, interpolation, fragment, if, each, component, snippet, boundary, hoisted, css scoping, scoped class, injected styles, svelte_codegen_server
+topics: server codegen, SSR emit, target, renderer, $$renderer, escape, static HTML accumulator, element, attribute, text, interpolation, fragment, if, each, component, snippet, boundary, hoisted, css scoping, scoped class, injected styles, svelte_codegen_server, hmr
 
 Корневой PRD для слоя серверного кодгена (`svelte_codegen_server`) — template-половины backend'а `generate: server`. Клиентский аналог — `codegen.md`.
 Принцип: **dumb codegen** — один запрос к анализу на один use case → одно однозначное решение эмита.
@@ -32,6 +32,7 @@ topics: server codegen, SSR emit, target, renderer, $$renderer, escape, static H
 2. **Только доменные вердикты анализа.** Утёкшие emit-формы (`DerivedEmit`, `PropEmitMode`, `ComponentAttachEmit`, `ComponentPropMemo`, …) читать и копировать запрещено: лик сначала рефакторится в доменный вердикт, затем потребляется. Механическая проверка: `grep Emit` по крэйту пуст.
 3. **Одно решение на узел — ровно в одном месте.** Целевой цикл: `for node → запрос семантики по node id → исчерпывающий match → эмит`; всё ниже по потоку — тупая печать. Если ветка match хочет второй запрос к анализу, соединённый `&&`, — это сигнал добавить вердикт в анализ, а не логику в кодген.
 4. **Dev — ось эмита с первого дня.** Каждая фича приземляется в prod- и dev-формах одновременно (`$$renderer.component`-обёртка, `FILENAME`, dev-валидации); второй проход по всем визиторам не планируется. Emit-билдеры шарятся с клиентом только там, где эмитимая форма действительно идентична.
+5. **`hmr` отключает standalone одиночного `<Component/>` и в SSR.** Обёртка модуля и CE-guard — client-only, в SSR их нет.
 
 Плюс общие инварианты слоя кодгена: нет нового анализа, нет диагностик.
 

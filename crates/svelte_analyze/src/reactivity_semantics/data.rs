@@ -686,6 +686,7 @@ pub struct LegacyBindablePropSemantics {
 pub struct LegacyStateSemantics {
     pub var_declared: bool,
     pub immutable: bool,
+    pub is_signal_source: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1796,7 +1797,7 @@ pub struct ReactivitySemantics {
 
     maybe_reactive_symbols: FxHashSet<SymbolId>,
 
-    legacy_bindable_prop_symbols: Vec<SymbolId>,
+    init_proxyable: FxHashMap<SymbolId, bool>,
 
     legacy_bindable_prop_aliases: FxHashMap<SymbolId, String>,
 
@@ -1856,7 +1857,7 @@ impl ReactivitySemantics {
             base_to_store: FxHashMap::default(),
             each_rest_symbols: FxHashSet::default(),
             maybe_reactive_symbols: FxHashSet::default(),
-            legacy_bindable_prop_symbols: Vec::new(),
+            init_proxyable: FxHashMap::default(),
             legacy_bindable_prop_aliases: FxHashMap::default(),
             prop_default_spans: FxHashMap::default(),
             has_bindable_prop: false,
@@ -1956,6 +1957,14 @@ impl ReactivitySemantics {
         self.maybe_reactive_symbols.insert(sym);
     }
 
+    pub(crate) fn set_init_proxyable(&mut self, init_proxyable: FxHashMap<SymbolId, bool>) {
+        self.init_proxyable = init_proxyable;
+    }
+
+    pub(crate) fn take_init_proxyable(&mut self) -> FxHashMap<SymbolId, bool> {
+        mem::take(&mut self.init_proxyable)
+    }
+
     pub fn declarator_semantics(&self, decl_node: OxcNodeId) -> DeclaratorSemantics {
         self.declarators
             .get(decl_node)
@@ -2031,16 +2040,12 @@ impl ReactivitySemantics {
         })
     }
 
-    pub fn legacy_bindable_prop_symbols(&self) -> &[SymbolId] {
-        &self.legacy_bindable_prop_symbols
-    }
-
     pub fn summary(&self) -> ReactivitySummary {
         ReactivitySummary {
             props: self.props_summary(),
             has_store_bindings: !self.store_declaration_symbols.is_empty(),
             legacy: LegacySummary {
-                has_bindable_prop: !self.legacy_bindable_prop_symbols.is_empty(),
+                has_bindable_prop: self.iter_legacy_bindable_prop_symbols().next().is_some(),
                 reads_props_object: self.legacy_uses_props,
                 reads_rest_props_object: self.legacy_uses_rest_props,
                 has_member_mutated: self.legacy_has_member_mutated,
@@ -2080,6 +2085,12 @@ impl ReactivitySemantics {
         })
     }
 
+    pub fn iter_legacy_bindable_prop_symbols(&self) -> impl Iterator<Item = SymbolId> + '_ {
+        self.bindings.iter_enumerated().filter_map(|(sym, facts)| {
+            matches!(facts, Some(BindingFacts::LegacyBindableProp(_))).then_some(sym)
+        })
+    }
+
     pub fn prop_default_span(&self, sym: SymbolId) -> Option<Span> {
         self.prop_default_spans.get(&sym).copied()
     }
@@ -2108,12 +2119,11 @@ impl ReactivitySemantics {
         &mut self.legacy_reactive
     }
 
-    pub(crate) fn record_legacy_bindable_prop_symbol(
+    pub(crate) fn record_legacy_bindable_prop_alias(
         &mut self,
         symbol: SymbolId,
         alias: Option<String>,
     ) {
-        self.legacy_bindable_prop_symbols.push(symbol);
         if let Some(alias) = alias {
             self.legacy_bindable_prop_aliases.insert(symbol, alias);
         }
@@ -2432,6 +2442,12 @@ impl ReactivitySemantics {
                 owner_node,
             }),
         );
+    }
+
+    pub(crate) fn set_legacy_state_signal_source(&mut self, sym: SymbolId, is_signal_source: bool) {
+        if let Some(Some(BindingFacts::LegacyState(state))) = self.bindings.get_mut(sym) {
+            state.is_signal_source = is_signal_source;
+        }
     }
 
     pub(crate) fn set_derived_reactive(&mut self, sym: SymbolId, reactive: bool) {

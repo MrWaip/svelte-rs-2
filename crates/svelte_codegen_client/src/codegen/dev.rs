@@ -1,10 +1,11 @@
-use std::mem;
-
 use oxc_ast::ast::{ChainElement, Expression, Statement};
+use oxc_semantic::SymbolId;
+use svelte_analyze::AttributeSemantics;
 use svelte_ast::BindDirective;
 use svelte_ast_builder::Arg;
 
 use super::Codegen;
+use super::expr::build_reactive_dep_expr_legacy;
 
 pub(in crate::codegen) fn getter_return_member<'a, 'b>(
     getter: &'b Expression<'a>,
@@ -28,37 +29,64 @@ pub(in crate::codegen) fn getter_return_member<'a, 'b>(
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
-    fn strip_member_optional(&self, expr: Expression<'a>) -> Expression<'a> {
+    fn bind_each_context_vars(&self, bind: &BindDirective) -> Vec<SymbolId> {
+        let AttributeSemantics::ElementBind(payload) =
+            self.ctx.query.analysis.attributes.get(bind.id)
+        else {
+            return Vec::new();
+        };
+        payload.each_context_vars.to_vec()
+    }
+
+    fn clone_member_substituting_each_context(
+        &self,
+        expr: &Expression<'a>,
+        each_context: &[SymbolId],
+    ) -> Expression<'a> {
         match expr {
-            Expression::ChainExpression(c) => {
-                let inner = match c.unbox().expression {
-                    ChainElement::StaticMemberExpression(m) => {
-                        Expression::StaticMemberExpression(m)
-                    }
-                    ChainElement::ComputedMemberExpression(m) => {
-                        Expression::ComputedMemberExpression(m)
-                    }
-                    ChainElement::PrivateFieldExpression(m) => {
-                        Expression::PrivateFieldExpression(m)
-                    }
-                    ChainElement::CallExpression(m) => Expression::CallExpression(m),
-                    ChainElement::TSNonNullExpression(m) => Expression::TSNonNullExpression(m),
+            Expression::Identifier(id) => {
+                if each_context.is_empty() {
+                    return self.ctx.b.clone_expr(expr);
+                }
+                let Some(sym) = self.ctx.query.view.symbol_for_identifier_reference(id) else {
+                    return self.ctx.b.clone_expr(expr);
                 };
-                self.strip_member_optional(inner)
+                if !each_context.contains(&sym) {
+                    return self.ctx.b.clone_expr(expr);
+                }
+                build_reactive_dep_expr_legacy(self.ctx, sym)
+                    .unwrap_or_else(|| self.ctx.b.clone_expr(expr))
             }
-            Expression::StaticMemberExpression(mut m) => {
-                m.optional = false;
-                let obj = mem::replace(&mut m.object, self.ctx.b.cheap_expr());
-                m.object = self.strip_member_optional(obj);
-                Expression::StaticMemberExpression(m)
+            Expression::StaticMemberExpression(m) => {
+                let object = self.clone_member_substituting_each_context(&m.object, each_context);
+                self.ctx
+                    .b
+                    .static_member_expr(object, m.property.name.as_str())
             }
-            Expression::ComputedMemberExpression(mut m) => {
-                m.optional = false;
-                let obj = mem::replace(&mut m.object, self.ctx.b.cheap_expr());
-                m.object = self.strip_member_optional(obj);
-                Expression::ComputedMemberExpression(m)
+            Expression::ComputedMemberExpression(m) => {
+                let object = self.clone_member_substituting_each_context(&m.object, each_context);
+                let property =
+                    self.clone_member_substituting_each_context(&m.expression, each_context);
+                self.ctx.b.computed_member_expr(object, property)
             }
-            other => other,
+            Expression::ChainExpression(c) => match &c.expression {
+                ChainElement::StaticMemberExpression(m) => {
+                    let object =
+                        self.clone_member_substituting_each_context(&m.object, each_context);
+                    self.ctx
+                        .b
+                        .static_member_expr(object, m.property.name.as_str())
+                }
+                ChainElement::ComputedMemberExpression(m) => {
+                    let object =
+                        self.clone_member_substituting_each_context(&m.object, each_context);
+                    let property =
+                        self.clone_member_substituting_each_context(&m.expression, each_context);
+                    self.ctx.b.computed_member_expr(object, property)
+                }
+                _ => self.ctx.b.clone_expr(expr),
+            },
+            other => self.ctx.b.clone_expr(other),
         }
     }
 
@@ -67,29 +95,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         bind: &BindDirective,
         member: &Expression<'a>,
     ) -> Option<Statement<'a>> {
+        let each_context = self.bind_each_context_vars(bind);
         let (object, property) = match member.get_inner_expression() {
             Expression::StaticMemberExpression(m) => (
-                self.ctx.b.clone_expr(&m.object),
+                self.clone_member_substituting_each_context(&m.object, &each_context),
                 self.ctx.b.str_expr(m.property.name.as_str()),
             ),
             Expression::ComputedMemberExpression(m) => (
-                self.ctx.b.clone_expr(&m.object),
-                self.ctx.b.clone_expr(&m.expression),
+                self.clone_member_substituting_each_context(&m.object, &each_context),
+                self.clone_member_substituting_each_context(&m.expression, &each_context),
             ),
             Expression::ChainExpression(c) => match &c.expression {
                 ChainElement::StaticMemberExpression(m) => (
-                    self.ctx.b.clone_expr(&m.object),
+                    self.clone_member_substituting_each_context(&m.object, &each_context),
                     self.ctx.b.str_expr(m.property.name.as_str()),
                 ),
                 ChainElement::ComputedMemberExpression(m) => (
-                    self.ctx.b.clone_expr(&m.object),
-                    self.ctx.b.clone_expr(&m.expression),
+                    self.clone_member_substituting_each_context(&m.object, &each_context),
+                    self.clone_member_substituting_each_context(&m.expression, &each_context),
                 ),
                 _ => return None,
             },
             _ => return None,
         };
-        let object = self.strip_member_optional(object);
         let source = self.ctx.query.component.source_text(bind.span).to_string();
         let (line, col) = self.ctx.state.line_index.line_col(bind.span.start);
         let object_thunk = self.ctx.b.thunk(object);

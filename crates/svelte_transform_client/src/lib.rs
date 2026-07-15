@@ -128,8 +128,7 @@ fn walk_fragment<'a>(
     parsed: &mut JsAst<'a>,
     scope: ScopeId,
 ) {
-    let nodes = component.fragment_nodes(fragment_id).to_vec();
-    for id in nodes {
+    for &id in component.fragment_nodes(fragment_id) {
         let node = component.store.get(id);
         walk_node(ctx, node, component, parsed, scope);
     }
@@ -141,9 +140,6 @@ fn reserve_each_index_name(ctx: &mut TransformCtx<'_, '_>, block: &EachBlock) {
         .each_index_internal_names
         .insert(block.id, name);
 
-    if block.index.is_some() {
-        return;
-    }
     let BlockSemantics::Each(sem) = ctx.analysis.block_semantics(block.id) else {
         return;
     };
@@ -155,6 +151,12 @@ fn reserve_each_index_name(ctx: &mut TransformCtx<'_, '_>, block: &EachBlock) {
         .binding_semantics(*item_sym)
         .is_each_item_indexed_legacy()
     {
+        return;
+    }
+    ctx.transform_data
+        .each_block_by_item_legacy
+        .insert(*item_sym, block.id);
+    if block.index.is_some() {
         return;
     }
     ctx.transform_data
@@ -602,8 +604,7 @@ mod tests {
         component: &'a Component,
         name: &str,
     ) -> Option<&'a SnippetBlock> {
-        let nodes = component.fragment_nodes(fragment_id).to_vec();
-        for id in nodes {
+        for &id in component.fragment_nodes(fragment_id) {
             match component.store.get(id) {
                 Node::SnippetBlock(block) if block.name(component.source.as_str()) == name => {
                     return Some(block);
@@ -654,8 +655,7 @@ mod tests {
         component: &'a Component,
         needle: &str,
     ) -> Option<&'a ExpressionTag> {
-        let nodes = component.fragment_nodes(fragment_id).to_vec();
-        for id in nodes {
+        for &id in component.fragment_nodes(fragment_id) {
             match component.store.get(id) {
                 Node::ExpressionTag(tag)
                     if component.source_text(tag.expression.span).trim() == needle =>

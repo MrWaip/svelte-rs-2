@@ -7,14 +7,43 @@ use compiler_tests::{compiler_case, compiler_module_case};
 #[path = "clusters/events.rs"]
 mod events;
 
+#[path = "clusters/dev_element_locations.rs"]
+mod dev_element_locations;
+
+#[path = "clusters/set_class_scope_hash.rs"]
+mod set_class_scope_hash;
+
+#[path = "clusters/whitespace_trim.rs"]
+mod whitespace_trim;
+
+#[path = "clusters/css_global_combinator.rs"]
+mod css_global_combinator;
+
+#[path = "clusters/hmr.rs"]
+mod hmr;
+
+#[path = "clusters/spread_class.rs"]
+mod spread_class;
+#[path = "clusters/spread_default_value.rs"]
+mod spread_default_value;
+
+#[path = "clusters/head_title.rs"]
+mod head_title;
+
 #[path = "clusters/legacy_slots.rs"]
 mod legacy_slots;
 
 #[path = "clusters/special_element_order.rs"]
 mod special_element_order;
 
+#[path = "clusters/console_log.rs"]
+mod console_log;
+
 #[path = "clusters/component_props.rs"]
 mod component_props;
+
+#[path = "clusters/member_assign.rs"]
+mod member_assign;
 
 #[path = "clusters/component_dynamic_name.rs"]
 mod component_dynamic_name;
@@ -142,6 +171,9 @@ mod if_else;
 #[path = "clusters/attribute_single_expr.rs"]
 mod attribute_single_expr;
 
+#[path = "clusters/attribute_ws_around_equals.rs"]
+mod attribute_ws_around_equals;
+
 #[path = "clusters/attribute_unquoted_value.rs"]
 mod attribute_unquoted_value;
 
@@ -183,6 +215,9 @@ mod template_element;
 
 #[path = "clusters/textarea_content.rs"]
 mod textarea_content;
+
+#[path = "clusters/attribute_entities.rs"]
+mod attribute_entities;
 
 #[path = "clusters/element_reset.rs"]
 mod element_reset;

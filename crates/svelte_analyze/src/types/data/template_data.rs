@@ -1,7 +1,5 @@
 use std::borrow::Cow;
 
-use svelte_ast::FragmentId;
-
 use super::*;
 use SymbolId;
 
@@ -54,47 +52,6 @@ impl SnippetData {
     }
     pub fn snippet_by_symbol(&self, sym_id: SymbolId) -> Option<NodeId> {
         self.snippet_name_symbols.get(&sym_id).copied()
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct FragmentNodeList {
-    entries: Vec<Option<Vec<NodeId>>>,
-}
-
-impl FragmentNodeList {
-    pub(crate) fn insert(&mut self, id: FragmentId, ids: Vec<NodeId>) {
-        let idx = id.0 as usize;
-        if self.entries.len() <= idx {
-            self.entries.resize(idx + 1, None);
-        }
-        self.entries[idx] = Some(ids);
-    }
-
-    pub(crate) fn get_by_id(&self, id: FragmentId) -> Option<&Vec<NodeId>> {
-        self.entries.get(id.0 as usize)?.as_ref()
-    }
-}
-
-pub struct TitleElementData {
-    pub(crate) by_fragment: FragmentNodeList,
-}
-
-impl Default for TitleElementData {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TitleElementData {
-    pub fn new() -> Self {
-        Self {
-            by_fragment: FragmentNodeList::default(),
-        }
-    }
-
-    pub fn by_fragment_id(&self, id: FragmentId) -> Option<&Vec<NodeId>> {
-        self.by_fragment.get_by_id(id)
     }
 }
 

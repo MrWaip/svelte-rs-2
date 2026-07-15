@@ -114,8 +114,8 @@ fn sourcemap_compile_module_basename() {
     let expected = "Foo.svelte.js";
     assert_eq!(
         map.get_file().map(|s| s.as_ref()),
-        Some(expected),
-        "[{case}] map.file != basename"
+        None,
+        "[{case}] JS map must not carry file"
     );
     let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
     assert_eq!(
@@ -137,8 +137,8 @@ fn sourcemap_compile_module_fallback() {
     let expected = "input.svelte.js";
     assert_eq!(
         map.get_file().map(|s| s.as_ref()),
-        Some(expected),
-        "[{case}] map.file != fallback"
+        None,
+        "[{case}] JS map must not carry file"
     );
     let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
     assert_eq!(
@@ -160,8 +160,8 @@ fn sourcemap_output_filename_relative() {
     let expected = "../src/Foo.svelte";
     assert_eq!(
         map.get_file().map(|s| s.as_ref()),
-        Some(expected),
-        "[{case}] map.file != relative path"
+        None,
+        "[{case}] JS map must not carry file"
     );
     let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
     assert_eq!(
@@ -182,8 +182,8 @@ fn sourcemap_output_filename_absent() {
     let expected = "Foo.svelte";
     assert_eq!(
         map.get_file().map(|s| s.as_ref()),
-        Some(expected),
-        "[{case}] map.file != basename"
+        None,
+        "[{case}] JS map must not carry file"
     );
     let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
     assert_eq!(
@@ -261,8 +261,8 @@ fn sourcemap_css_output_filename_set() {
     let map = css_output.map.as_ref().expect("CSS map None");
     assert_eq!(
         map.get_file().map(|s| s.as_ref()),
-        Some("dist/Foo.css"),
-        "[{case}] map.file != css_output_filename"
+        Some("Foo.css"),
+        "[{case}] map.file != basename of css_output_filename"
     );
 }
 
@@ -277,8 +277,54 @@ fn sourcemap_css_output_filename_fallback() {
     let map = css_output.map.as_ref().expect("CSS map None");
     assert_eq!(
         map.get_file().map(|s| s.as_ref()),
-        Some("src/Foo.svelte"),
-        "[{case}] map.file != filename"
+        Some("Foo.svelte"),
+        "[{case}] map.file != basename of filename"
+    );
+}
+
+#[rstest]
+fn sourcemap_css_merges_preprocessor_sources() {
+    let input = "<div class=\"a\">x</div>\n<style>.a{color:red}</style>";
+    let preprocessor = r#"{"version":3,"sources":["foo.scss"],"sourcesContent":["orig"],"names":[],"mappings":";AAAA"}"#;
+    let mut opts = CompileOptions {
+        filename: "App.svelte".to_string(),
+        css: CssMode::External,
+        ..CompileOptions::default()
+    };
+    opts.preprocessor_map = Some(preprocessor.to_string());
+    let result = compile(input, &opts);
+    let css_output = result.css.expect("CSS output missing");
+    let map = css_output.map.expect("CSS map None");
+    let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
+    assert_eq!(
+        sources,
+        vec!["foo.scss".to_string()],
+        "preprocessor source not merged into css sources"
+    );
+    assert_eq!(
+        map.get_file().map(|s| s.as_ref()),
+        Some("App.svelte"),
+        "css map file must stay basename after merge"
+    );
+}
+
+#[rstest]
+fn sourcemap_js_merges_preprocessor_sources() {
+    let input = "<script>let n = 1;</script>\n<h1>{n}</h1>";
+    let preprocessor = r#"{"version":3,"sources":["orig.svelte"],"sourcesContent":["orig"],"names":[],"mappings":"AAAA;AAAA;AAAA;AAAA;AAAA"}"#;
+    let mut opts = CompileOptions {
+        filename: "App.svelte".to_string(),
+        ..CompileOptions::default()
+    };
+    opts.preprocessor_map = Some(preprocessor.to_string());
+    let result = compile(input, &opts);
+    let js_output = result.js.expect("JS output missing");
+    let map = js_output.map.expect("JS map None");
+    let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
+    assert_eq!(
+        sources,
+        vec!["orig.svelte".to_string()],
+        "preprocessor source not merged into js sources"
     );
 }
 

@@ -26,7 +26,6 @@ pub(crate) enum PassKey {
     ScanIgnoreComments,
     ExtractCeConfig,
     TemplateSideTables,
-    CollectSymbols,
     BuildFragmentSemantics,
     BuildRuntimeSemantics,
     JsAnalyzePostTemplate,
@@ -39,7 +38,6 @@ pub(crate) enum PassKey {
     BuildAttributeSemantics,
     BuildBlockSemantics,
     BuildElementSemantics,
-    ValidateTemplate,
     Validate,
 }
 
@@ -65,7 +63,6 @@ pub(crate) enum DataToken {
     ElementSemantics,
     FragmentTopology,
     TemplateClassification,
-    TemplateValidation,
     Validation,
 }
 
@@ -113,12 +110,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     PassDescriptor {
         key: PassKey::TemplateSideTables,
         requires: &[DataToken::TemplateSemantics],
-        produces: &[DataToken::TemplateSideTables],
-    },
-    PassDescriptor {
-        key: PassKey::CollectSymbols,
-        requires: &[DataToken::TemplateSideTables],
-        produces: &[DataToken::SymbolRefs],
+        produces: &[DataToken::TemplateSideTables, DataToken::SymbolRefs],
     },
     PassDescriptor {
         key: PassKey::BuildFragmentSemantics,
@@ -194,11 +186,6 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         produces: &[DataToken::ElementSemantics],
     },
     PassDescriptor {
-        key: PassKey::ValidateTemplate,
-        requires: &[DataToken::SymbolRefs],
-        produces: &[DataToken::TemplateValidation],
-    },
-    PassDescriptor {
         key: PassKey::Validate,
         requires: &[DataToken::TemplateClassification],
         produces: &[DataToken::Validation],
@@ -216,7 +203,6 @@ pub(crate) const PRE_TEMPLATE_SCRIPT_STAGE: &[PassKey] = &[
 
 pub(crate) const INDEX_BUILD_STAGE: &[PassKey] = &[
     PassKey::TemplateSideTables,
-    PassKey::CollectSymbols,
     PassKey::BuildFragmentSemantics,
     PassKey::BuildRuntimeSemantics,
 ];
@@ -236,7 +222,7 @@ pub(crate) const TEMPLATE_EXECUTION_STAGE: &[PassKey] = &[
     PassKey::BuildElementSemantics,
 ];
 
-pub(crate) const VALIDATION_STAGE: &[PassKey] = &[PassKey::ValidateTemplate, PassKey::Validate];
+pub(crate) const VALIDATION_STAGE: &[PassKey] = &[PassKey::Validate];
 
 pub(crate) fn default_stage_execution_order() -> Vec<PassKey> {
     let mut order = Vec::new();

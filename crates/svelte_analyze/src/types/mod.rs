@@ -9,6 +9,6 @@ pub use data::{
     ElementAnalysis, ElementFlags, ElementSizeKind, EventHandlerMode, FragmentFacts,
     FragmentFactsEntry, IgnoreData, ImageNaturalSizeKind, MediaBindKind, OutputData,
     ResizeObserverKind, RuntimeInfo, ScriptAnalysis, SnippetData, TemplateAnalysis,
-    TemplateSemanticsData, TitleElementData, WindowBindKind,
+    TemplateSemanticsData, WindowBindKind,
 };
 pub use node_table::{NodeBitSet, NodeTable};

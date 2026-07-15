@@ -24,7 +24,7 @@ static GLOBAL: NeverGrowInPlaceAllocator = NeverGrowInPlaceAllocator;
 /// [`GlobalAlloc::realloc`] implementation which *never* grows in place.
 /// It therefore represents the "worse case scenario" for memory allocation performance.
 /// This behavior is consistent and predictable, and therefore stabilizes benchmark results.
-struct NeverGrowInPlaceAllocator;
+pub struct NeverGrowInPlaceAllocator;
 
 // SAFETY: Methods simply delegate to `System` allocator
 #[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]

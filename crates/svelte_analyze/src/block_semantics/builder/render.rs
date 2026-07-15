@@ -216,15 +216,13 @@ mod tests {
                     Node::ComponentNode(cn) => Some(cn.fragment),
                     Node::SvelteSelf(cn) => Some(cn.fragment),
                     Node::IfBlock(b) => {
-                        let cons = component.fragment_nodes(b.consequent).to_vec();
-                        if let Some(r) = walk(component, &cons) {
+                        if let Some(r) = walk(component, component.fragment_nodes(b.consequent)) {
                             return Some(r);
                         }
-                        if let Some(alt) = b.alternate {
-                            let alt_nodes = component.fragment_nodes(alt).to_vec();
-                            if let Some(r) = walk(component, &alt_nodes) {
-                                return Some(r);
-                            }
+                        if let Some(alt) = b.alternate
+                            && let Some(r) = walk(component, component.fragment_nodes(alt))
+                        {
+                            return Some(r);
                         }
                         continue;
                     }
@@ -232,17 +230,15 @@ mod tests {
                     Node::SnippetBlock(b) => Some(b.body),
                     _ => continue,
                 };
-                if let Some(fid) = child_fragment {
-                    let nodes = component.fragment_nodes(fid).to_vec();
-                    if let Some(r) = walk(component, &nodes) {
-                        return Some(r);
-                    }
+                if let Some(fid) = child_fragment
+                    && let Some(r) = walk(component, component.fragment_nodes(fid))
+                {
+                    return Some(r);
                 }
             }
             None
         }
-        let root_nodes = component.fragment_nodes(component.root).to_vec();
-        walk(component, &root_nodes).expect("no render tag")
+        walk(component, component.fragment_nodes(component.root)).expect("no render tag")
     }
 
     fn assert_render<F: FnOnce(&RenderTagBlockSemantics)>(source: &str, check: F) {

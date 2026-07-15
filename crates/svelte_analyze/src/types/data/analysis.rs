@@ -88,7 +88,6 @@ pub struct TemplateAnalysis {
     pub rich_content_facts: RichContentFacts,
     pub(crate) fragment_blockers: Vec<Option<SmallVec<[u32; 2]>>>,
     pub snippets: SnippetData,
-    pub title_elements: TitleElementData,
     pub template_topology: TemplateTopology,
     pub template_elements: TemplateElementIndex,
     pub template_semantics: TemplateSemanticsData,
@@ -104,7 +103,6 @@ impl TemplateAnalysis {
             rich_content_facts: RichContentFacts::new(),
             fragment_blockers: Vec::new(),
             snippets: SnippetData::new(node_count),
-            title_elements: TitleElementData::new(),
             template_topology: TemplateTopology::new(node_count),
             template_elements: TemplateElementIndex::new(node_count),
             template_semantics: TemplateSemanticsData::new(node_count),
@@ -315,12 +313,6 @@ impl<'a> AnalysisData<'a> {
             .fragment_facts
             .lookup_by_id(id)
             .is_some_and(FragmentFactsEntry::has_children)
-    }
-    pub fn title_elements_for_fragment_by_id(
-        &self,
-        id: svelte_ast::FragmentId,
-    ) -> Option<&Vec<NodeId>> {
-        self.template.title_elements.by_fragment_id(id)
     }
     pub fn fragment_child_count_by_id(&self, id: svelte_ast::FragmentId) -> u32 {
         self.template

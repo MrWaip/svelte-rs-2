@@ -45,7 +45,12 @@ pub fn build_store_base_read<'a>(
                 ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
             )
         }
-        BindingSemantics::LegacyBindableProp(_) => {
+        BindingSemantics::Prop(PropBindingSemantics {
+            kind: PropBindingKind::Source { .. },
+            emit_mode: PropEmitMode::Standard,
+            ..
+        })
+        | BindingSemantics::LegacyBindableProp(_) => {
             let callee = ast.expression_identifier(SPAN, ast.atom(base_name));
             ast.expression_call(SPAN, callee, NONE, ast.vec(), false)
         }

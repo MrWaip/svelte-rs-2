@@ -15,10 +15,8 @@ pub use attributes::{
     event_attribute, is_dom_boolean_attribute, is_regular_dom_property,
     normalize_regular_attribute_name,
 };
-pub use events::{
-    is_capture_event, is_delegatable_event, is_passive_event, is_simple_identifier,
-    strip_capture_event,
-};
+pub use events::is_simple_identifier;
+pub(crate) use events::{is_delegatable_event, is_passive_event, strip_capture_event};
 pub use expression_await::expression_calls_or_awaits;
 pub(crate) use expression_await::{expression_has_await, statement_has_await};
 pub use ident_gen::{IdentGen, IdentGenSnapshot};
