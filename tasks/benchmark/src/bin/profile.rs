@@ -12,6 +12,7 @@ fn main() {
     let mut seconds: u64 = 10;
     let mut dev = false;
     let mut mode: Option<Mode> = None;
+    let mut generate = svelte_compiler::GenerateMode::Client;
 
     let mut positional = 0usize;
     let mut args = env::args().skip(1);
@@ -19,6 +20,16 @@ fn main() {
         match arg.as_str() {
             "--dev" => dev = true,
             "--prod" => dev = false,
+            "--server" => generate = svelte_compiler::GenerateMode::Server,
+            "--client" => generate = svelte_compiler::GenerateMode::Client,
+            "--generate" => {
+                let v = args.next().expect("--generate requires value");
+                generate = match v.as_str() {
+                    "server" => svelte_compiler::GenerateMode::Server,
+                    "client" => svelte_compiler::GenerateMode::Client,
+                    other => panic!("unknown --generate: {other}"),
+                };
+            }
             "--mode" => {
                 let v = args.next().expect("--mode requires value");
                 mode = Some(match v.as_str() {
@@ -68,6 +79,7 @@ fn main() {
         Mode::Compile => {
             let opts = svelte_compiler::CompileOptions {
                 dev,
+                generate,
                 filename: path.clone(),
                 ..svelte_compiler::CompileOptions::default()
             };
@@ -79,6 +91,7 @@ fn main() {
         Mode::CompileModule => {
             let opts = svelte_compiler::ModuleCompileOptions {
                 dev,
+                generate,
                 filename: path.clone(),
                 ..svelte_compiler::ModuleCompileOptions::default()
             };
