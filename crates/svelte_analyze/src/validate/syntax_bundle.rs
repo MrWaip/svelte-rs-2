@@ -1,21 +1,23 @@
 use oxc_ast::ast::{
-    AccessorProperty, ArrowFunctionExpression, Class, Declaration, Decorator, Expression,
-    FormalParameter, Function, LabeledStatement, MethodDefinition, MethodDefinitionKind,
-    NewExpression, Program, TSEnumDeclaration, TSModuleDeclaration,
+    AccessorProperty, ArrowFunctionExpression, CallExpression, Class, Declaration, Decorator,
+    Expression, FormalParameter, Function, LabeledStatement, MethodDefinition,
+    MethodDefinitionKind, NewExpression, Program, TSEnumDeclaration, TSModuleDeclaration,
+    VariableDeclarator,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_class, walk_declaration, walk_function,
-    walk_labeled_statement, walk_method_definition, walk_new_expression,
+    walk_arrow_function_expression, walk_call_expression, walk_class, walk_declaration,
+    walk_function, walk_labeled_statement, walk_method_definition, walk_new_expression,
+    walk_variable_declarator,
 };
 use oxc_syntax::scope::ScopeFlags;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
-use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::types::data::AnalysisData;
 
 use super::class_state_fields::check_class;
+use super::stores::{check_legacy_rune_invalid_usage, check_store_rune_conflict};
 use super::typescript::namespace_has_non_type_node;
 
 pub(super) fn validate_instance(
@@ -26,12 +28,13 @@ pub(super) fn validate_instance(
 ) {
     let mut validator = SyntaxValidator {
         diags,
-        reactivity: &data.reactivity,
+        data,
         in_constructor: false,
         function_depth: 0,
         base_function_depth: 1,
         check_class_state: runes,
         check_legacy_placement: !runes,
+        check_stores: true,
     };
     validator.visit_program(program);
 }
@@ -43,24 +46,26 @@ pub(super) fn validate_module(
 ) {
     let mut validator = SyntaxValidator {
         diags,
-        reactivity: &data.reactivity,
+        data,
         in_constructor: false,
         function_depth: 0,
         base_function_depth: 0,
         check_class_state: false,
         check_legacy_placement: false,
+        check_stores: false,
     };
     validator.visit_program(program);
 }
 
 struct SyntaxValidator<'a> {
     diags: &'a mut Vec<Diagnostic>,
-    reactivity: &'a ReactivitySemantics,
+    data: &'a AnalysisData<'a>,
     in_constructor: bool,
     function_depth: u32,
     base_function_depth: u32,
     check_class_state: bool,
     check_legacy_placement: bool,
+    check_stores: bool,
 }
 
 impl SyntaxValidator<'_> {
@@ -89,9 +94,23 @@ impl<'a> Visit<'a> for SyntaxValidator<'_> {
 
     fn visit_class(&mut self, class: &Class<'a>) {
         if self.check_class_state {
-            check_class(class, self.reactivity, self.diags);
+            check_class(class, &self.data.reactivity, self.diags);
         }
         walk_class(self, class);
+    }
+
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if self.check_stores {
+            check_store_rune_conflict(call, self.data, self.diags);
+        }
+        walk_call_expression(self, call);
+    }
+
+    fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
+        if self.check_stores {
+            check_legacy_rune_invalid_usage(declarator, self.data, self.diags);
+        }
+        walk_variable_declarator(self, declarator);
     }
 
     fn visit_declaration(&mut self, decl: &Declaration<'a>) {

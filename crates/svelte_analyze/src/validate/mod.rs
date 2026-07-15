@@ -93,7 +93,7 @@ pub fn validate_program(
 ) {
     legacy::validate_legacy_diagnostics(data, program, runes, diags);
     runes::validate(data, program, runes, diags);
-    stores::validate(data, program, diags);
+    stores::validate_scoped_subscriptions(data, diags);
     experimental_async::validate_instance_program(data, program, diags);
     syntax_bundle::validate_instance(data, program, runes, diags);
 }
