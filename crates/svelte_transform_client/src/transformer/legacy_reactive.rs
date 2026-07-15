@@ -198,12 +198,16 @@ fn build_dep_read<'a>(
     }
     match analysis.reactivity.binding_semantics(sym) {
         BindingSemantics::LegacyState(state) => {
-            let helper = if state.var_declared {
-                "$.safe_get"
+            if !state.is_signal_source {
+                b.rid_expr(name)
             } else {
-                "$.get"
-            };
-            b.call_expr(helper, [Arg::Expr(b.rid_expr(name))])
+                let helper = if state.var_declared {
+                    "$.safe_get"
+                } else {
+                    "$.get"
+                };
+                b.call_expr(helper, [Arg::Expr(b.rid_expr(name))])
+            }
         }
         BindingSemantics::LegacyBindableProp(_) => {
             let accessor_call = b.call_expr_callee(b.rid_expr(name), []);

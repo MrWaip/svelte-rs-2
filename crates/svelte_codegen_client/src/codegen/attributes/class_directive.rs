@@ -7,7 +7,7 @@ use svelte_ast_builder::{Arg, AssignLeft, ObjProp};
 
 use crate::context::Ctx;
 
-use super::super::data_structures::{EmitState, TemplateMemoState};
+use super::super::data_structures::{EmitState, TemplateMemoState, escape_html_attr};
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -25,6 +25,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
 
+        let hash = self.ctx.css_hash().to_string();
+        let scoped = self.ctx.is_css_scoped(owner_id) && !hash.is_empty();
+        let mut hash_folded = false;
+
         let class_value = if has_class_attr {
             let Some(class_attr_id) = self.ctx.class_attr_id(owner_id) else {
                 return CodegenError::unexpected_node(
@@ -32,13 +36,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     "element with class attribute should have class_attr_id",
                 );
             };
-            self.build_class_attr_value(owner_id, class_attr_id, &mut state.shared_memo)?
+            let value =
+                self.build_class_attr_value(owner_id, class_attr_id, &mut state.shared_memo)?;
+            if !scoped {
+                value
+            } else if let Some(folded) = fold_scope_hash_into_class_literal(self.ctx, &value, &hash)
+            {
+                hash_folded = true;
+                folded
+            } else {
+                value
+            }
         } else {
             let static_class = self.ctx.static_class(owner_id).unwrap_or("").to_string();
-            let hash = self.ctx.css_hash().to_string();
-            if self.ctx.is_css_scoped(owner_id) && !hash.is_empty() {
+            if scoped {
                 let combined = if static_class.is_empty() {
-                    hash
+                    hash.clone()
                 } else {
                     format!("{static_class} {hash}")
                 };
@@ -63,9 +76,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             (other, _) => other,
         };
 
-        let hash = self.ctx.css_hash().to_string();
-        let scope_hash = (has_class_attr && self.ctx.is_css_scoped(owner_id) && !hash.is_empty())
-            .then_some(hash);
+        let scope_hash = (has_class_attr && scoped && !hash_folded).then(|| hash.clone());
 
         emit_set_class_call(
             self.ctx,
@@ -151,12 +162,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         class_attr_id: NodeId,
         memo: &mut TemplateMemoState<'a>,
     ) -> Result<Expression<'a>> {
-        let attributes = self.ctx.node_attributes(owner_id).to_vec();
+        let attributes = self.ctx.node_attributes(owner_id);
 
         let Some(attr) = self
             .ctx
             .attr_index(owner_id)
-            .and_then(|index| index.find_by_id(&attributes, class_attr_id))
+            .and_then(|index| index.find_by_id(attributes, class_attr_id))
         else {
             return CodegenError::unexpected_node(
                 class_attr_id,
@@ -298,6 +309,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         Ok(Some(self.ctx.b.object_expr(props)))
+    }
+}
+
+fn fold_scope_hash_into_class_literal<'a>(
+    ctx: &mut Ctx<'a>,
+    value: &Expression<'a>,
+    hash: &str,
+) -> Option<Expression<'a>> {
+    match value {
+        Expression::StringLiteral(literal) => {
+            let text = literal.value.as_str();
+            let folded = if text.is_empty() {
+                hash.to_string()
+            } else {
+                format!("{} {hash}", escape_html_attr(text))
+            };
+            Some(ctx.b.str_expr(&folded))
+        }
+        Expression::NullLiteral(_) => Some(ctx.b.str_expr(hash)),
+        _ => None,
     }
 }
 

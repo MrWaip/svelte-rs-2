@@ -1,4 +1,4 @@
-use svelte_analyze::head_hash;
+use svelte_analyze::{ElementSemantics, head_hash};
 use svelte_ast::{FragmentId, Node, NodeId};
 use svelte_ast_builder::Arg;
 
@@ -49,11 +49,17 @@ impl<'a> ServerCodegen<'a> {
     }
 
     pub(crate) fn emit_fragment_titles(&mut self, id: FragmentId) -> Result<()> {
-        let Some(title_ids) = self.analysis.title_elements_for_fragment_by_id(id).cloned() else {
-            return Ok(());
-        };
-        for nid in title_ids {
-            self.title_element(nid)?;
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+        for nid in node_ids {
+            match self.analysis.element_semantics.query(nid) {
+                ElementSemantics::HeadTitle => self.title_element(nid)?,
+                ElementSemantics::None
+                | ElementSemantics::RegularElement(_)
+                | ElementSemantics::Boundary(_)
+                | ElementSemantics::SvelteElement(_)
+                | ElementSemantics::LegacySlot(_)
+                | ElementSemantics::LegacyComponentSlots(_) => {}
+            }
         }
         Ok(())
     }

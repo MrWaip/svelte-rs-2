@@ -4,6 +4,8 @@ use std::hint::black_box;
 use std::io::{self, BufWriter, Write};
 use std::time::{Duration, Instant};
 
+use benchmark as _;
+
 enum Mode {
     Compile,
     CompileModule,

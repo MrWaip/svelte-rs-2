@@ -170,3 +170,7 @@ compiler_case!(
     order_runes_in_order_guard,
     "const_tag/order/runes/in_order_guard"
 );
+compiler_case!(
+    destructured_prop_reactive_getter,
+    "const_tag/destructured_prop_reactive_getter"
+);

@@ -1,7 +1,7 @@
 # PRD: Кодген (корневой, client)
 
 label: codegen
-topics: codegen, client codegen, emit, dumb codegen, JS printing, template/from_html, hoisted, runtime calls $.*, fragment/blocks/attributes visitors
+topics: codegen, client codegen, emit, dumb codegen, JS printing, template/from_html, hoisted, runtime calls $.*, fragment/blocks/attributes visitors, hmr, custom element
 
 Корневой PRD для слоя клиентского кодгена (`svelte_codegen_client`) — backend'а `generate: client`. Серверный аналог — `codegen-server.md`.
 Принцип: **dumb codegen** — один запрос к анализу на один use case → одно однозначное решение эмита.
@@ -20,6 +20,7 @@ topics: codegen, client codegen, emit, dumb codegen, JS printing, template/from_
 1. **Нет нового анализа.** Нет пере-walk'ов AST для переклассификации узлов.
 2. **Нет диагностик.**
 3. **Codegen всё ещё владеет layout-only вычислениями**, зависящими от окружающего emit-контекста (sibling-layout, anchors, ident-generation). Это не «анализ смысла» — локальные printing-решения.
+4. **`hmr` — codegen-инструкция, не вердикт анализа.** Флаг `hmr` (`CodegenOptions`, сосед `dev`) отключает standalone-оптимизацию одиночного дочернего **компонента** и добавляет клиентскую HMR-обёртку модуля (парити с Оригиналом `transform-client.js`); анализ его не несёт — форму выбирает backend.
 
 ## Локальные emit-time анализы
 

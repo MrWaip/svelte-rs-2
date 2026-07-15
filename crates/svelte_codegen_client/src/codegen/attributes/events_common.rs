@@ -2,7 +2,7 @@ use std::mem;
 use svelte_emit_builders::runes::rune_get;
 
 use oxc_ast::ast::{ArrowFunctionExpression, Expression, FormalParameters, Statement};
-use svelte_analyze::HandlerEmit;
+use svelte_analyze::{EventHandler, HandlerEffect};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
@@ -16,22 +16,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         _attr_id: NodeId,
         handler: Expression<'a>,
-        emit: HandlerEmit,
+        emit: EventHandler,
         init: &mut Vec<Statement<'a>>,
         expr_offset: u32,
     ) -> Expression<'a> {
-        if matches!(emit, HandlerEmit::Direct) {
-            return handler;
-        }
+        let effect = match emit {
+            EventHandler::FunctionValue | EventHandler::Forwarded => return handler,
+            EventHandler::LooseReference => {
+                if !self.ctx.state.dev {
+                    return handler;
+                }
+                HandlerEffect::Pure
+            }
+            EventHandler::Expression(effect) => effect,
+        };
 
-        let has_side_effects = matches!(
-            emit,
-            HandlerEmit::WrappedSideEffects | HandlerEmit::WrappedMemoized,
-        );
+        let has_side_effects = matches!(effect, HandlerEffect::Mutation | HandlerEffect::Call);
         let remove_parens = remove_parens_hint(&handler);
         let mut handler = handler;
 
-        if matches!(emit, HandlerEmit::WrappedMemoized) {
+        if matches!(effect, HandlerEffect::Call) {
             let id = self.ctx.state.gen_ident("event_handler");
             let thunk = self.ctx.b.thunk(handler);
             init.push(
@@ -83,7 +87,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .push(self.ctx.b.return_stmt(es.unbox().expression));
         }
 
-        let fn_name = self.ctx.gen_ident(event_name);
+        let fn_name = self.ctx.gen_ident(&sanitize_identifier(event_name));
         let fn_name_ref = self.ctx.b.alloc_str(&fn_name);
         Ok(self.ctx.b.named_function_expr(
             fn_name_ref,
@@ -278,4 +282,21 @@ fn is_inspect_trace_call(expr: &Expression) -> bool {
         return id.name.as_str() == "$inspect";
     }
     false
+}
+
+fn sanitize_identifier(name: &str) -> String {
+    let mut result: String = name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if result.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
+        result.insert(0, '_');
+    }
+    result
 }

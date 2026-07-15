@@ -549,9 +549,51 @@ pub fn generate<'a>(
         .map(|s| Span::new(s.content_span.start, s.content_span.end))
         .unwrap_or_default();
     let fn_decl = b.function_decl(b.bid(ctx.state.name), fn_body, fn_params, body_span);
-    let export_default = b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(
-        b.alloc(fn_decl),
-    ));
+    let component_tail: Vec<Statement<'_>> = if ctx.state.hmr {
+        let name = ctx.state.name;
+        let css_hash: &str = b.alloc_str(ctx.query.view.css_hash());
+
+        let mut accept_body: Vec<Statement<'_>> = Vec::new();
+        if !css_hash.is_empty() {
+            accept_body.push(b.expr_stmt(b.call_expr("$.cleanup_styles", [Arg::StrRef(css_hash)])));
+        }
+        let update_callee = b.static_member_expr(
+            b.computed_member_expr(b.rid_expr(name), b.rid_expr("$.HMR")),
+            "update",
+        );
+        let module_default = b.static_member_expr(b.rid_expr("module"), "default");
+        accept_body
+            .push(b.expr_stmt(b.call_expr_callee(update_callee, [Arg::Expr(module_default)])));
+
+        let accept_callee =
+            b.static_member_expr(b.static_member_expr(b.import_meta_expr(), "hot"), "accept");
+        let accept_arrow = b.arrow_block(b.params(["module"]), accept_body);
+        let accept_stmt =
+            b.expr_stmt(b.call_expr_callee(accept_callee, [Arg::Arrow(accept_arrow)]));
+
+        let assign = b.assign_stmt(
+            AssignLeft::Ident(name.to_string()),
+            b.call_expr("$.hmr", [Arg::Ident(name)]),
+        );
+        let hmr_block = b.block_stmt(vec![assign, accept_stmt]);
+        let hmr_guard = b.if_stmt(
+            b.static_member_expr(b.import_meta_expr(), "hot"),
+            hmr_block,
+            None,
+        );
+
+        vec![
+            b.function_decl_stmt(fn_decl),
+            hmr_guard,
+            b.export_default(ExportDefaultDeclarationKind::from(b.rid_expr(name))),
+        ]
+    } else {
+        vec![
+            b.export_default(ExportDefaultDeclarationKind::FunctionDeclaration(
+                b.alloc(fn_decl),
+            )),
+        ]
+    };
 
     let mut program_body: Vec<Statement<'_>> = Vec::new();
     if ctx.state.experimental_async {
@@ -602,7 +644,7 @@ pub fn generate<'a>(
         ]);
         program_body.push(b.const_stmt("$$css", css_obj));
     }
-    program_body.push(export_default);
+    program_body.extend(component_tail);
     program_body.extend(delegate_stmts);
 
     if ctx.query.view.is_custom_element_target() {

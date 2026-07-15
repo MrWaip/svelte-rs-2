@@ -4,7 +4,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
-use svelte_analyze::{AnalysisData, CodegenView, IdentGen, JsAst, RuntimeInfo};
+use svelte_analyze::{AnalysisData, CodegenView, ElementSemantics, IdentGen, JsAst, RuntimeInfo};
 use svelte_ast::{
     Attribute, AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
     RenderTag, SvelteBoundary, SvelteElement,
@@ -80,6 +80,7 @@ pub struct CodegenState<'a> {
     pub filename: &'a str,
     pub experimental_async: bool,
     pub dev: bool,
+    pub hmr: bool,
 
     pub transform_data: TransformData,
 
@@ -112,6 +113,7 @@ impl<'a> CodegenState<'a> {
         filename: &'a str,
         experimental_async: bool,
         dev: bool,
+        hmr: bool,
         parsed: &'a mut JsAst<'a>,
         ident_gen: &'a mut IdentGen,
         transform_data: TransformData,
@@ -125,6 +127,7 @@ impl<'a> CodegenState<'a> {
             filename,
             experimental_async,
             dev,
+            hmr,
             transform_data,
             parsed,
             ident_gen,
@@ -199,6 +202,7 @@ impl<'a> Ctx<'a> {
                 filename,
                 options.experimental_async,
                 options.dev,
+                options.hmr,
                 parsed,
                 ident_gen,
                 transform_data,
@@ -350,6 +354,17 @@ impl<'a> Ctx<'a> {
     }
     pub fn is_customizable_select(&self, id: NodeId) -> bool {
         self.query.view.is_customizable_select(id)
+    }
+    pub fn opaque_content(&self, id: NodeId) -> bool {
+        match self.query.analysis.element_semantics.query(id) {
+            ElementSemantics::RegularElement(sem) => sem.opaque_content,
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_)
+            | ElementSemantics::SvelteElement(_)
+            | ElementSemantics::LegacySlot(_)
+            | ElementSemantics::LegacyComponentSlots(_) => false,
+        }
     }
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.query.view.needs_var(id)

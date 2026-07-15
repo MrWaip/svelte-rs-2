@@ -1,17 +1,16 @@
 use crate::reactivity_semantics::data::{
     DeclaratorSemantics, ReactivitySemantics, ReferenceSemantics, RuntimeRuneKind,
 };
-use crate::utils::expression_await::expression_has_await;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AssignmentTargetPropertyIdentifier, CallExpression, ChainElement,
-    Expression, Function, IdentifierReference, MemberExpression, NewExpression,
+    ArrowFunctionExpression, AssignmentTargetPropertyIdentifier, AwaitExpression, CallExpression,
+    ChainElement, Expression, Function, IdentifierReference, MemberExpression, NewExpression,
     SimpleAssignmentTarget, SpreadElement, TaggedTemplateExpression, UpdateExpression,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_call_expression, walk_function, walk_member_expression,
-    walk_new_expression, walk_simple_assignment_target, walk_spread_element,
-    walk_tagged_template_expression, walk_update_expression,
+    walk_arrow_function_expression, walk_await_expression, walk_call_expression, walk_function,
+    walk_member_expression, walk_new_expression, walk_simple_assignment_target,
+    walk_spread_element, walk_tagged_template_expression, walk_update_expression,
 };
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
@@ -74,6 +73,7 @@ pub(super) fn collect<'a>(
         has_legacy_props_member_root: false,
         has_unsafe_member_root: false,
         has_unsafe_callee_or_new: false,
+        has_await: false,
         fn_depth: 0,
         in_write_position: false,
     };
@@ -84,7 +84,7 @@ pub(super) fn collect<'a>(
         member_or_call_roots: visitor.member_or_call_roots,
         member_roots: visitor.member_roots,
         top_member_or_call_roots: visitor.top_member_or_call_roots,
-        has_await: expression_has_await(expr),
+        has_await: visitor.has_await,
         has_call: visitor.has_call,
         has_impure_call: visitor.has_impure_call,
         has_member: visitor.has_member,
@@ -279,6 +279,7 @@ struct Collector<'c, 'a> {
     has_legacy_props_member_root: bool,
     has_unsafe_member_root: bool,
     has_unsafe_callee_or_new: bool,
+    has_await: bool,
     fn_depth: u32,
     in_write_position: bool,
 }
@@ -498,6 +499,13 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             self.has_impure_call = true;
         }
         walk_spread_element(self, spread);
+    }
+
+    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
+        if self.fn_depth == 0 {
+            self.has_await = true;
+        }
+        walk_await_expression(self, expr);
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {

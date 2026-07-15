@@ -30,22 +30,28 @@ pub(crate) fn build<'d, 'a>(
         builder.add_instance_program(program);
     }
 
-    {
+    let node_count = component.node_count() as usize;
+    let expr_id_map: FxHashMap<u32, OxcNodeId> =
+        FxHashMap::with_capacity_and_hasher(node_count, Default::default());
+    let stmt_id_map: FxHashMap<u32, OxcNodeId> =
+        FxHashMap::with_capacity_and_hasher(node_count, Default::default());
+
+    let (expr_id_map, stmt_id_map) = {
         let mut walker = AnalyzeTemplateWalker {
             store: &component.store,
             source: &component.source,
             root: component.root,
             parsed,
             data,
+            expr_id_map,
+            stmt_id_map,
         };
         builder.add_template(&mut walker);
-    }
+        (walker.expr_id_map, walker.stmt_id_map)
+    };
 
     builder.finalize_unresolved_references();
 
-    let mut expr_id_map: FxHashMap<u32, OxcNodeId> = FxHashMap::default();
-    let mut stmt_id_map: FxHashMap<u32, OxcNodeId> = FxHashMap::default();
-    collect_ref_ids(component, &mut expr_id_map, &mut stmt_id_map);
     parsed.drain_pending(&expr_id_map, &stmt_id_map);
 
     let mut scoping = ComponentScoping::from_semantics(builder.finish());
@@ -59,6 +65,22 @@ struct AnalyzeTemplateWalker<'d, 'a> {
     root: svelte_ast::FragmentId,
     parsed: &'d mut JsAst<'a>,
     data: &'d mut AnalysisData<'a>,
+    expr_id_map: FxHashMap<u32, OxcNodeId>,
+    stmt_id_map: FxHashMap<u32, OxcNodeId>,
+}
+
+fn record_expr_id(r: &svelte_ast::ExprRef, offset: u32, out: &mut FxHashMap<u32, OxcNodeId>) {
+    let id = r.oxc_id.get();
+    if id != OxcNodeId::DUMMY {
+        out.insert(offset, id);
+    }
+}
+
+fn record_stmt_id(r: &svelte_ast::StmtRef, offset: u32, out: &mut FxHashMap<u32, OxcNodeId>) {
+    let id = r.oxc_id.get();
+    if id != OxcNodeId::DUMMY {
+        out.insert(offset, id);
+    }
 }
 
 impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
@@ -84,27 +106,44 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 Node::ExpressionTag(tag) => {
                     if let Some(expr) = self.parsed.pending_expr(tag.expression.span.start) {
                         ctx.visit_js_expression(&tag.expression, expr);
+                        record_expr_id(
+                            &tag.expression,
+                            tag.expression.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                 }
                 Node::RenderTag(tag) => {
                     if let Some(expr) = self.parsed.pending_expr(tag.expression.span.start) {
                         ctx.visit_js_expression(&tag.expression, expr);
+                        record_expr_id(
+                            &tag.expression,
+                            tag.expression.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                 }
                 Node::HtmlTag(tag) => {
                     if let Some(expr) = self.parsed.pending_expr(tag.expression.span.start) {
                         ctx.visit_js_expression(&tag.expression, expr);
+                        record_expr_id(
+                            &tag.expression,
+                            tag.expression.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                 }
                 Node::ConstTag(tag) => {
                     if let Some(stmt) = self.parsed.pending_stmt(tag.decl.span.start) {
                         ctx.visit_js_statement(&tag.decl, stmt);
+                        record_stmt_id(&tag.decl, tag.decl.span.start, &mut self.stmt_id_map);
                     }
                 }
                 Node::EachBlock(block) => self.walk_each_block(block, ctx),
                 Node::IfBlock(block) => {
                     if let Some(expr) = self.parsed.pending_expr(block.test.span.start) {
                         ctx.visit_js_expression(&block.test, expr);
+                        record_expr_id(&block.test, block.test.span.start, &mut self.expr_id_map);
                     }
 
                     let consequent = block.consequent;
@@ -123,6 +162,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                     let mut arrow_scope = None;
                     if let Some(stmt) = self.parsed.pending_stmt(block.decl.span.start) {
                         ctx.visit_js_statement(&block.decl, stmt);
+                        record_stmt_id(&block.decl, block.decl.span.start, &mut self.stmt_id_map);
                         if let Some(arrow) = extract_arrow_from_const(stmt) {
                             arrow_scope = arrow.scope_id.get();
                         }
@@ -141,6 +181,11 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 Node::KeyBlock(block) => {
                     if let Some(expr) = self.parsed.pending_expr(block.expression.span.start) {
                         ctx.visit_js_expression(&block.expression, expr);
+                        record_expr_id(
+                            &block.expression,
+                            block.expression.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                     let f = block.fragment;
                     ctx.enter_fragment_scope_by_id(f);
@@ -177,6 +222,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                     for ident_ref in &tag.identifier_refs {
                         if let Some(expr) = self.parsed.pending_expr(ident_ref.span.start) {
                             ctx.visit_js_expression(ident_ref, expr);
+                            record_expr_id(ident_ref, ident_ref.span.start, &mut self.expr_id_map);
                         }
                     }
                 }
@@ -192,6 +238,11 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
     ) {
         if let Some(expr) = self.parsed.pending_expr(block.expression.span.start) {
             ctx.visit_js_expression(&block.expression, expr);
+            record_expr_id(
+                &block.expression,
+                block.expression.span.start,
+                &mut self.expr_id_map,
+            );
         }
 
         let body = block.body;
@@ -201,16 +252,19 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
             && let Some(stmt) = self.parsed.pending_stmt(ctx_ref.span.start)
         {
             ctx.visit_js_statement(ctx_ref, stmt);
+            record_stmt_id(ctx_ref, ctx_ref.span.start, &mut self.stmt_id_map);
         }
         if let Some(idx_ref) = block.index.as_ref()
             && let Some(stmt) = self.parsed.pending_stmt(idx_ref.span.start)
         {
             ctx.visit_js_statement(idx_ref, stmt);
+            record_stmt_id(idx_ref, idx_ref.span.start, &mut self.stmt_id_map);
         }
         if let Some(key_ref) = block.key.as_ref()
             && let Some(expr) = self.parsed.pending_expr(key_ref.span.start)
         {
             ctx.visit_js_expression(key_ref, expr);
+            record_expr_id(key_ref, key_ref.span.start, &mut self.expr_id_map);
         }
         self.walk_fragment(body, ctx);
         ctx.leave_scope();
@@ -223,6 +277,11 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
     fn walk_await_block(&mut self, block: &'d AwaitBlock, ctx: &mut TemplateBuildContext<'_, 'a>) {
         if let Some(expr) = self.parsed.pending_expr(block.expression.span.start) {
             ctx.visit_js_expression(&block.expression, expr);
+            record_expr_id(
+                &block.expression,
+                block.expression.span.start,
+                &mut self.expr_id_map,
+            );
         }
 
         if let Some(p) = block.pending {
@@ -236,6 +295,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 && let Some(stmt) = self.parsed.pending_stmt(vr.span.start)
             {
                 ctx.visit_js_statement(vr, stmt);
+                record_stmt_id(vr, vr.span.start, &mut self.stmt_id_map);
             }
             self.walk_fragment(t, ctx);
             ctx.leave_scope();
@@ -246,6 +306,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 && let Some(stmt) = self.parsed.pending_stmt(er.span.start)
             {
                 ctx.visit_js_statement(er, stmt);
+                record_stmt_id(er, er.span.start, &mut self.stmt_id_map);
             }
             self.walk_fragment(c, ctx);
             ctx.leave_scope();
@@ -262,11 +323,21 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 Attribute::ExpressionAttribute(attr) => {
                     if let Some(expr) = self.parsed.pending_expr(attr.expression.span.start) {
                         ctx.visit_js_expression(&attr.expression, expr);
+                        record_expr_id(
+                            &attr.expression,
+                            attr.expression.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                 }
                 Attribute::SpreadAttribute(attr) => {
                     if let Some(expr) = self.parsed.pending_expr(attr.expression.span.start) {
                         ctx.visit_js_expression(&attr.expression, expr);
+                        record_expr_id(
+                            &attr.expression,
+                            attr.expression.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                 }
                 Attribute::ClassDirective(dir) => self.walk_class_directive(dir, ctx),
@@ -276,6 +347,11 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 Attribute::UseDirective(dir) => {
                     if let Some(expr) = self.parsed.pending_expr(dir.name_ref.span.start) {
                         ctx.visit_js_expression(&dir.name_ref, expr);
+                        record_expr_id(
+                            &dir.name_ref,
+                            dir.name_ref.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                     self.walk_optional_expr_attr(
                         dir.id,
@@ -287,6 +363,11 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 Attribute::TransitionDirective(dir) => {
                     if let Some(expr) = self.parsed.pending_expr(dir.name_ref.span.start) {
                         ctx.visit_js_expression(&dir.name_ref, expr);
+                        record_expr_id(
+                            &dir.name_ref,
+                            dir.name_ref.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                     self.walk_optional_expr_attr(
                         dir.id,
@@ -298,6 +379,11 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 Attribute::AnimateDirective(dir) => {
                     if let Some(expr) = self.parsed.pending_expr(dir.name_ref.span.start) {
                         ctx.visit_js_expression(&dir.name_ref, expr);
+                        record_expr_id(
+                            &dir.name_ref,
+                            dir.name_ref.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                     self.walk_optional_expr_attr(
                         dir.id,
@@ -309,6 +395,11 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 Attribute::AttachTag(tag) => {
                     if let Some(expr) = self.parsed.pending_expr(tag.expression.span.start) {
                         ctx.visit_js_expression(&tag.expression, expr);
+                        record_expr_id(
+                            &tag.expression,
+                            tag.expression.span.start,
+                            &mut self.expr_id_map,
+                        );
                     }
                 }
                 Attribute::ConcatenationAttribute(attr) => {
@@ -323,6 +414,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                         && let Some(expr) = self.parsed.pending_expr(expr_ref.span.start)
                     {
                         ctx.visit_js_expression(expr_ref, expr);
+                        record_expr_id(expr_ref, expr_ref.span.start, &mut self.expr_id_map);
                     }
                 }
                 Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
@@ -337,6 +429,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
     ) {
         if let Some(expr) = self.parsed.pending_expr(node.name.span.start) {
             ctx.visit_js_expression(&node.name, expr);
+            record_expr_id(&node.name, node.name.span.start, &mut self.expr_id_map);
         }
         self.walk_component_like(&node.attributes, node.fragment, &node.legacy_slots, ctx);
     }
@@ -423,6 +516,11 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                 ctx.visit_js_expression(&dir.expression, expr);
             }
         }
+        record_expr_id(
+            &dir.expression,
+            dir.expression.span.start,
+            &mut self.expr_id_map,
+        );
         if let Some(sym_id) = attr_root_symbol(expr, ctx) {
             self.data
                 .template
@@ -484,6 +582,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
             } else {
                 ctx.visit_js_expression_with_flags(expr_ref, expr, flags);
             }
+            record_expr_id(expr_ref, span.start, &mut self.expr_id_map);
 
             if let Some(sym_id) = attr_root_symbol(expr, ctx) {
                 self.data
@@ -516,6 +615,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
     ) {
         if let Some(expr) = self.parsed.pending_expr(offset) {
             ctx.visit_js_expression(expr_ref, expr);
+            record_expr_id(expr_ref, offset, &mut self.expr_id_map);
         }
     }
 
@@ -528,6 +628,7 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
             && let Some(binding_ref) = dir.binding.as_ref()
         {
             ctx.visit_js_statement(binding_ref, stmt);
+            record_stmt_id(binding_ref, dir.name_span.start, &mut self.stmt_id_map);
         }
     }
 }
@@ -592,249 +693,6 @@ impl<'d, 'a> TemplateWalker<'a> for AnalyzeTemplateWalker<'d, 'a> {
     fn walk_template(&mut self, ctx: &mut TemplateBuildContext<'_, 'a>) {
         self.walk_fragment(self.root, ctx);
     }
-}
-
-fn collect_ref_ids(
-    component: &Component,
-    expr_ids: &mut FxHashMap<u32, OxcNodeId>,
-    stmt_ids: &mut FxHashMap<u32, OxcNodeId>,
-) {
-    fn record_expr(r: &svelte_ast::ExprRef, offset: u32, out: &mut FxHashMap<u32, OxcNodeId>) {
-        let id = r.oxc_id.get();
-        if id != OxcNodeId::DUMMY {
-            out.insert(offset, id);
-        }
-    }
-
-    fn record_stmt(r: &svelte_ast::StmtRef, offset: u32, out: &mut FxHashMap<u32, OxcNodeId>) {
-        let id = r.oxc_id.get();
-        if id != OxcNodeId::DUMMY {
-            out.insert(offset, id);
-        }
-    }
-
-    fn walk_attr(
-        attr: &Attribute,
-        expr_ids: &mut FxHashMap<u32, OxcNodeId>,
-        stmt_ids: &mut FxHashMap<u32, OxcNodeId>,
-    ) {
-        match attr {
-            Attribute::ExpressionAttribute(a) => {
-                record_expr(&a.expression, a.expression.span.start, expr_ids);
-            }
-            Attribute::SpreadAttribute(a) => {
-                record_expr(&a.expression, a.expression.span.start, expr_ids);
-            }
-            Attribute::ClassDirective(d) => {
-                record_expr(&d.expression, d.expression.span.start, expr_ids);
-            }
-            Attribute::StyleDirective(d) => match &d.value {
-                StyleDirectiveValue::Expression => {
-                    record_expr(&d.expression, d.expression.span.start, expr_ids);
-                }
-                StyleDirectiveValue::Concatenation(parts) => {
-                    for part in parts {
-                        if let svelte_ast::ConcatPart::Dynamic { expr, .. } = part {
-                            record_expr(expr, expr.span.start, expr_ids);
-                        }
-                    }
-                }
-                StyleDirectiveValue::String(_) => {}
-            },
-            Attribute::BindDirective(d) => {
-                record_expr(&d.expression, d.expression.span.start, expr_ids);
-            }
-            Attribute::AttachTag(t) => {
-                record_expr(&t.expression, t.expression.span.start, expr_ids);
-            }
-            Attribute::UseDirective(d) => {
-                record_expr(&d.name_ref, d.name_ref.span.start, expr_ids);
-                if let Some(r) = d.expression.as_ref() {
-                    record_expr(r, r.span.start, expr_ids);
-                }
-            }
-            Attribute::TransitionDirective(d) => {
-                record_expr(&d.name_ref, d.name_ref.span.start, expr_ids);
-                if let Some(r) = d.expression.as_ref() {
-                    record_expr(r, r.span.start, expr_ids);
-                }
-            }
-            Attribute::AnimateDirective(d) => {
-                record_expr(&d.name_ref, d.name_ref.span.start, expr_ids);
-                if let Some(r) = d.expression.as_ref() {
-                    record_expr(r, r.span.start, expr_ids);
-                }
-            }
-            Attribute::ConcatenationAttribute(a) => {
-                for part in &a.parts {
-                    if let svelte_ast::ConcatPart::Dynamic { expr, .. } = part {
-                        record_expr(expr, expr.span.start, expr_ids);
-                    }
-                }
-            }
-            Attribute::OnDirectiveLegacy(d) => {
-                if let Some(r) = d.expression.as_ref() {
-                    record_expr(r, r.span.start, expr_ids);
-                }
-            }
-            Attribute::LetDirectiveLegacy(d) => {
-                if let Some(r) = d.binding.as_ref() {
-                    record_stmt(r, d.name_span.start, stmt_ids);
-                }
-            }
-            Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_) => {}
-        }
-    }
-
-    fn walk_fragment(
-        component: &Component,
-        fragment_id: svelte_ast::FragmentId,
-        expr_ids: &mut FxHashMap<u32, OxcNodeId>,
-        stmt_ids: &mut FxHashMap<u32, OxcNodeId>,
-    ) {
-        let nodes = component.fragment_nodes(fragment_id).to_vec();
-        for id in nodes {
-            match component.store.get(id) {
-                Node::Element(el) => {
-                    for attr in &el.attributes {
-                        walk_attr(attr, expr_ids, stmt_ids);
-                    }
-                    walk_fragment(component, el.fragment, expr_ids, stmt_ids);
-                }
-                Node::SlotElementLegacy(el) => {
-                    for attr in &el.attributes {
-                        walk_attr(attr, expr_ids, stmt_ids);
-                    }
-                    walk_fragment(component, el.fragment, expr_ids, stmt_ids);
-                }
-                Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) | Node::SvelteSelf(_) => {
-                    if let Node::ComponentNode(cn) = component.store.get(id) {
-                        record_expr(&cn.name, cn.name.span.start, expr_ids);
-                    }
-                    if let Some(view) = component.store.get(id).as_component_like() {
-                        for attr in view.attributes {
-                            walk_attr(attr, expr_ids, stmt_ids);
-                        }
-                        let cn_fragment = view.fragment;
-                        let slot_frags: Vec<_> =
-                            view.legacy_slots.iter().map(|s| s.fragment).collect();
-                        walk_fragment(component, cn_fragment, expr_ids, stmt_ids);
-                        for fid in slot_frags {
-                            walk_fragment(component, fid, expr_ids, stmt_ids);
-                        }
-                    }
-                }
-                Node::ExpressionTag(t) => {
-                    record_expr(&t.expression, t.expression.span.start, expr_ids);
-                }
-                Node::RenderTag(t) => {
-                    record_expr(&t.expression, t.expression.span.start, expr_ids);
-                }
-                Node::HtmlTag(t) => {
-                    record_expr(&t.expression, t.expression.span.start, expr_ids);
-                }
-                Node::ConstTag(t) => {
-                    record_stmt(&t.decl, t.decl.span.start, stmt_ids);
-                }
-                Node::IfBlock(block) => {
-                    record_expr(&block.test, block.test.span.start, expr_ids);
-                    walk_fragment(component, block.consequent, expr_ids, stmt_ids);
-                    if let Some(alt) = block.alternate {
-                        walk_fragment(component, alt, expr_ids, stmt_ids);
-                    }
-                }
-                Node::EachBlock(block) => {
-                    record_expr(&block.expression, block.expression.span.start, expr_ids);
-                    if let Some(r) = block.context.as_ref() {
-                        record_stmt(r, r.span.start, stmt_ids);
-                    }
-                    if let Some(r) = block.index.as_ref() {
-                        record_stmt(r, r.span.start, stmt_ids);
-                    }
-                    if let Some(r) = block.key.as_ref() {
-                        record_expr(r, r.span.start, expr_ids);
-                    }
-                    walk_fragment(component, block.body, expr_ids, stmt_ids);
-                    if let Some(fb) = block.fallback {
-                        walk_fragment(component, fb, expr_ids, stmt_ids);
-                    }
-                }
-                Node::SnippetBlock(block) => {
-                    record_stmt(&block.decl, block.decl.span.start, stmt_ids);
-                    walk_fragment(component, block.body, expr_ids, stmt_ids);
-                }
-                Node::KeyBlock(block) => {
-                    record_expr(&block.expression, block.expression.span.start, expr_ids);
-                    walk_fragment(component, block.fragment, expr_ids, stmt_ids);
-                }
-                Node::SvelteHead(head) => {
-                    walk_fragment(component, head.fragment, expr_ids, stmt_ids);
-                }
-                Node::SvelteFragmentLegacy(node) => {
-                    for attr in &node.attributes {
-                        walk_attr(attr, expr_ids, stmt_ids);
-                    }
-                    walk_fragment(component, node.fragment, expr_ids, stmt_ids);
-                }
-                Node::SvelteElement(el) => {
-                    if let Some(tag_ref) = el.this_expr() {
-                        record_expr(tag_ref, el.tag_span.start, expr_ids);
-                    }
-                    for attr in &el.attributes {
-                        walk_attr(attr, expr_ids, stmt_ids);
-                    }
-                    walk_fragment(component, el.fragment, expr_ids, stmt_ids);
-                }
-                Node::SvelteBoundary(b) => {
-                    for attr in &b.attributes {
-                        walk_attr(attr, expr_ids, stmt_ids);
-                    }
-                    walk_fragment(component, b.fragment, expr_ids, stmt_ids);
-                }
-                Node::AwaitBlock(block) => {
-                    record_expr(&block.expression, block.expression.span.start, expr_ids);
-                    if let Some(p) = block.pending {
-                        walk_fragment(component, p, expr_ids, stmt_ids);
-                    }
-                    if let Some(t) = block.then {
-                        if let Some(r) = block.value.as_ref() {
-                            record_stmt(r, r.span.start, stmt_ids);
-                        }
-                        walk_fragment(component, t, expr_ids, stmt_ids);
-                    }
-                    if let Some(c) = block.catch {
-                        if let Some(r) = block.error.as_ref() {
-                            record_stmt(r, r.span.start, stmt_ids);
-                        }
-                        walk_fragment(component, c, expr_ids, stmt_ids);
-                    }
-                }
-                Node::SvelteWindow(node) => {
-                    for attr in &node.attributes {
-                        walk_attr(attr, expr_ids, stmt_ids);
-                    }
-                }
-                Node::SvelteDocument(node) => {
-                    for attr in &node.attributes {
-                        walk_attr(attr, expr_ids, stmt_ids);
-                    }
-                }
-                Node::SvelteBody(node) => {
-                    for attr in &node.attributes {
-                        walk_attr(attr, expr_ids, stmt_ids);
-                    }
-                }
-                Node::DebugTag(tag) => {
-                    for r in &tag.identifier_refs {
-                        record_expr(r, r.span.start, expr_ids);
-                    }
-                }
-                Node::Text(_) | Node::Comment(_) | Node::Error(_) => {}
-            }
-        }
-    }
-
-    walk_fragment(component, component.root, expr_ids, stmt_ids);
 }
 
 fn extract_arrow_from_const<'a>(

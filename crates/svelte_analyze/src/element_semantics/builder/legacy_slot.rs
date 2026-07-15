@@ -42,16 +42,22 @@ fn default_slot_form(
     fragment: FragmentId,
     component: &Component,
 ) -> LegacyDefaultSlot {
-    if has_children_attribute(attributes) {
+    if has_named_attribute(attributes, "children") {
         return LegacyDefaultSlot::SlotDefault;
     }
-    if has_let_directive(attributes) || fragment_has_let_svelte_fragment(fragment, component) {
+    if fragment_has_let_svelte_fragment(fragment, component) {
+        return LegacyDefaultSlot::SlotDefaultInvalid;
+    }
+    if has_let_directive(attributes) {
+        if has_named_attribute(attributes, "slot") {
+            return LegacyDefaultSlot::OwnLetDisplaced;
+        }
         return LegacyDefaultSlot::SlotDefaultInvalid;
     }
     LegacyDefaultSlot::ChildrenProp
 }
 
-fn has_children_attribute(attributes: &[Attribute]) -> bool {
+fn has_named_attribute(attributes: &[Attribute], target: &str) -> bool {
     for attr in attributes {
         let name = match attr {
             Attribute::StringAttribute(x) => &x.name,
@@ -60,7 +66,7 @@ fn has_children_attribute(attributes: &[Attribute]) -> bool {
             Attribute::ConcatenationAttribute(x) => &x.name,
             _ => continue,
         };
-        if name == "children" {
+        if name == target {
             return true;
         }
     }

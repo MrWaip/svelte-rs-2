@@ -16,3 +16,7 @@ compiler_case!(
     identifier_suffix_guard,
     "style_directive/identifier_suffix_guard"
 );
+compiler_case!(
+    legacy_coarse_member_coalesce,
+    "style_directive/legacy_coarse_member_coalesce"
+);

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
-const UNSUPPORTED_THROW_OPTIONS = new Set(['ast', 'sourcemap', 'outputFilename']);
+const UNSUPPORTED_THROW_OPTIONS = new Set(['ast', 'outputFilename']);
 const UNSUPPORTED_WARN_OPTIONS = new Set(['modernAst']);
 
 const PLATFORM_PACKAGE_BY_TARGET = {
@@ -89,10 +89,41 @@ function collectOptionWarnings(options) {
   return warnings;
 }
 
+class SourceMap {
+  constructor(parsed) {
+    Object.assign(this, parsed);
+  }
+
+  toString() {
+    return JSON.stringify(this);
+  }
+
+  toUrl() {
+    return (
+      'data:application/json;charset=utf-8;base64,' +
+      Buffer.from(this.toString(), 'utf-8').toString('base64')
+    );
+  }
+}
+
+function toSourceMap(raw) {
+  if (raw == null) {
+    return null;
+  }
+  const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  return new SourceMap(parsed);
+}
+
 function normalizeGenerate(value) {
   if (value === false || value === 'false') return 'false';
   if (value === 'server') return 'server';
   return 'client';
+}
+
+function normalizeInputMap(value) {
+  if (value == null) return undefined;
+  if (typeof value === 'string') return value;
+  return JSON.stringify(value);
 }
 
 function normalizeCompileOptions(options = {}) {
@@ -120,7 +151,8 @@ function normalizeCompileOptions(options = {}) {
         ? options.compatibility.componentApi
         : undefined,
     experimentalAsync: Boolean(options.experimental?.async),
-    generate: normalizeGenerate(options.generate)
+    generate: normalizeGenerate(options.generate),
+    sourcemap: normalizeInputMap(options.sourcemap)
   };
 }
 
@@ -131,7 +163,8 @@ function normalizeModuleCompileOptions(options = {}) {
     dev: Boolean(options.dev),
     filename: typeof options.filename === 'string' ? options.filename : '(unknown)',
     rootDir: typeof options.rootDir === 'string' ? options.rootDir : undefined,
-    generate: normalizeGenerate(options.generate)
+    generate: normalizeGenerate(options.generate),
+    sourcemap: normalizeInputMap(options.sourcemap)
   };
 }
 
@@ -179,14 +212,14 @@ function normalizeCompileResponse(nativeResult, filename, optionWarnings = []) {
         ? null
         : {
             code: nativeResult.js.code,
-            map: nativeResult.js.map ?? null
+            map: toSourceMap(nativeResult.js.map)
           },
     css:
       nativeResult.css == null
         ? null
         : {
             code: nativeResult.css.code,
-            map: nativeResult.css.map ?? null,
+            map: toSourceMap(nativeResult.css.map),
             hasGlobal: nativeResult.css.hasGlobal ?? null
           },
     warnings,
@@ -195,7 +228,7 @@ function normalizeCompileResponse(nativeResult, filename, optionWarnings = []) {
       hasCss: nativeResult.css != null,
       unsupported: {
         ast: 'not_returned',
-        unsupportedOptions: ['ast', 'sourcemap', 'outputFilename']
+        unsupportedOptions: ['ast', 'outputFilename']
       }
     },
     ast: null

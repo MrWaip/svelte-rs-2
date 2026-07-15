@@ -50,6 +50,11 @@ impl<'a> Sourcemap<'a> {
         self
     }
 
+    pub fn set_sources_name(&mut self, name: &str) -> &mut Self {
+        self.map.set_sources(iter::once(name));
+        self
+    }
+
     pub fn to_inline_comment(&self) -> String {
         format!("\n/*# sourceMappingURL={} */", self.map.to_data_url())
     }
@@ -57,6 +62,89 @@ impl<'a> Sourcemap<'a> {
     pub fn into_inner(self) -> SourceMap {
         self.map
     }
+}
+
+pub fn parse_input_map(json: &str) -> Option<SourceMap> {
+    if let Ok(map) = SourceMap::from_json_string(json) {
+        return Some(map);
+    }
+    let mut value: serde_json::Value = serde_json::from_str(json).ok()?;
+    if let Some(sources) = value.get_mut("sources").and_then(|v| v.as_array_mut()) {
+        for source in sources.iter_mut() {
+            if source.is_null() {
+                *source = serde_json::Value::String(String::new());
+            }
+        }
+    }
+    SourceMap::from_json_string(&value.to_string()).ok()
+}
+
+pub fn merge_with_preprocessor(
+    base: SourceMap,
+    preprocessor: &SourceMap,
+    filename: &str,
+    source_name: &str,
+    base_offset: (u32, u32),
+) -> SourceMap {
+    let file_basename = get_basename(filename);
+    let mut combined = compose(&base, preprocessor, base_offset);
+    if let Some(file) = base.get_file() {
+        combined.set_file(file);
+    }
+    if combined.get_sources().next().is_none() {
+        combined.set_sources([file_basename]);
+    }
+    if file_basename != source_name {
+        let relative: Vec<String> = combined
+            .get_sources()
+            .map(|source| get_relative_path(source_name, source))
+            .collect();
+        combined.set_sources(relative.iter().map(String::as_str));
+    }
+    combined
+}
+
+fn compose(base: &SourceMap, over: &SourceMap, base_offset: (u32, u32)) -> SourceMap {
+    let (offset_line, offset_col) = base_offset;
+    let over_lookup = over.generate_lookup_table();
+    let mut builder = SourceMapBuilder::default();
+    for token in base.get_tokens() {
+        let look_line = offset_line + token.get_src_line();
+        let look_col = if token.get_src_line() == 0 {
+            offset_col + token.get_src_col()
+        } else {
+            token.get_src_col()
+        };
+        let Some(resolved) = over.lookup_token(&over_lookup, look_line, look_col) else {
+            continue;
+        };
+        let Some(source_id) = resolved.get_source_id() else {
+            continue;
+        };
+        let Some(source) = over.get_source(source_id) else {
+            continue;
+        };
+        if source.is_empty() {
+            continue;
+        }
+        let content = over
+            .get_source_content(source_id)
+            .map_or("", |content| content.as_ref());
+        let new_source_id = builder.add_source_and_content(source, content);
+        let name_id = resolved
+            .get_name_id()
+            .and_then(|name_id| over.get_name(name_id))
+            .map(|name| builder.add_name(name));
+        builder.add_token(
+            token.get_dst_line(),
+            token.get_dst_col(),
+            resolved.get_src_line(),
+            resolved.get_src_col(),
+            Some(new_source_id),
+            name_id,
+        );
+    }
+    builder.into_sourcemap()
 }
 
 pub fn get_basename(filename: &str) -> &str {

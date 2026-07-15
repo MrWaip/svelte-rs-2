@@ -146,3 +146,11 @@ compiler_case!(
     let_member_mutated_read_guard,
     "legacy/state/let_member_mutated_read_guard"
 );
+compiler_case!(
+    immutable_member_mutated_reads_raw,
+    "legacy/state/immutable_member_mutated_reads_raw"
+);
+compiler_case!(
+    immutable_reassigned_reads_signal_guard,
+    "legacy/state/immutable_reassigned_reads_signal_guard"
+);

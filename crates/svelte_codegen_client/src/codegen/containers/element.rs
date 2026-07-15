@@ -8,7 +8,7 @@ use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 use crate::codegen::expr::{coarse_wrap, evaluation_is_defined};
 
 use super::super::data_structures::EmitState;
-use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::data_structures::{FragmentAnchor, FragmentCtx, MemoValueRef};
 use super::super::namespace::from_namespace;
 use super::super::{Codegen, CodegenError, Result};
 
@@ -91,14 +91,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         existing_var: Option<&str>,
     ) -> Result<String> {
-        let node = self.ctx.query.component.store.get(el_id);
+        let component = self.ctx.query.component;
+        let node = component.store.get(el_id);
         let el = match node {
             Node::Element(el) => el,
             _ => return CodegenError::unexpected_node(el_id, "Element"),
         };
 
         let el_name_hint = el.name.clone();
-        let attributes = el.attributes.clone();
+        let attributes: &'a [Attribute] = &el.attributes;
         let el_ns = self.element_namespace(el_id, ctx.namespace);
 
         let is_html = matches!(el_ns, Namespace::Html) && el_name_hint != "svg";
@@ -128,7 +129,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let element_after_update_len_before = state.element_after_update.len();
 
         if !is_ghost && !is_noscript && !has_spread {
-            self.emit_element_directives(state, el_id, &el_name_hint, &el_name, &attributes)?;
+            self.emit_element_directives(state, el_id, &el_name_hint, &el_name, attributes)?;
         }
 
         if !is_ghost && self.ctx.needs_input_defaults(el_id) && !has_spread {
@@ -151,10 +152,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             );
         }
 
-        let (attach_attrs, non_attach_attrs): (Vec<_>, Vec<_>) = attributes
+        let has_attach = attributes
             .iter()
-            .cloned()
-            .partition(|a| matches!(a, Attribute::AttachTag(_)));
+            .any(|a| matches!(a, Attribute::AttachTag(_)));
+        let non_attach_owned: Option<Vec<Attribute>> = if has_attach {
+            Some(
+                attributes
+                    .iter()
+                    .filter(|a| !matches!(a, Attribute::AttachTag(_)))
+                    .cloned()
+                    .collect(),
+            )
+        } else {
+            None
+        };
+        let non_attach_attrs: &[Attribute] = match &non_attach_owned {
+            Some(v) => v,
+            None => attributes,
+        };
 
         if !is_noscript {
             self.emit_dom_attributes(
@@ -162,7 +177,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 el_id,
                 &el_name_hint,
                 &el_name,
-                &non_attach_attrs,
+                non_attach_attrs,
                 is_html,
             )?;
         }
@@ -205,7 +220,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 );
                 let child_ctx = ctx.child_of_element(
                     self.ctx,
-                    &el_name_hint,
+                    el.name.as_str(),
                     el.fragment,
                     el_ns,
                     FragmentAnchor::ElementContentChild {
@@ -223,7 +238,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 let child_ctx = ctx.child_of_element(
                     self.ctx,
-                    &el_name_hint,
+                    el.name.as_str(),
                     el.fragment,
                     el_ns,
                     FragmentAnchor::Child {
@@ -256,9 +271,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .split_off(element_after_update_len_before);
         state.after_update.extend(scoped);
 
-        for attr in &attach_attrs {
-            if let Attribute::AttachTag(a) = attr {
-                self.emit_attach_tag(state, el_id, &el_name, a)?;
+        if has_attach {
+            for attr in attributes {
+                if let Attribute::AttachTag(a) = attr {
+                    self.emit_attach_tag(state, el_id, &el_name, a)?;
+                }
             }
         }
 
@@ -330,10 +347,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<()> {
         state.template.push_comment(None);
 
-        let (el_fragment, el_tag) = match self.ctx.query.component.store.get(el_id) {
-            Node::Element(el) => (el.fragment, el.name.clone()),
-            _ => return CodegenError::unexpected_node(el_id, "Element"),
-        };
+        let component = self.ctx.query.component;
+        let (el_fragment, el_tag): (svelte_ast::FragmentId, &'a str) =
+            match component.store.get(el_id) {
+                Node::Element(el) => (el.fragment, el.name.as_str()),
+                _ => return CodegenError::unexpected_node(el_id, "Element"),
+            };
 
         let tpl_name = self.ctx.state.gen_ident(&format!("{el_tag}_content"));
 
@@ -342,7 +361,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let child_ctx = ctx.child_of_element(
             self.ctx,
-            &el_tag,
+            el_tag,
             el_fragment,
             el_ns,
             FragmentAnchor::CallbackParam {
@@ -584,22 +603,48 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.ctx.b.template_parts_expr(tpl)
         };
 
-        let set_value = self
-            .ctx
-            .b
-            .call_expr("$.set_value", [Arg::Ident(el_name), Arg::Expr(value_expr)]);
-        if volatility.is_volatile() {
-            let arrow = self
-                .ctx
-                .b
-                .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(set_value)]);
-            state.init.push(
-                self.ctx
+        match volatility {
+            Volatility::Heavy | Volatility::Asynchronous => {
+                let placeholder = match single_expr_id {
+                    Some(id) => {
+                        let Some(data) = self.ctx.expression_data(id).cloned() else {
+                            return CodegenError::missing_expression_deps(id);
+                        };
+                        match state
+                            .shared_memo
+                            .add_memoized_expr(self.ctx, &data, value_expr)
+                        {
+                            Some(MemoValueRef::Sync(i)) => {
+                                state.shared_memo.sync_param_expr(self.ctx, i)
+                            }
+                            Some(MemoValueRef::Async(i)) => {
+                                state.shared_memo.async_param_expr(self.ctx, i)
+                            }
+                            None => return CodegenError::missing_expression_deps(id),
+                        }
+                    }
+                    None => value_expr,
+                };
+                let set_value = self
+                    .ctx
                     .b
-                    .call_stmt("$.template_effect", [Arg::Expr(arrow)]),
-            );
-        } else {
-            state.init.push(self.ctx.b.expr_stmt(set_value));
+                    .call_expr("$.set_value", [Arg::Ident(el_name), Arg::Expr(placeholder)]);
+                state.update.push(self.ctx.b.expr_stmt(set_value));
+            }
+            Volatility::Reactive => {
+                let set_value = self
+                    .ctx
+                    .b
+                    .call_expr("$.set_value", [Arg::Ident(el_name), Arg::Expr(value_expr)]);
+                state.update.push(self.ctx.b.expr_stmt(set_value));
+            }
+            Volatility::Static => {
+                let set_value = self
+                    .ctx
+                    .b
+                    .call_expr("$.set_value", [Arg::Ident(el_name), Arg::Expr(value_expr)]);
+                state.init.push(self.ctx.b.expr_stmt(set_value));
+            }
         }
         Ok(())
     }

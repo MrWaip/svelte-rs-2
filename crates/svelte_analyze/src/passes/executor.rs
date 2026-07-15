@@ -95,7 +95,7 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::TemplateSideTables => {
             super::template_side_tables::collect_fragment_facts(component, data);
             super::template_side_tables::collect_rich_content_facts(component, data);
-            let mut bundle = bundles::TemplateSideTablesBundle::new(component);
+            let mut bundle = bundles::TemplateSideTablesBundle::new(component, ScopingBuilt::new());
             {
                 let mut visitors = bundle.visitors();
                 run_parsed_template_bundle(
@@ -113,29 +113,7 @@ pub(crate) fn execute_pass<'a>(
             super::template_side_tables::promote_anchor_namespaces(component, data);
             super::template_side_tables::collect_fragment_namespaces(component, data);
 
-            for (idx, slot) in bundle.take_title_buckets().into_iter().enumerate() {
-                if let Some(ids) = slot {
-                    data.template
-                        .title_elements
-                        .by_fragment
-                        .insert(svelte_ast::FragmentId(idx as u32), ids);
-                }
-            }
             data.template.expression_tags_by_fragment = bundle.take_expression_tag_buckets();
-        }
-        super::PassKey::CollectSymbols => {
-            let mut bundle = bundles::SymbolCollectionBundle::new(ScopingBuilt::new());
-            let mut visitors = bundle.visitors();
-            run_parsed_template_bundle(
-                component,
-                data,
-                parsed,
-                source,
-                runes,
-                options,
-                diags,
-                &mut visitors,
-            );
         }
         super::PassKey::BuildFragmentSemantics => {
             data.fragment_semantics = fragment_semantics::build(component, data);
@@ -176,6 +154,7 @@ pub(crate) fn execute_pass<'a>(
                 &mut data.reactivity,
                 &data.value_evaluation,
                 data.scoping.semantics(),
+                data.script.dev,
             );
         }
         super::PassKey::BuildExpressionSemantics => {
@@ -253,20 +232,6 @@ pub(crate) fn execute_pass<'a>(
                 &mut visitors,
             );
             bundle.finish(data);
-        }
-        super::PassKey::ValidateTemplate => {
-            let mut bundle = bundles::TemplateValidationBundle::new();
-            let mut visitors = bundle.visitors();
-            run_parsed_template_bundle(
-                component,
-                data,
-                parsed,
-                source,
-                runes,
-                options,
-                diags,
-                &mut visitors,
-            );
         }
         super::PassKey::Validate => {
             let legacy_explicit = match options.runes {

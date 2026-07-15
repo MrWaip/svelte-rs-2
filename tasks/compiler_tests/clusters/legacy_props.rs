@@ -143,3 +143,8 @@ compiler_case!(
     default_guard_no_default,
     "legacy/props/default/guard_no_default"
 );
+
+compiler_case!(
+    export_specifier_declaration_order,
+    "legacy_props/export_specifier_declaration_order"
+);

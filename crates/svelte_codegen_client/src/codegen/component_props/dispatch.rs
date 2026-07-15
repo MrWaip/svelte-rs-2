@@ -4,7 +4,7 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{
     AttributeSemantics, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
-    ComponentPropSemantics, ComponentSpreadSemantics, EventEmit, EventModifier, EventSemantics,
+    ComponentPropSemantics, ComponentSpreadSemantics, EventModifier, EventSemantics,
 };
 use svelte_ast::{Attribute, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
@@ -36,7 +36,13 @@ pub(in super::super) struct ComponentPropsOutput<'a> {
 }
 
 pub(in super::super) struct OwnershipBinding<'a> {
-    pub source_ident: &'a str,
+    pub name: &'a str,
+    pub getter: OwnershipGetter<'a>,
+}
+
+pub(in super::super) enum OwnershipGetter<'a> {
+    Ident(&'a str),
+    Thunk(Expression<'a>),
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -58,21 +64,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let mut memo_counter: u32 = initial_memo_counter;
 
-        let attrs: Vec<Attribute> = match self
-            .ctx
-            .query
-            .component
-            .store
-            .get(el_id)
-            .as_component_like()
-        {
-            Some(view) => view.attributes.to_vec(),
+        let component = self.ctx.query.component;
+        let attrs: &[Attribute] = match component.store.get(el_id).as_component_like() {
+            Some(view) => view.attributes,
             None => {
                 return CodegenError::semantic_mismatch(el_id, "component-like node expected");
             }
         };
 
-        for attr in &attrs {
+        for attr in attrs {
             let attr_id: NodeId = attr.id();
             match self.ctx.query.analysis.attributes.get(attr_id) {
                 AttributeSemantics::ComponentBind(b) => {
@@ -153,13 +153,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         &mut memo_counter,
                     )?;
                 }
-                AttributeSemantics::Event(EventSemantics { modifiers, emit }) => {
-                    let EventEmit::Component { .. } = emit else {
-                        return CodegenError::semantic_mismatch(
-                            attr_id,
-                            "non-Component Event variant on ComponentNode",
-                        );
-                    };
+                AttributeSemantics::Event(EventSemantics { modifiers, .. }) => {
                     let Attribute::OnDirectiveLegacy(d) = attr else {
                         return CodegenError::semantic_mismatch(
                             attr_id,
@@ -270,6 +264,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     expr,
                     &mut out.deferred_items,
                     &mut out.validate_binding_stmts,
+                    &mut out.ownership_bindings,
                 )
             }
             ComponentBindKind::FunctionPair => {

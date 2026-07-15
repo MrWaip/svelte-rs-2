@@ -139,6 +139,8 @@ pub struct ComponentSemantics<'a> {
 
     scoped_store_subscription_refs: Vec<ReferenceId>,
 
+    shadowed_store_member_roots: FxHashMap<ReferenceId, SymbolId>,
+
     fragment_scopes: Vec<Option<ScopeId>>,
 
     template_scope_set: FxHashSet<ScopeId>,
@@ -170,10 +172,17 @@ impl<'a> ComponentSemantics<'a> {
             references: ReferenceTable::with_capacity(refs_cap),
             js: JsStorage::with_capacity(js_cap),
             class_table: ClassTable::default(),
-            template_reference_ids: FxHashSet::default(),
-            root_unresolved_references: FxHashMap::default(),
+            template_reference_ids: FxHashSet::with_capacity_and_hasher(
+                refs_cap,
+                Default::default(),
+            ),
+            root_unresolved_references: FxHashMap::with_capacity_and_hasher(
+                refs_cap,
+                Default::default(),
+            ),
             store_candidate_refs: Vec::new(),
             scoped_store_subscription_refs: Vec::new(),
+            shadowed_store_member_roots: FxHashMap::default(),
             fragment_scopes: Vec::new(),
             template_scope_set: FxHashSet::default(),
             reexported_specifier_locals: FxHashSet::default(),
@@ -587,7 +596,10 @@ impl<'a> ComponentSemantics<'a> {
     }
 
     pub fn build_template_scope_set(&mut self) {
-        self.template_scope_set = self.fragment_scopes.iter().filter_map(|s| *s).collect();
+        let mut set =
+            FxHashSet::with_capacity_and_hasher(self.fragment_scopes.len(), Default::default());
+        set.extend(self.fragment_scopes.iter().filter_map(|s| *s));
+        self.template_scope_set = set;
     }
 
     pub fn is_template_scope(&self, scope: ScopeId) -> bool {
@@ -645,6 +657,14 @@ impl<'a> ComponentSemantics<'a> {
 
     pub fn scoped_store_subscription_refs(&self) -> &[ReferenceId] {
         &self.scoped_store_subscription_refs
+    }
+
+    pub(crate) fn add_shadowed_store_member_root(&mut self, ref_id: ReferenceId, base: SymbolId) {
+        self.shadowed_store_member_roots.insert(ref_id, base);
+    }
+
+    pub fn shadowed_store_member_root(&self, ref_id: ReferenceId) -> Option<SymbolId> {
+        self.shadowed_store_member_roots.get(&ref_id).copied()
     }
 
     pub(crate) fn set_module_scope_id(&mut self, id: ScopeId) {

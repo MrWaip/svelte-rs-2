@@ -70,10 +70,43 @@ fn textarea_value(
             Attribute::ExpressionAttribute(a) if a.name == "value" => {
                 return Some(TextareaBody::Single(a.expression.id()));
             }
+            Attribute::ConcatenationAttribute(a) if a.name == "value" => {
+                return Some(concatenation_textarea_body(a));
+            }
+            Attribute::StringAttribute(a) if a.name == "value" => {
+                return Some(TextareaBody::Static(
+                    a.value(component.source.as_str()).to_string(),
+                ));
+            }
             _ => {}
         }
     }
     None
+}
+
+fn concatenation_textarea_body(a: &svelte_ast::ConcatenationAttribute) -> TextareaBody {
+    if let [svelte_ast::ConcatPart::Dynamic { expr, .. }] = a.parts.as_slice() {
+        return TextareaBody::Single(expr.id());
+    }
+    let mut segments: Vec<TextareaSegment> = Vec::new();
+    for part in &a.parts {
+        match part {
+            svelte_ast::ConcatPart::Static(text) => {
+                if let Some(TextareaSegment::Text(prev)) = segments.last_mut() {
+                    prev.push_str(text);
+                } else {
+                    segments.push(TextareaSegment::Text(text.clone()));
+                }
+            }
+            svelte_ast::ConcatPart::Dynamic { id, expr } => {
+                segments.push(TextareaSegment::Expression {
+                    node_id: *id,
+                    oxc_id: expr.id(),
+                });
+            }
+        }
+    }
+    TextareaBody::Segments(segments)
 }
 
 fn textarea_segments(component: &Component, el: &Element) -> Vec<TextareaSegment> {

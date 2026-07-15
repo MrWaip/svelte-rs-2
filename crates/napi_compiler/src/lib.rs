@@ -59,6 +59,7 @@ pub struct NativeCompileOptions {
     pub compatibility_component_api: Option<u8>,
     pub experimental_async: Option<bool>,
     pub generate: Option<String>,
+    pub sourcemap: Option<String>,
 }
 
 #[napi(object)]
@@ -68,6 +69,7 @@ pub struct NativeModuleCompileOptions {
     pub filename: Option<String>,
     pub root_dir: Option<String>,
     pub generate: Option<String>,
+    pub sourcemap: Option<String>,
 }
 
 #[napi]
@@ -168,6 +170,9 @@ fn to_compile_options(native: NativeCompileOptions) -> CompileOptions {
     if let Some(value) = native.experimental_async {
         options.experimental.async_ = value;
     }
+    if let Some(value) = native.sourcemap {
+        options.preprocessor_map = Some(value);
+    }
     options
 }
 
@@ -184,6 +189,9 @@ fn to_module_compile_options(native: NativeModuleCompileOptions) -> ModuleCompil
     }
     if let Some(value) = native.root_dir {
         options.root_dir = Some(value);
+    }
+    if let Some(value) = native.sourcemap {
+        options.preprocessor_map = Some(value);
     }
     options
 }

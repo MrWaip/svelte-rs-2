@@ -14,6 +14,8 @@ pub struct CssAnalysis {
     pub keyframes: Vec<CompactString>,
 
     pub used_selectors: FxHashSet<CssNodeId>,
+
+    pub has_global: bool,
 }
 
 impl CssAnalysis {
@@ -24,6 +26,7 @@ impl CssAnalysis {
             inject_styles: false,
             keyframes: Vec::new(),
             used_selectors: FxHashSet::default(),
+            has_global: false,
         }
     }
 }

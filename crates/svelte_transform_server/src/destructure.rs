@@ -276,10 +276,5 @@ impl<'a> ServerTransform<'_, 'a> {
 }
 
 fn source_is_reference(source: &Expression<'_>) -> bool {
-    matches!(
-        source.get_inner_expression(),
-        Expression::Identifier(_)
-            | Expression::StaticMemberExpression(_)
-            | Expression::ComputedMemberExpression(_)
-    )
+    matches!(source.get_inner_expression(), Expression::Identifier(_))
 }

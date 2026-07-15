@@ -4,12 +4,12 @@ use oxc_allocator::{Allocator, Box, CloneIn};
 use oxc_ast::{
     AstBuilder, NONE,
     ast::{
-        self, Argument, ArrowFunctionExpression, AssignmentTarget, BindingIdentifier,
-        CallExpression, ChainElement, ComputedMemberExpression, ExportDefaultDeclarationKind,
-        Expression, FormalParameters, Function, FunctionType, IdentifierReference,
-        ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration, NumericLiteral, Program,
-        Statement, StaticMemberExpression, StringLiteral, TemplateElementValue, TemplateLiteral,
-        VariableDeclarationKind,
+        self, Argument, ArrowFunctionExpression, AssignmentTarget, BinaryOperator,
+        BindingIdentifier, CallExpression, ChainElement, ComputedMemberExpression,
+        ExportDefaultDeclarationKind, Expression, FormalParameters, Function, FunctionType,
+        IdentifierReference, ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration,
+        NumericLiteral, Program, Statement, StaticMemberExpression, StringLiteral,
+        TemplateElementValue, TemplateLiteral, VariableDeclarationKind,
     },
 };
 use oxc_parser::Parser as OxcParser;

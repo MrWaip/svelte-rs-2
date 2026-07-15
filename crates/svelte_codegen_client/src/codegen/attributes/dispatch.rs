@@ -6,6 +6,7 @@ use svelte_ast::{Attribute, ExpressionAttribute, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
 
 use super::super::data_structures::EmitState;
+use super::super::expr::coarse_wrap;
 use super::super::{Codegen, CodegenError, Result};
 use super::spread_attr::SpreadOptions;
 
@@ -258,7 +259,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             self.ctx.b.str_expr(&text)
                         }
                         Attribute::ExpressionAttribute(a) => {
-                            self.take_attr_expr(a.id, &a.expression)?
+                            let expr = self.take_attr_expr(a.id, &a.expression)?;
+                            let data = self.ctx.expression_data(a.id).cloned();
+                            coarse_wrap(self.ctx, expr, data.as_ref())
                         }
                         _ => {
                             return CodegenError::semantic_mismatch(

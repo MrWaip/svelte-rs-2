@@ -19,3 +19,4 @@ pub(crate) use fragment_ctx::FragmentCtx;
 pub(crate) use memo::{MemoValueRef, TemplateMemoState};
 pub(crate) use pre_anchor::PreAnchor;
 pub(crate) use template::Template;
+pub(crate) use template::escape_html_attr;

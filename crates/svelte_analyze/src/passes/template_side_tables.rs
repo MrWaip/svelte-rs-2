@@ -1,9 +1,8 @@
 use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarator};
 use svelte_ast::{
-    Attribute, ComponentNode, ConstTag, EachBlock, Element, FragmentId, FragmentRole, HtmlTag,
-    Namespace, Node, NodeId, SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary,
-    SvelteComponentLegacy, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteWindow,
-    is_mathml, is_svg, is_void,
+    Attribute, ComponentNode, ConstTag, EachBlock, Element, FragmentId, HtmlTag, Namespace, Node,
+    NodeId, SlotElementLegacy, SnippetBlock, SvelteBody, SvelteBoundary, SvelteComponentLegacy,
+    SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteWindow, is_mathml, is_svg, is_void,
 };
 
 use crate::ElementFactsEntry;
@@ -25,7 +24,6 @@ fn push_into_bucket(buckets: &mut FragmentBuckets, frag_id: FragmentId, node_id:
 
 pub(crate) struct TemplateSideTablesVisitor<'c> {
     pub component: &'c svelte_ast::Component,
-    pub(crate) title_buckets: FragmentBuckets,
     pub(crate) expression_tag_buckets: FragmentBuckets,
 }
 
@@ -110,8 +108,7 @@ fn collect_fragment_namespaces_in(
         .fragment_namespaces
         .record(fragment_id, fragment_ns);
 
-    let nodes = store.fragment_nodes(fragment_id).to_vec();
-    for id in nodes {
+    for id in store.fragment_nodes(fragment_id).iter().copied() {
         match store.get(id) {
             Node::Element(el) => {
                 collect_fragment_namespaces_in(el.fragment, Some(el.id), root_ns, store, data)
@@ -205,7 +202,7 @@ fn promote_anchor_namespaces_in(
     source: &str,
     data: &mut AnalysisData,
 ) {
-    for id in store.fragment_nodes(fragment_id).to_vec() {
+    for id in store.fragment_nodes(fragment_id).iter().copied() {
         match store.get(id) {
             Node::Element(el) => {
                 promote_anchor_namespaces_in(el.fragment, true, store, source, data);
@@ -483,8 +480,7 @@ fn collect_fragment_facts_in(
         FragmentFactsEntry::from_fragment(store.fragment(fragment_id), store, source),
     );
 
-    let nodes = store.fragment_nodes(fragment_id).to_vec();
-    for id in nodes {
+    for id in store.fragment_nodes(fragment_id).iter().copied() {
         match store.get(id) {
             Node::Element(el) => collect_fragment_facts_in(el.fragment, store, source, facts),
             Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
@@ -544,8 +540,7 @@ fn collect_rich_content_facts_in(
     source: &str,
     facts: &mut RichContentFacts,
 ) {
-    let nodes = store.fragment_nodes(fragment_id).to_vec();
-    for id in nodes {
+    for id in store.fragment_nodes(fragment_id).iter().copied() {
         match store.get(id) {
             Node::Element(el) => collect_rich_content_facts_in(el.fragment, store, source, facts),
             Node::ComponentNode(_) | Node::SvelteComponentLegacy(_) => {
@@ -942,10 +937,6 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
             .template
             .template_elements
             .record(el.id, &el.name, facts, parent_element);
-        let frag_id = ctx.current_fragment_id();
-        if el.name == "title" && ctx.store.fragment(frag_id).role == FragmentRole::SvelteHeadBody {
-            push_into_bucket(&mut self.title_buckets, frag_id, el.id);
-        }
     }
 
     fn visit_slot_element_legacy(

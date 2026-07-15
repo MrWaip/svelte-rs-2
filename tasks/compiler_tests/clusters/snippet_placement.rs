@@ -1,6 +1,21 @@
 use super::*;
 
 compiler_case!(
+    component_css_props_snippet_order,
+    "snippet_placement/component_css_props_snippet_order",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    component_css_props_snippet_prop_memo,
+    "snippet_placement/component_css_props_snippet_prop_memo",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    component_css_props_snippet_dynamic,
+    "snippet_placement/component_css_props_snippet_dynamic",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
     element_render_sibling,
     "snippet_placement/element_render_sibling"
 );

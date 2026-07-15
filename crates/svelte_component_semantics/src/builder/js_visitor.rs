@@ -200,21 +200,35 @@ impl<'s, 'a> JsSemanticVisitor<'s, 'a> {
                 .get_reference_mut(ref_id)
                 .set_symbol_id(sym_id);
             self.semantics.add_resolved_reference(sym_id, ref_id);
+            if let Some(base) = store_candidate_base(name) {
+                let root = self.semantics.root_scope_id();
+                if let Some(base_sym) = self.semantics.find_binding(root, base) {
+                    self.semantics
+                        .add_shadowed_store_member_root(ref_id, base_sym);
+                }
+            }
         } else if let Some(base) = store_candidate_base(name) {
             let root = self.semantics.root_scope_id();
-            if let Some(sym_id) = self.semantics.find_binding(root, base) {
-                self.semantics
-                    .get_reference_mut(ref_id)
-                    .set_symbol_id(sym_id);
-                self.semantics
-                    .add_store_subscription_reference(sym_id, ref_id);
-                self.semantics.add_store_candidate_ref(sym_id, ref_id);
-            } else {
-                if self.semantics.find_binding(self.scope, base).is_some() {
-                    self.semantics.add_scoped_store_subscription_ref(ref_id);
+            let root_sym = self.semantics.find_binding(root, base);
+            match self.semantics.find_binding(self.scope, base) {
+                Some(sym_id) if Some(sym_id) == root_sym => {
+                    self.semantics
+                        .get_reference_mut(ref_id)
+                        .set_symbol_id(sym_id);
+                    self.semantics
+                        .add_store_subscription_reference(sym_id, ref_id);
+                    self.semantics.add_store_candidate_ref(sym_id, ref_id);
                 }
-                if let Some(current_level) = self.unresolved_stack.last_mut() {
-                    current_level.push((CompactString::from(name), ref_id));
+                Some(_) => {
+                    self.semantics.add_scoped_store_subscription_ref(ref_id);
+                    if let Some(current_level) = self.unresolved_stack.last_mut() {
+                        current_level.push((CompactString::from(name), ref_id));
+                    }
+                }
+                None => {
+                    if let Some(current_level) = self.unresolved_stack.last_mut() {
+                        current_level.push((CompactString::from(name), ref_id));
+                    }
                 }
             }
         } else if let Some(current_level) = self.unresolved_stack.last_mut() {
@@ -306,6 +320,7 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
     }
 
     fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
+        let prev = self.binding_flags;
         if func.is_declaration()
             && let Some(ident) = &func.id
         {
@@ -325,6 +340,7 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
 
         walk::walk_function(self, func, flags);
         self.leave_scope(parent);
+        self.binding_flags = prev;
     }
 
     fn visit_arrow_function_expression(&mut self, expr: &ArrowFunctionExpression<'a>) {
@@ -335,6 +351,7 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
     }
 
     fn visit_class(&mut self, class: &Class<'a>) {
+        let prev = self.binding_flags;
         if class.is_declaration()
             && let Some(ident) = &class.id
         {
@@ -357,6 +374,7 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
         let accesses = self.class_access_stack.pop().unwrap_or_default();
         self.semantics.record_class(class, &accesses);
         self.leave_scope(parent);
+        self.binding_flags = prev;
     }
 
     fn visit_private_field_expression(&mut self, expr: &PrivateFieldExpression<'a>) {
@@ -575,15 +593,17 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
                 SymbolFlags::BlockScopedVariable | SymbolFlags::ConstVariable,
             ),
         };
+        let prev = self.binding_flags;
         self.binding_flags = Some((scope, flags));
         walk::walk_variable_declaration(self, decl);
-        self.binding_flags = None;
+        self.binding_flags = prev;
     }
 
     fn visit_formal_parameter(&mut self, param: &FormalParameter<'a>) {
+        let prev = self.binding_flags;
         self.binding_flags = Some((self.scope, SymbolFlags::FunctionScopedVariable));
         walk::walk_formal_parameter(self, param);
-        self.binding_flags = None;
+        self.binding_flags = prev;
     }
 
     fn visit_binding_rest_element(&mut self, elem: &BindingRestElement<'a>) {
@@ -591,12 +611,13 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
     }
 
     fn visit_catch_parameter(&mut self, param: &CatchParameter<'a>) {
+        let prev = self.binding_flags;
         self.binding_flags = Some((
             self.scope,
             SymbolFlags::FunctionScopedVariable | SymbolFlags::CatchVariable,
         ));
         walk::walk_catch_parameter(self, param);
-        self.binding_flags = None;
+        self.binding_flags = prev;
     }
 
     fn visit_import_declaration(&mut self, decl: &ImportDeclaration<'a>) {

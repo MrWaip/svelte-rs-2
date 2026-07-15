@@ -282,6 +282,7 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
         if ctx.data.script.runes()
             && !is_destructured
             && let Some(key_ref) = block.key.as_ref()
+            && !each_collection_uses_store(block, ctx)
         {
             mark_key_is_item_each_binding(block, body_scope, key_ref.span, ctx, self.staging);
         }
@@ -588,6 +589,7 @@ fn collect_each_block_collection_sources_legacy(
                             LegacyStateSemantics {
                                 var_declared: false,
                                 immutable,
+                                is_signal_source: false,
                             },
                         );
                     }
@@ -915,6 +917,25 @@ fn each_collection_has_external_deps(
         }
     }
     false
+}
+
+fn each_collection_uses_store(block: &EachBlock, ctx: &VisitContext<'_, '_>) -> bool {
+    let Some(parsed) = ctx.parsed else {
+        return false;
+    };
+    let Some(expr) = parsed.expr(block.expression.id()) else {
+        return false;
+    };
+    let mut collector = ExprRefCollector { refs: Vec::new() };
+    collector.visit_expression(expr);
+    collector.refs.iter().any(|&ref_id| {
+        matches!(
+            ctx.data.reactivity.reference_semantics(ref_id),
+            ReferenceSemantics::StoreRead { .. }
+                | ReferenceSemantics::StoreWrite { .. }
+                | ReferenceSemantics::StoreUpdate { .. }
+        )
+    })
 }
 
 fn mark_each_item_syms_non_reactive(

@@ -21,23 +21,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         self.emit_component_impl(state, ctx, el_id, existing_var, None, 0)
     }
 
-    pub(in crate::codegen) fn emit_component_with_hoisted_memo(
+    pub(in crate::codegen) fn emit_component_inline_memo(
         &mut self,
         state: &mut EmitState<'a>,
         ctx: &FragmentCtx<'a>,
         el_id: NodeId,
-        existing_var: Option<&str>,
-        memo_decls_out: &mut Vec<Statement<'a>>,
         initial_memo_counter: u32,
     ) -> Result<String> {
-        self.emit_component_impl(
-            state,
-            ctx,
-            el_id,
-            existing_var,
-            Some(memo_decls_out),
-            initial_memo_counter,
-        )
+        self.emit_component_impl(state, ctx, el_id, None, None, initial_memo_counter)
     }
 
     fn emit_component_impl(
@@ -138,7 +129,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             ObjProp::KeyValue("children", arrow),
                         ));
                 }
-                LegacyDefaultSlot::SlotDefaultInvalid => {
+                LegacyDefaultSlot::SlotDefaultInvalid | LegacyDefaultSlot::OwnLetDisplaced => {
                     props
                         .items
                         .push(super::super::component_props::PropOrSpread::Prop(
@@ -258,7 +249,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.add_svelte_meta_with_extra(final_expr, span_start, "component", Some(extra_obj))
         };
 
-        let ownership_stmts = self.build_ownership_binding_stmts(&props.ownership_bindings, callee);
+        let ownership_stmts = self.build_ownership_binding_stmts(props.ownership_bindings, callee);
         let body_memo_decls: Vec<Statement<'a>> = if let Some(out) = memo_decls_out {
             out.extend(props.memo_decls);
             Vec::new()
@@ -288,19 +279,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn build_ownership_binding_stmts(
         &self,
-        bindings: &[super::super::component_props::OwnershipBinding<'a>],
+        bindings: Vec<super::super::component_props::OwnershipBinding<'a>>,
         comp_id: &str,
     ) -> Vec<Statement<'a>> {
         bindings
-            .iter()
+            .into_iter()
             .map(|b| {
+                let getter = match b.getter {
+                    super::super::component_props::OwnershipGetter::Ident(id) => Arg::Ident(id),
+                    super::super::component_props::OwnershipGetter::Thunk(expr) => Arg::Expr(expr),
+                };
                 self.ctx.b.call_stmt(
                     "$$ownership_validator.binding",
-                    [
-                        Arg::Str(b.source_ident.to_string()),
-                        Arg::Ident(comp_id),
-                        Arg::Ident(b.source_ident),
-                    ],
+                    [Arg::Str(b.name.to_string()), Arg::Ident(comp_id), getter],
                 )
             })
             .collect()
@@ -376,7 +367,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             (inner_call, None)
         };
         let mut inner_body: Vec<Statement<'a>> =
-            self.build_ownership_binding_stmts(&ownership_bindings, intermediate_ref);
+            self.build_ownership_binding_stmts(ownership_bindings, intermediate_ref);
         inner_body.push(self.ctx.b.expr_stmt(inner_final));
         let inner_arrow = self.ctx.b.arrow_block_expr(
             self.ctx.b.params(["$$anchor", intermediate_ref]),
@@ -392,16 +383,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ],
         );
 
-        let extra_obj = self.ctx.b.object_expr([ObjProp::KeyValue(
-            "componentTag",
-            self.ctx.b.str_expr(cn_name),
-        )]);
-        let component_stmt = self.add_svelte_meta_with_extra(
-            component_call,
-            span_start,
-            "component",
-            Some(extra_obj),
-        );
+        let component_stmt = if self.ctx.has_component_css_props(el_id) {
+            self.ctx.b.expr_stmt(component_call)
+        } else {
+            let extra_obj = self.ctx.b.object_expr([ObjProp::KeyValue(
+                "componentTag",
+                self.ctx.b.str_expr(cn_name),
+            )]);
+            self.add_svelte_meta_with_extra(
+                component_call,
+                span_start,
+                "component",
+                Some(extra_obj),
+            )
+        };
 
         if let Some(stmt) = inner_validate {
             state.init.push(stmt);

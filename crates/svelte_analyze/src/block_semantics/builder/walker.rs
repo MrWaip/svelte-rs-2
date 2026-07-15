@@ -41,9 +41,7 @@ pub(super) fn populate(
         each_stack: SmallVec::new(),
         bind_group_hits: FxHashSet::default(),
     };
-    let root_nodes_len = component.store.fragment_nodes(component.root).len();
-    for i in 0..root_nodes_len {
-        let node_id = component.store.fragment_nodes(component.root)[i];
+    for &node_id in component.store.fragment_nodes(component.root) {
         ctx.visit_node(node_id);
     }
 
@@ -231,9 +229,8 @@ impl<'a> Ctx<'_, 'a> {
         self.non_root_depth += 1;
         let prev_fragment_id = self.current_fragment_id;
         self.current_fragment_id = fragment_id;
-        let len = self.component.fragment_nodes(fragment_id).len();
-        for i in 0..len {
-            let id = self.component.fragment_nodes(fragment_id)[i];
+        let component = self.component;
+        for &id in component.fragment_nodes(fragment_id) {
             self.visit_node(id);
         }
         self.current_fragment_id = prev_fragment_id;

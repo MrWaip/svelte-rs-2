@@ -1,5 +1,9 @@
 use super::*;
 
+compiler_case!(
+    derived_undefined_store_read,
+    "stores/derived_undefined_store_read"
+);
 compiler_case!(assignment_alias, "stores/assignment/alias");
 compiler_case!(assignment_array_hole, "stores/assignment/array_hole");
 compiler_case!(
@@ -43,6 +47,49 @@ compiler_case!(
 compiler_case!(assignment_object_rest, "stores/assignment/object_rest");
 compiler_case!(assignment_single_array, "stores/assignment/single_array");
 compiler_case!(assignment_string_key, "stores/assignment/string_key");
+
+compiler_case!(store_target_array, "stores/assignment/store_target_array");
+compiler_case!(
+    store_target_object_seq,
+    "stores/assignment/store_target_object_seq"
+);
+compiler_case!(
+    store_target_object_iife,
+    "stores/assignment/store_target_object_iife"
+);
+compiler_case!(
+    store_target_mixed_leaves,
+    "stores/assignment/store_target_mixed_leaves"
+);
+compiler_case!(
+    store_target_value_position,
+    "stores/assignment/store_target_value_position"
+);
+compiler_case!(store_target_nested, "stores/assignment/store_target_nested");
+compiler_case!(
+    store_target_default_leaf,
+    "stores/assignment/store_target_default_leaf"
+);
+compiler_case!(
+    store_target_array_rest,
+    "stores/assignment/store_target_array_rest"
+);
+compiler_case!(
+    store_target_object_rest,
+    "stores/assignment/store_target_object_rest"
+);
+compiler_case!(
+    store_target_computed_key,
+    "stores/assignment/store_target_computed_key"
+);
+compiler_case!(
+    store_target_none_guard,
+    "stores/assignment/store_target_none_guard"
+);
+compiler_case!(
+    store_single_assign_guard,
+    "stores/assignment/store_single_assign_guard"
+);
 
 compiler_case!(
     runes_sub_state_held_unsub,
@@ -112,4 +159,55 @@ compiler_module_case!(
 compiler_module_case!(
     runes_sub_module_rune_no_shadow_guard,
     "stores/runes_sub/module_rune_no_shadow_guard"
+);
+
+compiler_case!(
+    runes_sub_sole_held_store_read,
+    "stores/runes_sub/sole_held_store_read"
+);
+compiler_case!(
+    runes_sub_held_store_assign,
+    "stores/runes_sub/held_store_assign"
+);
+compiler_case!(
+    runes_sub_store_mutate_callback_param,
+    "stores/runes_sub/store_mutate_callback_param",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
+compiler_case!(
+    runes_sub_held_store_member_read_guard,
+    "stores/runes_sub/held_store_member_read_guard"
+);
+compiler_case!(
+    runes_sub_held_store_bare_read_guard,
+    "stores/runes_sub/held_store_bare_read_guard"
+);
+compiler_case!(
+    runes_sub_held_store_mutate_guard,
+    "stores/runes_sub/held_store_mutate_guard"
+);
+compiler_case!(
+    runes_sub_sole_real_store_read_guard,
+    "stores/runes_sub/sole_real_store_read_guard"
+);
+
+compiler_case!(
+    bind_store_textarea_contenteditable,
+    "stores/bind_store_textarea_contenteditable"
+);
+
+compiler_case!(
+    server_member_bind_mutate_bare_base,
+    "stores/server_member_bind_mutate_bare_base",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    server_bind_pair_name_order,
+    "stores/server_bind_pair_name_order",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    store_base_source_prop_default,
+    "stores/store_base_source_prop_default"
 );

@@ -96,7 +96,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
     fn prop_mutation_path_segment_expr(&self, expr: &Expression<'a>) -> Option<Expression<'a>> {
         match expr.get_inner_expression() {
             Expression::StringLiteral(lit) => Some(self.b.str_expr(lit.value.as_str())),
-            Expression::Identifier(_) => Some(self.b.clone_expr(expr.get_inner_expression())),
+            Expression::Identifier(id) => {
+                let idref = self.b.rid_at(id.name.as_str(), id.span);
+                idref.reference_id.set(id.reference_id.get());
+                Some(Expression::Identifier(self.b.ast.alloc(idref)))
+            }
             _ => None,
         }
     }
@@ -570,22 +574,35 @@ impl<'a> ComponentTransformer<'_, 'a> {
             self.destructure_lhs_depth += 1;
         }
 
-        let is_identifier_target = {
-            let Expression::AssignmentExpression(assign) = &*node else {
-                unreachable!();
-            };
-            matches!(
-                &assign.left,
-                AssignmentTarget::AssignmentTargetIdentifier(_)
-            )
-        };
+        let is_identifier_target = matches!(
+            &*node,
+            Expression::AssignmentExpression(assign)
+                if matches!(&assign.left, AssignmentTarget::AssignmentTargetIdentifier(_))
+        );
 
         if is_identifier_target && self.dispatch_identifier_assignment(node, ctx) {
             return;
         }
 
-        let is_expr_stmt = matches!(ctx.parent(), Ancestor::ExpressionStatementExpression(_));
+        let assign_span_start = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return;
+            };
+            assign.span.start
+        };
+        if assign_span_start != 0
+            && self
+                .dispatched_member_assignments
+                .contains(&assign_span_start)
+        {
+            return;
+        }
+
+        let is_expr_stmt = assignment_parent_is_expression_statement(ctx);
         if self.dispatch_member_assignment(node, is_expr_stmt, ctx) {
+            if assign_span_start != 0 {
+                self.dispatched_member_assignments.insert(assign_span_start);
+            }
             return;
         }
 
@@ -611,7 +628,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let should_rewrite_assign = op_literal.is_some()
             && (is_static || is_computed)
             && should_proxy(&assign.right)
-            && self.runes
             && !self.in_bind_setter_traverse;
         if !should_rewrite_assign {
             return;
@@ -844,4 +860,23 @@ fn is_internal_async_await(arg: &Expression<'_>) -> bool {
         return false;
     };
     matches!(id.name.as_str(), "$.async_derived" | "$.save")
+}
+
+fn assignment_parent_is_expression_statement(ctx: &TraverseCtx<'_, ()>) -> bool {
+    let mut ancestors = ctx
+        .ancestors()
+        .filter(|a| !matches!(a, Ancestor::ParenthesizedExpressionExpression(_)));
+    let Some(first) = ancestors.next() else {
+        return false;
+    };
+    if !first.is_expression_statement() {
+        return false;
+    }
+    match ancestors.next() {
+        Some(Ancestor::FunctionBodyStatements(_)) => match ancestors.next() {
+            Some(Ancestor::ArrowFunctionExpressionBody(arrow)) => !*arrow.expression(),
+            _ => true,
+        },
+        _ => true,
+    }
 }

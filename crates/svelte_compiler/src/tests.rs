@@ -185,7 +185,7 @@ export default function App($$anchor) {
 	let name = void 0;
 	$.next();
 	var text = $.text();
-	text.nodeValue = name;
+	text.nodeValue = "";
 	$.append($$anchor, text);
 }
 "#,
@@ -923,4 +923,194 @@ fn server_target_emits_render_function_skeleton() {
         false,
     );
     assert_server_render_skeleton(&js, "App");
+}
+
+#[track_caller]
+fn assert_css_has_global(source: &str, expected: Option<bool>) {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        css: CssMode::External,
+        ..Default::default()
+    };
+    let result = compile(source, &opts);
+    let actual = result.css.as_ref().map(|out| out.has_global);
+    assert_eq!(
+        actual,
+        expected,
+        "css.has_global mismatch: expected {expected:?}, got {actual:?} (css={:?})",
+        result.css.as_ref().map(|out| out.code.clone())
+    );
+}
+
+#[test]
+fn css_has_global_true_for_global_rule_with_declarations() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:global(#test){color:green}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_true_when_global_rule_coexists_with_scoped() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>h1{color:green}:global(#test){color:green}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_true_for_mixed_global_and_local_selectors() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:global(.x), .local{color:green}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_true_for_global_keyframes() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>@keyframes -global-spin{from{opacity:0}to{opacity:1}}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_false_for_scoped_only() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>h1{color:green}</style>"#,
+        Some(false),
+    );
+}
+
+#[test]
+fn css_has_global_false_for_global_selector_without_declarations() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:global(.x){}</style>"#,
+        Some(false),
+    );
+}
+
+#[test]
+fn css_has_global_false_for_global_block_with_nested_rules() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:global{h1{color:red}}</style>"#,
+        Some(false),
+    );
+}
+
+#[test]
+fn css_has_global_false_for_local_keyframes() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>@keyframes spin{from{opacity:0}to{opacity:1}}</style>"#,
+        Some(false),
+    );
+}
+
+#[test]
+fn css_has_global_false_for_global_nested_in_scoped_rule() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>div{:global(.x){color:red}}</style>"#,
+        Some(false),
+    );
+}
+
+#[test]
+fn css_has_global_false_for_global_in_compound_selector() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>div :global(.x){color:red}</style>"#,
+        Some(false),
+    );
+}
+
+#[test]
+fn css_has_global_none_when_no_style_block() {
+    assert_css_has_global(r#"<h1 id="b">B</h1>"#, None);
+}
+
+#[test]
+fn css_has_global_false_for_nesting_ref_inside_global_rule() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:global(.foo){ &:hover{color:red} }</style>"#,
+        Some(false),
+    );
+}
+
+#[test]
+fn css_has_global_false_for_scoped_rule_inside_global_rule() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:global(.foo){ .bar{color:red} }</style>"#,
+        Some(false),
+    );
+}
+
+#[test]
+fn css_has_global_true_for_root_selector() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:root{--x:1}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_true_for_host_selector() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:host{color:red}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_true_for_host_with_args_selector() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:host(.x){color:red}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_true_for_view_transition_pseudo_element() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>::view-transition{color:red}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_true_for_view_transition_group_pseudo_element() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>::view-transition-group(*){color:red}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_true_for_root_not_selector() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:root:not(.x){color:red}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_false_for_root_has_selector() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:root:has(.x){color:red}</style>"#,
+        Some(false),
+    );
+}
+
+#[test]
+fn css_has_global_true_for_two_global_selectors() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>:global(.a),:global(.b){color:red}</style>"#,
+        Some(true),
+    );
+}
+
+#[test]
+fn css_has_global_false_for_global_keyframes_inside_scoped_rule() {
+    assert_css_has_global(
+        r#"<h1 id="b">B</h1><style>div{@keyframes -global-x{from{opacity:0}}}</style>"#,
+        Some(false),
+    );
 }

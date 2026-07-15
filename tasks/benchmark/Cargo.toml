@@ -36,6 +36,10 @@ path = "src/bin/profile.rs"
 name = "bench_once"
 path = "src/bin/bench_once.rs"
 
+[[bin]]
+name = "profile_all"
+path = "src/bin/profile_all.rs"
+
 [features]
 default = []
 codspeed = ["criterion2/codspeed"]

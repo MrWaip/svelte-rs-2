@@ -175,7 +175,7 @@ fn push_ascii_lowercase(out: &mut String, s: &str) {
     }
 }
 
-fn escape_html_attr(s: &str) -> String {
+pub(crate) fn escape_html_attr(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {

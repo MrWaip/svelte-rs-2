@@ -980,6 +980,7 @@ dependencies = [
  "serde_json",
  "svelte_compiler",
  "svelte_transform_css",
+ "test_support",
 ]
 
 [[package]]
@@ -1415,6 +1416,7 @@ name = "svelte_sourcemap"
 version = "0.1.0"
 dependencies = [
  "oxc_sourcemap",
+ "serde_json",
 ]
 
 [[package]]

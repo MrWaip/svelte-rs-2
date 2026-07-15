@@ -1,4 +1,4 @@
-pub fn is_delegatable_event(name: &str) -> bool {
+pub(crate) fn is_delegatable_event(name: &str) -> bool {
     matches!(
         name,
         "beforeinput"
@@ -27,11 +27,11 @@ pub fn is_delegatable_event(name: &str) -> bool {
     )
 }
 
-pub fn is_capture_event(name: &str) -> bool {
+pub(crate) fn is_capture_event(name: &str) -> bool {
     name.ends_with("capture") && name != "gotpointercapture" && name != "lostpointercapture"
 }
 
-pub fn strip_capture_event(name: &str) -> Option<&str> {
+pub(crate) fn strip_capture_event(name: &str) -> Option<&str> {
     if is_capture_event(name) {
         Some(&name[..name.len() - 7])
     } else {
@@ -39,7 +39,7 @@ pub fn strip_capture_event(name: &str) -> Option<&str> {
     }
 }
 
-pub fn is_passive_event(name: &str) -> bool {
+pub(crate) fn is_passive_event(name: &str) -> bool {
     matches!(name, "touchstart" | "touchmove")
 }
 

@@ -32,6 +32,7 @@ pub trait GetSpan {
 #[derive(Debug, Clone)]
 pub struct LineIndex {
     line_starts: Vec<u32>,
+    source: Box<str>,
 }
 
 impl LineIndex {
@@ -44,12 +45,16 @@ impl LineIndex {
                 line_starts.push((i + 1) as u32);
             }
         }
-        Self { line_starts }
+        Self {
+            line_starts,
+            source: source.into(),
+        }
     }
 
     pub fn empty() -> Self {
         Self {
             line_starts: vec![0],
+            source: "".into(),
         }
     }
 
@@ -58,9 +63,22 @@ impl LineIndex {
             .line_starts
             .partition_point(|&start| start <= byte_offset)
             .saturating_sub(1);
-        let line_start = self.line_starts[line_idx];
-        let col = (byte_offset - line_start) as usize;
+        let line_start = self.line_starts[line_idx] as usize;
+        let col = self.utf16_column(line_start, byte_offset as usize);
         (line_idx + 1, col)
+    }
+
+    fn utf16_column(&self, line_start: usize, byte_offset: usize) -> usize {
+        let mut col = 0;
+        let mut pos = line_start;
+        for ch in self.source[line_start..].chars() {
+            if pos >= byte_offset {
+                break;
+            }
+            col += ch.len_utf16();
+            pos += ch.len_utf8();
+        }
+        col
     }
 }
 
@@ -105,5 +123,23 @@ mod tests {
         let idx = LineIndex::new(src);
         let (line, _) = idx.line_col(999);
         assert_eq!(line, 2);
+    }
+
+    #[test]
+    fn column_counts_utf16_units_not_bytes() {
+        let prefix = "<div>Текст ";
+        let src = format!("{prefix}<b></b></div>");
+        let idx = LineIndex::new(&src);
+        let (line, col) = idx.line_col(prefix.len() as u32);
+        assert_eq!((line, col), (1, 11));
+    }
+
+    #[test]
+    fn column_counts_astral_char_as_surrogate_pair() {
+        let prefix = "<div>😀 ";
+        let src = format!("{prefix}<b></b></div>");
+        let idx = LineIndex::new(&src);
+        let (line, col) = idx.line_col(prefix.len() as u32);
+        assert_eq!((line, col), (1, 8));
     }
 }

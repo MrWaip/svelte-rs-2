@@ -234,3 +234,33 @@ compiler_case!(
     render_index_param_pattern_member_mutation_guard,
     "each/render_index_param/runes/pattern_member_mutation_guard"
 );
+
+compiler_case!(
+    server_array_name_order,
+    "each/server_array_name_order",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    declaration_legacy_static_call_collection_untrack,
+    "each/declaration/legacy/static_call_collection_untrack"
+);
+compiler_case!(
+    declaration_legacy_static_literal_collection_guard,
+    "each/declaration/legacy/static_literal_collection_guard"
+);
+compiler_case!(
+    nonkeyed_index_binary_prop_static,
+    "each/nonkeyed_index_binary_prop_static"
+);
+compiler_case!(
+    legacy_store_member_component_bind_writeback,
+    "each/legacy_store_member_component_bind_writeback"
+);
+compiler_case!(
+    keyed_key_is_item_store_collection_reactive,
+    "each/keyed_key_is_item_store_collection_reactive"
+);
+compiler_case!(
+    keyed_key_is_item_prop_collection_immutable_guard,
+    "each/keyed_key_is_item_prop_collection_immutable_guard"
+);

@@ -60,6 +60,7 @@ pub fn transform_script<'a, 'b>(
         enclosing_stmt_start: Vec::new(),
         template_owner_node: None,
         in_bind_setter_traverse: false,
+        dispatched_member_assignments: rustc_hash::FxHashSet::default(),
         destructure_lhs_depth: 0,
         gen_arrow_scope: None,
         parsed: None,

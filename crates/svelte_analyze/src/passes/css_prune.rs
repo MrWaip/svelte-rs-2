@@ -157,9 +157,13 @@ pub(crate) fn prune_and_warn(
         in_global_block: false,
         rule_lookup: &rule_lookup,
         rule_stack: Vec::new(),
+        ancestor_rules_are_global: Vec::new(),
+        has_global: false,
     };
     pruner.visit_stylesheet(stylesheet);
+    let has_global = pruner.has_global;
     data.output.css.used_selectors = used;
+    data.output.css.has_global = has_global;
 
     let scoped_custom: Vec<NodeId> = data
         .output
@@ -240,10 +244,20 @@ struct PruneVisitor<'a, 'b, 'p, 's> {
     in_global_block: bool,
     rule_lookup: &'s FxHashMap<CssNodeId, &'s StyleRule>,
     rule_stack: Vec<CssNodeId>,
+    ancestor_rules_are_global: Vec<bool>,
+    has_global: bool,
 }
 
 impl Visit for PruneVisitor<'_, '_, '_, '_> {
     fn visit_at_rule(&mut self, node: &AtRule) {
+        if !self.has_global && node.name == "keyframes" {
+            let prelude = node.prelude.source_text(self.css_source).trim();
+            if prelude.starts_with("-global-")
+                && self.ancestor_rules_are_global.iter().all(|&global| global)
+            {
+                self.has_global = true;
+            }
+        }
         walk_at_rule(self, node);
     }
 
@@ -256,8 +270,10 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
         let parent_rules = self.rule_stack[..parent_len].to_vec();
         let rule_ctx = RuleContext::new(node.id, &parent_rules, self.rule_lookup);
 
+        let mut rule_has_global_selectors = false;
         for complex in &node.prelude.children {
             let plan = build_rule_selector_rewrite(complex, &rule_ctx);
+            rule_has_global_selectors |= plan.is_all_global;
 
             if self.in_global_block || plan.is_all_global {
                 self.used.insert(plan.complex_id);
@@ -290,9 +306,24 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
             }
         }
 
+        if !self.has_global
+            && rule_has_global_selectors
+            && self.ancestor_rules_are_global.iter().all(|&global| global)
+            && node
+                .block
+                .children
+                .iter()
+                .any(|child| matches!(child, BlockChild::Declaration(_)))
+        {
+            self.has_global = true;
+        }
+        self.ancestor_rules_are_global
+            .push(rule_has_global_selectors);
+
         walk_style_rule(self, node);
         self.rule_stack.truncate(parent_len);
         self.in_global_block = was_global;
+        self.ancestor_rules_are_global.pop();
     }
 }
 
@@ -313,8 +344,7 @@ fn collect_css_prune_edges_in_fragment(
     data: &AnalysisData,
     edges: &mut CssPruneIndex,
 ) {
-    let nodes = component.fragment_nodes(fragment_id).to_vec();
-    for id in nodes {
+    for id in component.fragment_nodes(fragment_id).iter().copied() {
         match component.store.get(id) {
             Node::Element(el) => {
                 collect_css_prune_edges_in_fragment(el.fragment, component, parsed, data, edges);
@@ -593,7 +623,41 @@ fn truncate_root_relative(relative: &mut RelativeSelector) {
 fn is_all_global(selectors: &[RelativeSelector], rule_ctx: &RuleContext<'_>) -> bool {
     selectors
         .iter()
-        .all(|selector| is_global(selector, rule_ctx))
+        .all(|selector| is_global(selector, rule_ctx) || is_global_like(selector))
+}
+
+fn is_global_like(relative: &RelativeSelector) -> bool {
+    let selectors = &relative.selectors;
+    if selectors.is_empty() {
+        return false;
+    }
+
+    let all_pseudo = selectors.iter().all(|selector| {
+        matches!(
+            selector,
+            SimpleSelector::PseudoClass(_) | SimpleSelector::PseudoElement(_)
+        )
+    });
+    if all_pseudo {
+        let first_is_global_like = match &selectors[0] {
+            SimpleSelector::PseudoClass(pc) => pc.name == "host",
+            SimpleSelector::PseudoElement(pe) => {
+                svelte_css::is_view_transition_pseudo_element(pe.name.as_str())
+            }
+            _ => false,
+        };
+        if first_is_global_like {
+            return true;
+        }
+    }
+
+    let has_root = selectors
+        .iter()
+        .any(|selector| matches!(selector, SimpleSelector::PseudoClass(pc) if pc.name == "root"));
+    let has_has = selectors
+        .iter()
+        .any(|selector| matches!(selector, SimpleSelector::PseudoClass(pc) if pc.name == "has"));
+    has_root && !has_has
 }
 
 fn is_global_relative(rel: &RelativeSelector) -> bool {
@@ -2334,6 +2398,9 @@ fn gather_possible_values(
                     return false;
                 }
                 match &property.key {
+                    PropertyKey::StaticIdentifier(ident) => {
+                        values.insert(ident.name.to_string());
+                    }
                     PropertyKey::Identifier(ident) => {
                         values.insert(ident.name.to_string());
                     }

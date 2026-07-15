@@ -1,9 +1,6 @@
 use oxc_ast::ast::{
-    AssignmentTarget, Class, ClassElement, Expression, MethodDefinitionKind, Program, PropertyKey,
-    Statement,
+    AssignmentTarget, Class, ClassElement, Expression, MethodDefinitionKind, PropertyKey, Statement,
 };
-use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::walk_class;
 use rustc_hash::FxHashSet;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -11,29 +8,9 @@ use svelte_span::Span;
 use svelte_component_semantics::OxcNodeId;
 
 use crate::reactivity_semantics::data::ReactivitySemantics;
-use crate::types::data::{AnalysisData, DeclaratorSemantics};
+use crate::types::data::DeclaratorSemantics;
 
-pub(super) fn validate(data: &AnalysisData, program: &Program<'_>, diags: &mut Vec<Diagnostic>) {
-    let mut walker = ClassStateFieldsValidator {
-        reactivity: &data.reactivity,
-        diags,
-    };
-    walker.visit_program(program);
-}
-
-struct ClassStateFieldsValidator<'a> {
-    reactivity: &'a ReactivitySemantics,
-    diags: &'a mut Vec<Diagnostic>,
-}
-
-impl<'a> Visit<'a> for ClassStateFieldsValidator<'_> {
-    fn visit_class(&mut self, class: &Class<'a>) {
-        check_class(class, self.reactivity, self.diags);
-        walk_class(self, class);
-    }
-}
-
-fn is_class_field_rune(reactivity: &ReactivitySemantics, node: OxcNodeId) -> bool {
+pub(super) fn is_class_field_rune(reactivity: &ReactivitySemantics, node: OxcNodeId) -> bool {
     match reactivity.declarator_semantics(node) {
         DeclaratorSemantics::ClassFieldState(_) | DeclaratorSemantics::ClassFieldDerived(_) => true,
         DeclaratorSemantics::None
@@ -51,7 +28,7 @@ fn is_class_field_rune(reactivity: &ReactivitySemantics, node: OxcNodeId) -> boo
     }
 }
 
-fn check_class<'a>(
+pub(super) fn check_class<'a>(
     class: &Class<'a>,
     reactivity: &ReactivitySemantics,
     diags: &mut Vec<Diagnostic>,

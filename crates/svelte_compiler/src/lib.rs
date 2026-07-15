@@ -107,6 +107,10 @@ fn validate_compile_options(options: &CompileOptions, diagnostics: &mut Vec<Diag
 
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     let candidate_name = options.component_name();
+    let preprocessor_map = options
+        .preprocessor_map
+        .as_deref()
+        .and_then(svelte_sourcemap::parse_input_map);
 
     let js_alloc = oxc_allocator::Allocator::default();
     let (mut component, js_result, mut diagnostics) =
@@ -166,7 +170,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             let css_source = component.source_text(css_block.content_span);
             let needs_map = options.sourcemap_kind.is_enabled() && (!inject_styles || options.dev);
             if needs_map {
-                let (raw_css, raw_map) = svelte_transform_css::transform_css_with_sourcemap(
+                let (raw_css, mut raw_map) = svelte_transform_css::transform_css_with_sourcemap(
                     &analysis.output.css.hash,
                     &analysis.output.css.keyframes,
                     Some(&analysis.output.css.used_selectors),
@@ -175,6 +179,26 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                     css_source,
                     &options.filename,
                 );
+                let css_output_filename = options.css_output_filename.as_deref();
+                let css_source_name =
+                    svelte_sourcemap::get_source_name(&options.filename, css_output_filename);
+                let css_file = svelte_sourcemap::get_basename(
+                    css_output_filename.unwrap_or(&options.filename),
+                );
+                raw_map.set_file(css_file);
+                raw_map.set_sources([css_source_name.as_str()]);
+                if let Some(preprocessor) = preprocessor_map.as_ref() {
+                    let (line, col) =
+                        svelte_span::LineIndex::new(source).line_col(css_block.content_span.start);
+                    let base_offset = (line.saturating_sub(1) as u32, col as u32);
+                    raw_map = svelte_sourcemap::merge_with_preprocessor(
+                        raw_map,
+                        preprocessor,
+                        &options.filename,
+                        &css_source_name,
+                        base_offset,
+                    );
+                }
                 if inject_styles {
                     let mut compacted = svelte_transform_css::compact_css_for_injection(&raw_css);
                     if options.dev && !compacted.is_empty() {
@@ -184,11 +208,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                     css_text = Some(compacted);
                 } else {
                     css_text = Some(raw_css);
-                    let target = options
-                        .css_output_filename
-                        .as_deref()
-                        .unwrap_or(&options.filename);
-                    css_map = Some(sourcemap_finalize::finalize_css(raw_map, target));
+                    css_map = Some(raw_map);
                 }
             } else {
                 let raw_css = svelte_transform_css::transform_css_with_usage(
@@ -214,7 +234,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 css_text.map(|code| svelte_sourcemap::CssOutput {
                     code,
                     map: css_map,
-                    has_global: false,
+                    has_global: analysis.output.css.has_global,
                 }),
                 None,
             )
@@ -240,6 +260,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             };
             let codegen_options = svelte_types::CodegenOptions {
                 dev: options.dev,
+                hmr: options.hmr,
                 experimental_async: options.experimental.async_,
                 filename: filename_relative_to_root_dir(
                     &options.filename,
@@ -308,7 +329,15 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     let source_name =
         svelte_sourcemap::get_source_name(&options.filename, options.output_filename.as_deref());
     CompileResult {
-        js: js.map(|out| sourcemap_finalize::finalize_js(out, source, &source_name)),
+        js: js.map(|out| {
+            sourcemap_finalize::finalize_js(
+                out,
+                source,
+                &options.filename,
+                &source_name,
+                preprocessor_map.as_ref(),
+            )
+        }),
         css,
         diagnostics,
     }
@@ -378,8 +407,18 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
     } else {
         svelte_sourcemap::get_basename(&filename).to_string()
     };
+    let preprocessor_map = options
+        .preprocessor_map
+        .as_deref()
+        .and_then(svelte_sourcemap::parse_input_map);
     CompileResult {
-        js: Some(sourcemap_finalize::finalize_js(js, source, &source_name)),
+        js: Some(sourcemap_finalize::finalize_js(
+            js,
+            source,
+            &filename,
+            &source_name,
+            preprocessor_map.as_ref(),
+        )),
         css: None,
         diagnostics,
     }

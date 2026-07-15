@@ -188,6 +188,20 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
         }
     }
 
+    pub fn duplicate_with_context(&self, read_context: ReadContext) -> Self {
+        Self {
+            scoping: self.scoping,
+            semantics: self.semantics,
+            reactivity: self.reactivity,
+            snippets: self.snippets,
+            bindings_init: self.bindings_init.clone(),
+            function_decls: self.function_decls.clone(),
+            read_context,
+            dev: self.dev,
+            binding_depth: Cell::new(0),
+        }
+    }
+
     pub fn evaluate(&self, expr: &Expression<'_>) -> Evaluation {
         let mut guard: FxHashSet<OxcNodeId> = FxHashSet::default();
         set_to_evaluation(eval_set(expr, self, &mut guard))
@@ -281,8 +295,12 @@ fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
 fn collect_bindings_init<'c, 'a>(
     parsed: &'c JsAst<'a>,
 ) -> (FxHashMap<SymbolId, &'c Expression<'a>>, FxHashSet<SymbolId>) {
-    let mut map: FxHashMap<SymbolId, &'c Expression<'a>> = FxHashMap::default();
-    let mut fn_decls: FxHashSet<SymbolId> = FxHashSet::default();
+    let cap = parsed.program.as_ref().map_or(0, |p| p.body.len())
+        + parsed.module_program.as_ref().map_or(0, |p| p.body.len());
+    let mut map: FxHashMap<SymbolId, &'c Expression<'a>> =
+        FxHashMap::with_capacity_and_hasher(cap, Default::default());
+    let mut fn_decls: FxHashSet<SymbolId> =
+        FxHashSet::with_capacity_and_hasher(cap, Default::default());
 
     fn ingest_var_decl<'c, 'a>(
         vd: &'c VariableDeclaration<'a>,
@@ -534,10 +552,7 @@ impl<'e, 'a> ConsoleStateWalk<'e, 'a> {
                 .and_then(|ref_id| self.scoping.symbol_for_reference(ref_id))
                 .map(|sym| self.evaluation(sym).has_unknown() || self.semantics.is_mutated(sym))
                 .unwrap_or(true),
-            Expression::UnaryExpression(unary) => self.arg_has_unknown(&unary.argument),
-            Expression::BinaryExpression(binary) => {
-                self.arg_has_unknown(&binary.left) || self.arg_has_unknown(&binary.right)
-            }
+            Expression::UnaryExpression(_) | Expression::BinaryExpression(_) => false,
             _ => true,
         }
     }
@@ -567,6 +582,12 @@ fn collect_console_state_calls<'a>(
         .flatten()
     {
         walker.visit_program(prog);
+    }
+    for expression in parsed.iter_exprs() {
+        walker.visit_expression(expression);
+    }
+    for statement in parsed.iter_stmts() {
+        walker.visit_statement(statement);
     }
     walker.calls
 }
@@ -1064,6 +1085,14 @@ fn eval_identifier(
     ctx: &ValueEvaluator<'_, '_>,
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
+    if let Some(ref_id) = ident.reference_id.get()
+        && ctx
+            .reactivity
+            .reference_semantics(ref_id)
+            .is_store_subscription()
+    {
+        return smallvec![EvalAtom::Unknown];
+    }
     let Some(sym) = ctx.semantics.symbol_for_identifier_reference(ident) else {
         if ident.name.as_str() == "undefined" {
             return smallvec![EvalAtom::Known(KnownValue::Undefined)];
@@ -1098,9 +1127,10 @@ fn eval_identifier(
     let result = eval_binding_init(sym, init_expr, ctx, guard);
     ctx.binding_depth.set(ctx.binding_depth.get() - 1);
     guard.remove(&init_node_id);
-    let optimized_or_runtime_rune = match ctx.reactivity.binding_semantics(sym) {
-        BindingSemantics::OptimizedRune(_) | BindingSemantics::RuntimeRune { .. } => true,
-        BindingSemantics::Prop(_)
+    let runtime_rune = match ctx.reactivity.binding_semantics(sym) {
+        BindingSemantics::RuntimeRune { .. } => true,
+        BindingSemantics::OptimizedRune(_)
+        | BindingSemantics::Prop(_)
         | BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedDerived(_)
@@ -1115,7 +1145,7 @@ fn eval_identifier(
         | BindingSemantics::Unresolved => false,
     };
     if ctx.read_context == ReadContext::Runtime
-        && optimized_or_runtime_rune
+        && runtime_rune
         && result
             .iter()
             .all(|a| matches!(a, EvalAtom::Known(KnownValue::Undefined)))
