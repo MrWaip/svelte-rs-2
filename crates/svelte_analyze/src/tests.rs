@@ -9463,7 +9463,7 @@ const s = writable(0);</script>
 
     #[test]
     fn element_bind_checked_bindable_prop() {
-        let source = r#"<script>let { checked = $bindable() } = $props();</script><input bind:checked={checked} />"#;
+        let source = r#"<script>let { checked = $bindable() } = $props();</script><input type="checkbox" bind:checked={checked} />"#;
         let (component, data) = analyze_source(source);
         let attr_id = find_element_bind(&component, "input", "checked").expect("attr");
 

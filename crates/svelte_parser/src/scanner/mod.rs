@@ -2048,15 +2048,13 @@ impl<'a> Scanner<'a> {
         }
 
         if self.is_at_end() {
-            if self.slice_source(start, self.current).trim().is_empty() {
-                let len = self.bytes.len() as u32;
-                self.recover(Diagnostic::error(
-                    svelte_diagnostics::DiagnosticKind::ExpectedToken {
-                        token: "</style".into(),
-                    },
-                    Span::new(len, len),
-                ));
-            }
+            let len = self.bytes.len() as u32;
+            self.recover(Diagnostic::error(
+                svelte_diagnostics::DiagnosticKind::ExpectedToken {
+                    token: "</style".into(),
+                },
+                Span::new(len, len),
+            ));
 
             self.add_token(TokenType::StyleTag(token::StyleTag {
                 content_span: self.span(start, self.current),

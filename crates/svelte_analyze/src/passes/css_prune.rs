@@ -272,7 +272,7 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
         let mut rule_has_global_selectors = false;
         for complex in &node.prelude.children {
             let plan = build_rule_selector_rewrite(complex, &rule_ctx);
-            rule_has_global_selectors |= plan.is_all_global;
+            rule_has_global_selectors |= complex_is_literally_global(complex);
 
             if was_global || plan.is_all_global {
                 self.used.insert(plan.complex_id);
@@ -625,6 +625,14 @@ fn is_all_global(selectors: &[RelativeSelector], rule_ctx: &RuleContext<'_>) -> 
     selectors
         .iter()
         .all(|selector| is_global(selector, rule_ctx))
+}
+
+fn complex_is_literally_global(complex: &ComplexSelector) -> bool {
+    !complex.children.is_empty()
+        && complex
+            .children
+            .iter()
+            .all(|relative| is_global_relative(relative) || is_global_like(relative))
 }
 
 fn is_global_like(relative: &RelativeSelector) -> bool {

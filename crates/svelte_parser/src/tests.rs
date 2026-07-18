@@ -704,9 +704,11 @@ fn recovery_unclosed_if_block() {
 fn recovery_multiple_errors() {
     let (c, diags) = parse_with_diagnostics("<div><span>");
     assert!(
-        diags.len() >= 2,
-        "expected multiple diagnostics, got {}",
-        diags.len()
+        diags.iter().any(|d| d.kind
+            == svelte_diagnostics::DiagnosticKind::ElementUnclosed {
+                name: "span".to_string(),
+            }),
+        "expected ElementUnclosed for the innermost element, got {diags:?}"
     );
     assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
 }

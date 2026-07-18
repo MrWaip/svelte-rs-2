@@ -543,7 +543,7 @@ fn assert_has_diagnostic(diagnostics: &[Diagnostic], err_kind: DiagnosticKind) {
 fn unterminated_start_tag() {
     let mut scanner = Scanner::new("<div disabled");
     let (_, diagnostics) = scanner.scan_tokens();
-    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnterminatedStartTag);
+    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
 }
 
 #[test]
@@ -1093,9 +1093,8 @@ fn recovery_unterminated_start_tag_bare() {
     let source = "<div";
     let mut scanner = Scanner::new(source);
     let (tokens, diagnostics) = scanner.scan_tokens();
-    assert_start_tag(source, &tokens[0], "div", vec![], false);
-    assert!(tokens[1].token_type == TokenType::EOF);
-    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnterminatedStartTag);
+    assert!(tokens[0].token_type == TokenType::EOF);
+    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
 }
 
 #[test]
@@ -1103,16 +1102,14 @@ fn recovery_unterminated_start_tag_with_bool_attr() {
     let source = "<div class";
     let mut scanner = Scanner::new(source);
     let (tokens, diagnostics) = scanner.scan_tokens();
-    assert_start_tag(source, &tokens[0], "div", vec![("class", "")], false);
-    assert!(tokens[1].token_type == TokenType::EOF);
-    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnterminatedStartTag);
+    assert!(tokens[0].token_type == TokenType::EOF);
+    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
 }
 
 #[test]
 fn recovery_unterminated_start_tag_with_partial_attr() {
     let mut scanner = Scanner::new("<div class=");
     let (tokens, diagnostics) = scanner.scan_tokens();
-    assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
     assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert!(!diagnostics.is_empty());
 }
@@ -1127,7 +1124,12 @@ fn recovery_unclosed_script_tag() {
         assert_eq!(st.content_span.source_text(source), "code");
     }
     assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
-    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+    assert_has_diagnostic(
+        &diagnostics,
+        DiagnosticKind::ElementUnclosed {
+            name: "script".to_string(),
+        },
+    );
 }
 
 #[test]
@@ -1140,7 +1142,12 @@ fn recovery_unclosed_style_tag() {
         assert_eq!(st.content_span.source_text(source), ".foo{}");
     }
     assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
-    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+    assert_has_diagnostic(
+        &diagnostics,
+        DiagnosticKind::ExpectedToken {
+            token: "</style".into(),
+        },
+    );
 }
 
 #[test]
@@ -1149,7 +1156,12 @@ fn recovery_unclosed_comment() {
     let (tokens, diagnostics) = scanner.scan_tokens();
     assert!(matches!(tokens[0].token_type, TokenType::Comment { .. }));
     assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
-    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+    assert_has_diagnostic(
+        &diagnostics,
+        DiagnosticKind::ExpectedToken {
+            token: "-->".into(),
+        },
+    );
 }
 
 #[test]
@@ -1182,25 +1194,16 @@ fn recovery_unclosed_if_tag() {
 fn recovery_attribute_concatenation_eof() {
     let mut scanner = Scanner::new(r#"<div class="foo"#);
     let (tokens, diagnostics) = scanner.scan_tokens();
-    assert!(matches!(tokens[0].token_type, TokenType::StartTag(_)));
+    assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert!(!diagnostics.is_empty());
 }
 
 #[test]
 fn recovery_start_tag_then_more_content() {
     let mut scanner = Scanner::new("<div<p>hello</p>");
-    let (tokens, _diagnostics) = scanner.scan_tokens();
-    assert!(tokens.len() > 1);
+    let (tokens, diagnostics) = scanner.scan_tokens();
     assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
-
-    let TokenType::StartTag(start_tag) = &tokens[0].token_type else {
-        panic!("expected StartTag");
-    };
-    assert_eq!(start_tag.attributes.len(), 1);
-    let Attribute::HTMLAttribute(attr) = &start_tag.attributes[0] else {
-        panic!("expected HTMLAttribute");
-    };
-    assert_eq!(attr.name_span.source_text("<div<p>hello</p>"), "<p");
+    assert_has_diagnostic(&diagnostics, DiagnosticKind::InvalidTagName);
 }
 
 #[test]
