@@ -126,6 +126,12 @@ function normalizeInputMap(value) {
   return JSON.stringify(value);
 }
 
+function normalizeSuppress(value) {
+  if (!Array.isArray(value)) return undefined;
+  const codes = value.filter((code) => typeof code === 'string');
+  return codes.length ? codes : undefined;
+}
+
 function normalizeCompileOptions(options = {}) {
   assertSupportedOptions(options);
 
@@ -152,7 +158,8 @@ function normalizeCompileOptions(options = {}) {
         : undefined,
     experimentalAsync: Boolean(options.experimental?.async),
     generate: normalizeGenerate(options.generate),
-    sourcemap: normalizeInputMap(options.sourcemap)
+    sourcemap: normalizeInputMap(options.sourcemap),
+    suppress: normalizeSuppress(options.suppress)
   };
 }
 
@@ -164,7 +171,8 @@ function normalizeModuleCompileOptions(options = {}) {
     filename: typeof options.filename === 'string' ? options.filename : '(unknown)',
     rootDir: typeof options.rootDir === 'string' ? options.rootDir : undefined,
     generate: normalizeGenerate(options.generate),
-    sourcemap: normalizeInputMap(options.sourcemap)
+    sourcemap: normalizeInputMap(options.sourcemap),
+    suppress: normalizeSuppress(options.suppress)
   };
 }
 
@@ -185,27 +193,7 @@ function normalizeDiagnostic(diagnostic, filenameFallback) {
   };
 }
 
-function normalizeCompileResponse(nativeResult, filename, optionWarnings = []) {
-  const warnings = [...optionWarnings];
-  const errors = [];
-
-  for (const diagnostic of nativeResult.diagnostics ?? []) {
-    const normalized = normalizeDiagnostic(diagnostic, filename ?? null);
-    if (diagnostic.severity === 'Error') {
-      errors.push(normalized);
-    } else {
-      warnings.push(normalized);
-    }
-  }
-
-  if (errors.length > 0) {
-    const error = new Error(errors[0].message || 'Compilation failed');
-    error.code = errors[0].code;
-    error.warnings = warnings;
-    error.diagnostics = errors;
-    throw error;
-  }
-
+function buildOutputs(nativeResult) {
   return {
     js:
       nativeResult.js == null
@@ -222,7 +210,6 @@ function normalizeCompileResponse(nativeResult, filename, optionWarnings = []) {
             map: toSourceMap(nativeResult.css.map),
             hasGlobal: nativeResult.css.hasGlobal ?? null
           },
-    warnings,
     metadata: {
       canary: true,
       hasCss: nativeResult.css != null,
@@ -230,9 +217,52 @@ function normalizeCompileResponse(nativeResult, filename, optionWarnings = []) {
         ast: 'not_returned',
         unsupportedOptions: ['ast', 'outputFilename']
       }
-    },
-    ast: null
+    }
   };
+}
+
+function normalizeCompileResponse(nativeResult, filename, optionWarnings = [], extra = {}) {
+  const { withDiagnostics = false, warningFilter } = extra;
+  const keepWarning = (warning) =>
+    typeof warningFilter !== 'function' || Boolean(warningFilter(warning));
+  const { js, css, metadata } = buildOutputs(nativeResult);
+
+  if (withDiagnostics) {
+    const diagnostics = [];
+    for (const warning of optionWarnings) {
+      const normalized = { ...warning, severity: 'warning' };
+      if (keepWarning(normalized)) diagnostics.push(normalized);
+    }
+    for (const diagnostic of nativeResult.diagnostics ?? []) {
+      const severity = diagnostic.severity === 'Error' ? 'error' : 'warning';
+      const normalized = { ...normalizeDiagnostic(diagnostic, filename ?? null), severity };
+      if (severity === 'warning' && !keepWarning(normalized)) continue;
+      diagnostics.push(normalized);
+    }
+    return { js, css, diagnostics, metadata, ast: null };
+  }
+
+  const warnings = optionWarnings.filter(keepWarning);
+  const errors = [];
+
+  for (const diagnostic of nativeResult.diagnostics ?? []) {
+    const normalized = normalizeDiagnostic(diagnostic, filename ?? null);
+    if (diagnostic.severity === 'Error') {
+      errors.push(normalized);
+    } else if (keepWarning(normalized)) {
+      warnings.push(normalized);
+    }
+  }
+
+  if (errors.length > 0) {
+    const error = new Error(errors[0].message || 'Compilation failed');
+    error.code = errors[0].code;
+    error.warnings = warnings;
+    error.diagnostics = errors;
+    throw error;
+  }
+
+  return { js, css, warnings, metadata, ast: null };
 }
 
 export function compile(source, options = {}) {
@@ -243,7 +273,10 @@ export function compile(source, options = {}) {
   const normalizedOptions = normalizeCompileOptions(options);
   const optionWarnings = collectOptionWarnings(options);
   const nativeResult = native.compile(source, normalizedOptions);
-  return normalizeCompileResponse(nativeResult, normalizedOptions.filename, optionWarnings);
+  return normalizeCompileResponse(nativeResult, normalizedOptions.filename, optionWarnings, {
+    withDiagnostics: Boolean(options.withDiagnostics),
+    warningFilter: options.warningFilter
+  });
 }
 
 export function compileModule(source, options = {}) {
@@ -254,5 +287,8 @@ export function compileModule(source, options = {}) {
   const normalizedOptions = normalizeModuleCompileOptions(options);
   const optionWarnings = collectOptionWarnings(options);
   const nativeResult = native.compileModule(source, normalizedOptions);
-  return normalizeCompileResponse(nativeResult, normalizedOptions.filename, optionWarnings);
+  return normalizeCompileResponse(nativeResult, normalizedOptions.filename, optionWarnings, {
+    withDiagnostics: Boolean(options.withDiagnostics),
+    warningFilter: options.warningFilter
+  });
 }

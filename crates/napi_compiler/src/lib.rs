@@ -63,6 +63,7 @@ pub struct NativeCompileOptions {
     pub experimental_async: Option<bool>,
     pub generate: Option<String>,
     pub sourcemap: Option<String>,
+    pub suppress: Option<Vec<String>>,
 }
 
 #[napi(object)]
@@ -73,6 +74,7 @@ pub struct NativeModuleCompileOptions {
     pub root_dir: Option<String>,
     pub generate: Option<String>,
     pub sourcemap: Option<String>,
+    pub suppress: Option<Vec<String>>,
 }
 
 #[napi]
@@ -176,6 +178,9 @@ fn to_compile_options(native: NativeCompileOptions) -> CompileOptions {
     if let Some(value) = native.sourcemap {
         options.preprocessor_map = Some(value);
     }
+    if let Some(value) = native.suppress {
+        options.suppress = value;
+    }
     options
 }
 
@@ -195,6 +200,9 @@ fn to_module_compile_options(native: NativeModuleCompileOptions) -> ModuleCompil
     }
     if let Some(value) = native.sourcemap {
         options.preprocessor_map = Some(value);
+    }
+    if let Some(value) = native.suppress {
+        options.suppress = value;
     }
     options
 }

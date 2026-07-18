@@ -146,6 +146,45 @@ mod tests {
         );
     }
 
+    fn warning_codes_in_dts(content: &str) -> Vec<String> {
+        let start = content
+            .find("export type WarningCode =")
+            .expect("WarningCode union present");
+        let rest = &content[start..];
+        let end = rest.find(';').expect("union terminator");
+        let body = &rest[..end];
+        let parts: Vec<&str> = body.split('\'').collect();
+        let mut codes = Vec::new();
+        let mut i = 1;
+        while i < parts.len() {
+            codes.push(parts[i].to_string());
+            i += 2;
+        }
+        codes
+    }
+
+    #[test]
+    fn warning_code_union_in_sync_with_all_warning_codes() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let path = manifest_dir.join("../../packages/svelte-rs2/compiler/index.d.ts");
+        let Ok(content) = fs::read_to_string(&path) else {
+            return;
+        };
+        let mut union = warning_codes_in_dts(&content);
+        union.sort();
+        let mut reference: Vec<String> = DiagnosticKind::all_warning_codes()
+            .iter()
+            .map(|code| code.to_string())
+            .collect();
+        reference.sort();
+        assert_eq!(
+            union,
+            reference,
+            "WarningCode union in {} drifted from DiagnosticKind::all_warning_codes(); regenerate it",
+            path.display()
+        );
+    }
+
     #[test]
     fn fuzzymatch_returns_none_for_distant() {
         let codes = DiagnosticKind::all_warning_codes();

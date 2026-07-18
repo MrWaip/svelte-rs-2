@@ -14,6 +14,16 @@ pub struct CompileResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+fn apply_suppress(diagnostics: &mut Vec<Diagnostic>, suppress: &[String]) {
+    if suppress.is_empty() {
+        return;
+    }
+    diagnostics.retain(|diagnostic| {
+        diagnostic.severity != svelte_diagnostics::Severity::Warning
+            || !suppress.iter().any(|code| code == diagnostic.kind.code())
+    });
+}
+
 fn filename_relative_to_root_dir(filename: &str, root_dir: Option<&str>) -> String {
     let normalized = filename.replace('\\', "/");
     let Some(rd) = root_dir else {
@@ -272,6 +282,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 dev: options.dev,
                 hmr: options.hmr,
                 experimental_async: options.experimental.async_,
+                disclose_version: options.disclose_version,
                 filename: filename_relative_to_root_dir(
                     &options.filename,
                     options.root_dir.as_deref(),
@@ -336,6 +347,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     };
 
     diagnostics.extend(analyze_diags);
+    apply_suppress(&mut diagnostics, &options.suppress);
     let source_name =
         svelte_sourcemap::get_source_name(&options.filename, options.output_filename.as_deref());
     CompileResult {
@@ -359,8 +371,9 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
 
     let js_alloc = oxc_allocator::Allocator::default();
 
-    let (analysis, mut parsed, diagnostics) =
+    let (analysis, mut parsed, mut diagnostics) =
         svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
+    apply_suppress(&mut diagnostics, &options.suppress);
 
     if options.generate == GenerateMode::False
         || diagnostics

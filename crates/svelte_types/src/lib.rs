@@ -23,6 +23,7 @@ pub struct CodegenOptions {
     pub dev: bool,
     pub hmr: bool,
     pub experimental_async: bool,
+    pub disclose_version: bool,
     pub filename: String,
     pub sourcemap_kind: SourcemapKind,
 }

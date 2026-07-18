@@ -22,6 +22,9 @@ mod css_global_combinator;
 #[path = "clusters/hmr.rs"]
 mod hmr;
 
+#[path = "clusters/disclose_version.rs"]
+mod disclose_version;
+
 #[path = "clusters/spread_class.rs"]
 mod spread_class;
 #[path = "clusters/spread_default_value.rs"]

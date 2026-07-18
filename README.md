@@ -46,7 +46,7 @@ This is still a work in progress and is not yet at full feature parity with `sve
 | TypeScript | done | Script stripping only — no type checking. |
 | `.svelte.js` / `.svelte.ts` modules | done | — |
 | Custom elements | in progress | Basic path works; some option combinations not covered. |
-| Compiler options | in progress | Most common options honored; long tail (`discloseVersion`, etc.) still landing. |
+| Compiler options | in progress | Most common options honored (incl. `discloseVersion`, `warningFilter`); long tail still landing. |
 | Dev mode (`dev: true`) | done | Byte-exact diff across ~1,200 client-dev cases; server-dev too. Some ownership/hydration diagnostics still land case-by-case. |
 | SSR (`generate: 'server'`) | done | Server transform + codegen (prod & dev). Byte-exact diff across ~1,200 server cases. |
 | Source maps | done | `js.map` / `css.map` emitted; `sourcemap` option honored. |
@@ -89,6 +89,12 @@ console.log(js.code);
 ```
 
 API mirrors `svelte/compiler`. Unsupported options (`ast`, `outputFilename`) throw; see `packages/svelte-rs2/compiler/index.d.ts`.
+
+Beyond the reference API, a few opt-in extras are available:
+
+- **`warningFilter: (warning) => boolean`** — matches Svelte 5's option; drops warnings the predicate rejects.
+- **`suppress: WarningCode[]`** — a typed list of warning codes dropped at the source (the `WarningCode` union covers every emittable warning). Cheaper than filtering after the fact: suppressed warnings are never built, framed, or serialized.
+- **`withDiagnostics: true`** — returns `{ js, css, diagnostics }` where each diagnostic carries `severity: 'error' | 'warning'`, and **never throws** on error (instead of the default throw-first-error behavior). Handy for editors, linters, and batch tooling that want every error in one pass.
 
 Want to see real input → output? Browse [`tasks/compiler_tests/cases2/`](./tasks/compiler_tests/cases2) — each folder has `case.svelte` (input) plus our output and the reference for every mode: `case-rust.js` / `case-svelte.js` (client), `.dev.js`, `.server.js`, `.server.dev.js`. ~1,200 cases, byte-diffed.
 
