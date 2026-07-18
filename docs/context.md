@@ -31,6 +31,7 @@
 Справочники и дизайны:
 
 - `bindings-and-references.md` — система идентификаторов: биндинг/ссылка, `SymbolId`/`ReferenceId`, дерево `BindingPattern`, `walk_bindings`, OXC API.
+- `declaration-tag.md` — сквозная фича declaration-тега (`{const}`/`{let}`): узел, scanner, классификация по инициализатору, кодген verbatim; контраст с const-тегом.
 - `destructuring.md` — дочерний PRD `reactivity-semantics`: обход паттернов (`walk_bindings` / `walk_assignment_targets`), разворот объявлений, деструктур-присваивание, формы ключа `$props()`.
 - `designs/analyze-js-visitor-bundle.md` — дизайн (через `/design`) fan-out одного обхода JS-AST в слое `analyze`; читать, если scope пересекается.
 
@@ -119,6 +120,9 @@ _Avoid_: блок, элемент, голое «тег».
 
 **const-тег** *(en: const tag, `ConstTag`)* — @-тег `{@const name = expr}`, объявляющий локальное значение для потомков фрагмента.
 _Avoid_: const, const block.
+
+**declaration-тег** *(en: declaration tag, `DeclarationTag`)* — шаблонная декларация `{const name = expr}` / `{let name = expr}` без `@`, объявляющая локальный биндинг для потомков фрагмента; преемник **const-тега**, runes-mode-only. В отличие от const-тега допускает `let` (переприсваиваемый) и руны в инициализаторе (`{let c = $state(0)}`, `{let d = $derived(c*2)}`). Инварианты (узел, scanner, классификация, кодген) — `declaration-tag.md`.
+_Avoid_: const-тег (это @-тег `{@const}`), declaration block, let-тег, @-тег (у declaration-тега нет `@`).
 
 **Атрибут** *(en: attribute; кластер `AttributeSemantics`)* — пара «имя=значение» на элементе (`name="..."`, `name={expr}`, `name`, `{shorthand}`, `{...rest}`).
 _Avoid_: директива.
