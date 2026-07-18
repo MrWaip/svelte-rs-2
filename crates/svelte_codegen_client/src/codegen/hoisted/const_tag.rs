@@ -100,7 +100,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 }
 
-fn build_blocker_thunks<'a>(ctx: &mut Ctx<'a>, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
+pub(super) fn build_blocker_thunks<'a>(
+    ctx: &mut Ctx<'a>,
+    blockers: &[u32],
+    thunks: &mut Vec<Expression<'a>>,
+) {
     if blockers.is_empty() {
         return;
     }

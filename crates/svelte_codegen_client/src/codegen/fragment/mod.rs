@@ -167,9 +167,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        for &id in &bucket.declaration_tags {
-            self.emit_hoisted_declaration_tag(state, id)?;
-        }
+        let declaration_tag_ids: SmallVec<[NodeId; 2]> =
+            bucket.declaration_tags.iter().copied().collect();
+        self.emit_declaration_tags(state, &declaration_tag_ids)?;
 
         let multi_first_is_block = matches!(
             &strategy,

@@ -9,11 +9,7 @@ compiler_case!(destructure_object, "declaration_tag/destructure_object");
 compiler_case!(destructure_array, "declaration_tag/destructure_array");
 compiler_case!(let_uninitialized, "declaration_tag/let_uninitialized");
 compiler_case!(top_level, "declaration_tag/top_level");
-compiler_case!(
-    async_await,
-    "declaration_tag/async_await",
-    ignore = "declaration-tag: unimplemented async (svelte 5.56.4)"
-);
+compiler_case!(async_await, "declaration_tag/async_await");
 
 compiler_case!(root_state_derived, "declaration_tag/root_state_derived");
 compiler_case!(in_if_block, "declaration_tag/in_if_block");

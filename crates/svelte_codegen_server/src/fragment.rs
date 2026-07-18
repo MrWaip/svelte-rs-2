@@ -198,12 +198,11 @@ impl<'a> ServerCodegen<'a> {
 
     pub(crate) fn emit_fragment_declaration_tags(&mut self, id: FragmentId) -> Result<()> {
         let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
-        for nid in node_ids {
-            if matches!(self.component.store.get(nid), Node::DeclarationTag(_)) {
-                self.declaration_tag(nid)?;
-            }
-        }
-        Ok(())
+        let declaration_tags: Vec<NodeId> = node_ids
+            .into_iter()
+            .filter(|&nid| matches!(self.component.store.get(nid), Node::DeclarationTag(_)))
+            .collect();
+        self.emit_declaration_tags(&declaration_tags)
     }
 
     pub(crate) fn emit_fragment_const_tags_hoisted(&mut self, id: FragmentId) -> Result<()> {

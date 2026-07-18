@@ -107,7 +107,7 @@ impl<'a> ServerCodegen<'a> {
         Ok((symbol, name, value))
     }
 
-    fn push_blocker_thunk(&self, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
+    pub(crate) fn push_blocker_thunk(&self, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
         if blockers.is_empty() {
             return;
         }
