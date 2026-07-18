@@ -35,6 +35,14 @@ async function loadCompile() {
             return result;
         };
     }
+    if (compiler === 'rsvelte') {
+        const mod = await import('@rsvelte/vite-plugin-svelte-native');
+        return (src, options) => {
+            const result = mod.compile(src, options);
+            if (!result || !result.js) throw new Error('no js output');
+            return result;
+        };
+    }
     throw new Error(`unknown compiler: ${compiler}`);
 }
 

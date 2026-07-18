@@ -14,5 +14,8 @@
     "oxc-transform": "0.129.0",
     "svelte": "5.56.4",
     "terser": "^5.36.0"
+  },
+  "optionalDependencies": {
+    "@rsvelte/vite-plugin-svelte-native": "0.2.6"
   }
 }
