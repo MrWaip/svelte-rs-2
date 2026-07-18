@@ -44,7 +44,7 @@ jobs:
           echo "Using npm version: $VERSION"
 
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.label }}
     needs: version
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -52,23 +52,31 @@ jobs:
       matrix:
         include:
           - target: x86_64-apple-darwin
+            label: darwin-x64
             runner: macos-latest
           - target: aarch64-apple-darwin
+            label: darwin-arm64
             runner: macos-latest
           - target: x86_64-pc-windows-msvc
+            label: win32-x64-msvc
             runner: windows-latest
           - target: aarch64-pc-windows-msvc
+            label: win32-arm64-msvc
             runner: windows-latest
           - target: x86_64-unknown-linux-gnu
+            label: linux-x64-gnu
             runner: ubuntu-24.04
             cross: napi-cross
           - target: aarch64-unknown-linux-gnu
+            label: linux-arm64-gnu
             runner: ubuntu-24.04
-            cross: napi-cross
+            cross: zig
           - target: x86_64-unknown-linux-musl
+            label: linux-x64-musl
             runner: ubuntu-24.04
             cross: zig
           - target: aarch64-unknown-linux-musl
+            label: linux-arm64-musl
             runner: ubuntu-24.04
             cross: zig
     steps:
