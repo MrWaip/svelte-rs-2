@@ -1,3 +1,4 @@
+use compact_str::CompactString;
 use smallvec::SmallVec;
 use svelte_ast::{NodeId, OxcNodeId};
 
@@ -44,6 +45,7 @@ pub enum LegacyDefaultSlot {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RegularElementSemantics {
+    pub name: CompactString,
     pub async_kind: ElementAsyncKind,
     pub value_role: ElementValueRole,
     pub replay_events: SmallVec<[ElementReplayEvent; 2]>,

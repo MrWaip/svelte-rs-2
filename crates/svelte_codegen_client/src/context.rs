@@ -370,6 +370,17 @@ impl<'a> Ctx<'a> {
             | ElementSemantics::LegacyComponentSlots(_) => false,
         }
     }
+    pub fn element_name(&self, id: NodeId) -> Option<&str> {
+        match self.query.analysis.element_semantics.query(id) {
+            ElementSemantics::RegularElement(sem) => Some(sem.name.as_str()),
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_)
+            | ElementSemantics::SvelteElement(_)
+            | ElementSemantics::LegacySlot(_)
+            | ElementSemantics::LegacyComponentSlots(_) => None,
+        }
+    }
     pub fn needs_var(&self, id: NodeId) -> bool {
         self.query.view.needs_var(id)
     }

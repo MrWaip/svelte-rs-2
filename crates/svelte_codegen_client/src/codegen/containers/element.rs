@@ -98,7 +98,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             _ => return CodegenError::unexpected_node(el_id, "Element"),
         };
 
-        let el_name_hint = el.name.clone();
+        let el_name_hint = self
+            .ctx
+            .element_name(el_id)
+            .unwrap_or(el.name.as_str())
+            .to_string();
         let attributes: &'a [Attribute] = &el.attributes;
         let el_ns = self.element_namespace(el_id, ctx.namespace);
 
@@ -116,7 +120,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Some("") => String::new(),
             Some(name) => name.to_string(),
             None => {
-                let prefix = self.element_ident_prefix(&el_name_hint);
+                let prefix = self.element_ident_prefix(&el.name);
                 self.ctx.state.gen_ident(&prefix)
             }
         };

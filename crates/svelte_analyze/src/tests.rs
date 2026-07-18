@@ -1746,6 +1746,33 @@ fn template_element_index_tracks_css_candidates() {
     assert!(id_candidates.contains(&p.id));
 }
 
+#[track_caller]
+fn assert_element_name(data: &AnalysisData, component: &Component, raw: &str, expected: &str) {
+    let el = find_element(component.root, component, raw)
+        .unwrap_or_else(|| panic!("no element <{raw}>"));
+    let got = match data.element_semantics.query(el.id) {
+        crate::ElementSemantics::RegularElement(sem) => Some(sem.name.as_str()),
+        _ => None,
+    };
+    assert_eq!(
+        got,
+        Some(expected),
+        "canonical name for <{raw}>: expected {expected:?}, got {got:?}"
+    );
+}
+
+#[test]
+fn html_element_name_is_lowercased() {
+    let (component, data) = analyze_source("<dIV>hi</dIV>");
+    assert_element_name(&data, &component, "dIV", "div");
+}
+
+#[test]
+fn svg_element_name_preserves_case_guard() {
+    let (component, data) = analyze_source(r#"<svg><clipPath id="c"></clipPath></svg>"#);
+    assert_element_name(&data, &component, "clipPath", "clipPath");
+}
+
 #[test]
 fn attribute_presence_selector_scopes_only_matching_elements() {
     let (component, data) = analyze_source_with_css(

@@ -7,6 +7,9 @@ use compiler_tests::{compiler_case, compiler_module_case};
 #[path = "clusters/events.rs"]
 mod events;
 
+#[path = "clusters/element_name_casing.rs"]
+mod element_name_casing;
+
 #[path = "clusters/dev_element_locations.rs"]
 mod dev_element_locations;
 
