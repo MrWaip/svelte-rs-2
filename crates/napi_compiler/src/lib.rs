@@ -7,6 +7,9 @@ use svelte_compiler::{
 };
 use svelte_diagnostics::{Diagnostic, LineIndex};
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[napi(object)]
 pub struct NativeDiagnostic {
     pub code: String,
