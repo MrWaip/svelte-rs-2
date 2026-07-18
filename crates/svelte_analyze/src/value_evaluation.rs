@@ -1021,19 +1021,39 @@ fn eval_unary(
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     use UnaryOperator::*;
+    let arg = eval_set(&u.argument, ctx, guard);
+    if let Some(v) = single_known(&arg)
+        && let Some(folded) = fold_unary_known(u.operator, v)
+    {
+        return smallvec![EvalAtom::Known(folded)];
+    }
     match u.operator {
         LogicalNot | Delete => smallvec![EvalAtom::Class(ValueClass::Boolean)],
         Void => smallvec![EvalAtom::Known(KnownValue::Undefined)],
         Typeof => smallvec![EvalAtom::Class(ValueClass::String)],
-        UnaryNegation | UnaryPlus | BitwiseNot => {
-            let arg = eval_set(&u.argument, ctx, guard);
-            if let Some(v) = single_known(&arg)
-                && let Some(folded) = fold_unary_numeric(u.operator, v)
-            {
-                return smallvec![EvalAtom::Known(folded)];
-            }
-            smallvec![EvalAtom::Class(ValueClass::Number)]
-        }
+        UnaryNegation | UnaryPlus | BitwiseNot => smallvec![EvalAtom::Class(ValueClass::Number)],
+    }
+}
+
+fn fold_unary_known(op: UnaryOperator, v: &KnownValue) -> Option<KnownValue> {
+    use UnaryOperator::*;
+    match op {
+        Typeof => Some(KnownValue::Str(CompactString::from(known_typeof(v)))),
+        Void => Some(KnownValue::Undefined),
+        Delete => Some(KnownValue::Bool(true)),
+        LogicalNot => Some(KnownValue::Bool(is_falsy(v))),
+        UnaryNegation | UnaryPlus | BitwiseNot => fold_unary_numeric(op, v),
+    }
+}
+
+fn known_typeof(v: &KnownValue) -> &'static str {
+    match v {
+        KnownValue::Null => "object",
+        KnownValue::Undefined => "undefined",
+        KnownValue::Bool(_) => "boolean",
+        KnownValue::Num(_) => "number",
+        KnownValue::Str(_) => "string",
+        KnownValue::BigInt => "bigint",
     }
 }
 

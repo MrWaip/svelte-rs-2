@@ -3,8 +3,7 @@ use super::*;
 compiler_case!(const_in_element, "element_block_scope/const_in_element");
 compiler_case!(
     let_derived_in_element,
-    "element_block_scope/let_derived_in_element",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    "element_block_scope/let_derived_in_element"
 );
 compiler_case!(
     shadowing_in_element,
