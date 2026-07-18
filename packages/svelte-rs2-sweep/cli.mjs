@@ -123,8 +123,8 @@ for (const file of files) {
     continue;
   }
 
-  const ourJsRaw = stripComments(stripBanner(ours.js, isModule));
-  const theirJsRaw = stripComments(stripBanner(theirs.js, isModule));
+  const ourJsRaw = stripComments(stripBanner(canonicalizeInjectedCss(ours.js), isModule));
+  const theirJsRaw = stripComments(stripBanner(canonicalizeInjectedCss(theirs.js), isModule));
   const jsFormatted = await tryFormatBoth(formatJs, ourJsRaw, theirJsRaw);
   if (jsFormatted.kind === 'both-failed') {
     if (normalizeWs(ourJsRaw) === normalizeWs(theirJsRaw)) {
@@ -275,6 +275,50 @@ function formatCss(code) {
     minify: true
   });
   return out.toString('utf8');
+}
+
+function canonicalizeInjectedCss(js) {
+  if (!js || !js.includes('$$css')) return js;
+  let ast;
+  try {
+    ast = acornParse(js, { ecmaVersion: 'latest', sourceType: 'module' });
+  } catch {
+    return js;
+  }
+  const edits = [];
+  for (const stmt of ast.body) {
+    if (stmt.type !== 'VariableDeclaration') continue;
+    for (const decl of stmt.declarations) {
+      if (decl.id?.name !== '$$css' || decl.init?.type !== 'ObjectExpression') continue;
+      for (const prop of decl.init.properties) {
+        const keyName = prop.key?.name ?? prop.key?.value;
+        if (keyName !== 'code' || prop.value?.type !== 'Literal') continue;
+        if (typeof prop.value.value !== 'string') continue;
+        edits.push({ start: prop.value.start, end: prop.value.end, value: prop.value.value });
+      }
+    }
+  }
+  if (edits.length === 0) return js;
+  edits.sort((a, b) => b.start - a.start);
+  let out = js;
+  for (const e of edits) {
+    out = out.slice(0, e.start) + JSON.stringify(normalizeInjectedCss(e.value)) + out.slice(e.end);
+  }
+  return out;
+}
+
+function normalizeInjectedCss(css) {
+  const stripped = css.replace(/\/\*# sourceMappingURL=[\s\S]*$/, '').trimEnd();
+  try {
+    const { code } = lightningTransform({
+      filename: 'virtual.css',
+      code: Buffer.from(stripped),
+      minify: true
+    });
+    return code.toString('utf8');
+  } catch {
+    return stripped.replace(/\s+/g, ' ').trim();
+  }
 }
 
 function stripLineComments(code) {

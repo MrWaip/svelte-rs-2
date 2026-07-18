@@ -1,6 +1,85 @@
+use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, StyleSheet};
 use oxc_allocator::Allocator;
+use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey, Statement};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
+
+pub fn canonicalize_injected_css_in_js(js: &str) -> String {
+    let spans = find_injected_css_spans(js);
+    if spans.is_empty() {
+        return js.to_string();
+    }
+    let mut out = js.to_string();
+    for (start, end, css) in spans.into_iter().rev() {
+        let stripped = strip_css_sourcemap_comment(&css);
+        let canon = minify_css(stripped).unwrap_or_else(|| fallback_normalize_css(stripped));
+        let literal = serde_json::to_string(&canon).expect("string serializes");
+        out.replace_range(start..end, &literal);
+    }
+    out
+}
+
+fn find_injected_css_spans(js: &str) -> Vec<(usize, usize, String)> {
+    let allocator = Allocator::default();
+    let source_type = SourceType::default().with_module(true);
+    let parsed = Parser::new(&allocator, js, source_type).parse();
+
+    let mut result = Vec::new();
+    for stmt in &parsed.program.body {
+        let Statement::VariableDeclaration(decl) = stmt else {
+            continue;
+        };
+        for declarator in &decl.declarations {
+            let Some(Expression::ObjectExpression(obj)) = &declarator.init else {
+                continue;
+            };
+            for prop in &obj.properties {
+                let ObjectPropertyKind::ObjectProperty(prop) = prop else {
+                    continue;
+                };
+                let is_code =
+                    matches!(&prop.key, PropertyKey::StaticIdentifier(id) if id.name == "code");
+                if !is_code {
+                    continue;
+                }
+                if let Expression::StringLiteral(value) = &prop.value {
+                    result.push((
+                        value.span.start as usize,
+                        value.span.end as usize,
+                        value.value.to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    result
+}
+
+fn strip_css_sourcemap_comment(css: &str) -> &str {
+    match css.find("/*# sourceMappingURL=") {
+        Some(pos) => css[..pos].trim_end(),
+        None => css,
+    }
+}
+
+fn minify_css(css: &str) -> Option<String> {
+    let mut sheet = StyleSheet::parse(css, ParserOptions::default()).ok()?;
+    sheet.minify(MinifyOptions::default()).ok()?;
+    let printed = sheet
+        .to_css(PrinterOptions {
+            minify: true,
+            ..PrinterOptions::default()
+        })
+        .ok()?;
+    Some(printed.code)
+}
+
+fn fallback_normalize_css(css: &str) -> String {
+    strip_reference_only_css_markers(css)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
 pub fn strip_js_comments(js: &str) -> String {
     let allocator = Allocator::default();
@@ -126,6 +205,43 @@ mod tests {
             strip_reference_only_css_markers(".a { /* note */ color: red; }"),
             ".a { /* note */ color: red; }"
         );
+    }
+
+    #[test]
+    fn injected_css_source_preserved_and_minified_canonicalize_equal() {
+        let reference = r#"const $$css = { hash: "svelte-x", code: "\n\t.a.svelte-x {\n\t\tcolor: red;\n\t}\n" };"#;
+        let ours = r#"const $$css = { hash: "svelte-x", code: ".a.svelte-x {color:red;}" };"#;
+        assert_eq!(
+            canonicalize_injected_css_in_js(reference),
+            canonicalize_injected_css_in_js(ours)
+        );
+    }
+
+    #[test]
+    fn injected_css_sourcemap_comment_ignored() {
+        let with_map = r#"const $$css = { hash: "svelte-x", code: ".a.svelte-x {color:red;}\n/*# sourceMappingURL=data:application/json;base64,AAAA */" };"#;
+        let without_map =
+            r#"const $$css = { hash: "svelte-x", code: ".a.svelte-x {color:red;}" };"#;
+        assert_eq!(
+            canonicalize_injected_css_in_js(with_map),
+            canonicalize_injected_css_in_js(without_map)
+        );
+    }
+
+    #[test]
+    fn injected_css_real_difference_still_visible() {
+        let one = r#"const $$css = { hash: "svelte-x", code: ".a.svelte-x {color:red;}" };"#;
+        let other = r#"const $$css = { hash: "svelte-y", code: ".a.svelte-y {color:red;}" };"#;
+        assert_ne!(
+            canonicalize_injected_css_in_js(one),
+            canonicalize_injected_css_in_js(other)
+        );
+    }
+
+    #[test]
+    fn js_without_injected_css_unchanged() {
+        let js = "export default function App() {\n\treturn 1;\n}\n";
+        assert_eq!(canonicalize_injected_css_in_js(js), js);
     }
 
     #[track_caller]

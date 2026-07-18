@@ -105,6 +105,9 @@ mod css_escaped_identifier;
 #[path = "clusters/css_brace_whitespace.rs"]
 mod css_brace_whitespace;
 
+#[path = "clusters/css_injected.rs"]
+mod css_injected;
+
 #[path = "clusters/text_reactivity.rs"]
 mod text_reactivity;
 

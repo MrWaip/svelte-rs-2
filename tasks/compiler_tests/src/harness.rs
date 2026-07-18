@@ -5,7 +5,9 @@ use std::{
 
 use pretty_assertions::assert_eq;
 use svelte_compiler::{GenerateMode, compile, compile_module};
-use test_support::{strip_js_comments, strip_reference_only_css_markers};
+use test_support::{
+    canonicalize_injected_css_in_js, strip_js_comments, strip_reference_only_css_markers,
+};
 
 use crate::cases::{cluster_case_dir, load_cluster_case, load_cluster_module_case};
 use crate::sourcemap_invariants::assert_sourcemap_invariants;
@@ -13,6 +15,10 @@ use crate::sourcemap_invariants::assert_sourcemap_invariants;
 fn normalize_css(s: &str) -> String {
     let stripped = strip_reference_only_css_markers(s);
     stripped.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn normalize_js(js: &str) -> String {
+    strip_js_comments(&canonicalize_injected_css_in_js(js))
 }
 
 pub fn assert_compiler_module_prod(case: &str) {
@@ -33,8 +39,8 @@ pub fn assert_compiler_module_prod(case: &str) {
         .expect("test invariant");
 
     assert_eq!(
-        strip_js_comments(&js),
-        strip_js_comments(&expected),
+        normalize_js(&js),
+        normalize_js(&expected),
         "[{case}] JS mismatch"
     );
 
@@ -59,8 +65,8 @@ pub fn assert_compiler_module_dev(case: &str) {
         .write_all(dev_js.as_bytes())
         .expect("test invariant");
     assert_eq!(
-        strip_js_comments(&dev_js),
-        strip_js_comments(&expected_dev),
+        normalize_js(&dev_js),
+        normalize_js(&expected_dev),
         "[{case}] dev JS mismatch"
     );
 }
@@ -82,8 +88,8 @@ pub fn assert_compiler_module_ssr(case: &str) {
         .write_all(server_js.as_bytes())
         .expect("test invariant");
     assert_eq!(
-        strip_js_comments(&server_js),
-        strip_js_comments(&expected_server),
+        normalize_js(&server_js),
+        normalize_js(&expected_server),
         "[{case}] server JS mismatch"
     );
 }
@@ -106,8 +112,8 @@ pub fn assert_compiler_module_ssr_dev(case: &str) {
         .write_all(server_js.as_bytes())
         .expect("test invariant");
     assert_eq!(
-        strip_js_comments(&server_js),
-        strip_js_comments(&expected_server),
+        normalize_js(&server_js),
+        normalize_js(&expected_server),
         "[{case}] server dev JS mismatch"
     );
 }
@@ -129,8 +135,8 @@ pub fn assert_compiler_prod(case: &str) {
         .expect("test invariant");
 
     assert_eq!(
-        strip_js_comments(&js),
-        strip_js_comments(&expected_js),
+        normalize_js(&js),
+        normalize_js(&expected_js),
         "[{case}] JS mismatch"
     );
 
@@ -169,8 +175,8 @@ pub fn assert_compiler_dev(case: &str) {
         .write_all(dev_js.as_bytes())
         .expect("test invariant");
     assert_eq!(
-        strip_js_comments(&dev_js),
-        strip_js_comments(&expected_dev_js),
+        normalize_js(&dev_js),
+        normalize_js(&expected_dev_js),
         "[{case}] dev JS mismatch"
     );
 }
@@ -191,8 +197,8 @@ pub fn assert_compiler_ssr(case: &str) {
         .write_all(server_js.as_bytes())
         .expect("test invariant");
     assert_eq!(
-        strip_js_comments(&server_js),
-        strip_js_comments(&expected_server_js),
+        normalize_js(&server_js),
+        normalize_js(&expected_server_js),
         "[{case}] server JS mismatch"
     );
 }
@@ -214,8 +220,8 @@ pub fn assert_compiler_ssr_dev(case: &str) {
         .write_all(server_js.as_bytes())
         .expect("test invariant");
     assert_eq!(
-        strip_js_comments(&server_js),
-        strip_js_comments(&expected_server_js),
+        normalize_js(&server_js),
+        normalize_js(&expected_server_js),
         "[{case}] server dev JS mismatch"
     );
 }

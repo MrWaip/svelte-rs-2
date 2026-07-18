@@ -179,8 +179,10 @@ fn main() -> ExitCode {
         }
     };
 
-    let our_js = test_support::strip_js_comments(&our_js);
-    let ref_js = test_support::strip_js_comments(&ref_js);
+    let our_js =
+        test_support::strip_js_comments(&test_support::canonicalize_injected_css_in_js(&our_js));
+    let ref_js =
+        test_support::strip_js_comments(&test_support::canonicalize_injected_css_in_js(&ref_js));
 
     let applied = describe_applied_options(&cli_opts);
     let our_css_norm = our_css
