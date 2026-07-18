@@ -4,13 +4,14 @@
 
 **The Svelte 5 compiler, rewritten in Rust.**
 
-Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.56.4**) — same JS output, ~30× faster.
+Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.56.4**) — same JS output, ~13× faster across the full corpus (client + server, dev + prod).
 
 > ⚠️ **WIP / canary.** Built by a human with heavy AI assistance. Expect bugs, missing edge cases, and breaking changes. Not production-ready — please report what breaks.
 
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MrWaip/svelte-rs-2)
 [![npm](https://img.shields.io/badge/npm-%40mrwaip%2Fsvelte--rs2-cb3837)](https://www.npmjs.com/package/@mrwaip/svelte-rs2)
-[![tests](https://img.shields.io/badge/e2e_tests-1500%2B-success)](./tasks/compiler_tests/cases2)
+[![vite-plugin](https://img.shields.io/npm/v/@mrwaip/vite-plugin-svelte?label=vite-plugin-svelte&color=646cff)](https://www.npmjs.com/package/@mrwaip/vite-plugin-svelte)
+[![tests](https://img.shields.io/badge/e2e_tests-10k%2B-success)](./tasks/compiler_tests/cases2)
 
 [Playground](https://mrwaip.github.io/svelte-rs-2/) · [Roadmap](./ROADMAP.md)
 
@@ -20,9 +21,9 @@ Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.56.4**) — same
 
 ## Why
 
-- **Byte-exact JS output** — diffed against the reference compiler on **1500+ end-to-end cases** (compiler + diagnostics).
+- **Byte-exact JS output** — **~1,200 cases** (1,199 compiler + 26 diagnostics) expand to **10,000+ passing e2e tests**, each diffed against the reference compiler across client + server × dev + prod.
 - **Drop-in** — same `compile()` / `compileModule()` API as `svelte/compiler`.
-- **30× faster** (geomean across 24 benches, up to **52×** on large components).
+- **~13× faster** across the full 2,825-file corpus (client 12.9×, server 13.5×, dev variants ~12.7×).
 - Wired into a fork of `vite-plugin-svelte`, so you can try it in a real Vite app today.
 
 ### Requirements
@@ -40,17 +41,17 @@ This is still a work in progress and is not yet at full feature parity with `sve
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Svelte 5 syntax | done | Runes, template, bindings, directives, events, special elements, diagnostics, a11y. Byte-exact diff against `svelte/compiler`. |
-| Svelte 4 legacy | in progress | `export let`, `$:`, `beforeUpdate`/`afterUpdate`, `<svelte:component>`, auto-mode detection done. `<slot>` / `<svelte:self>` still pending. |
+| Svelte 4 legacy | done | `export let`, `$:`, `beforeUpdate`/`afterUpdate`, `<slot>`, `<svelte:self>`, `<svelte:component>`, auto-mode detection. Byte-exact diff against `svelte/compiler`. |
 | CSS pipeline | done | analyze + transform + codegen |
 | TypeScript | done | Script stripping only — no type checking. |
 | `.svelte.js` / `.svelte.ts` modules | done | — |
 | Custom elements | in progress | Basic path works; some option combinations not covered. |
 | Compiler options | in progress | Most common options honored; long tail (`discloseVersion`, etc.) still landing. |
-| Dev mode (`dev: true`) | in progress | Runtime checks and ownership tracking land case-by-case. |
-| Source maps | in progress | Partial implementation, not yet verified against reference. |
+| Dev mode (`dev: true`) | done | Byte-exact diff across ~1,200 client-dev cases; server-dev too. Some ownership/hydration diagnostics still land case-by-case. |
+| SSR (`generate: 'server'`) | done | Server transform + codegen (prod & dev). Byte-exact diff across ~1,200 server cases. |
+| Source maps | done | `js.map` / `css.map` emitted; `sourcemap` option honored. |
+| HMR | done | Hot-module-replacement output supported. |
 | Preprocessors | not ready | Not started. |
-| SSR (`generate: 'server'`) | not ready | Not started — large chunk of work. |
-| HMR | not ready | Not started. |
 
 Definitions:
 
@@ -64,9 +65,8 @@ Full breakdown: [ROADMAP.md](./ROADMAP.md).
 ### Known limitations
 
 - `ast` option is not supported — passing it throws; the returned `ast` is always `null`.
-- `sourcemap` and `outputFilename` options are not supported — passing them throws.
+- `outputFilename` option is not supported — passing it throws.
 - `modernAst: true` is accepted but ignored (emits `unsupported_option_ignored` warning).
-- `js.map` / `css.map` are always `null` (source maps are WIP).
 - `dev: true` runtime checks land case-by-case — not all ownership / hydration diagnostics are emitted yet.
 
 ## Install
@@ -88,9 +88,9 @@ const { js } = compile(
 console.log(js.code);
 ```
 
-API mirrors `svelte/compiler`. Unsupported options (`ast`, `sourcemap`, `outputFilename`) throw; see `packages/svelte-rs2/compiler/index.d.ts`.
+API mirrors `svelte/compiler`. Unsupported options (`ast`, `outputFilename`) throw; see `packages/svelte-rs2/compiler/index.d.ts`.
 
-Want to see real input → output? Browse [`tasks/compiler_tests/cases2/`](./tasks/compiler_tests/cases2) — each folder has `case.svelte` (input), `case-rust.js` (our output) and `case-svelte.js` (reference). 1100+ cases, byte-diffed.
+Want to see real input → output? Browse [`tasks/compiler_tests/cases2/`](./tasks/compiler_tests/cases2) — each folder has `case.svelte` (input) plus our output and the reference for every mode: `case-rust.js` / `case-svelte.js` (client), `.dev.js`, `.server.js`, `.server.dev.js`. ~1,200 cases, byte-diffed.
 
 ### In a Vite app
 
@@ -113,21 +113,22 @@ Source: <https://github.com/MrWaip/vite-plugin-svelte>.
 
 ## Benchmarks
 
-**Geomean: 30.18×** across 24 cases (min 20.14×, max 51.97×). Walltime vs `svelte/compiler`, measured 2026-05-04 via `just bench-compare-walltime`. `big_v6.svelte` is a synthetic stress component (~5.8k LOC); the rest are real-world Svelte files.
+<img src="./assets/benchmark.svg" alt="svelte-rs compiler benchmark — ~13× faster than svelte/compiler, ~6× faster than rsvelte" width="720">
 
-<details>
-<summary>Per-case table</summary>
+Whole-corpus throughput: **2,825 real `.svelte`/`.svelte.js` files**, each compiled in every mode, single-threaded, one file at a time. Median of 5 runs, measured 2026-07-18 via `just bench-compare` on a 12-core Linux x64. Per-run instruction-count benchmarks (64 total) also run on every commit via [CodSpeed](https://codspeed.io/MrWaip/svelte-rs-2).
 
-| case | rust med | js med | speedup |
-| --- | ---: | ---: | ---: |
-| `big_v6.svelte` (compile, synthetic stress) | 18.39 ms | 955.9 ms | **51.97×** |
-| `big_v6.svelte` (compile_dev, synthetic stress) | 19.56 ms | 944.7 ms | **48.30×** |
-| `module/case_02.svelte.js` (real-world) | 0.131 ms | 5.283 ms | 40.37× |
-| `template/case_01.svelte` (real-world) | 0.745 ms | 21.65 ms | 29.08× |
-| `snippets/case_01.svelte` (real-world) | 1.558 ms | 35.62 ms | 22.86× |
-| `css/case_01.svelte` (real-world) | 0.014 ms | 0.290 ms | 20.14× |
+| mode | svelte | rsvelte | ours | vs svelte | vs rsvelte |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| client | 1403.8 ms | 676.6 ms | 110.9 ms | **12.7×** | **6.1×** |
+| client-dev | 1490.9 ms | 913.1 ms | 127.1 ms | **11.7×** | **7.2×** |
+| ssr | 1222.6 ms | 533.0 ms | 89.9 ms | **13.6×** | **5.9×** |
+| ssr-dev | 1321.6 ms | 667.2 ms | 101.7 ms | **13.0×** | **6.6×** |
 
-</details>
+Reproduce it with `just bench-compare`. The [rsvelte](#alternatives) column appears when the optional `@rsvelte/vite-plugin-svelte-native` is installed; single-threaded and per-file, rsvelte lands around ~2× vs `svelte/compiler` (it also ships a multi-threaded `compileBatch` API — a different axis). Speedup climbs further on large single components, where fixed per-file overhead amortizes.
+
+## Alternatives
+
+- [**rsvelte**](https://github.com/baseballyama/rsvelte) — another Rust port of the Svelte 5 compiler, also built on OXC. Ships a WASM build (`@rsvelte/compiler`), a native NAPI binding, and a multi-threaded `compileBatch` API. `just bench-compare` compares against it directly whenever its native binding is installed.
 
 ## Try it locally
 
@@ -136,7 +137,7 @@ Requires Rust, Node, and [`just`](https://github.com/casey/just) (`cargo install
 ```sh
 just playground               # build wasm + serve playground
 just quick-check App.svelte   # diff one component against svelte/compiler
-just test-compiler            # run the 1500+ e2e suite
+just test-compiler            # run the 10,000+ test e2e suite (all modes)
 ```
 
 ## Contributing
