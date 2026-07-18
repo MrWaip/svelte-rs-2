@@ -1,6 +1,7 @@
 use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, Expression, Statement};
 use oxc_span::SPAN;
 use oxc_syntax::node::NodeId as OxcNodeId;
+use svelte_analyze::{BlockSemantics, FragmentDeclarationAsyncKind};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{SymbolId, walk_bindings};
@@ -21,15 +22,17 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn declaration_tag_is_async(&self, id: NodeId) -> bool {
-        self.analysis
-            .expression_data(id)
-            .is_some_and(|d| d.volatility.is_asynchronous() || !d.blockers.is_empty())
+    fn declaration_tag_async_kind(&self, id: NodeId) -> FragmentDeclarationAsyncKind {
+        match self.analysis.block_semantics(id) {
+            BlockSemantics::DeclarationTag(sem) => sem.async_kind.clone(),
+            _ => FragmentDeclarationAsyncKind::Sync,
+        }
     }
 
     pub(crate) fn emit_declaration_tags(&mut self, ids: &[NodeId]) -> Result<()> {
         let first_async = if self.experimental_async {
-            ids.iter().position(|&id| self.declaration_tag_is_async(id))
+            ids.iter()
+                .position(|&id| self.declaration_tag_async_kind(id).is_async())
         } else {
             None
         };
@@ -54,15 +57,7 @@ impl<'a> ServerCodegen<'a> {
         let mut thunks: Vec<Expression<'a>> = Vec::new();
 
         for &id in ids {
-            let is_awaited = self
-                .analysis
-                .expression_data(id)
-                .is_some_and(|d| d.volatility.is_asynchronous());
-            let blockers = self
-                .analysis
-                .expression_data(id)
-                .map(|d| d.blockers.to_vec())
-                .unwrap_or_default();
+            let async_kind = self.declaration_tag_async_kind(id);
 
             let decl_id = {
                 let svelte_ast::Node::DeclarationTag(tag) = self.component.store.get(id) else {
@@ -86,11 +81,16 @@ impl<'a> ServerCodegen<'a> {
                 value,
             );
 
-            self.push_blocker_thunk(&blockers, &mut thunks);
-            let body = if is_awaited {
-                self.b.async_arrow_expr_body(assignment)
-            } else {
-                self.b.thunk(assignment)
+            let body = match &async_kind {
+                FragmentDeclarationAsyncKind::Awaited { blockers } => {
+                    self.push_blocker_thunk(blockers, &mut thunks);
+                    self.b.async_arrow_expr_body(assignment)
+                }
+                FragmentDeclarationAsyncKind::Deferred { blockers } => {
+                    self.push_blocker_thunk(blockers, &mut thunks);
+                    self.b.thunk(assignment)
+                }
+                FragmentDeclarationAsyncKind::Sync => self.b.thunk(assignment),
             };
             thunks.push(body);
             let thunk_idx = (thunks.len() - 1) as u32;

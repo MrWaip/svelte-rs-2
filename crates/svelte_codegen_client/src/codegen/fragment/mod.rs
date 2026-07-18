@@ -129,7 +129,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         {
-            use svelte_analyze::{BlockSemantics, ConstTagAsyncKind};
+            use svelte_analyze::{BlockSemantics, FragmentDeclarationAsyncKind};
             let recording_slot_const_tags = state.legacy_slot_record_const_tag_end;
             if recording_slot_const_tags {
                 state.legacy_slot_const_tag_start = Some(state.init.len());
@@ -141,10 +141,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         return false;
                     };
                     match s.async_kind {
-                        ConstTagAsyncKind::Awaited { .. } | ConstTagAsyncKind::Deferred { .. } => {
-                            true
-                        }
-                        ConstTagAsyncKind::Sync => false,
+                        FragmentDeclarationAsyncKind::Awaited { .. }
+                        | FragmentDeclarationAsyncKind::Deferred { .. } => true,
+                        FragmentDeclarationAsyncKind::Sync => false,
                     }
                 });
             let mut ordered: SmallVec<[NodeId; 4]> = bucket.const_tags.iter().copied().collect();

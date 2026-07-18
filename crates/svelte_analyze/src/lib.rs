@@ -35,12 +35,12 @@ pub(crate) mod walker;
 
 pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
-    BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
-    EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
-    EachKeyKind, HtmlTagAsyncKind, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch,
-    IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind,
-    RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
-    SnippetSlotKey,
+    BlockSemantics, ConstTagBlockSemantics, DeclarationTagBlockSemantics, EachAsyncKind,
+    EachBlockSemantics, EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
+    EachItemKind, EachKeyKind, FragmentDeclarationAsyncKind, HtmlTagAsyncKind, IfAlternate,
+    IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind, KeyBlockSemantics,
+    RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics,
+    SnippetParam, SnippetPlacement, SnippetSlotKey,
 };
 pub use element_semantics::{
     BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementReplayEvent, ElementSemantics,

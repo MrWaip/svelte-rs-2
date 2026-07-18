@@ -18,6 +18,8 @@ pub enum BlockSemantics {
 
     ConstTag(ConstTagBlockSemantics),
 
+    DeclarationTag(DeclarationTagBlockSemantics),
+
     Render(RenderTagBlockSemantics),
 
     If(IfBlockSemantics),
@@ -236,18 +238,33 @@ pub enum SnippetParam {
 pub struct ConstTagBlockSemantics {
     pub decl_node_id: OxcNodeId,
 
-    pub async_kind: ConstTagAsyncKind,
+    pub async_kind: FragmentDeclarationAsyncKind,
 
     pub order_rank: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ConstTagAsyncKind {
+pub enum FragmentDeclarationAsyncKind {
     Sync,
 
     Awaited { blockers: SmallVec<[u32; 2]> },
 
     Deferred { blockers: SmallVec<[u32; 2]> },
+}
+
+impl FragmentDeclarationAsyncKind {
+    pub fn is_async(&self) -> bool {
+        match self {
+            FragmentDeclarationAsyncKind::Sync => false,
+            FragmentDeclarationAsyncKind::Awaited { .. }
+            | FragmentDeclarationAsyncKind::Deferred { .. } => true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeclarationTagBlockSemantics {
+    pub async_kind: FragmentDeclarationAsyncKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

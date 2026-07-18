@@ -213,8 +213,10 @@ impl<'a> ServerCodegen<'a> {
             .copied()
             .filter_map(|nid| match self.analysis.block_semantics(nid) {
                 BlockSemantics::ConstTag(sem) => {
-                    let is_async =
-                        !matches!(sem.async_kind, svelte_analyze::ConstTagAsyncKind::Sync);
+                    let is_async = !matches!(
+                        sem.async_kind,
+                        svelte_analyze::FragmentDeclarationAsyncKind::Sync
+                    );
                     Some((sem.order_rank, nid, is_async))
                 }
                 _ => None,

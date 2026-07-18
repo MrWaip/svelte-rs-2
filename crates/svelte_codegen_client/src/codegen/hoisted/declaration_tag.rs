@@ -1,5 +1,6 @@
 use oxc_ast::ast::{BindingPattern, Expression, Statement};
 use oxc_semantic::SymbolId;
+use svelte_analyze::{BlockSemantics, FragmentDeclarationAsyncKind};
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft};
 use svelte_component_semantics::walk_bindings;
@@ -15,7 +16,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ids: &[NodeId],
     ) -> Result<()> {
         let first_async = if self.ctx.state.experimental_async {
-            ids.iter().position(|&id| self.declaration_tag_is_async(id))
+            ids.iter()
+                .position(|&id| self.declaration_tag_async_kind(id).is_async())
         } else {
             None
         };
@@ -35,10 +37,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
-    fn declaration_tag_is_async(&self, id: NodeId) -> bool {
-        self.ctx
-            .expression_data(id)
-            .is_some_and(|d| d.volatility.is_asynchronous() || !d.blockers.is_empty())
+    fn declaration_tag_async_kind(&self, id: NodeId) -> FragmentDeclarationAsyncKind {
+        match self.ctx.query.analysis.block_semantics(id) {
+            BlockSemantics::DeclarationTag(sem) => sem.async_kind.clone(),
+            _ => FragmentDeclarationAsyncKind::Sync,
+        }
     }
 
     pub(in crate::codegen) fn emit_hoisted_declaration_tag(
@@ -65,15 +68,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut thunks: Vec<Expression<'a>> = Vec::new();
 
         for &id in ids {
-            let is_awaited = self
-                .ctx
-                .expression_data(id)
-                .is_some_and(|d| d.volatility.is_asynchronous());
-            let blockers = self
-                .ctx
-                .expression_data(id)
-                .map(|d| d.blockers.to_vec())
-                .unwrap_or_default();
+            let async_kind = self.declaration_tag_async_kind(id);
 
             let decl_stmt_id = {
                 let svelte_ast::Node::DeclarationTag(tag) = self.ctx.query.component.store.get(id)
@@ -90,7 +85,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 continue;
             };
 
-            build_blocker_thunks(self.ctx, &blockers, &mut thunks);
+            match &async_kind {
+                FragmentDeclarationAsyncKind::Awaited { blockers }
+                | FragmentDeclarationAsyncKind::Deferred { blockers } => {
+                    build_blocker_thunks(self.ctx, blockers, &mut thunks);
+                }
+                FragmentDeclarationAsyncKind::Sync => {}
+            }
+            let is_awaited = matches!(async_kind, FragmentDeclarationAsyncKind::Awaited { .. });
 
             for mut declarator in decl.declarations.drain(..) {
                 let mut symbols: Vec<SymbolId> = Vec::new();
