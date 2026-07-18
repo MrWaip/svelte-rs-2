@@ -1668,7 +1668,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        if !is_component {
+        if is_regular_or_svelte_element {
             self.mixed_first_on_directive
                 .get_or_insert((dir.span, dir.name.clone()));
             self.maybe_emit_mixed_syntax(ctx);

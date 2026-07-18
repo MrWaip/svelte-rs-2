@@ -1133,6 +1133,18 @@ mod events {
         "events/on_directive_mixed_syntax_svelte_element"
     );
     diagnostic_case!(
+        on_directive_mixed_syntax_svelte_window,
+        "events/on_directive_mixed_syntax_svelte_window"
+    );
+    diagnostic_case!(
+        on_directive_mixed_syntax_svelte_body,
+        "events/on_directive_mixed_syntax_svelte_body"
+    );
+    diagnostic_case!(
+        on_directive_mixed_syntax_svelte_document,
+        "events/on_directive_mixed_syntax_svelte_document"
+    );
+    diagnostic_case!(
         on_directive_no_mixed_when_event_prop_on_child_component,
         "events/on_directive_no_mixed_when_event_prop_on_child_component"
     );
