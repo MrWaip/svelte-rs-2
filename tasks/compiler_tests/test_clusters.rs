@@ -281,3 +281,6 @@ mod css_prune;
 
 #[path = "clusters/declaration_tag.rs"]
 mod declaration_tag;
+
+#[path = "clusters/element_block_scope.rs"]
+mod element_block_scope;
