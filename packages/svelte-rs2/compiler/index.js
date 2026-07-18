@@ -1,68 +1,11 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 
 const UNSUPPORTED_THROW_OPTIONS = new Set(['ast', 'outputFilename']);
 const UNSUPPORTED_WARN_OPTIONS = new Set(['modernAst']);
 
-const PLATFORM_PACKAGE_BY_TARGET = {
-  'darwin-arm64': '@mrwaip/svelte-rs2-darwin-arm64',
-  'darwin-x64': '@mrwaip/svelte-rs2-darwin-x64',
-  'linux-x64': '@mrwaip/svelte-rs2-linux-x64-gnu',
-  'linux-arm64': '@mrwaip/svelte-rs2-linux-arm64-gnu'
-};
-
-function localNativeAddonPath() {
-  const currentFile = fileURLToPath(import.meta.url);
-  return path.resolve(
-    path.dirname(currentFile),
-    './native/svelte-rs2.node'
-  );
-}
-
-function loadFromLocalDevelopmentPath() {
-  const localPath = localNativeAddonPath();
-  if (!fs.existsSync(localPath)) {
-    return null;
-  }
-  return require(localPath);
-}
-
-function loadFromPlatformPackage() {
-  const target = `${process.platform}-${process.arch}`;
-  const pkg = PLATFORM_PACKAGE_BY_TARGET[target];
-
-  if (!pkg) {
-    throw new Error(
-      `Unsupported platform for @mrwaip/svelte-rs2/compiler: ${target}. ` +
-        'Supported targets: darwin-arm64, darwin-x64, linux-x64, linux-arm64.'
-    );
-  }
-
-  try {
-    return require(pkg);
-  } catch (error) {
-    throw new Error(
-      `Native addon package ${pkg} is not installed. ` +
-        'Reinstall dependencies for this platform or use optionalDependencies-aware install.',
-      { cause: error }
-    );
-  }
-}
-
-function loadNativeAddon() {
-  const local = loadFromLocalDevelopmentPath();
-  if (local) {
-    return local;
-  }
-
-  return loadFromPlatformPackage();
-}
-
-const native = loadNativeAddon();
+const native = require('./native/binding.cjs');
 
 function assertSupportedOptions(options) {
   for (const key of Object.keys(options)) {
@@ -182,12 +125,12 @@ function normalizeDiagnostic(diagnostic, filenameFallback) {
     message: diagnostic.message,
     filename: filenameFallback,
     start: {
-      line: diagnostic.start_line,
-      column: diagnostic.start_col
+      line: diagnostic.startLine,
+      column: diagnostic.startCol
     },
     end: {
-      line: diagnostic.end_line,
-      column: diagnostic.end_col
+      line: diagnostic.endLine,
+      column: diagnostic.endCol
     },
     frame: diagnostic.frame ?? null
   };

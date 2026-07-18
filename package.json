@@ -17,5 +17,8 @@
   },
   "optionalDependencies": {
     "@rsvelte/vite-plugin-svelte-native": "0.2.6"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "3.7.3"
   }
 }
