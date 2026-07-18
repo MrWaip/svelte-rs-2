@@ -1,0 +1,8 @@
+[
+  {
+    "code": "script_invalid_context",
+    "end": 22,
+    "severity": "error",
+    "start": 8
+  }
+]

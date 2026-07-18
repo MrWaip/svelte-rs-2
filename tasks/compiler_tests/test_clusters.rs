@@ -60,6 +60,45 @@ mod snippet_placement;
 #[path = "clusters/css_scope_svelte_fragment.rs"]
 mod css_scope_svelte_fragment;
 
+#[path = "clusters/css_sibling_slot.rs"]
+mod css_sibling_slot;
+
+#[path = "clusters/css_global_nesting.rs"]
+mod css_global_nesting;
+
+#[path = "clusters/css_is_has_prune.rs"]
+mod css_is_has_prune;
+
+#[path = "clusters/css_scope_placement_global.rs"]
+mod css_scope_placement_global;
+
+#[path = "clusters/css_root.rs"]
+mod css_root;
+
+#[path = "clusters/css_scope_position_global.rs"]
+mod css_scope_position_global;
+
+#[path = "clusters/css_global_local_compound.rs"]
+mod css_global_local_compound;
+
+#[path = "clusters/css_global_pseudo_args.rs"]
+mod css_global_pseudo_args;
+
+#[path = "clusters/css_global_block_animation.rs"]
+mod css_global_block_animation;
+
+#[path = "clusters/css_has_global_parent.rs"]
+mod css_has_global_parent;
+
+#[path = "clusters/css_host.rs"]
+mod css_host;
+
+#[path = "clusters/css_escaped_identifier.rs"]
+mod css_escaped_identifier;
+
+#[path = "clusters/css_brace_whitespace.rs"]
+mod css_brace_whitespace;
+
 #[path = "clusters/text_reactivity.rs"]
 mod text_reactivity;
 

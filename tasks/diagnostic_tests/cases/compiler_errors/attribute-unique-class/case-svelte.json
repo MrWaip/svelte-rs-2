@@ -1,0 +1,8 @@
+[
+  {
+    "code": "attribute_duplicate",
+    "end": 40,
+    "severity": "error",
+    "start": 23
+  }
+]

@@ -1,0 +1,39 @@
+use super::*;
+
+compiler_case!(
+    global_parent_class,
+    "css_scope_placement_global/global_parent_class"
+);
+compiler_case!(
+    global_parent_class_amp,
+    "css_scope_placement_global/global_parent_class_amp"
+);
+compiler_case!(
+    global_parent_element,
+    "css_scope_placement_global/global_parent_element"
+);
+compiler_case!(
+    global_universal_parent,
+    "css_scope_placement_global/global_universal_parent"
+);
+compiler_case!(
+    global_parent_deep_first_direct,
+    "css_scope_placement_global/global_parent_deep_first_direct"
+);
+compiler_case!(
+    global_parent_two_children,
+    "css_scope_placement_global/global_parent_two_children"
+);
+compiler_case!(
+    global_two_global_relatives_parent,
+    "css_scope_placement_global/global_two_global_relatives_parent"
+);
+
+compiler_case!(
+    scoped_class_parent_where_guard,
+    "css_scope_placement_global/scoped_class_parent_where_guard"
+);
+compiler_case!(
+    element_parent_where_guard,
+    "css_scope_placement_global/element_parent_where_guard"
+);

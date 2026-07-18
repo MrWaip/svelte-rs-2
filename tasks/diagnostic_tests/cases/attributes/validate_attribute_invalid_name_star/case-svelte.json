@@ -1,0 +1,8 @@
+[
+  {
+    "code": "attribute_invalid_name",
+    "end": 6,
+    "severity": "error",
+    "start": 3
+  }
+]

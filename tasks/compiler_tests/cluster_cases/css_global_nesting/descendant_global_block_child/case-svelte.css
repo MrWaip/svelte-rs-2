@@ -1,0 +1,6 @@
+
+	div.svelte-1k0loyk {
+		p:where(.svelte-1k0loyk) {
+			.y { color: green; }
+		}
+	}

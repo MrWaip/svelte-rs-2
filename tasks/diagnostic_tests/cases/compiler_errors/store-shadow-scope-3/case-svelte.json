@@ -1,0 +1,8 @@
+[
+  {
+    "code": "store_invalid_scoped_subscription",
+    "end": 172,
+    "severity": "error",
+    "start": 167
+  }
+]

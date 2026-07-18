@@ -1,0 +1,13 @@
+
+	.before.svelte-105a842 + .foo:where(.svelte-105a842) { color: green; }
+	.before.svelte-105a842 ~ .foo:where(.svelte-105a842) { color: green; }
+	.before.svelte-105a842 ~ .bar:where(.svelte-105a842) { color: green; }
+
+	.x + .foo.svelte-105a842 { color: green; }
+	.x + .foo.svelte-105a842 span:where(.svelte-105a842) { color: green; }
+	.x ~ .foo.svelte-105a842 { color: green; }
+	.x ~ .foo.svelte-105a842 span:where(.svelte-105a842) { color: green; }
+	.x ~ .bar.svelte-105a842 { color: green; }
+
+	/* no match */
+	

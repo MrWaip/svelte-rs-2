@@ -1,0 +1,4 @@
+
+	div.svelte-1rdk5m {
+		.a:where(.svelte-1rdk5m) { color: green; }
+	}

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "rune_invalid_name",
+    "end": 20,
+    "severity": "error",
+    "start": 0
+  }
+]

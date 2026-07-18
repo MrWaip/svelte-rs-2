@@ -30,7 +30,7 @@ for (const file of files) {
 
   if (isDiagnosticCase) {
     results[file] = {
-      diagnostics: generateDiagnostics(text, caseConfig),
+      diagnostics: generateDiagnostics(text, caseConfig, isModule),
     };
     continue;
   }
@@ -98,7 +98,7 @@ function stripVersionComment(code) {
 }
 console.log(JSON.stringify(results));
 
-function generateDiagnostics(source, caseConfig) {
+function generateDiagnostics(source, caseConfig, isModule = false) {
   const compileConfig = {
     discloseVersion: false,
     dev: false,
@@ -114,6 +114,13 @@ function generateDiagnostics(source, caseConfig) {
     delete compileConfig.name;
   }
   try {
+    if (isModule) {
+      const result = compileModule(source, {
+        dev: compileConfig.dev,
+        filename: "case.svelte.js",
+      });
+      return result.warnings.map((warning) => normalizeDiagnostic(warning, "warning"));
+    }
     const result = compile(source, compileConfig);
     return result.warnings.map((warning) => normalizeDiagnostic(warning, "warning"));
   } catch (error) {

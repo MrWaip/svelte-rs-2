@@ -1,0 +1,8 @@
+[
+  {
+    "code": "attribute_invalid_sequence_expression",
+    "end": 131,
+    "severity": "error",
+    "start": 124
+  }
+]
