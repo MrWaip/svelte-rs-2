@@ -594,6 +594,9 @@ pub(super) fn is_reactive_legacy_dep(semantics: BindingSemantics) -> bool {
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Store(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::RuntimeRune { .. } => true,
     }

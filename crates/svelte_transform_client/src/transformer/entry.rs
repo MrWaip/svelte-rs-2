@@ -59,6 +59,7 @@ pub fn transform_script<'a, 'b>(
         ignore_query,
         enclosing_stmt_start: Vec::new(),
         template_owner_node: None,
+        rewrite_top_level_declarations: false,
         in_bind_setter_traverse: false,
         dispatched_member_assignments: rustc_hash::FxHashSet::default(),
         destructure_lhs_depth: 0,

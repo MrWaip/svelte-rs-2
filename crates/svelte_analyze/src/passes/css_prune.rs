@@ -263,7 +263,6 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
 
     fn visit_style_rule(&mut self, node: &StyleRule) {
         let was_global = self.in_global_block;
-        self.in_global_block = was_global || node.is_lone_global_block();
 
         let parent_len = self.rule_stack.len();
         self.rule_stack.push(node.id);
@@ -275,7 +274,7 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
             let plan = build_rule_selector_rewrite(complex, &rule_ctx);
             rule_has_global_selectors |= plan.is_all_global;
 
-            if self.in_global_block || plan.is_all_global {
+            if was_global || plan.is_all_global {
                 self.used.insert(plan.complex_id);
                 continue;
             }
@@ -320,6 +319,7 @@ impl Visit for PruneVisitor<'_, '_, '_, '_> {
         self.ancestor_rules_are_global
             .push(rule_has_global_selectors);
 
+        self.in_global_block = was_global || has_bare_global_block_selector(node);
         walk_style_rule(self, node);
         self.rule_stack.truncate(parent_len);
         self.in_global_block = was_global;
@@ -419,6 +419,7 @@ fn collect_css_prune_edges_in_fragment(
             | Node::DebugTag(_)
             | Node::HtmlTag(_)
             | Node::ConstTag(_)
+            | Node::DeclarationTag(_)
             | Node::SvelteWindow(_)
             | Node::SvelteDocument(_)
             | Node::SvelteBody(_)
@@ -623,7 +624,7 @@ fn truncate_root_relative(relative: &mut RelativeSelector) {
 fn is_all_global(selectors: &[RelativeSelector], rule_ctx: &RuleContext<'_>) -> bool {
     selectors
         .iter()
-        .all(|selector| is_global(selector, rule_ctx) || is_global_like(selector))
+        .all(|selector| is_global(selector, rule_ctx))
 }
 
 fn is_global_like(relative: &RelativeSelector) -> bool {
@@ -679,6 +680,13 @@ fn is_bare_global_relative(rel: &RelativeSelector) -> bool {
     )
 }
 
+fn has_bare_global_block_selector(rule: &StyleRule) -> bool {
+    rule.prelude
+        .children
+        .iter()
+        .any(|complex| complex.children.iter().any(is_bare_global_relative))
+}
+
 fn is_outer_global(relative: &RelativeSelector) -> bool {
     relative
         .selectors
@@ -695,7 +703,7 @@ fn is_outer_global(relative: &RelativeSelector) -> bool {
 }
 
 fn is_global(selector: &RelativeSelector, rule_ctx: &RuleContext<'_>) -> bool {
-    if is_global_relative(selector) {
+    if is_global_relative(selector) || is_global_like(selector) {
         return true;
     }
 
@@ -703,7 +711,7 @@ fn is_global(selector: &RelativeSelector, rule_ctx: &RuleContext<'_>) -> bool {
     for simple in &selector.selectors {
         let mut selector_list: Option<&SelectorList> = None;
         let mut can_be_global = false;
-        let mut nested_rule_ctx = None;
+        let mut nesting_global = false;
 
         match simple {
             SimpleSelector::PseudoClass(pc) => {
@@ -717,26 +725,28 @@ fn is_global(selector: &RelativeSelector, rule_ctx: &RuleContext<'_>) -> bool {
                 let Some(parent_rule) = rule_ctx.parent_rule() else {
                     return false;
                 };
-                selector_list = Some(&parent_rule.prelude);
-                nested_rule_ctx = Some(RuleContext::new(
+                let parent_ctx = RuleContext::new(
                     parent_rule.id,
                     rule_ctx.parent_rules_without_last(),
                     rule_ctx.rule_lookup,
-                ));
+                );
+                nesting_global =
+                    parent_rule.prelude.children.iter().any(|complex| {
+                        is_all_global(&build_truncated_relatives(complex), &parent_ctx)
+                    });
             }
             _ => {}
         }
 
-        let has_global_selectors = selector_list.is_some_and(|list| {
-            let nested_ctx = nested_rule_ctx.as_ref().unwrap_or(rule_ctx);
-            list.children.iter().any(|complex| {
-                let relatives = build_truncated_relatives(complex);
-                !relatives.is_empty()
-                    && relatives
+        let has_global_selectors = nesting_global
+            || selector_list.is_some_and(|list| {
+                list.children.iter().any(|complex| {
+                    complex
+                        .children
                         .iter()
-                        .all(|relative| is_global(relative, nested_ctx))
-            })
-        });
+                        .all(|relative| is_global(relative, rule_ctx))
+                })
+            });
 
         explicitly_global |= has_global_selectors;
         if !has_global_selectors && !can_be_global {
@@ -841,17 +851,43 @@ fn normalize_css_identifier(value: &str) -> CompactString {
     }
 
     let mut normalized = String::with_capacity(value.len());
-    let mut chars = value.chars();
+    let mut chars = value.chars().peekable();
     while let Some(ch) = chars.next() {
-        if ch == '\\' {
-            if let Some(next) = chars.next() {
-                normalized.push(next);
-            }
-        } else {
+        if ch != '\\' {
             normalized.push(ch);
+            continue;
+        }
+
+        match chars.peek().copied() {
+            Some(digit) if digit.is_ascii_hexdigit() => {
+                let mut code = 0u32;
+                let mut consumed = 0;
+                while consumed < 6 {
+                    let Some(hex) = chars.peek().copied().filter(char::is_ascii_hexdigit) else {
+                        break;
+                    };
+                    code = code * 16 + hex.to_digit(16).unwrap_or(0);
+                    chars.next();
+                    consumed += 1;
+                }
+                if chars.peek().copied().is_some_and(is_css_escape_whitespace) {
+                    chars.next();
+                }
+                let decoded = char::from_u32(code).filter(|&c| c != '\0');
+                normalized.push(decoded.unwrap_or('\u{FFFD}'));
+            }
+            Some(next) => {
+                normalized.push(next);
+                chars.next();
+            }
+            None => {}
         }
     }
     CompactString::new(normalized)
+}
+
+fn is_css_escape_whitespace(ch: char) -> bool {
+    matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{000c}')
 }
 
 fn synthetic_descendant_combinator() -> Combinator {
@@ -971,7 +1007,9 @@ fn apply_combinator(
 
             for (candidate, _) in siblings {
                 match candidate.kind {
-                    CandidateKind::RenderTag | CandidateKind::ComponentNode => {
+                    CandidateKind::RenderTag
+                    | CandidateKind::ComponentNode
+                    | CandidateKind::SlotElement => {
                         if to > from
                             && to - from == 1
                             && matches!(direction, Direction::Backward)
@@ -1162,6 +1200,8 @@ fn relative_selector_matches(
                     if let Some(args) = &pc.args {
                         for complex in &args.children {
                             pruner.used.insert(complex.id);
+                        }
+                        for complex in &args.children {
                             if complex.children.len() > 1 {
                                 for ancestor in once(elem_id)
                                     .chain(get_ancestor_elements(pruner, elem_id, false))
@@ -1293,32 +1333,35 @@ fn pseudo_is_or_where_matches(
 }
 
 fn has_global_or_root_selector(rule_ctx: &RuleContext<'_>) -> bool {
-    if rule_ctx
+    let has_global_ancestor = rule_ctx
         .parent_rules
         .iter()
         .copied()
         .chain(once(rule_ctx.rule_id))
         .any(|rule_id| {
             let nested_ctx = RuleContext::new(rule_id, &[], rule_ctx.rule_lookup);
-            let rule = nested_ctx.rule();
-            rule.prelude.children.iter().any(|complex| {
-                let selectors = build_truncated_relatives(complex);
-                selectors
+            nested_ctx.rule().prelude.children.iter().any(|complex| {
+                complex
+                    .children
                     .iter()
-                    .any(|selector| is_global(selector, &nested_ctx))
+                    .any(|relative| is_global(relative, &nested_ctx))
             })
-        })
-    {
+        });
+    if has_global_ancestor {
         return true;
     }
 
-    let rule = rule_ctx.rule();
-    rule.prelude.children.iter().any(|complex| {
+    let outermost_id = rule_ctx
+        .parent_rules
+        .first()
+        .copied()
+        .unwrap_or(rule_ctx.rule_id);
+    let outermost_ctx = RuleContext::new(outermost_id, &[], rule_ctx.rule_lookup);
+    outermost_ctx.rule().prelude.children.iter().any(|complex| {
         complex.children.iter().any(|relative| {
-            relative.selectors.iter().any(|selector| match selector {
-                SimpleSelector::PseudoClass(pc) => pc.name == "root",
-                SimpleSelector::Global { args: Some(_), .. } => true,
-                _ => false,
+            relative.selectors.iter().any(|selector| {
+                matches!(selector, SimpleSelector::PseudoClass(pc) if pc.name == "root")
+                    || matches!(selector, SimpleSelector::Global { args: Some(_), .. })
             })
         })
     })
@@ -1349,6 +1392,7 @@ fn collect_ancestor_elements(
     seen_snippets: &mut FxHashSet<NodeId>,
     out: &mut Vec<NodeId>,
 ) {
+    let start_len = out.len();
     let mut current = pruner.template.template_topology.parent(node_id);
 
     while let Some(parent) = current {
@@ -1363,6 +1407,21 @@ fn collect_ancestor_elements(
         }
 
         if parent.kind.is_element() {
+            if is_regular_element_named(pruner, parent.id, "option") {
+                let is_direct_child = out.len() == start_len;
+                if (!adjacent_only || is_direct_child)
+                    && let Some(select_id) = nearest_select_ancestor(pruner, parent.id)
+                    && let Some(sc) = first_selectedcontent_in_select(pruner, select_id)
+                {
+                    if adjacent_only && is_direct_child {
+                        out.push(sc);
+                        out.push(parent.id);
+                        return;
+                    }
+                    out.push(sc);
+                }
+            }
+
             out.push(parent.id);
             if adjacent_only {
                 break;
@@ -1371,6 +1430,32 @@ fn collect_ancestor_elements(
 
         current = pruner.template.template_topology.parent(parent.id);
     }
+}
+
+fn is_regular_element_named(pruner: &PruneVisitor<'_, '_, '_, '_>, id: NodeId, name: &str) -> bool {
+    matches!(pruner.component.store.get(id), Node::Element(el) if el.name == name)
+}
+
+fn nearest_select_ancestor(
+    pruner: &PruneVisitor<'_, '_, '_, '_>,
+    node_id: NodeId,
+) -> Option<NodeId> {
+    pruner
+        .template
+        .template_topology
+        .ancestors(node_id)
+        .filter(|parent| parent.kind.is_element())
+        .find(|parent| is_regular_element_named(pruner, parent.id, "select"))
+        .map(|parent| parent.id)
+}
+
+fn first_selectedcontent_in_select(
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
+    select_id: NodeId,
+) -> Option<NodeId> {
+    get_descendant_elements(pruner, select_id, false)
+        .into_iter()
+        .find(|&id| is_regular_element_named(pruner, id, "selectedcontent"))
 }
 
 fn get_descendant_elements(
@@ -1391,6 +1476,25 @@ fn get_descendant_elements(
         &mut seen_snippets,
         &mut descendants,
     );
+
+    if is_regular_element_named(pruner, node_id, "selectedcontent")
+        && let Some(select_id) = nearest_select_ancestor(pruner, node_id)
+    {
+        let options: Vec<NodeId> = get_descendant_elements(pruner, select_id, false)
+            .into_iter()
+            .filter(|&id| is_regular_element_named(pruner, id, "option"))
+            .collect();
+        for option_id in options {
+            collect_descendants_from_node(
+                pruner,
+                option_id,
+                adjacent_only,
+                &mut seen_snippets,
+                &mut descendants,
+            );
+        }
+    }
+
     pruner
         .index
         .store_descendants(node_id, adjacent_only, descendants.clone());
@@ -1642,7 +1746,7 @@ fn collect_possible_siblings(
         for index in indices {
             let id = lowered[index];
             match store.get(id) {
-                Node::Element(_) | Node::SlotElementLegacy(_) | Node::SvelteFragmentLegacy(_) => {
+                Node::Element(_) | Node::SvelteFragmentLegacy(_) => {
                     add_candidate(
                         out,
                         CandidateNode {
@@ -1654,6 +1758,24 @@ fn collect_possible_siblings(
                     if adjacent_only {
                         return;
                     }
+                }
+                Node::SlotElementLegacy(_) => {
+                    add_candidate(
+                        out,
+                        CandidateNode {
+                            id,
+                            kind: CandidateKind::SlotElement,
+                        },
+                        NodeExistsValue::Probably,
+                    );
+                    let nested = get_possible_nested_siblings(
+                        pruner,
+                        id,
+                        direction,
+                        adjacent_only,
+                        seen_snippets,
+                    );
+                    add_all_candidates(&nested, out);
                 }
                 Node::SvelteElement(_) => {
                     add_candidate(
@@ -1783,6 +1905,8 @@ fn get_possible_nested_siblings(
     seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
     let mut fragments: Vec<Option<FragmentId>> = Vec::new();
+    let mut merged_children: Vec<NodeId> = Vec::new();
+    let mut has_merged_children = false;
     let mut exhaustive = true;
 
     match pruner.component.store.get(node_id) {
@@ -1810,7 +1934,11 @@ fn get_possible_nested_siblings(
             fragments.push(Some(block.body));
         }
         Node::ComponentNode(cn) => {
-            fragments.push(Some(cn.fragment));
+            has_merged_children = true;
+            merged_children.extend(fragment_items(&pruner.component.store, cn.fragment));
+            for slot in &cn.legacy_slots {
+                merged_children.extend(fragment_items(&pruner.component.store, slot.fragment));
+            }
             let snippet_ids = pruner.index.component_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {
                 if let Node::SnippetBlock(block) = pruner.component.store.get(snippet_id) {
@@ -1819,7 +1947,11 @@ fn get_possible_nested_siblings(
             }
         }
         Node::SvelteComponentLegacy(cn) => {
-            fragments.push(Some(cn.fragment));
+            has_merged_children = true;
+            merged_children.extend(fragment_items(&pruner.component.store, cn.fragment));
+            for slot in &cn.legacy_slots {
+                merged_children.extend(fragment_items(&pruner.component.store, slot.fragment));
+            }
             let snippet_ids = pruner.index.component_possible_snippets(node_id).to_vec();
             for snippet_id in snippet_ids {
                 if let Node::SnippetBlock(block) = pruner.component.store.get(snippet_id) {
@@ -1830,10 +1962,28 @@ fn get_possible_nested_siblings(
         Node::SvelteBoundary(b) => {
             fragments.push(Some(b.fragment));
         }
+        Node::SlotElementLegacy(el) => {
+            exhaustive = false;
+            fragments.push(Some(el.fragment));
+        }
         _ => return FxHashMap::default(),
     }
 
     let mut result = FxHashMap::default();
+
+    if has_merged_children {
+        merged_children.sort_by_key(|&id| pruner.component.store.get(id).span().start);
+        let map = loop_child_nodes(
+            pruner,
+            &merged_children,
+            direction,
+            adjacent_only,
+            seen_snippets,
+        );
+        exhaustive &= has_definite_elements(&map);
+        add_all_candidates(&map, &mut result);
+    }
+
     for fragment_opt in fragments {
         let Some(fragment_id) = fragment_opt else {
             exhaustive = false;
@@ -1860,8 +2010,18 @@ fn loop_child(
     adjacent_only: bool,
     seen_snippets: &mut FxHashSet<NodeId>,
 ) -> FxHashMap<CandidateNode, NodeExistsValue> {
-    let mut result = FxHashMap::default();
     let lowered = fragment_items(&pruner.component.store, fragment_id);
+    loop_child_nodes(pruner, &lowered, direction, adjacent_only, seen_snippets)
+}
+
+fn loop_child_nodes(
+    pruner: &mut PruneVisitor<'_, '_, '_, '_>,
+    lowered: &[NodeId],
+    direction: Direction,
+    adjacent_only: bool,
+    seen_snippets: &mut FxHashSet<NodeId>,
+) -> FxHashMap<CandidateNode, NodeExistsValue> {
+    let mut result = FxHashMap::default();
 
     let indices: Box<dyn Iterator<Item = usize>> = match direction {
         Direction::Forward => Box::new(0..lowered.len()),
@@ -1872,7 +2032,7 @@ fn loop_child(
     for index in indices {
         let id = lowered[index];
         match store.get(id) {
-            Node::Element(_) | Node::SlotElementLegacy(_) | Node::SvelteFragmentLegacy(_) => {
+            Node::Element(_) | Node::SvelteFragmentLegacy(_) => {
                 add_candidate(
                     &mut result,
                     CandidateNode {
@@ -1884,6 +2044,16 @@ fn loop_child(
                 if adjacent_only {
                     break;
                 }
+            }
+            Node::SlotElementLegacy(_) => {
+                let nested = get_possible_nested_siblings(
+                    pruner,
+                    id,
+                    direction,
+                    adjacent_only,
+                    seen_snippets,
+                );
+                add_all_candidates(&nested, &mut result);
             }
             Node::SvelteElement(_) => {
                 add_candidate(
@@ -1986,6 +2156,7 @@ fn is_block_like(node: &Node) -> bool {
             | Node::AwaitBlock(_)
             | Node::KeyBlock(_)
             | Node::SvelteBoundary(_)
+            | Node::SlotElementLegacy(_)
     )
 }
 
@@ -2127,7 +2298,7 @@ fn scan_value_attr(
                 operator,
                 expected_value.expect("is_none branch returns above"),
                 case_insensitive,
-                attr.value_span.source_text(&pruner.component.source),
+                attr.value(&pruner.component.source),
             );
             if !matches && (name_is_class || name_is_style) {
                 return None;

@@ -35,6 +35,10 @@ pub(super) fn prepare<'a>(
                 bucket.const_tags.push(node.node_id());
                 continue;
             }
+            HoistedKind::DeclarationTag => {
+                bucket.declaration_tags.push(node.node_id());
+                continue;
+            }
             HoistedKind::DebugTag => {
                 bucket.debug_tags.push(node.node_id());
                 continue;
@@ -276,6 +280,7 @@ fn hoisted_kind(node: &Node, inside_head: bool) -> HoistedKind {
         Node::Error(_) => HoistedKind::Error,
         Node::SnippetBlock(_) => HoistedKind::Snippet,
         Node::ConstTag(_) => HoistedKind::ConstTag,
+        Node::DeclarationTag(_) => HoistedKind::DeclarationTag,
         Node::DebugTag(_) => HoistedKind::DebugTag,
         Node::SvelteHead(_) => HoistedKind::SvelteHead,
         Node::SvelteWindow(_) => HoistedKind::SvelteWindow,

@@ -103,7 +103,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
-            if !self.function_info_stack.is_empty() {
+            if !self.function_info_stack.is_empty() || self.rewrite_top_level_declarations {
                 self.rewrite_binding_declarations(stmts, ctx);
             }
             return;

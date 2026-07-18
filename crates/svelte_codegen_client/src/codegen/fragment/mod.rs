@@ -167,6 +167,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
+        for &id in &bucket.declaration_tags {
+            self.emit_hoisted_declaration_tag(state, id)?;
+        }
+
         let multi_first_is_block = matches!(
             &strategy,
             ContentStrategy::Multi {

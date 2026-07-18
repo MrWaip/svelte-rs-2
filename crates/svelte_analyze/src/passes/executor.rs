@@ -141,6 +141,7 @@ pub(crate) fn execute_pass<'a>(
         super::PassKey::BuildValueEvaluation => {
             data.value_evaluation = value_evaluation::build(
                 parsed,
+                component,
                 &data.scoping,
                 data.scoping.semantics(),
                 &data.template.snippets,

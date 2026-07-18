@@ -15,7 +15,7 @@ use crate::expression_semantics::{
     ValueClass, Volatility,
 };
 use crate::reactivity_semantics::data::{
-    BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, EachIndexStrategy,
+    BindingSemantics, ConstTagSemantics, ContextualBindingSemantics, EachIndexStrategy,
     EachItemStrategy, PropBindingKind, PropBindingSemantics, ReactivitySemantics,
     ReferenceSemantics, StateKind,
 };
@@ -91,6 +91,7 @@ pub fn build<'a>(
 ) -> (AttributeSemanticsStore, BindingGroupTable) {
     let attach_eval = ValueEvaluator::new(
         parsed,
+        component,
         scoping,
         semantics,
         reactivity,
@@ -241,11 +242,12 @@ fn reference_symbol_needs_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData, sym: Sy
         return true;
     }
     match ctx.reactivity.binding_semantics(sym) {
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag {
-            reactive,
+        BindingSemantics::Const(ConstTagSemantics {
             initial_is_function,
             ..
-        }) => reactive && !initial_is_function,
+        }) => !initial_is_function,
+        BindingSemantics::DeclarationTag => true,
+        BindingSemantics::OptimizedConst(_) | BindingSemantics::OptimizedDeclarationTag => false,
         BindingSemantics::Contextual(ContextualBindingSemantics::EachIndex(
             EachIndexStrategy::Direct,
         )) => false,
@@ -324,6 +326,9 @@ fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool 
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
         | BindingSemantics::LegacyApiExport
@@ -331,11 +336,19 @@ fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool 
     }
 }
 
-fn handler_reads_through_cell(semantics: BindingSemantics) -> bool {
+fn is_reactive_const_binding(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
+    matches!(
+        ctx.reactivity.binding_semantics(sym),
+        BindingSemantics::Const(_) | BindingSemantics::DeclarationTag
+    )
+}
+
+fn handler_reads_through_cell(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
+    let semantics = ctx.reactivity.binding_semantics(sym);
     if let BindingSemantics::Contextual(_) = semantics {
         return handler_reads_through_contextual_getter(semantics);
     }
-    semantics.is_reactive() || semantics.is_reactive_const_tag()
+    semantics.is_reactive() || is_reactive_const_binding(ctx, sym)
 }
 
 fn handler_symbol_is_function(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
@@ -359,11 +372,9 @@ fn references_include_reactive_const_tag(ctx: &Ctx<'_, '_>, expr_id: NodeId) -> 
     let Some(data) = ctx.expression_data(expr_id) else {
         return false;
     };
-    data.references.iter().any(|&sym| {
-        ctx.reactivity
-            .binding_semantics(sym)
-            .is_reactive_const_tag()
-    })
+    data.references
+        .iter()
+        .any(|&sym| is_reactive_const_binding(ctx, sym))
 }
 
 impl<'a, 'p> Ctx<'a, 'p> {
@@ -1322,9 +1333,7 @@ fn derive_event_handler(
                     .is_store_subscription()
             });
             let needs_wrap = is_store_subscription
-                || symbol.is_some_and(|sym| {
-                    handler_reads_through_cell(ctx.reactivity.binding_semantics(sym))
-                });
+                || symbol.is_some_and(|sym| handler_reads_through_cell(ctx, sym));
             if needs_wrap {
                 return EventHandler::Expression(HandlerEffect::Pure);
             }
@@ -2037,6 +2046,9 @@ fn derive_each_context_vars(ctx: &Ctx<'_, '_>, d: &BindDirective) -> SmallVec<[S
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport

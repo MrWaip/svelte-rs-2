@@ -65,6 +65,9 @@ impl<'a> NeedsContextVisitor<'a> {
             | BindingSemantics::RuntimeRune { .. }
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport

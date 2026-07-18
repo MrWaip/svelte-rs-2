@@ -34,7 +34,7 @@ pub fn parse_expression_with_alloc<'a>(
 pub(crate) enum ExpressionTagBody<'a> {
     Expression(Expression<'a>),
     Declaration(Statement<'a>),
-    Invalid,
+    Invalid(Option<Diagnostic>),
 }
 
 pub(crate) fn parse_expression_tag_body<'a>(
@@ -62,12 +62,34 @@ pub(crate) fn parse_expression_tag_body<'a>(
             process_expression(alloc, &mut expr, wrapper_delta(offset, 0, 0), typescript);
             ExpressionTagBody::Expression(expr)
         }
-        Err(_) => ExpressionTagBody::Invalid,
+        Err(errs) => {
+            let diag = errs.first().and_then(|e| {
+                let acorn_message = match e.message.as_ref() {
+                    "Cannot assign to this expression" => "Assigning to rvalue",
+                    _ => return None,
+                };
+                let label_offset = e
+                    .labels
+                    .as_ref()
+                    .and_then(|labels| labels.first())
+                    .map_or(0u32, |label| label.offset() as u32);
+                let pos = offset + label_offset;
+                Some(Diagnostic::js_parse_error(
+                    Span::new(pos, pos),
+                    acorn_message.to_string(),
+                ))
+            });
+            ExpressionTagBody::Invalid(diag)
+        }
     }
 }
 
 pub(crate) fn placeholder_expression<'a>(alloc: &'a Allocator, offset: u32) -> Expression<'a> {
     AstBuilder::new(alloc).expression_null_literal(OxcSpan::new(offset, offset))
+}
+
+pub(crate) fn placeholder_statement<'a>(alloc: &'a Allocator, offset: u32) -> Statement<'a> {
+    AstBuilder::new(alloc).statement_empty(OxcSpan::new(offset, offset))
 }
 
 fn parse_body_declaration<'a>(
@@ -113,6 +135,36 @@ pub fn parse_script_with_alloc<'a>(
     let mut program = result.program;
     process_program(alloc, &mut program, wrapper_delta(offset, 0, 0), typescript);
     Ok(program)
+}
+
+pub fn parse_declaration_with_alloc<'a>(
+    alloc: &'a Allocator,
+    source: &'a str,
+    offset: u32,
+    typescript: bool,
+) -> Result<Statement<'a>, Diagnostic> {
+    let src_type = if typescript {
+        SourceType::default()
+            .with_typescript(true)
+            .with_module(true)
+    } else {
+        SourceType::default()
+    };
+    let result = OxcParser::new(alloc, source, src_type).parse();
+
+    if !result.errors.is_empty() {
+        return Err(Diagnostic::invalid_expression(Span::new(
+            offset,
+            offset + source.len() as u32,
+        )));
+    }
+
+    let mut stmt = result.program.body.into_iter().next().ok_or_else(|| {
+        Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
+    })?;
+
+    process_statement(alloc, &mut stmt, wrapper_delta(offset, 0, 0), typescript);
+    Ok(stmt)
 }
 
 pub fn parse_const_declaration_with_alloc<'a>(

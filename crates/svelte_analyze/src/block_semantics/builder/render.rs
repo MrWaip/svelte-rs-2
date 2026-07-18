@@ -82,6 +82,9 @@ fn callee_volatility(ctx: &Ctx<'_, '_>, callee_sym: Option<SymbolId>) -> Volatil
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::LegacyApiExport => Volatility::Reactive,
     }
@@ -187,6 +190,9 @@ fn passthrough_prop_binding(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<S
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive

@@ -28,14 +28,14 @@ pub(crate) mod template_topology;
 
 pub use crate::reactivity_semantics::data::{
     BindingSemantics, CarrierMemberReadSemantics, ClassFieldDerivedSemantics, ClassFieldSemantics,
-    ClassFieldStateSemantics, ConstBindingSemantics, ContextualBindingSemantics,
-    ContextualReadKind, ContextualReadSemantics, DeclaratorGroup, DeclaratorSemantics,
-    DerivedAsyncKind, DerivedDeclarationSemantics, DerivedKind, DerivedSource, EachIndexStrategy,
-    EachItemStrategy, LegacyBindablePropSemantics, LegacyDependency, LegacySummary,
-    OptimizedRuneSemantics, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
-    PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
-    ReferenceSemantics, RuntimeRuneKind, SignalReferenceKind, SnippetParamStrategy,
-    StateDeclarationSemantics, StateKind, StoreBindingSemantics,
+    ClassFieldStateSemantics, ConstTagSemantics, ContextualBindingSemantics, ContextualReadKind,
+    ContextualReadSemantics, DeclaratorGroup, DeclaratorSemantics, DerivedAsyncKind,
+    DerivedDeclarationSemantics, DerivedKind, DerivedSource, EachIndexStrategy, EachItemStrategy,
+    LegacyBindablePropSemantics, LegacyDependency, LegacySummary, OptimizedRuneSemantics,
+    PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics,
+    PropsSummary, ReactivitySemantics, ReactivitySummary, ReferenceSemantics, RuntimeRuneKind,
+    SignalReferenceKind, SnippetParamStrategy, StateDeclarationSemantics, StateKind,
+    StoreBindingSemantics,
 };
 pub use analysis::{
     AnalysisData, ApiExport, BlockAnalysis, ElementAnalysis, OutputData, ScriptAnalysis,

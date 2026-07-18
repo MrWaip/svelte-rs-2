@@ -525,6 +525,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 | BindingSemantics::LegacyBindableProp(_)
                 | BindingSemantics::LegacyState(_)
                 | BindingSemantics::Const(_)
+                | BindingSemantics::OptimizedConst(_)
+                | BindingSemantics::DeclarationTag
+                | BindingSemantics::OptimizedDeclarationTag
                 | BindingSemantics::MaybeReactive
                 | BindingSemantics::NonReactive
                 | BindingSemantics::LegacyApiExport

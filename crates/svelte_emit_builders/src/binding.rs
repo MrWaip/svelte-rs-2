@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
-    AnalysisData, BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics,
+    AnalysisData, BindingSemantics, ConstTagSemantics, ContextualBindingSemantics,
     EachIndexStrategy, EachItemStrategy, PropBindingKind, PropBindingSemantics,
     SnippetParamStrategy,
 };
@@ -65,11 +65,18 @@ pub fn read_binding<'a>(
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::OptimizedRune(_) => Some(rune_get(b, name)),
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag {
+        BindingSemantics::Const(ConstTagSemantics {
+            destructured: false,
+            ..
+        })
+        | BindingSemantics::OptimizedConst(ConstTagSemantics {
             destructured: false,
             ..
         }) => Some(rune_get(b, name)),
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag {
+        BindingSemantics::Const(ConstTagSemantics {
+            destructured: true, ..
+        })
+        | BindingSemantics::OptimizedConst(ConstTagSemantics {
             destructured: true, ..
         }) => None,
         BindingSemantics::Contextual(ck) => match ck {

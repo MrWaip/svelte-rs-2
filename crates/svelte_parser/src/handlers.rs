@@ -10,7 +10,8 @@ use svelte_span::Span;
 
 use crate::scanner::{self, token};
 use crate::{
-    AwaitPhase, IfBlockEntry, Parser, StackEntry, is_component_name, pop_children, push_child,
+    AwaitBlockEntry, AwaitPhase, EachBlockEntry, ElementEntry, IfBlockEntry, KeyBlockEntry, Parser,
+    SnippetBlockEntry, StackEntry, is_component_name, pop_children, push_child,
 };
 
 pub(crate) enum CloseReason {
@@ -19,9 +20,174 @@ pub(crate) enum CloseReason {
         closing_start: u32,
         tag_name: String,
     },
+    ImplicitOpen {
+        following_tag: String,
+        following_start: u32,
+    },
 }
 
 impl<'a> Parser<'a> {
+    fn finish_element(&mut self, el: ElementEntry, children: Vec<NodeId>, span: Span) -> Node {
+        if el.name == SVELTE_COMPONENT {
+            let (default_children, legacy_slots) = self.partition_component_children(children);
+            let fragment = self.new_fragment(FragmentRole::ComponentChildren, default_children);
+            Node::SvelteComponentLegacy(SvelteComponentLegacy {
+                id: NodeId(0),
+                span,
+                self_closing: false,
+                attributes: el.attributes,
+                fragment,
+                legacy_slots,
+            })
+        } else if el.name == SVELTE_SELF {
+            let (default_children, legacy_slots) = self.partition_component_children(children);
+            let fragment = self.new_fragment(FragmentRole::ComponentChildren, default_children);
+            Node::SvelteSelf(SvelteSelf {
+                id: NodeId(0),
+                span,
+                self_closing: false,
+                attributes: el.attributes,
+                fragment,
+                legacy_slots,
+            })
+        } else if is_component_name(&el.name) {
+            let (default_children, legacy_slots) = self.partition_component_children(children);
+            let fragment = self.new_fragment(FragmentRole::ComponentChildren, default_children);
+            Node::ComponentNode(ComponentNode {
+                id: NodeId(0),
+                span,
+                name: ExprRef::new(el.name_span),
+                self_closing: false,
+                attributes: el.attributes,
+                fragment,
+                legacy_slots,
+            })
+        } else {
+            let fragment = self.new_fragment(FragmentRole::Element, children);
+            Node::Element(Element {
+                id: NodeId(0),
+                span,
+                name: el.name,
+                self_closing: false,
+                attributes: el.attributes,
+                fragment,
+            })
+        }
+    }
+
+    fn finish_each(&mut self, eb: EachBlockEntry, last_children: Vec<NodeId>, span: Span) -> Node {
+        let (body_children, fallback) = if eb.in_fallback {
+            let body = eb.body_children.unwrap_or_default();
+            let fb = self.new_fragment(FragmentRole::EachFallback, last_children);
+            (body, Some(fb))
+        } else {
+            (last_children, None)
+        };
+
+        let body = self.new_fragment(FragmentRole::EachBody, body_children);
+        let key_id = eb.key_span.map(|_| self.reserve_id());
+        Node::EachBlock(EachBlock {
+            id: NodeId(0),
+            span,
+            expression: ExprRef::new(eb.expression_span),
+            context: eb.context_span.map(StmtRef::new),
+            index: eb.index_span.map(StmtRef::new),
+            key: eb.key_span.map(ExprRef::new),
+            key_id,
+            body,
+            fallback,
+        })
+    }
+
+    fn finish_await(
+        &mut self,
+        ab: AwaitBlockEntry,
+        current_children: Vec<NodeId>,
+        span: Span,
+    ) -> Node {
+        let (pending, then, catch) = match ab.phase {
+            AwaitPhase::Pending => {
+                let p = self.new_fragment(FragmentRole::AwaitPending, current_children);
+                (Some(p), None, None)
+            }
+            AwaitPhase::Then => {
+                let pending = ab
+                    .pending_children
+                    .map(|c| self.new_fragment(FragmentRole::AwaitPending, c));
+                let then = self.new_fragment(FragmentRole::AwaitThen, current_children);
+                let catch = ab
+                    .catch_children
+                    .map(|c| self.new_fragment(FragmentRole::AwaitCatch, c));
+                (pending, Some(then), catch)
+            }
+            AwaitPhase::Catch => {
+                let pending = ab
+                    .pending_children
+                    .map(|c| self.new_fragment(FragmentRole::AwaitPending, c));
+                let then = ab
+                    .then_children
+                    .map(|c| self.new_fragment(FragmentRole::AwaitThen, c));
+                let catch = self.new_fragment(FragmentRole::AwaitCatch, current_children);
+                (pending, then, Some(catch))
+            }
+        };
+
+        Node::AwaitBlock(AwaitBlock {
+            id: NodeId(0),
+            span,
+            expression: ExprRef::new(ab.expression_span),
+            value: ab.value_span.map(StmtRef::new),
+            error: ab.error_span.map(StmtRef::new),
+            pending,
+            then,
+            catch,
+        })
+    }
+
+    fn finish_if(&mut self, ib: IfBlockEntry, last_children: Vec<NodeId>, span: Span) -> Node {
+        let (consequent, alternate) = if let Some(cons) = ib.consequent {
+            let alt = self.new_fragment(FragmentRole::IfAlternate, last_children);
+            (cons, Some(alt))
+        } else {
+            (last_children, None)
+        };
+
+        let consequent_fragment = self.new_fragment(FragmentRole::IfConsequent, consequent);
+        Node::IfBlock(IfBlock {
+            id: NodeId(0),
+            span,
+            test: ExprRef::new(ib.test_span),
+            elseif: ib.elseif,
+            consequent: consequent_fragment,
+            alternate,
+        })
+    }
+
+    fn finish_key(&mut self, kb: KeyBlockEntry, body_children: Vec<NodeId>, span: Span) -> Node {
+        let fragment = self.new_fragment(FragmentRole::KeyBlockBody, body_children);
+        Node::KeyBlock(KeyBlock {
+            id: NodeId(0),
+            span,
+            expression: ExprRef::new(kb.expression_span),
+            fragment,
+        })
+    }
+
+    fn finish_snippet(
+        &mut self,
+        sb: SnippetBlockEntry,
+        body_children: Vec<NodeId>,
+        span: Span,
+    ) -> Node {
+        let body = self.new_fragment(FragmentRole::SnippetBody, body_children);
+        Node::SnippetBlock(SnippetBlock {
+            id: NodeId(0),
+            span,
+            decl: StmtRef::new(sb.expression_span),
+            body,
+        })
+    }
+
     pub(crate) fn handle_end_tag(
         &mut self,
         tag: &token::EndTag,
@@ -32,7 +198,9 @@ impl<'a> Parser<'a> {
         let tag_name = tag.name_span.source_text(self.source);
 
         if scanner::is_void(tag_name) {
-            self.recover(Diagnostic::void_element_invalid_content(span));
+            self.recover(Diagnostic::void_element_invalid_content(Span::new(
+                span.start, span.start,
+            )));
             let id = self.push_node(Node::Error(svelte_ast::ErrorNode {
                 id: NodeId(0),
                 span,
@@ -47,7 +215,25 @@ impl<'a> Parser<'a> {
 
         match match_idx {
             None => {
-                self.recover(Diagnostic::no_element_to_close(span));
+                let autoclosed_reason = self
+                    .last_auto_closed_tag
+                    .as_ref()
+                    .filter(|a| a.tag == tag_name)
+                    .map(|a| a.reason.clone());
+                if let Some(reason) = autoclosed_reason {
+                    self.recover(Diagnostic::error(
+                        DiagnosticKind::ElementInvalidClosingTagAutoclosed {
+                            name: tag_name.to_string(),
+                            reason,
+                        },
+                        Span::new(span.start, span.start),
+                    ));
+                } else {
+                    self.recover(Diagnostic::element_invalid_closing_tag(
+                        Span::new(span.start, span.start),
+                        tag_name.to_string(),
+                    ));
+                }
                 let id = self.push_node(Node::Error(svelte_ast::ErrorNode {
                     id: NodeId(0),
                     span,
@@ -55,84 +241,36 @@ impl<'a> Parser<'a> {
                 push_child(children_stack, id);
             }
             Some(idx) => {
-                let entries_to_close = entry_stack.len() - 1 - idx;
-                if entries_to_close > 0 {
+                let overrun = entry_stack.split_off(idx + 1);
+                if !overrun.is_empty() {
                     let reason = CloseReason::ClosingTagOverrun {
                         closing_start: span.start,
                         tag_name: tag_name.to_string(),
                     };
-                    for _ in 0..entries_to_close {
-                        let entry = entry_stack
-                            .pop()
-                            .expect("entries_to_close is derived from stack length");
+                    for entry in overrun.into_iter().rev() {
                         self.auto_close_entry(entry, children_stack, &reason);
                     }
                 }
 
-                let entry = entry_stack
-                    .pop()
-                    .expect("matching element at idx guarantees stack is non-empty");
-                let StackEntry::Element(el) = entry else {
-                    unreachable!();
+                let Some(StackEntry::Element(el)) = entry_stack.pop() else {
+                    return;
                 };
 
                 let children = pop_children(children_stack);
                 let merged_span = el.span_start.merge(&span);
 
-                let node = if el.name == SVELTE_COMPONENT {
-                    let (default_children, legacy_slots) =
-                        self.partition_component_children(children);
-                    let fragment =
-                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
-                    Node::SvelteComponentLegacy(SvelteComponentLegacy {
-                        id: NodeId(0),
-                        span: merged_span,
-                        self_closing: false,
-                        attributes: el.attributes,
-                        fragment,
-                        legacy_slots,
-                    })
-                } else if el.name == SVELTE_SELF {
-                    let (default_children, legacy_slots) =
-                        self.partition_component_children(children);
-                    let fragment =
-                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
-                    Node::SvelteSelf(SvelteSelf {
-                        id: NodeId(0),
-                        span: merged_span,
-                        self_closing: false,
-                        attributes: el.attributes,
-                        fragment,
-                        legacy_slots,
-                    })
-                } else if is_component_name(&el.name) {
-                    let (default_children, legacy_slots) =
-                        self.partition_component_children(children);
-                    let fragment =
-                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
-                    Node::ComponentNode(ComponentNode {
-                        id: NodeId(0),
-                        span: merged_span,
-                        name: ExprRef::new(el.name_span),
-                        self_closing: false,
-                        attributes: el.attributes,
-                        fragment,
-                        legacy_slots,
-                    })
-                } else {
-                    let fragment = self.new_fragment(FragmentRole::Element, children);
-                    Node::Element(Element {
-                        id: NodeId(0),
-                        span: merged_span,
-                        name: el.name,
-                        self_closing: false,
-                        attributes: el.attributes,
-                        fragment,
-                    })
-                };
+                let node = self.finish_element(el, children, merged_span);
 
                 let id = self.push_node(node);
                 push_child(children_stack, id);
+
+                if self
+                    .last_auto_closed_tag
+                    .as_ref()
+                    .is_some_and(|a| entry_stack.len() < a.depth)
+                {
+                    self.last_auto_closed_tag = None;
+                }
             }
         }
     }
@@ -144,6 +282,28 @@ impl<'a> Parser<'a> {
         entry_stack: &mut Vec<StackEntry>,
         children_stack: &mut Vec<Vec<NodeId>>,
     ) {
+        match entry_stack.last() {
+            Some(StackEntry::IfBlock(_)) | Some(StackEntry::EachBlock(_)) => {}
+            Some(StackEntry::AwaitBlock(_)) => {
+                let point = Span::new(span.start + 1, span.start + 1);
+                self.recover(Diagnostic::error(
+                    DiagnosticKind::ExpectedToken {
+                        token: "{:then ...} or {:catch ...}".into(),
+                    },
+                    point,
+                ));
+                return;
+            }
+            _ => {
+                let point = Span::new(span.start + 1, span.start + 1);
+                self.recover(Diagnostic::error(
+                    DiagnosticKind::BlockInvalidContinuationPlacement,
+                    point,
+                ));
+                return;
+            }
+        }
+
         let consequent_children = pop_children(children_stack);
 
         if else_tag.elseif {
@@ -217,27 +377,8 @@ impl<'a> Parser<'a> {
         let last_children = pop_children(children_stack);
         let merged_span = eb.span.merge(&span);
 
-        let (body_children, fallback) = if eb.in_fallback {
-            let body = eb.body_children.unwrap_or_default();
-            let fb = self.new_fragment(FragmentRole::EachFallback, last_children);
-            (body, Some(fb))
-        } else {
-            (last_children, None)
-        };
-
-        let body = self.new_fragment(FragmentRole::EachBody, body_children);
-        let key_id = eb.key_span.map(|_| self.reserve_id());
-        let id = self.push_node(Node::EachBlock(EachBlock {
-            id: NodeId(0),
-            span: merged_span,
-            expression: ExprRef::new(eb.expression_span),
-            context: eb.context_span.map(StmtRef::new),
-            index: eb.index_span.map(StmtRef::new),
-            key: eb.key_span.map(ExprRef::new),
-            key_id,
-            body,
-            fallback,
-        }));
+        let node = self.finish_each(eb, last_children, merged_span);
+        let id = self.push_node(node);
 
         push_child(children_stack, id);
     }
@@ -261,13 +402,8 @@ impl<'a> Parser<'a> {
         let body_children = pop_children(children_stack);
         let merged_span = sb.span_start.merge(&span);
 
-        let body = self.new_fragment(FragmentRole::SnippetBody, body_children);
-        let id = self.push_node(Node::SnippetBlock(SnippetBlock {
-            id: NodeId(0),
-            span: merged_span,
-            decl: StmtRef::new(sb.expression_span),
-            body,
-        }));
+        let node = self.finish_snippet(sb, body_children, merged_span);
+        let id = self.push_node(node);
 
         push_child(children_stack, id);
     }
@@ -291,13 +427,8 @@ impl<'a> Parser<'a> {
         let body_children = pop_children(children_stack);
         let merged_span = kb.span.merge(&span);
 
-        let fragment = self.new_fragment(FragmentRole::KeyBlockBody, body_children);
-        let id = self.push_node(Node::KeyBlock(KeyBlock {
-            id: NodeId(0),
-            span: merged_span,
-            expression: ExprRef::new(kb.expression_span),
-            fragment,
-        }));
+        let node = self.finish_key(kb, body_children, merged_span);
+        let id = self.push_node(node);
 
         push_child(children_stack, id);
     }
@@ -309,11 +440,34 @@ impl<'a> Parser<'a> {
         entry_stack: &mut Vec<StackEntry>,
         children_stack: &mut Vec<Vec<NodeId>>,
     ) {
-        let entry = entry_stack.last_mut();
-
-        let Some(StackEntry::AwaitBlock(ab)) = entry else {
-            self.recover(Diagnostic::unexpected_token(Span::new(0, 0)));
-            return;
+        let point = Span::new(span.start + 1, span.start + 1);
+        let ab = match entry_stack.last_mut() {
+            Some(StackEntry::AwaitBlock(ab)) => ab,
+            Some(StackEntry::IfBlock(_)) => {
+                self.recover(Diagnostic::error(
+                    DiagnosticKind::ExpectedToken {
+                        token: "{:else} or {:else if}".into(),
+                    },
+                    point,
+                ));
+                return;
+            }
+            Some(StackEntry::EachBlock(_)) => {
+                self.recover(Diagnostic::error(
+                    DiagnosticKind::ExpectedToken {
+                        token: "{:else}".into(),
+                    },
+                    point,
+                ));
+                return;
+            }
+            _ => {
+                self.recover(Diagnostic::error(
+                    DiagnosticKind::BlockInvalidContinuationPlacement,
+                    point,
+                ));
+                return;
+            }
         };
 
         let is_dup = match clause_tag.clause {
@@ -383,44 +537,8 @@ impl<'a> Parser<'a> {
         let current_children = pop_children(children_stack);
         let merged_span = ab.span.merge(&span);
 
-        let (pending, then, catch) = match ab.phase {
-            AwaitPhase::Pending => {
-                let p = self.new_fragment(FragmentRole::AwaitPending, current_children);
-                (Some(p), None, None)
-            }
-            AwaitPhase::Then => {
-                let pending = ab
-                    .pending_children
-                    .map(|c| self.new_fragment(FragmentRole::AwaitPending, c));
-                let then = self.new_fragment(FragmentRole::AwaitThen, current_children);
-
-                let catch = ab
-                    .catch_children
-                    .map(|c| self.new_fragment(FragmentRole::AwaitCatch, c));
-                (pending, Some(then), catch)
-            }
-            AwaitPhase::Catch => {
-                let pending = ab
-                    .pending_children
-                    .map(|c| self.new_fragment(FragmentRole::AwaitPending, c));
-                let then = ab
-                    .then_children
-                    .map(|c| self.new_fragment(FragmentRole::AwaitThen, c));
-                let catch = self.new_fragment(FragmentRole::AwaitCatch, current_children);
-                (pending, then, Some(catch))
-            }
-        };
-
-        let id = self.push_node(Node::AwaitBlock(AwaitBlock {
-            id: NodeId(0),
-            span: merged_span,
-            expression: ExprRef::new(ab.expression_span),
-            value: ab.value_span.map(StmtRef::new),
-            error: ab.error_span.map(StmtRef::new),
-            pending,
-            then,
-            catch,
-        }));
+        let node = self.finish_await(ab, current_children, merged_span);
+        let id = self.push_node(node);
 
         push_child(children_stack, id);
     }
@@ -437,7 +555,14 @@ impl<'a> Parser<'a> {
 
     fn recover_block_close(&mut self, block_span: Span, reason: &CloseReason) {
         match reason {
-            CloseReason::Eof => self.recover(Diagnostic::unclosed_node(block_span)),
+            CloseReason::Eof => {
+                if !self.has_error {
+                    self.recover(Diagnostic::error(
+                        DiagnosticKind::BlockUnclosed,
+                        Span::new(block_span.start, block_span.start + 1),
+                    ));
+                }
+            }
             CloseReason::ClosingTagOverrun {
                 closing_start,
                 tag_name,
@@ -448,6 +573,7 @@ impl<'a> Parser<'a> {
                     tag_name.clone(),
                 ));
             }
+            CloseReason::ImplicitOpen { .. } => {}
         }
     }
 
@@ -465,13 +591,25 @@ impl<'a> Parser<'a> {
             CloseReason::ClosingTagOverrun { closing_start, .. } => {
                 Span::new(*closing_start, *closing_start)
             }
+            CloseReason::ImplicitOpen {
+                following_start, ..
+            } => Span::new(*following_start, *following_start),
         };
 
         match entry {
             StackEntry::Element(el) => {
                 let children = pop_children(children_stack);
                 match reason {
-                    CloseReason::Eof => self.recover(Diagnostic::unclosed_node(el.span_start)),
+                    CloseReason::Eof => {
+                        if !self.has_error {
+                            self.recover(Diagnostic::error(
+                                DiagnosticKind::ElementUnclosed {
+                                    name: el.name.clone(),
+                                },
+                                Span::new(el.span_start.start, el.span_start.start + 1),
+                            ));
+                        }
+                    }
                     CloseReason::ClosingTagOverrun {
                         closing_start,
                         tag_name,
@@ -487,60 +625,25 @@ impl<'a> Parser<'a> {
                             diag_span, tag, closing,
                         ));
                     }
+                    CloseReason::ImplicitOpen {
+                        following_tag,
+                        following_start,
+                    } => {
+                        let diag_end = children
+                            .first()
+                            .map(|id| self.store.get(*id).span().start)
+                            .unwrap_or(*following_start);
+                        let diag_span = Span::new(el.span_start.start, diag_end);
+                        let tag = format!("<{following_tag}>");
+                        let closing = format!("</{}>", el.name);
+                        self.recover(Diagnostic::element_implicitly_closed(
+                            diag_span, tag, closing,
+                        ));
+                    }
                 }
                 let merged_span = el.span_start.merge(&boundary);
 
-                let node = if el.name == SVELTE_COMPONENT {
-                    let (default_children, legacy_slots) =
-                        self.partition_component_children(children);
-                    let fragment =
-                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
-                    Node::SvelteComponentLegacy(SvelteComponentLegacy {
-                        id: NodeId(0),
-                        span: merged_span,
-                        self_closing: false,
-                        attributes: el.attributes,
-                        fragment,
-                        legacy_slots,
-                    })
-                } else if el.name == SVELTE_SELF {
-                    let (default_children, legacy_slots) =
-                        self.partition_component_children(children);
-                    let fragment =
-                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
-                    Node::SvelteSelf(SvelteSelf {
-                        id: NodeId(0),
-                        span: merged_span,
-                        self_closing: false,
-                        attributes: el.attributes,
-                        fragment,
-                        legacy_slots,
-                    })
-                } else if is_component_name(&el.name) {
-                    let (default_children, legacy_slots) =
-                        self.partition_component_children(children);
-                    let fragment =
-                        self.new_fragment(FragmentRole::ComponentChildren, default_children);
-                    Node::ComponentNode(ComponentNode {
-                        id: NodeId(0),
-                        span: merged_span,
-                        name: ExprRef::new(el.name_span),
-                        self_closing: false,
-                        attributes: el.attributes,
-                        fragment,
-                        legacy_slots,
-                    })
-                } else {
-                    let fragment = self.new_fragment(FragmentRole::Element, children);
-                    Node::Element(Element {
-                        id: NodeId(0),
-                        span: merged_span,
-                        name: el.name,
-                        self_closing: false,
-                        attributes: el.attributes,
-                        fragment,
-                    })
-                };
+                let node = self.finish_element(el, children, merged_span);
 
                 let id = self.push_node(node);
                 push_child(children_stack, id);
@@ -548,25 +651,10 @@ impl<'a> Parser<'a> {
             StackEntry::IfBlock(ib) => {
                 self.recover_block_close(ib.span, reason);
                 let last_children = pop_children(children_stack);
-
-                let (consequent, alternate) = if let Some(cons) = ib.consequent {
-                    let alt = self.new_fragment(FragmentRole::IfAlternate, last_children);
-                    (cons, Some(alt))
-                } else {
-                    (last_children, None)
-                };
-
                 let merged_span = ib.span.merge(&boundary);
 
-                let consequent_fragment = self.new_fragment(FragmentRole::IfConsequent, consequent);
-                let id = self.push_node(Node::IfBlock(IfBlock {
-                    id: NodeId(0),
-                    span: merged_span,
-                    test: ExprRef::new(ib.test_span),
-                    elseif: ib.elseif,
-                    consequent: consequent_fragment,
-                    alternate,
-                }));
+                let node = self.finish_if(ib, last_children, merged_span);
+                let id = self.push_node(node);
 
                 push_child(children_stack, id);
             }
@@ -575,27 +663,8 @@ impl<'a> Parser<'a> {
                 let last_children = pop_children(children_stack);
                 let merged_span = eb.span.merge(&boundary);
 
-                let (body_children, fallback) = if eb.in_fallback {
-                    let body = eb.body_children.unwrap_or_default();
-                    let fb = self.new_fragment(FragmentRole::EachFallback, last_children);
-                    (body, Some(fb))
-                } else {
-                    (last_children, None)
-                };
-
-                let body = self.new_fragment(FragmentRole::EachBody, body_children);
-                let key_id = eb.key_span.map(|_| self.reserve_id());
-                let id = self.push_node(Node::EachBlock(EachBlock {
-                    id: NodeId(0),
-                    span: merged_span,
-                    expression: ExprRef::new(eb.expression_span),
-                    context: eb.context_span.map(StmtRef::new),
-                    index: eb.index_span.map(StmtRef::new),
-                    key: eb.key_span.map(ExprRef::new),
-                    key_id,
-                    body,
-                    fallback,
-                }));
+                let node = self.finish_each(eb, last_children, merged_span);
+                let id = self.push_node(node);
 
                 push_child(children_stack, id);
             }
@@ -604,13 +673,8 @@ impl<'a> Parser<'a> {
                 let body_children = pop_children(children_stack);
                 let merged_span = sb.span_start.merge(&boundary);
 
-                let body = self.new_fragment(FragmentRole::SnippetBody, body_children);
-                let id = self.push_node(Node::SnippetBlock(SnippetBlock {
-                    id: NodeId(0),
-                    span: merged_span,
-                    decl: StmtRef::new(sb.expression_span),
-                    body,
-                }));
+                let node = self.finish_snippet(sb, body_children, merged_span);
+                let id = self.push_node(node);
 
                 push_child(children_stack, id);
             }
@@ -619,13 +683,8 @@ impl<'a> Parser<'a> {
                 let body_children = pop_children(children_stack);
                 let merged_span = kb.span.merge(&boundary);
 
-                let fragment = self.new_fragment(FragmentRole::KeyBlockBody, body_children);
-                let id = self.push_node(Node::KeyBlock(KeyBlock {
-                    id: NodeId(0),
-                    span: merged_span,
-                    expression: ExprRef::new(kb.expression_span),
-                    fragment,
-                }));
+                let node = self.finish_key(kb, body_children, merged_span);
+                let id = self.push_node(node);
 
                 push_child(children_stack, id);
             }
@@ -634,43 +693,8 @@ impl<'a> Parser<'a> {
                 let current_children = pop_children(children_stack);
                 let merged_span = ab.span.merge(&boundary);
 
-                let (pending, then, catch) = match ab.phase {
-                    AwaitPhase::Pending => {
-                        let p = self.new_fragment(FragmentRole::AwaitPending, current_children);
-                        (Some(p), None, None)
-                    }
-                    AwaitPhase::Then => {
-                        let pending = ab
-                            .pending_children
-                            .map(|c| self.new_fragment(FragmentRole::AwaitPending, c));
-                        let then = self.new_fragment(FragmentRole::AwaitThen, current_children);
-                        let catch = ab
-                            .catch_children
-                            .map(|c| self.new_fragment(FragmentRole::AwaitCatch, c));
-                        (pending, Some(then), catch)
-                    }
-                    AwaitPhase::Catch => {
-                        let pending = ab
-                            .pending_children
-                            .map(|c| self.new_fragment(FragmentRole::AwaitPending, c));
-                        let then = ab
-                            .then_children
-                            .map(|c| self.new_fragment(FragmentRole::AwaitThen, c));
-                        let catch = self.new_fragment(FragmentRole::AwaitCatch, current_children);
-                        (pending, then, Some(catch))
-                    }
-                };
-
-                let id = self.push_node(Node::AwaitBlock(AwaitBlock {
-                    id: NodeId(0),
-                    span: merged_span,
-                    expression: ExprRef::new(ab.expression_span),
-                    value: ab.value_span.map(StmtRef::new),
-                    error: ab.error_span.map(StmtRef::new),
-                    pending,
-                    then,
-                    catch,
-                }));
+                let node = self.finish_await(ab, current_children, merged_span);
+                let id = self.push_node(node);
 
                 push_child(children_stack, id);
             }
@@ -696,27 +720,13 @@ impl<'a> Parser<'a> {
             };
 
             let last_children = pop_children(children_stack);
-
-            let (consequent, alternate) = if let Some(cons) = ib.consequent {
-                let alt = self.new_fragment(FragmentRole::IfAlternate, last_children);
-                (cons, Some(alt))
-            } else {
-                (last_children, None)
-            };
-
             let merged_span = ib.span.merge(&end_span);
+            let elseif = ib.elseif;
 
-            let consequent_fragment = self.new_fragment(FragmentRole::IfConsequent, consequent);
-            let id = self.push_node(Node::IfBlock(IfBlock {
-                id: NodeId(0),
-                span: merged_span,
-                test: ExprRef::new(ib.test_span),
-                elseif: ib.elseif,
-                consequent: consequent_fragment,
-                alternate,
-            }));
+            let node = self.finish_if(ib, last_children, merged_span);
+            let id = self.push_node(node);
 
-            if ib.elseif {
+            if elseif {
                 push_child(children_stack, id);
 
                 if entry_stack

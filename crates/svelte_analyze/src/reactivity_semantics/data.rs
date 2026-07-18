@@ -32,7 +32,13 @@ pub enum BindingSemantics {
 
     Store(StoreBindingSemantics),
 
-    Const(ConstBindingSemantics),
+    Const(ConstTagSemantics),
+
+    OptimizedConst(ConstTagSemantics),
+
+    DeclarationTag,
+
+    OptimizedDeclarationTag,
 
     Contextual(ContextualBindingSemantics),
 
@@ -63,7 +69,10 @@ impl BindingSemantics {
                 ..
             })
             | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
+            | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::MaybeReactive
             | BindingSemantics::Contextual(
                 ContextualBindingSemantics::LetDirective
@@ -104,6 +113,9 @@ impl BindingSemantics {
             | BindingSemantics::OptimizedRune(_)
             | BindingSemantics::RuntimeRune { .. }
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
             | BindingSemantics::Unresolved => false,
@@ -122,6 +134,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Store(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -142,6 +157,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -161,6 +179,9 @@ impl BindingSemantics {
             | BindingSemantics::Store(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -181,6 +202,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -201,6 +225,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -221,6 +248,9 @@ impl BindingSemantics {
             | BindingSemantics::Store(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -240,6 +270,9 @@ impl BindingSemantics {
             | BindingSemantics::RuntimeRune { .. }
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -265,6 +298,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -286,6 +322,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
@@ -305,6 +344,9 @@ impl BindingSemantics {
             | BindingSemantics::Store(_)
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -325,6 +367,9 @@ impl BindingSemantics {
             | BindingSemantics::Store(_)
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -346,6 +391,9 @@ impl BindingSemantics {
             | BindingSemantics::Store(_)
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -379,26 +427,6 @@ impl BindingSemantics {
         }
     }
 
-    pub fn is_reactive_const_tag(&self) -> bool {
-        match self {
-            BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => *reactive,
-            BindingSemantics::Prop(_)
-            | BindingSemantics::State(_)
-            | BindingSemantics::Derived(_)
-            | BindingSemantics::OptimizedDerived(_)
-            | BindingSemantics::OptimizedRune(_)
-            | BindingSemantics::RuntimeRune { .. }
-            | BindingSemantics::Store(_)
-            | BindingSemantics::LegacyBindableProp(_)
-            | BindingSemantics::LegacyState(_)
-            | BindingSemantics::Contextual(_)
-            | BindingSemantics::MaybeReactive
-            | BindingSemantics::NonReactive
-            | BindingSemantics::LegacyApiExport
-            | BindingSemantics::Unresolved => false,
-        }
-    }
-
     pub fn is_derived(&self) -> bool {
         match self {
             BindingSemantics::Derived(_) => true,
@@ -411,6 +439,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -432,6 +463,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::LegacyApiExport
@@ -451,6 +485,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -471,6 +508,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -491,6 +531,9 @@ impl BindingSemantics {
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -511,6 +554,9 @@ impl BindingSemantics {
             | BindingSemantics::Store(_)
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
@@ -707,13 +753,10 @@ pub struct StoreBindingSemantics {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConstBindingSemantics {
-    ConstTag {
-        destructured: bool,
-        reactive: bool,
-        initial_is_function: bool,
-        owner_node: NodeId,
-    },
+pub struct ConstTagSemantics {
+    pub destructured: bool,
+    pub initial_is_function: bool,
+    pub owner_node: NodeId,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1608,7 +1651,10 @@ pub(crate) enum BindingFacts {
 
     LegacyState(LegacyStateSemantics),
     Store(StoreBindingSemantics),
-    Const(ConstBindingSemantics),
+    Const(ConstTagSemantics),
+    OptimizedConst(ConstTagSemantics),
+    DeclarationTag,
+    OptimizedDeclarationTag,
     Contextual(ContextualBindingSemantics),
     RuntimeRune { kind: RuntimeRuneKind },
 
@@ -2435,13 +2481,29 @@ impl ReactivitySemantics {
     ) {
         self.write_binding(
             sym,
-            BindingFacts::Const(ConstBindingSemantics::ConstTag {
+            BindingFacts::Const(ConstTagSemantics {
                 destructured,
-                reactive: true,
                 initial_is_function,
                 owner_node,
             }),
         );
+    }
+
+    pub(crate) fn record_declaration_tag_binding(&mut self, sym: SymbolId) {
+        self.write_binding(sym, BindingFacts::DeclarationTag);
+    }
+
+    pub(crate) fn optimize_const_binding(&mut self, sym: SymbolId) {
+        let Some(slot) = self.bindings.get_mut(sym) else {
+            return;
+        };
+        match slot {
+            Some(BindingFacts::Const(kind)) => *slot = Some(BindingFacts::OptimizedConst(*kind)),
+            Some(BindingFacts::DeclarationTag) => {
+                *slot = Some(BindingFacts::OptimizedDeclarationTag)
+            }
+            _ => {}
+        }
     }
 
     pub(crate) fn set_legacy_state_signal_source(&mut self, sym: SymbolId, is_signal_source: bool) {
@@ -2697,6 +2759,9 @@ impl ReactivitySemantics {
             BindingFacts::LegacyState(legacy) => BindingSemantics::LegacyState(*legacy),
             BindingFacts::Store(store) => BindingSemantics::Store(*store),
             BindingFacts::Const(kind) => BindingSemantics::Const(*kind),
+            BindingFacts::OptimizedConst(kind) => BindingSemantics::OptimizedConst(*kind),
+            BindingFacts::DeclarationTag => BindingSemantics::DeclarationTag,
+            BindingFacts::OptimizedDeclarationTag => BindingSemantics::OptimizedDeclarationTag,
             BindingFacts::Contextual(kind) => BindingSemantics::Contextual(*kind),
             BindingFacts::RuntimeRune { kind } => BindingSemantics::RuntimeRune { kind: *kind },
             BindingFacts::CarrierAlias { carrier } => BindingSemantics::Contextual(

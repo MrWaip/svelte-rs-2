@@ -167,6 +167,7 @@ pub struct ValueEvaluator<'c, 'a> {
 impl<'c, 'a> ValueEvaluator<'c, 'a> {
     pub fn new(
         parsed: &'c JsAst<'a>,
+        component: &Component,
         scoping: &'c ComponentScoping<'a>,
         semantics: &'c ComponentSemantics<'a>,
         reactivity: &'c ReactivitySemantics,
@@ -174,7 +175,7 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
         read_context: ReadContext,
         dev: bool,
     ) -> Self {
-        let (bindings_init, function_decls) = collect_bindings_init(parsed);
+        let (bindings_init, function_decls) = collect_bindings_init(parsed, component);
         Self {
             scoping,
             semantics,
@@ -286,6 +287,9 @@ fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
         BindingSemantics::NonReactive
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
@@ -294,6 +298,7 @@ fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
 
 fn collect_bindings_init<'c, 'a>(
     parsed: &'c JsAst<'a>,
+    component: &Component,
 ) -> (FxHashMap<SymbolId, &'c Expression<'a>>, FxHashSet<SymbolId>) {
     let cap = parsed.program.as_ref().map_or(0, |p| p.body.len())
         + parsed.module_program.as_ref().map_or(0, |p| p.body.len());
@@ -430,11 +435,22 @@ fn collect_bindings_init<'c, 'a>(
             collect_stmt(stmt, &mut map, &mut fn_decls);
         }
     }
+
+    for node in component.store.iter_nodes() {
+        let Node::DeclarationTag(tag) = node else {
+            continue;
+        };
+        if let Some(Statement::VariableDeclaration(vd)) = parsed.stmt(tag.declaration.id()) {
+            ingest_var_decl(vd, &mut map);
+        }
+    }
+
     (map, fn_decls)
 }
 
 pub(crate) fn build<'a>(
     parsed: &JsAst<'a>,
+    component: &Component,
     scoping: &ComponentScoping<'a>,
     semantics: &ComponentSemantics<'a>,
     snippets: &SnippetData,
@@ -443,6 +459,7 @@ pub(crate) fn build<'a>(
 ) -> ValueEvaluation {
     let evaluator = ValueEvaluator::new(
         parsed,
+        component,
         scoping,
         semantics,
         reactivity,
@@ -1138,6 +1155,9 @@ fn eval_identifier(
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive

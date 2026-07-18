@@ -101,6 +101,8 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
 
     pub(crate) template_owner_node: Option<SvelteNodeId>,
 
+    pub(crate) rewrite_top_level_declarations: bool,
+
     pub(crate) in_bind_setter_traverse: bool,
 
     pub(crate) dispatched_member_assignments: rustc_hash::FxHashSet<u32>,

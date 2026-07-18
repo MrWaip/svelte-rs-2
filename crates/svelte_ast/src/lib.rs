@@ -153,6 +153,52 @@ pub fn is_whitespace_removable_parent(name: &str) -> bool {
     WHITESPACE_REMOVABLE_ELEMENTS.contains(&name)
 }
 
+const P_CLOSING_FOLLOWERS: &[&str] = &[
+    "address",
+    "article",
+    "aside",
+    "blockquote",
+    "div",
+    "dl",
+    "fieldset",
+    "footer",
+    "form",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "header",
+    "hgroup",
+    "hr",
+    "main",
+    "menu",
+    "nav",
+    "ol",
+    "p",
+    "pre",
+    "section",
+    "table",
+    "ul",
+];
+
+pub fn closing_tag_omitted(current: &str, next: &str) -> bool {
+    match current {
+        "li" => next == "li",
+        "dt" | "dd" => matches!(next, "dt" | "dd"),
+        "p" => P_CLOSING_FOLLOWERS.contains(&next),
+        "rt" | "rp" => matches!(next, "rt" | "rp"),
+        "optgroup" => next == "optgroup",
+        "option" => matches!(next, "option" | "optgroup"),
+        "thead" | "tbody" => matches!(next, "tbody" | "tfoot"),
+        "tfoot" => next == "tbody",
+        "tr" => matches!(next, "tr" | "tbody"),
+        "td" | "th" => matches!(next, "td" | "th" | "tr" | "tbody"),
+        _ => false,
+    }
+}
+
 pub const SVELTE_COMPONENT: &str = "svelte:component";
 
 pub const SVELTE_SELF: &str = "svelte:self";
@@ -173,6 +219,25 @@ pub const SVELTE_ELEMENT: &str = "svelte:element";
 
 pub const SVELTE_BOUNDARY: &str = "svelte:boundary";
 
+pub const SVELTE_META_TAGS: &[&str] = &[
+    SVELTE_HEAD,
+    SVELTE_OPTIONS,
+    SVELTE_WINDOW,
+    SVELTE_DOCUMENT,
+    SVELTE_BODY,
+    SVELTE_ELEMENT,
+    SVELTE_COMPONENT,
+    SVELTE_SELF,
+    SVELTE_FRAGMENT,
+    SVELTE_BOUNDARY,
+];
+
+pub const SVELTE_META_TAG_LIST: &str = "svelte:head, svelte:options, svelte:window, svelte:document, svelte:body, svelte:element, svelte:component, svelte:self, svelte:fragment or svelte:boundary";
+
+pub fn is_svelte_meta_tag(name: &str) -> bool {
+    SVELTE_META_TAGS.contains(&name)
+}
+
 pub const RUNE_STATE: &str = "$state";
 pub const RUNE_DERIVED: &str = "$derived";
 pub const RUNE_EFFECT: &str = "$effect";
@@ -192,6 +257,49 @@ pub fn is_rune_name(name: &str) -> bool {
             | RUNE_INSPECT
             | RUNE_HOST
     )
+}
+
+pub const STORE_SUBSCRIPTION_SIGIL: &str = "$";
+
+pub fn store_subscription_base(name: &str) -> Option<&str> {
+    if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") && !is_rune_name(name) {
+        Some(&name[1..])
+    } else {
+        None
+    }
+}
+
+pub enum RuneKeypath {
+    Valid,
+    Renamed {
+        replacement: &'static str,
+        tolerated_when_called: bool,
+    },
+    Removed {
+        tolerated_when_called: bool,
+    },
+    Unknown,
+}
+
+pub fn classify_rune_keypath(keypath: &str) -> RuneKeypath {
+    match keypath {
+        "$state" | "$state.raw" | "$state.eager" | "$state.snapshot" | "$derived"
+        | "$derived.by" | "$props" | "$props.id" | "$bindable" | "$effect" | "$effect.pre"
+        | "$effect.tracking" | "$effect.root" | "$effect.pending" | "$inspect"
+        | "$inspect.trace" | "$host" => RuneKeypath::Valid,
+        "$effect.active" => RuneKeypath::Renamed {
+            replacement: "$effect.tracking",
+            tolerated_when_called: false,
+        },
+        "$state.frozen" => RuneKeypath::Renamed {
+            replacement: "$state.raw",
+            tolerated_when_called: true,
+        },
+        "$state.is" => RuneKeypath::Removed {
+            tolerated_when_called: true,
+        },
+        _ => RuneKeypath::Unknown,
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -404,6 +512,7 @@ impl_node_enum! {
     RenderTag(RenderTag)         => is_render_tag / as_render_tag,
     HtmlTag(HtmlTag)             => is_html_tag / as_html_tag,
     ConstTag(ConstTag)           => is_const_tag / as_const_tag,
+    DeclarationTag(DeclarationTag) => is_declaration_tag / as_declaration_tag,
     DebugTag(DebugTag)           => is_debug_tag / as_debug_tag,
     KeyBlock(KeyBlock)           => is_key_block / as_key_block,
     SvelteHead(SvelteHead)       => is_svelte_head / as_svelte_head,
@@ -529,8 +638,8 @@ impl SnippetBlock {
     pub fn name<'a>(&self, source: &'a str) -> &'a str {
         let expr = &source[self.decl.span.start as usize..self.decl.span.end as usize];
         match expr.find('(') {
-            Some(pos) => &expr[..pos],
-            None => expr,
+            Some(pos) => expr[..pos].trim_end(),
+            None => expr.trim_end(),
         }
     }
 }
@@ -551,6 +660,12 @@ pub struct ConstTag {
     pub id: NodeId,
     pub span: Span,
     pub decl: StmtRef,
+}
+
+pub struct DeclarationTag {
+    pub id: NodeId,
+    pub span: Span,
+    pub declaration: StmtRef,
 }
 
 pub struct DebugTag {
@@ -663,6 +778,7 @@ impl Node {
             | Node::RenderTag(_)
             | Node::HtmlTag(_)
             | Node::ConstTag(_)
+            | Node::DeclarationTag(_)
             | Node::DebugTag(_)
             | Node::KeyBlock(_)
             | Node::AwaitBlock(_)
@@ -940,6 +1056,7 @@ pub struct StyleDirective {
     pub shorthand: bool,
     pub value: StyleDirectiveValue,
     pub important: bool,
+    pub invalid_modifier: Option<Span>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1053,7 +1170,7 @@ impl OnDirectiveModifiers {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransitionDirection {
     Both,
 
@@ -1098,6 +1215,7 @@ pub struct Script {
     pub language: ScriptLanguage,
 
     pub context_deprecated: bool,
+    pub invalid_context: Option<Span>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1325,6 +1443,7 @@ impl_store_accessors! {
     render_tag -> RenderTag / as_render_tag,
     html_tag -> HtmlTag / as_html_tag,
     const_tag -> ConstTag / as_const_tag,
+    declaration_tag -> DeclarationTag / as_declaration_tag,
     debug_tag -> DebugTag / as_debug_tag,
     key_block -> KeyBlock / as_key_block,
     svelte_head -> SvelteHead / as_svelte_head,

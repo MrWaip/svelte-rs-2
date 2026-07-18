@@ -1254,6 +1254,7 @@ fn node_has_associated_control(node: &Node, ctx: &VisitContext<'_, '_>) -> bool 
         | Node::ExpressionTag(_)
         | Node::HtmlTag(_)
         | Node::ConstTag(_)
+        | Node::DeclarationTag(_)
         | Node::DebugTag(_)
         | Node::Error(_) => false,
     }

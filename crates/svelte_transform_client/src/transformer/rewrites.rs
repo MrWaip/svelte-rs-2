@@ -37,6 +37,9 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::Unresolved

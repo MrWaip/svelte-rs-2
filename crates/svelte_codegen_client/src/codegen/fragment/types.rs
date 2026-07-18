@@ -73,6 +73,7 @@ pub(super) enum Child {
 pub(super) struct HoistedBucket {
     pub snippets: SmallVec<[NodeId; 2]>,
     pub const_tags: SmallVec<[NodeId; 2]>,
+    pub declaration_tags: SmallVec<[NodeId; 2]>,
     pub debug_tags: SmallVec<[NodeId; 2]>,
     pub svelte_head: SmallVec<[NodeId; 1]>,
     pub svelte_window: SmallVec<[NodeId; 1]>,
@@ -88,6 +89,7 @@ impl HoistedBucket {
 
     pub(super) fn is_empty_ignoring_snippets(&self) -> bool {
         self.const_tags.is_empty()
+            && self.declaration_tags.is_empty()
             && self.debug_tags.is_empty()
             && self.svelte_head.is_empty()
             && self.svelte_window.is_empty()
@@ -106,6 +108,7 @@ pub(super) enum HoistedKind {
     NotHoisted,
     Snippet,
     ConstTag,
+    DeclarationTag,
     DebugTag,
     SvelteHead,
     SvelteWindow,

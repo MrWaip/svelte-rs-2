@@ -945,6 +945,17 @@ impl<'a> ServerCodegen<'a> {
     }
 
     fn attr_value_concat(&mut self, parts: &[ConcatPart], trim: bool) -> Result<AttrValue<'a>> {
+        if let [single] = parts {
+            return match single {
+                ConcatPart::Static(text) => Ok(AttrValue::Static(if trim {
+                    collapse_attribute_whitespace(text).trim().to_string()
+                } else {
+                    text.clone()
+                })),
+                ConcatPart::Dynamic { id, expr } => self.attr_value_single(*id, expr),
+            };
+        }
+
         let mut segments: Vec<TemplatePart<'a>> = Vec::new();
         let mut has_dynamic = false;
 

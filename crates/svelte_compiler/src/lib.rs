@@ -150,7 +150,17 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let mut css_text: Option<String> = None;
         let mut css_map: Option<svelte_sourcemap::SourceMap> = None;
         if let Some((ss, css_diags)) = css_parsed {
-            analyze_diags.extend(css_diags);
+            let css_offset = component
+                .css
+                .as_ref()
+                .map_or(0, |block| block.content_span.start);
+            analyze_diags.extend(css_diags.into_iter().map(|mut diag| {
+                diag.span = svelte_span::Span::new(
+                    diag.span.start + css_offset,
+                    diag.span.end + css_offset,
+                );
+                diag
+            }));
             let inject_styles = resolved_css_mode(&component, options) == CssMode::Injected
                 || analysis.output.is_custom_element_target;
             svelte_analyze::analyze_css_pass(

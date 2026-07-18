@@ -160,6 +160,10 @@ impl Printer<'_> {
     }
 
     fn print_style_rule(&mut self, rule: &StyleRule, source: &str) -> bool {
+        if self.remove_unused && self.rule_is_empty(rule) {
+            return false;
+        }
+
         let rule_used = self.rule_is_used(rule);
         if self.remove_unused && !rule_used {
             return false;
@@ -171,8 +175,10 @@ impl Printer<'_> {
             self.print_selector_list(&rule.prelude, source);
             if self.minify {
                 self.push_ch('{');
-            } else {
+            } else if source_has_whitespace_before_block(source, &rule.prelude, &rule.block) {
                 self.push_str(" {\n");
+            } else {
+                self.push_str("{\n");
             }
             self.indent += 1;
             self.print_block_children(&rule.block, source);
@@ -343,13 +349,13 @@ impl Printer<'_> {
                 Self::push_combinator(&mut output, combinator, i == 0);
             }
             for simple in &rel.selectors {
-                Self::render_simple_selector(&mut output, simple, source);
+                self.render_simple_selector(&mut output, simple, source);
             }
         }
         output
     }
 
-    fn render_simple_selector(output: &mut String, sel: &SimpleSelector, source: &str) {
+    fn render_simple_selector(&self, output: &mut String, sel: &SimpleSelector, source: &str) {
         match sel {
             SimpleSelector::Type { name, .. } => {
                 output.push_str(name);
@@ -370,44 +376,38 @@ impl Printer<'_> {
                         if idx > 0 {
                             output.push_str(", ");
                         }
-                        let mut nested = String::new();
-                        for (rel_idx, rel) in complex.children.iter().enumerate() {
-                            if let Some(combinator) = &rel.combinator {
-                                Self::push_combinator(&mut nested, combinator, rel_idx == 0);
-                            }
-                            for simple in &rel.selectors {
-                                Self::render_simple_selector(&mut nested, simple, source);
-                            }
-                        }
-                        output.push_str(&nested);
+                        output.push_str(&self.render_complex_selector(complex, source));
                     }
                     output.push(')');
                 }
             }
-            SimpleSelector::Nesting(span)
-            | SimpleSelector::Nth(span)
-            | SimpleSelector::Percentage(span) => {
+            SimpleSelector::Nesting(_) => {
+                output.push('&');
+            }
+            SimpleSelector::Nth(span) | SimpleSelector::Percentage(span) => {
                 output.push_str(span.source_text(source));
             }
             SimpleSelector::PseudoClass(pc) => {
                 output.push(':');
                 output.push_str(&pc.name);
                 if let Some(args) = &pc.args {
+                    let prune_branches = self.remove_unused
+                        && args
+                            .children
+                            .iter()
+                            .any(|complex| self.selector_is_marked_used(complex.id));
                     output.push('(');
-                    for (idx, complex) in args.children.iter().enumerate() {
-                        if idx > 0 {
+                    let mut emitted_used = false;
+                    for complex in &args.children {
+                        if prune_branches && !self.selector_is_marked_used(complex.id) {
+                            output.push(' ');
+                            continue;
+                        }
+                        if emitted_used {
                             output.push_str(", ");
                         }
-                        let mut nested = String::new();
-                        for (rel_idx, rel) in complex.children.iter().enumerate() {
-                            if let Some(combinator) = &rel.combinator {
-                                Self::push_combinator(&mut nested, combinator, rel_idx == 0);
-                            }
-                            for simple in &rel.selectors {
-                                Self::render_simple_selector(&mut nested, simple, source);
-                            }
-                        }
-                        output.push_str(&nested);
+                        emitted_used = true;
+                        output.push_str(&self.render_complex_selector(complex, source));
                     }
                     output.push(')');
                 }
@@ -421,16 +421,7 @@ impl Printer<'_> {
                         if idx > 0 {
                             output.push_str(", ");
                         }
-                        let mut nested = String::new();
-                        for (rel_idx, rel) in complex.children.iter().enumerate() {
-                            if let Some(combinator) = &rel.combinator {
-                                Self::push_combinator(&mut nested, combinator, rel_idx == 0);
-                            }
-                            for simple in &rel.selectors {
-                                Self::render_simple_selector(&mut nested, simple, source);
-                            }
-                        }
-                        output.push_str(&nested);
+                        output.push_str(&self.render_complex_selector(complex, source));
                     }
                     output.push(')');
                 }
@@ -464,6 +455,10 @@ impl Printer<'_> {
         self.used_selectors.is_none_or(|used| used.contains(&id))
     }
 
+    fn selector_is_marked_used(&self, id: CssNodeId) -> bool {
+        self.used_selectors.is_some_and(|used| used.contains(&id))
+    }
+
     fn rule_is_used(&self, rule: &StyleRule) -> bool {
         rule.is_lone_global_block()
             || rule
@@ -471,6 +466,34 @@ impl Printer<'_> {
                 .children
                 .iter()
                 .any(|sel| self.selector_is_used(sel.id))
+    }
+
+    fn rule_is_empty(&self, rule: &StyleRule) -> bool {
+        if rule.is_global_block() {
+            return rule.block.children.is_empty();
+        }
+
+        for child in &rule.block.children {
+            match child {
+                BlockChild::Declaration(_) => return false,
+                BlockChild::Rule(Rule::Style(child)) => {
+                    if self.rule_is_used(child) && !self.rule_is_empty(child) {
+                        return false;
+                    }
+                }
+                BlockChild::Rule(Rule::AtRule(at)) => {
+                    let Some(block) = &at.block else {
+                        return false;
+                    };
+                    if !block.children.is_empty() {
+                        return false;
+                    }
+                }
+                BlockChild::Comment(_) | BlockChild::Error(_) => {}
+            }
+        }
+
+        true
     }
 
     fn push_str(&mut self, s: &str) {
@@ -534,6 +557,12 @@ impl Printer<'_> {
             }
         }
     }
+}
+
+fn source_has_whitespace_before_block(source: &str, prelude: &SelectorList, block: &Block) -> bool {
+    source
+        .get(prelude.span.end as usize..block.span.start as usize)
+        .is_none_or(|between| between.bytes().any(|byte| byte.is_ascii_whitespace()))
 }
 
 fn advance_position(line: &mut u32, column: &mut u32, text: &str) {

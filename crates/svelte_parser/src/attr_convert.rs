@@ -1,9 +1,8 @@
-use rustc_hash::FxHashSet;
 use svelte_ast::{
     AnimateDirective, Attribute, BindDirective, BooleanAttribute, ClassDirective, ConcatPart,
     ConcatenationAttribute, ExprRef, ExpressionAttribute, LetDirectiveLegacy, OnDirectiveLegacy,
     SpreadAttribute, StmtRef, StringAttribute, StyleDirective, StyleDirectiveValue,
-    TransitionDirection, TransitionDirective, UseDirective,
+    TransitionDirective, UseDirective,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::{GetSpan, Span};
@@ -12,23 +11,6 @@ use crate::Parser;
 use crate::html::decode_attribute_value;
 use crate::scanner::token;
 
-fn track_duplicate<'s>(
-    seen: &mut FxHashSet<(&'s str, &'s str)>,
-    key: (&'s str, &'s str),
-    name_span: Span,
-    diagnostics: &mut Vec<Diagnostic>,
-    exclude_this: bool,
-) {
-    if seen.contains(&key) {
-        diagnostics.push(Diagnostic::error(
-            DiagnosticKind::AttributeDuplicate,
-            name_span,
-        ));
-    } else if !exclude_this || key.1 != "this" {
-        seen.insert(key);
-    }
-}
-
 impl<'a> Parser<'a> {
     pub(crate) fn convert_attributes(
         &mut self,
@@ -36,8 +18,6 @@ impl<'a> Parser<'a> {
         is_component: bool,
     ) -> Vec<Attribute> {
         let mut attributes = Vec::new();
-
-        let mut seen: FxHashSet<(&str, &str)> = FxHashSet::default();
 
         for attr in token_attrs {
             let attr_id = self.reserve_id();
@@ -56,14 +36,6 @@ impl<'a> Parser<'a> {
                             html_attr.name_span,
                         ));
                     }
-
-                    track_duplicate(
-                        &mut seen,
-                        ("attr", name),
-                        html_attr.name_span,
-                        &mut self.diagnostics,
-                        true,
-                    );
 
                     let result = match &html_attr.value {
                         token::AttributeValue::String(span) => {
@@ -144,14 +116,6 @@ impl<'a> Parser<'a> {
                 }
                 token::Attribute::ClassDirective(cd) => {
                     let cd_name = cd.name_span.source_text(self.source);
-                    track_duplicate(
-                        &mut seen,
-                        ("class", cd_name),
-                        cd.name_span,
-                        &mut self.diagnostics,
-                        false,
-                    );
-
                     attributes.push(Attribute::ClassDirective(ClassDirective {
                         id: attr_id,
                         span: attr_span,
@@ -162,14 +126,6 @@ impl<'a> Parser<'a> {
                 }
                 token::Attribute::StyleDirective(sd) => {
                     let sd_name = sd.name_span.source_text(self.source);
-                    track_duplicate(
-                        &mut seen,
-                        ("style", sd_name),
-                        sd.name_span,
-                        &mut self.diagnostics,
-                        false,
-                    );
-
                     let (value, expression_span) = if sd.shorthand {
                         (StyleDirectiveValue::Expression, sd.name_span)
                     } else {
@@ -215,18 +171,11 @@ impl<'a> Parser<'a> {
                         shorthand: sd.shorthand,
                         value,
                         important: sd.important,
+                        invalid_modifier: sd.invalid_modifier,
                     }));
                 }
                 token::Attribute::BindDirective(bd) => {
                     let bd_name = bd.name_span.source_text(self.source);
-                    track_duplicate(
-                        &mut seen,
-                        ("attr", bd_name),
-                        bd.name_span,
-                        &mut self.diagnostics,
-                        true,
-                    );
-
                     attributes.push(Attribute::BindDirective(BindDirective {
                         id: attr_id,
                         span: attr_span,
@@ -288,11 +237,7 @@ impl<'a> Parser<'a> {
                     } else {
                         None
                     };
-                    let direction = match td.direction_prefix.as_str() {
-                        "in" => TransitionDirection::In,
-                        "out" => TransitionDirection::Out,
-                        _ => TransitionDirection::Both,
-                    };
+                    let direction = td.direction;
                     attributes.push(Attribute::TransitionDirective(TransitionDirective {
                         id: attr_id,
                         span: attr_span,

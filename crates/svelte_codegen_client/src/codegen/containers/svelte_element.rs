@@ -130,6 +130,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             } else {
                 None
             }
+        } else if attributes.is_empty()
+            && self.ctx.is_css_scoped(el_id)
+            && !self.ctx.css_hash().is_empty()
+        {
+            Some(String::new())
         } else {
             None
         };

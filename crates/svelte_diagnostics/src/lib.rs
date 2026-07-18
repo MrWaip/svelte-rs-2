@@ -33,6 +33,7 @@ pub enum DiagnosticKind {
     SvelteOptionsUnknownAttribute(String),
     SvelteOptionsInvalidAttributeValue(String),
     SvelteOptionsInvalidCustomElementTag,
+    SvelteOptionsInvalidTagname,
     SvelteOptionsReservedTagName,
     SvelteOptionsNoChildren,
     SvelteOptionsInvalidAttribute,
@@ -545,6 +546,7 @@ impl DiagnosticKind {
             Self::SvelteOptionsUnknownAttribute(_) => "svelte_options_unknown_attribute",
             Self::SvelteOptionsInvalidAttributeValue(_) => "svelte_options_invalid_attribute_value",
             Self::SvelteOptionsInvalidCustomElementTag => "svelte_options_invalid_customelement",
+            Self::SvelteOptionsInvalidTagname => "svelte_options_invalid_tagname",
             Self::SvelteOptionsReservedTagName => "svelte_options_reserved_tagname",
             Self::SvelteOptionsNoChildren => "svelte_options_children_forbidden",
             Self::SvelteOptionsInvalidAttribute => "svelte_options_invalid_attribute",
@@ -834,7 +836,7 @@ impl DiagnosticKind {
     pub fn message(&self) -> String {
         match self {
             Self::UnexpectedEndOfFile => "Unexpected end of input".into(),
-            Self::InvalidTagName => "Expected a valid element or component name".into(),
+            Self::InvalidTagName => "Expected a valid element or component name. Components must have a valid variable name or dot notation expression".into(),
             Self::UnterminatedStartTag => "Start tag is not terminated".into(),
             Self::InvalidAttributeName => "Invalid attribute name".into(),
             Self::UnexpectedToken => "Unexpected token".into(),
@@ -852,7 +854,8 @@ impl DiagnosticKind {
             Self::VoidElementInvalidContent => "Void elements cannot have children or closing tags".into(),
             Self::SvelteOptionsUnknownAttribute(name) => format!("<svelte:options> unknown attribute '{name}'"),
             Self::SvelteOptionsInvalidAttributeValue(expected) => format!("Value must be {expected}"),
-            Self::SvelteOptionsInvalidCustomElementTag => "\"tag\" must be a valid custom element name".into(),
+            Self::SvelteOptionsInvalidCustomElementTag => "\"customElement\" must be a string literal defining a valid custom element name or an object of the form { tag?: string; shadow?: \"open\" | \"none\" | `ShadowRootInit`; props?: { [key: string]: { attribute?: string; reflect?: boolean; type: .. } } }".into(),
+            Self::SvelteOptionsInvalidTagname => "Tag name must be lowercase and hyphenated".into(),
             Self::SvelteOptionsReservedTagName => "\"tag\" cannot be a reserved custom element name".into(),
             Self::SvelteOptionsNoChildren => "<svelte:options> cannot have children".into(),
             Self::SvelteOptionsInvalidAttribute => "<svelte:options> can only have static attributes".into(),
@@ -919,7 +922,7 @@ impl DiagnosticKind {
             Self::CssExpectedToken { token } => format!("Expected `{token}`"),
             Self::CssUnclosedBlock => "Unclosed block".into(),
             Self::CssGlobalBlockInvalidCombinator { name } => format!("A `:global` selector cannot follow a `{name}` combinator"),
-            Self::CssGlobalBlockInvalidDeclaration => "A top-level `:global {{...}}` block can only contain rules, not declarations".into(),
+            Self::CssGlobalBlockInvalidDeclaration => "A top-level `:global {...}` block can only contain rules, not declarations".into(),
             Self::CssGlobalBlockInvalidList => "A `:global` selector cannot be part of a selector list with entries that don't contain `:global`".into(),
             Self::CssGlobalBlockInvalidModifier => "A `:global` selector cannot modify an existing selector".into(),
             Self::CssGlobalBlockInvalidModifierStart => "A `:global` selector can only be modified if it is a descendant of other selectors".into(),
@@ -954,7 +957,7 @@ impl DiagnosticKind {
             Self::BindInvalidTarget { name, elements } => format!("`bind:{name}` can only be used with {elements}"),
             Self::BindInvalidValue => "Can only bind to state or props".into(),
             Self::BlockDuplicateClause { name } => format!("{name} cannot appear more than once within a block"),
-            Self::BlockInvalidContinuationPlacement => "{{:...}} block is invalid at this position (did you forget to close the preceding element or block?)".into(),
+            Self::BlockInvalidContinuationPlacement => "{:...} block is invalid at this position (did you forget to close the preceding element or block?)".into(),
             Self::BlockInvalidElseif => "'elseif' should be 'else if'".into(),
             Self::BlockInvalidPlacement { name, location } => format!("{{#{name} ...}} block cannot be {location}"),
             Self::BlockUnclosed => "Block was left open".into(),
@@ -962,10 +965,10 @@ impl DiagnosticKind {
             Self::BlockUnexpectedClose => "Unexpected block closing tag".into(),
             Self::ComponentInvalidDirective => "This type of directive is not valid on components".into(),
             Self::ConstTagCycle { cycle } => format!("Cyclical dependency detected: {cycle}"),
-            Self::ConstTagInvalidExpression => "{{@const ...}} must consist of a single variable declaration".into(),
+            Self::ConstTagInvalidExpression => "{@const ...} must consist of a single variable declaration".into(),
             Self::ConstTagInvalidPlacement => "`{@const}` must be the immediate child of `{#snippet}`, `{#if}`, `{:else if}`, `{:else}`, `{#each}`, `{:then}`, `{:catch}`, `<svelte:fragment>`, `<svelte:boundary>` or `<Component>`".into(),
             Self::ConstTagInvalidReference { name } => format!("The `{{@const {name} = ...}}` declaration is not available in this snippet"),
-            Self::DebugTagInvalidArguments => "{{@debug ...}} arguments must be identifiers, not arbitrary expressions".into(),
+            Self::DebugTagInvalidArguments => "{@debug ...} arguments must be identifiers, not arbitrary expressions".into(),
             Self::DirectiveInvalidValue => "Directive value must be a JavaScript expression enclosed in curly braces".into(),
             Self::DirectiveMissingName { type_ } => format!("`{type_}` name cannot be empty"),
             Self::EachKeyWithoutAs => "An `{#each ...}` block without an `as` clause cannot have a key".into(),
@@ -1025,7 +1028,7 @@ impl DiagnosticKind {
             Self::TagInvalidPlacement { name, location } => format!("{{@{name} ...}} tag cannot be {location}"),
             Self::TextareaInvalidContent => "A `<textarea>` can have either a value attribute or (equivalently) child content, but not both".into(),
             Self::TitleIllegalAttribute => "`<title>` cannot have attributes nor directives".into(),
-            Self::TitleInvalidContent => "`<title>` can only contain text and {{tags}}".into(),
+            Self::TitleInvalidContent => "`<title>` can only contain text and {tags}".into(),
             Self::TransitionConflict { type_, existing } => format!("Cannot use `{type_}:` alongside existing `{existing}:` directive"),
             Self::TransitionDuplicate { type_ } => format!("Cannot use multiple `{type_}:` directives on a single element"),
             Self::UnterminatedStringConstant => "Unterminated string constant".into(),
@@ -1446,6 +1449,14 @@ impl Diagnostic {
     pub fn svelte_options_invalid_custom_element_tag(span: Span) -> Self {
         Diagnostic {
             kind: DiagnosticKind::SvelteOptionsInvalidCustomElementTag,
+            span,
+            severity: Severity::Error,
+        }
+    }
+
+    pub fn svelte_options_invalid_tagname(span: Span) -> Self {
+        Diagnostic {
+            kind: DiagnosticKind::SvelteOptionsInvalidTagname,
             span,
             severity: Severity::Error,
         }

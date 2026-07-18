@@ -260,7 +260,8 @@ pub(crate) fn build_v2<'a>(
     references::apply_bind_this_proxy_targets(data, &bind_this_proxy_targets);
     data.reactivity.classify_derived_sources();
     const_tag_order_legacy::build(component, parsed, data);
-    compute_const_tag_reactivity(component, parsed, data);
+    record_const_tag_declarators(component, parsed, data);
+    optimize_const_and_declaration_tags(component, parsed, data);
 
     legacy::register_legacy_synthetic_objects(data);
     legacy::finalize_legacy_aggregates(data);
@@ -491,6 +492,9 @@ fn is_promotable_legacy_let(
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Store(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::Unresolved
@@ -985,7 +989,7 @@ fn reference_is_reactive(
     ref_id: ReferenceId,
     mode: ReferenceReactivityMode,
 ) -> bool {
-    use super::data::{BindingSemantics, ConstBindingSemantics};
+    use super::data::BindingSemantics;
     if reactivity
         .reference_semantics(ref_id)
         .is_store_subscription()
@@ -1005,7 +1009,8 @@ fn reference_is_reactive(
         | BindingSemantics::RuntimeRune { .. } => true,
         BindingSemantics::Derived(_) => reactivity.derived_reactive(sym),
         BindingSemantics::OptimizedDerived(_) => false,
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag { reactive, .. }) => reactive,
+        BindingSemantics::Const(_) | BindingSemantics::DeclarationTag => true,
+        BindingSemantics::OptimizedConst(_) | BindingSemantics::OptimizedDeclarationTag => false,
         BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
         BindingSemantics::MaybeReactive => match mode {
             ReferenceReactivityMode::General => true,
@@ -1099,48 +1104,21 @@ pub(super) struct LegacyReactiveCollected {
     pub implicit_names: Vec<compact_str::CompactString>,
 }
 
-fn compute_const_tag_reactivity<'a>(
+fn record_const_tag_declarators<'a>(
     component: &Component,
     parsed: &JsAst<'a>,
     data: &mut AnalysisData<'a>,
 ) {
-    use super::data::ConstBindingSemantics;
-    use svelte_component_semantics::walk_bindings;
-
-    let mut processing_order: Vec<svelte_ast::NodeId> = Vec::new();
-    for fragment in component.store.iter_fragments() {
-        let ordered = data.reactivity.const_tags_in_order_legacy(fragment.id);
-        if ordered.is_empty() {
-            for &node_id in &fragment.nodes {
-                if matches!(component.store.get(node_id), svelte_ast::Node::ConstTag(_)) {
-                    processing_order.push(node_id);
-                }
-            }
-        } else {
-            processing_order.extend_from_slice(ordered);
-        }
-    }
-
-    for node_id in processing_order {
-        let svelte_ast::Node::ConstTag(tag) = component.store.get(node_id) else {
+    for node in component.store.iter_nodes() {
+        let svelte_ast::Node::ConstTag(tag) = node else {
             continue;
         };
-        let Some(stmt) = parsed.stmt(tag.decl.id()) else {
-            continue;
-        };
-
-        let Statement::VariableDeclaration(decl) = stmt else {
+        let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(tag.decl.id()) else {
             continue;
         };
         let Some(declarator) = decl.declarations.first() else {
             continue;
         };
-        let mut syms: Vec<SymbolId> = Vec::new();
-        walk_bindings(&declarator.id, |v| syms.push(v.symbol));
-        if syms.is_empty() {
-            continue;
-        }
-
         let async_kind = match declarator.init.as_ref() {
             Some(init) if expression_has_await(init) => DerivedAsyncKind::Async,
             _ => DerivedAsyncKind::Sync,
@@ -1149,42 +1127,86 @@ fn compute_const_tag_reactivity<'a>(
             decl.node_id(),
             DeclaratorSemantics::ConstTag { async_kind },
         );
+    }
+}
+
+fn optimize_const_and_declaration_tags<'a>(
+    component: &Component,
+    parsed: &JsAst<'a>,
+    data: &mut AnalysisData<'a>,
+) {
+    let mut const_order: Vec<svelte_ast::NodeId> = Vec::new();
+    for fragment in component.store.iter_fragments() {
+        let ordered = data.reactivity.const_tags_in_order_legacy(fragment.id);
+        if ordered.is_empty() {
+            for &node_id in &fragment.nodes {
+                if matches!(component.store.get(node_id), svelte_ast::Node::ConstTag(_)) {
+                    const_order.push(node_id);
+                }
+            }
+        } else {
+            const_order.extend_from_slice(ordered);
+        }
+    }
+    for node_id in const_order {
+        if let svelte_ast::Node::ConstTag(tag) = component.store.get(node_id) {
+            optimize_tag_declarators(tag.decl.id(), false, parsed, data);
+        }
+    }
+    for node in component.store.iter_nodes() {
+        if let svelte_ast::Node::DeclarationTag(tag) = node {
+            optimize_tag_declarators(tag.declaration.id(), true, parsed, data);
+        }
+    }
+}
+
+fn optimize_tag_declarators<'a>(
+    stmt_id: OxcNodeId,
+    reassignable: bool,
+    parsed: &JsAst<'a>,
+    data: &mut AnalysisData<'a>,
+) {
+    use svelte_component_semantics::walk_bindings;
+
+    let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(stmt_id) else {
+        return;
+    };
+    for declarator in &decl.declarations {
+        let mut syms: Vec<SymbolId> = Vec::new();
+        walk_bindings(&declarator.id, |v| syms.push(v.symbol));
+        if syms.is_empty() {
+            continue;
+        }
+        let destructured =
+            syms.len() > 1 || !matches!(&declarator.id, BindingPattern::BindingIdentifier(_));
 
         let mut refs: SmallVec<[ReferenceId; 4]> = SmallVec::new();
         let mut eager_rune = false;
+        let mut has_impure = false;
         let mut collector = RefCollector {
             refs: &mut refs,
             reactive_rune_call: &mut eager_rune,
+            has_impure: &mut has_impure,
         };
-        collector.visit_statement(stmt);
+        if let Some(init) = declarator.init.as_ref() {
+            collector.visit_expression(init);
+        }
 
-        let init_is_impure_member_or_call = declarator
-            .init
-            .as_ref()
-            .is_some_and(init_expression_is_impure);
+        let refs_reactive = refs.iter().any(|&ref_id| {
+            reference_is_reactive(
+                &data.reactivity,
+                &data.scoping,
+                ref_id,
+                ReferenceReactivityMode::General,
+            )
+        });
+        let mutated = reassignable && syms.iter().any(|&s| data.scoping.is_mutated(s));
 
-        let is_destructured =
-            syms.len() > 1 || !matches!(&declarator.id, BindingPattern::BindingIdentifier(_));
-
-        let reactive = is_destructured
-            || eager_rune
-            || init_is_impure_member_or_call
-            || refs.iter().any(|&ref_id| {
-                reference_is_reactive(
-                    &data.reactivity,
-                    &data.scoping,
-                    ref_id,
-                    ReferenceReactivityMode::General,
-                )
-            });
-
+        if destructured || eager_rune || has_impure || refs_reactive || mutated {
+            continue;
+        }
         for sym in syms {
-            if let Some(BindingFacts::Const(ConstBindingSemantics::ConstTag {
-                reactive: r, ..
-            })) = data.reactivity.binding_facts_mut(sym)
-            {
-                *r = reactive;
-            }
+            data.reactivity.optimize_const_binding(sym);
         }
     }
 }
@@ -1233,33 +1255,6 @@ fn reference_in_template_scope(data: &AnalysisData<'_>, ref_id: ReferenceId) -> 
         scope_opt = data.scoping.scope_parent_id(scope);
     }
     false
-}
-
-fn init_expression_is_impure(expr: &Expression<'_>) -> bool {
-    struct ImpureProbe {
-        has: bool,
-    }
-    impl<'a> Visit<'a> for ImpureProbe {
-        fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
-            self.has = true;
-            walk_member_expression(self, expr);
-        }
-        fn visit_call_expression(&mut self, expr: &CallExpression<'a>) {
-            self.has = true;
-            walk_call_expression(self, expr);
-        }
-        fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
-            self.has = true;
-            walk_new_expression(self, expr);
-        }
-        fn visit_tagged_template_expression(&mut self, expr: &TaggedTemplateExpression<'a>) {
-            self.has = true;
-            walk_tagged_template_expression(self, expr);
-        }
-    }
-    let mut p = ImpureProbe { has: false };
-    p.visit_expression(expr);
-    p.has
 }
 
 fn build_script_semantics_v2<'a>(
@@ -1929,9 +1924,11 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         };
         let mut refs: SmallVec<[ReferenceId; 4]> = SmallVec::new();
         let mut reactive_rune_call = false;
+        let mut ignored_impure = false;
         let mut visitor = RefCollector {
             refs: &mut refs,
             reactive_rune_call: &mut reactive_rune_call,
+            has_impure: &mut ignored_impure,
         };
         match rune_kind {
             RuneKind::DerivedBy => {
@@ -2750,6 +2747,7 @@ fn pattern_binding_symbols(pattern: &BindingPattern<'_>) -> Vec<SymbolId> {
 pub(super) struct RefCollector<'s> {
     pub(super) refs: &'s mut SmallVec<[ReferenceId; 4]>,
     pub(super) reactive_rune_call: &'s mut bool,
+    pub(super) has_impure: &'s mut bool,
 }
 
 impl<'a> Visit<'a> for RefCollector<'_> {
@@ -2758,7 +2756,20 @@ impl<'a> Visit<'a> for RefCollector<'_> {
             self.refs.push(ref_id);
         }
     }
+    fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
+        *self.has_impure = true;
+        walk_member_expression(self, expr);
+    }
+    fn visit_new_expression(&mut self, expr: &NewExpression<'a>) {
+        *self.has_impure = true;
+        walk_new_expression(self, expr);
+    }
+    fn visit_tagged_template_expression(&mut self, expr: &TaggedTemplateExpression<'a>) {
+        *self.has_impure = true;
+        walk_tagged_template_expression(self, expr);
+    }
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        *self.has_impure = true;
         if let Some(rune) = detect_rune_from_call(call)
             && matches!(
                 rune,

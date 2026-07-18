@@ -322,6 +322,9 @@ fn walk_node<'a>(
                 ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
             }
         }
+        Node::DeclarationTag(tag) => {
+            ctx.stmt_handles.push((tag.declaration.id(), Some(tag.id)));
+        }
         Node::KeyBlock(block) => {
             ctx.expr_handles
                 .push((block.expression.id(), Some(block.id)));

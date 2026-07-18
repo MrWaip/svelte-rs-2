@@ -35,6 +35,7 @@ pub(super) fn populate<'a>(
 ) {
     let evaluator = ValueEvaluator::new(
         parsed,
+        component,
         scoping,
         semantics,
         reactivity,
@@ -119,6 +120,9 @@ fn visit_fragment(
             }
             Node::ConstTag(tag) => {
                 store_const_tag(tag.id, tag.decl.id(), ctx, sink);
+            }
+            Node::DeclarationTag(tag) => {
+                store_declaration_tag(tag.id, tag.declaration.id(), ctx, sink);
             }
             Node::Element(el) => visit_element(component, el, ctx, sink),
             Node::SvelteElement(el) => {
@@ -430,6 +434,33 @@ fn store_const_tag(site_id: NodeId, stmt_id: OxcNodeId, ctx: &Ctx<'_, '_>, sink:
     sink.set(site_id, value);
 }
 
+fn store_declaration_tag(
+    site_id: NodeId,
+    stmt_id: OxcNodeId,
+    ctx: &Ctx<'_, '_>,
+    sink: &mut Sink<'_>,
+) {
+    let Some(Statement::VariableDeclaration(decl)) = ctx.parsed.stmt(stmt_id) else {
+        return;
+    };
+    let mut site_value: Option<ExpressionSemantics> = None;
+    for d in &decl.declarations {
+        let Some(expr) = d.init.as_ref() else {
+            continue;
+        };
+        let (data, facts) = compute(expr, ctx, SiteContext::Text);
+        update_aggregates(sink, &facts, ctx);
+        let value = ExpressionSemantics::Expression(data);
+        sink.set_by_oxc(expression_node_id(expr), value.clone());
+        if site_value.is_none() {
+            site_value = Some(value);
+        }
+    }
+    if let Some(value) = site_value {
+        sink.set(site_id, value);
+    }
+}
+
 fn store_aggregate(
     site_id: NodeId,
     expr_ids: impl IntoIterator<Item = OxcNodeId>,
@@ -596,6 +627,9 @@ fn is_context_member_root(semantics: BindingSemantics) -> bool {
         | BindingSemantics::Store(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::NonReactive
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
@@ -617,6 +651,9 @@ fn is_safe_member_root(reactivity: &ReactivitySemantics, sym: SymbolId) -> bool 
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::NonReactive
         | BindingSemantics::LegacyApiExport

@@ -506,6 +506,32 @@ fn each_block_no_as_with_index_object_literal() {
     assert!(tokens[1].token_type == TokenType::EOF);
 }
 
+#[test]
+fn each_block_no_as_with_index_and_key() {
+    let source = "{#each items, rank (item.id)}";
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens().0;
+    let TokenType::StartEachTag(tag) = &tokens[0].token_type else {
+        panic!("Expected StartEachTag");
+    };
+    assert_eq!(tag.collection_span.source_text(source), "items");
+    assert_eq!(
+        tag.index_span
+            .as_ref()
+            .expect("expected index")
+            .source_text(source),
+        "rank"
+    );
+    assert_eq!(
+        tag.key_span
+            .as_ref()
+            .expect("expected key")
+            .source_text(source),
+        "item.id"
+    );
+    assert!(tokens[1].token_type == TokenType::EOF);
+}
+
 fn assert_has_diagnostic(diagnostics: &[Diagnostic], err_kind: DiagnosticKind) {
     assert!(
         diagnostics.iter().any(|d| d.kind == err_kind),

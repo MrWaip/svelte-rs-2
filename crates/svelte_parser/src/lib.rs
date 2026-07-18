@@ -6,9 +6,9 @@ use scanner::{Scanner, token::TokenType};
 use svelte_span::Span;
 
 use svelte_ast::{
-    AstStore, Attribute, Comment, Component, ComponentNode, ConstTag, DebugTag, Element,
-    FragmentId, FragmentRole, HtmlTag, Node, NodeId, RawBlock, RenderTag, SVELTE_COMPONENT,
-    SVELTE_SELF, Script, ScriptContext, ScriptLanguage, Text,
+    AstStore, Attribute, Comment, Component, ComponentNode, ConstTag, DebugTag, DeclarationTag,
+    Element, FragmentId, FragmentRole, HtmlTag, Node, NodeId, RawBlock, RenderTag,
+    SVELTE_COMPONENT, SVELTE_SELF, Script, ScriptContext, ScriptLanguage, Text,
 };
 
 use svelte_diagnostics::Diagnostic;
@@ -24,6 +24,7 @@ mod walk_js;
 mod attr_convert;
 mod handlers;
 mod svelte_elements;
+use svelte_elements::for_each_child_fragment;
 
 pub use types::{CeDomMode, CePropConfig, JsAst, ParsedCeConfig};
 
@@ -44,8 +45,22 @@ pub fn parse_with_js<'a>(
     let (component, mut diagnostics) = Parser::new(trimmed).parse();
     let mut result = JsAst::new();
     walk_js::parse_js(alloc, &component, &mut result, &mut diagnostics);
+    reduce_to_first_error(&mut diagnostics);
 
     (component, result, diagnostics)
+}
+
+fn reduce_to_first_error(diagnostics: &mut Vec<Diagnostic>) {
+    let mut seen_error = false;
+    diagnostics.retain(|diagnostic| {
+        if diagnostic.severity == svelte_diagnostics::Severity::Error {
+            if seen_error {
+                return false;
+            }
+            seen_error = true;
+        }
+        true
+    });
 }
 
 pub fn parse_css_block(
@@ -148,6 +163,14 @@ pub struct Parser<'a> {
     source: &'a str,
     store: AstStore,
     diagnostics: Vec<Diagnostic>,
+    last_auto_closed_tag: Option<AutoClosedTag>,
+    has_error: bool,
+}
+
+pub(crate) struct AutoClosedTag {
+    pub(crate) tag: String,
+    pub(crate) reason: String,
+    pub(crate) depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -156,10 +179,15 @@ impl<'a> Parser<'a> {
             source,
             store: AstStore::with_capacity(source.len() / 10),
             diagnostics: Vec::new(),
+            last_auto_closed_tag: None,
+            has_error: false,
         }
     }
 
     fn recover(&mut self, diagnostic: Diagnostic) {
+        if diagnostic.severity == svelte_diagnostics::Severity::Error {
+            self.has_error = true;
+        }
         self.diagnostics.push(diagnostic);
     }
 
@@ -284,6 +312,35 @@ impl<'a> Parser<'a> {
                 TokenType::StartTag(tag) => {
                     let name = tag.name_span.source_text(self.source);
                     let is_component = is_component_name(name);
+
+                    let closed_name = match entry_stack.last() {
+                        Some(StackEntry::Element(top))
+                            if svelte_ast::closing_tag_omitted(&top.name, name) =>
+                        {
+                            Some(top.name.clone())
+                        }
+                        _ => None,
+                    };
+                    if let Some(closed_name) = closed_name {
+                        let following_tag = name.to_string();
+                        let following_start = token.span.start;
+                        if let Some(entry) = entry_stack.pop() {
+                            self.auto_close_entry(
+                                entry,
+                                &mut children_stack,
+                                &handlers::CloseReason::ImplicitOpen {
+                                    following_tag: following_tag.clone(),
+                                    following_start,
+                                },
+                            );
+                        }
+                        self.last_auto_closed_tag = Some(AutoClosedTag {
+                            tag: closed_name,
+                            reason: following_tag,
+                            depth: entry_stack.len(),
+                        });
+                    }
+
                     let attrs = self.convert_attributes(&tag.attributes, is_component);
                     if tag.self_closing {
                         let name = name.to_string();
@@ -456,6 +513,14 @@ impl<'a> Parser<'a> {
                     }));
                     push_child(&mut children_stack, id);
                 }
+                TokenType::DeclarationTag(dt) => {
+                    let id = self.push_node(Node::DeclarationTag(DeclarationTag {
+                        id: NodeId(0),
+                        span: token.span,
+                        declaration: svelte_ast::StmtRef::new(dt.statement_span),
+                    }));
+                    push_child(&mut children_stack, id);
+                }
                 TokenType::DebugTag(dt) => {
                     let identifier_refs = dt
                         .identifiers
@@ -490,6 +555,7 @@ impl<'a> Parser<'a> {
                             language,
                             context: ScriptContext::Module,
                             context_deprecated: script_tag.context_deprecated,
+                            invalid_context: script_tag.invalid_context,
                         });
                     } else {
                         if instance_script_data.is_some() {
@@ -505,12 +571,16 @@ impl<'a> Parser<'a> {
                             language,
                             context: ScriptContext::Default,
                             context_deprecated: false,
+                            invalid_context: script_tag.invalid_context,
                         });
                     }
                 }
                 TokenType::StyleTag(style_tag) => {
                     if css_data.is_some() {
-                        self.recover(Diagnostic::only_single_top_level_style(token.span));
+                        self.recover(Diagnostic::error(
+                            svelte_diagnostics::DiagnosticKind::StyleDuplicate,
+                            Span::new(token.span.start, token.span.start),
+                        ));
                         continue;
                     }
 
@@ -538,6 +608,7 @@ impl<'a> Parser<'a> {
             context: sd.context,
             language: sd.language,
             context_deprecated: sd.context_deprecated,
+            invalid_context: sd.invalid_context,
         });
 
         let module_script = module_script_data.map(|sd| Script {
@@ -547,6 +618,7 @@ impl<'a> Parser<'a> {
             context: sd.context,
             language: sd.language,
             context_deprecated: sd.context_deprecated,
+            invalid_context: sd.invalid_context,
         });
 
         let css = css_data.map(|cd| RawBlock {
@@ -568,15 +640,7 @@ impl<'a> Parser<'a> {
 
         self.extract_svelte_options(&mut component);
 
-        self.validate_root_only_special_elements(&component);
-
-        Self::convert_svelte_head(&mut component);
-
-        Self::convert_svelte_window(&mut component);
-
-        Self::convert_svelte_document(&mut component);
-
-        Self::convert_svelte_body(&mut component);
+        Self::convert_special_root_elements(&mut component);
 
         let root_nodes = component.fragment_nodes(component.root).to_vec();
 
@@ -593,57 +657,15 @@ impl<'a> Parser<'a> {
 
     fn populate_fragment_owners(store: &mut AstStore) {
         let total = store.fragments_len();
+        let mut child_frags: Vec<svelte_ast::FragmentId> = Vec::new();
         for fid_raw in 0..total {
             let fid = svelte_ast::FragmentId(fid_raw);
             let nodes_len = store.fragment_nodes(fid).len();
             for i in 0..nodes_len {
                 let nid = store.fragment_nodes(fid)[i];
-                let mut child_frags: Vec<svelte_ast::FragmentId> = Vec::new();
-                let node = store.get(nid);
-                match node {
-                    Node::Element(el) => child_frags.push(el.fragment),
-                    Node::SlotElementLegacy(el) => child_frags.push(el.fragment),
-                    Node::ComponentNode(cn) => {
-                        child_frags.push(cn.fragment);
-                        for slot in &cn.legacy_slots {
-                            child_frags.push(slot.fragment);
-                        }
-                    }
-                    Node::IfBlock(b) => {
-                        child_frags.push(b.consequent);
-                        if let Some(alt) = b.alternate {
-                            child_frags.push(alt);
-                        }
-                    }
-                    Node::EachBlock(b) => {
-                        child_frags.push(b.body);
-                        if let Some(fb) = b.fallback {
-                            child_frags.push(fb);
-                        }
-                    }
-                    Node::SnippetBlock(b) => child_frags.push(b.body),
-                    Node::KeyBlock(b) => child_frags.push(b.fragment),
-                    Node::SvelteHead(h) => child_frags.push(h.fragment),
-                    Node::SvelteFragmentLegacy(f) => child_frags.push(f.fragment),
-                    Node::SvelteElement(el) => child_frags.push(el.fragment),
-                    Node::SvelteWindow(w) => child_frags.push(w.fragment),
-                    Node::SvelteDocument(d) => child_frags.push(d.fragment),
-                    Node::SvelteBody(b) => child_frags.push(b.fragment),
-                    Node::SvelteBoundary(b) => child_frags.push(b.fragment),
-                    Node::AwaitBlock(b) => {
-                        if let Some(p) = b.pending {
-                            child_frags.push(p);
-                        }
-                        if let Some(t) = b.then {
-                            child_frags.push(t);
-                        }
-                        if let Some(c) = b.catch {
-                            child_frags.push(c);
-                        }
-                    }
-                    _ => {}
-                }
-                for cf in child_frags {
+                child_frags.clear();
+                for_each_child_fragment(store.get(nid), |cf| child_frags.push(cf));
+                for &cf in &child_frags {
                     store.set_fragment_owner(cf, nid);
                 }
             }
@@ -656,6 +678,29 @@ enum TagError {
     Reserved,
 }
 
+fn is_custom_element_tag_char(c: char) -> bool {
+    matches!(c,
+        'a'..='z'
+        | '0'..='9'
+        | '_'
+        | '.'
+        | '-'
+        | '\u{B7}'
+        | '\u{C0}'..='\u{D6}'
+        | '\u{D8}'..='\u{F6}'
+        | '\u{F8}'..='\u{37D}'
+        | '\u{37F}'..='\u{1FFF}'
+        | '\u{200C}'..='\u{200D}'
+        | '\u{203F}'..='\u{2040}'
+        | '\u{2070}'..='\u{218F}'
+        | '\u{2C00}'..='\u{2FEF}'
+        | '\u{3001}'..='\u{D7FF}'
+        | '\u{F900}'..='\u{FDCF}'
+        | '\u{FDF0}'..='\u{FFFD}'
+        | '\u{10000}'..='\u{EFFFF}'
+    )
+}
+
 fn validate_custom_element_tag(tag: &str) -> Option<TagError> {
     if tag.is_empty() {
         return None;
@@ -663,9 +708,7 @@ fn validate_custom_element_tag(tag: &str) -> Option<TagError> {
 
     let is_valid = tag.starts_with(|c: char| c.is_ascii_lowercase())
         && tag.contains('-')
-        && tag.chars().all(|c| {
-            c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.' || c == '_'
-        });
+        && tag.chars().all(is_custom_element_tag_char);
 
     if !is_valid {
         return Some(TagError::Invalid);
@@ -702,6 +745,7 @@ struct ScriptData {
     language: ScriptLanguage,
     context: ScriptContext,
     context_deprecated: bool,
+    invalid_context: Option<Span>,
 }
 
 struct CssData {

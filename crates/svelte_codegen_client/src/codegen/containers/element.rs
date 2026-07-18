@@ -284,6 +284,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             state.init.push(self.ctx.b.block_stmt(drained));
         }
 
+        if !is_ghost
+            && self.ctx.query.view.is_selectedcontent(el_id)
+            && state.suppress_selectedcontent_for != Some(el_id)
+        {
+            let setter = self.ctx.b.arrow_expr(
+                self.ctx.b.params(["$$element"]),
+                [self.ctx.b.expr_stmt(self.ctx.b.assign_expr(
+                    AssignLeft::Ident(el_name.clone()),
+                    self.ctx.b.rid_expr("$$element"),
+                ))],
+            );
+            state.init.push(self.ctx.b.call_stmt(
+                "$.selectedcontent",
+                [Arg::Ident(&el_name), Arg::Expr(setter)],
+            ));
+        }
+
         state.template.pop_element();
 
         Ok(el_name)
@@ -395,6 +412,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let selectedcontent_ident =
             selectedcontent_child.map(|_| self.ctx.state.gen_ident("selectedcontent"));
 
+        inner_state.suppress_selectedcontent_for = selectedcontent_child;
         self.emit_fragment(&mut inner_state, &child_ctx, el_fragment)?;
 
         let html_str = inner_state.template.as_html();

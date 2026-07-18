@@ -1,8 +1,6 @@
 use crate::passes::fragment_topology::fragment_items as fragment_items_fn;
 use crate::reactivity_semantics::data::PropDefaultKind;
-use crate::types::data::{
-    BindTargetSemantics, BindingSemantics, ConstBindingSemantics, ParentKind,
-};
+use crate::types::data::{BindTargetSemantics, BindingSemantics, ConstTagSemantics, ParentKind};
 use crate::{
     AttributeSemantics, BlockSemantics, ClassSemantics, EachIndexStrategy, EachItemStrategy,
     GroupBindValue, OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
@@ -837,7 +835,7 @@ fn assert_const_tag_owner(data: &AnalysisData, name: &str) {
     assert!(
         matches!(
             data.binding_semantics(sym_id),
-            BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
+            BindingSemantics::Const(ConstTagSemantics { .. }) | BindingSemantics::OptimizedConst(_)
         ),
         "expected '{name}' to have a Const declaration semantic",
     );
@@ -7902,7 +7900,7 @@ async function baz() { return 2; }
 
     fn evaluate_binding_init(source: &'static str, name: &str) -> Evaluation {
         use crate::value_evaluation::{ReadContext, ValueEvaluator};
-        let (_component, data, parsed) = analyze_source_with_parsed(source);
+        let (component, data, parsed) = analyze_source_with_parsed(source);
         let sym = data
             .scoping
             .semantics()
@@ -7911,6 +7909,7 @@ async function baz() { return 2; }
             .unwrap_or_else(|| panic!("binding '{name}' not found"));
         let evaluator = ValueEvaluator::new(
             &parsed,
+            &component,
             &data.scoping,
             data.scoping.semantics(),
             &data.reactivity,

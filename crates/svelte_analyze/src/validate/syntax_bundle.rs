@@ -42,6 +42,7 @@ pub(super) fn validate_instance(
 pub(super) fn validate_module(
     data: &AnalysisData,
     program: &Program<'_>,
+    check_class_state: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut validator = SyntaxValidator {
@@ -50,7 +51,7 @@ pub(super) fn validate_module(
         in_constructor: false,
         function_depth: 0,
         base_function_depth: 0,
-        check_class_state: false,
+        check_class_state,
         check_legacy_placement: false,
         check_stores: false,
     };

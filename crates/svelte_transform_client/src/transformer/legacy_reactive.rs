@@ -215,7 +215,11 @@ fn build_dep_read<'a>(
         }
         BindingSemantics::Store(_) => b.call_expr_callee(b.rid_expr(name), []),
         BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => b.rid_expr(name),
-        BindingSemantics::Const(_) | BindingSemantics::Contextual(_) => b.rid_expr(name),
+        BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
+        | BindingSemantics::Contextual(_) => b.rid_expr(name),
         BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => b.rid_expr(name),
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)

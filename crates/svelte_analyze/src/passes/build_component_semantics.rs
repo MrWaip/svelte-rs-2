@@ -139,6 +139,16 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
                         record_stmt_id(&tag.decl, tag.decl.span.start, &mut self.stmt_id_map);
                     }
                 }
+                Node::DeclarationTag(tag) => {
+                    if let Some(stmt) = self.parsed.pending_stmt(tag.declaration.span.start) {
+                        ctx.visit_js_statement(&tag.declaration, stmt);
+                        record_stmt_id(
+                            &tag.declaration,
+                            tag.declaration.span.start,
+                            &mut self.stmt_id_map,
+                        );
+                    }
+                }
                 Node::EachBlock(block) => self.walk_each_block(block, ctx),
                 Node::IfBlock(block) => {
                     if let Some(expr) = self.parsed.pending_expr(block.test.span.start) {
@@ -647,11 +657,7 @@ fn bind_member_root_is_store_sub<'a>(expr: &Expression<'a>) -> bool {
             Expression::StaticMemberExpression(m) => current = m.object.get_inner_expression(),
             Expression::ComputedMemberExpression(m) => current = m.object.get_inner_expression(),
             Expression::Identifier(ident) => {
-                let name = ident.name.as_str();
-                return name.starts_with('$')
-                    && name.len() > 1
-                    && !name.starts_with("$$")
-                    && !svelte_ast::is_rune_name(name);
+                return svelte_ast::store_subscription_base(ident.name.as_str()).is_some();
             }
             _ => return false,
         }

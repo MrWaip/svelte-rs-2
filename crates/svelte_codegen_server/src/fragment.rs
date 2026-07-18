@@ -159,6 +159,7 @@ impl<'a> ServerCodegen<'a> {
             Node::Text(_)
             | Node::SnippetBlock(_)
             | Node::ConstTag(_)
+            | Node::DeclarationTag(_)
             | Node::DebugTag(_)
             | Node::SvelteHead(_)
             | Node::SvelteFragmentLegacy(_)
@@ -190,7 +191,18 @@ impl<'a> ServerCodegen<'a> {
     pub(crate) fn emit_fragment_hoisted(&mut self, id: FragmentId) -> Result<()> {
         self.emit_fragment_titles(id)?;
         self.emit_fragment_const_tags_hoisted(id)?;
+        self.emit_fragment_declaration_tags(id)?;
         self.emit_fragment_snippets_debug_head(id)?;
+        Ok(())
+    }
+
+    pub(crate) fn emit_fragment_declaration_tags(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+        for nid in node_ids {
+            if matches!(self.component.store.get(nid), Node::DeclarationTag(_)) {
+                self.declaration_tag(nid)?;
+            }
+        }
         Ok(())
     }
 
@@ -296,6 +308,7 @@ fn is_expression_tag(node: &Node) -> bool {
         | Node::RenderTag(_)
         | Node::HtmlTag(_)
         | Node::ConstTag(_)
+        | Node::DeclarationTag(_)
         | Node::DebugTag(_)
         | Node::KeyBlock(_)
         | Node::SvelteHead(_)
@@ -317,6 +330,7 @@ fn is_filtered_out(node: &Node, preserve_comments: bool) -> bool {
         Node::Comment(_) => !preserve_comments,
         Node::SnippetBlock(_)
         | Node::ConstTag(_)
+        | Node::DeclarationTag(_)
         | Node::DebugTag(_)
         | Node::SvelteHead(_)
         | Node::SvelteWindow(_)

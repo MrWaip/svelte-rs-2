@@ -1,4 +1,5 @@
 use oxc_ast::ast::{Expression, Statement};
+use svelte_ast::NodeId;
 
 use super::memo::TemplateMemoState;
 use super::template::Template;
@@ -25,6 +26,7 @@ pub(crate) struct EmitState<'a> {
     pub pending_anchor_idents: Option<(String, String)>,
     pub anchor_comment_pre_emitted: bool,
     pub suppress_root_finalize: bool,
+    pub suppress_selectedcontent_for: Option<NodeId>,
     pub legacy_slot_record_const_tag_end: bool,
     pub legacy_slot_const_tag_end: Option<usize>,
     pub legacy_slot_const_tag_start: Option<usize>,

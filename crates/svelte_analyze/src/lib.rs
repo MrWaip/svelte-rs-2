@@ -30,7 +30,7 @@ pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
 pub mod types;
 pub(crate) mod utils;
-mod validate;
+pub(crate) mod validate;
 pub(crate) mod walker;
 
 pub use block_semantics::{
@@ -55,7 +55,7 @@ pub use types::data::{
     AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
     BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
     ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
-    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
+    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind, ContextualReadSemantics,
     CssAnalysis, DeclaratorGroup, DeclaratorSemantics, DerivedAsyncKind,
     DerivedDeclarationSemantics, DerivedKind, DerivedSource, DocumentBindKind, EachIndexStrategy,
@@ -213,8 +213,6 @@ pub fn analyze_module<'a>(
             data.scoping = scoping;
             data.script.runes_mode = svelte_ast::RunesMode::Runes;
 
-            validate::validate_standalone_module(&data, &program, true, &mut diags);
-
             parsed.program = Some(program);
             let stub_component =
                 svelte_ast::Component::dummy_for_standalone_module(source.to_string());
@@ -235,6 +233,10 @@ pub fn analyze_module<'a>(
                 data.scoping.semantics(),
                 dev,
             );
+
+            if let Some(program) = parsed.program.as_ref() {
+                validate::validate_standalone_module(&data, program, source, true, &mut diags);
+            }
 
             data.script.dev = dev;
             if dev {

@@ -1,6 +1,7 @@
 use oxc_ast::ast::{
-    AssignmentExpression, AssignmentTarget, AwaitExpression, Expression, FormalParameters,
-    IdentifierReference, SimpleAssignmentTarget, Statement, UpdateExpression,
+    AssignmentExpression, AssignmentTarget, AwaitExpression, BindingPattern, ChainElement,
+    Expression, FormalParameters, IdentifierReference, SimpleAssignmentTarget, Statement,
+    UpdateExpression,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
@@ -9,9 +10,10 @@ use svelte_ast::{
     ComponentNode, ConcatPart, ConcatenationAttribute, ConstTag, DebugTag, EachBlock, Element,
     ExprRef, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy,
     Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT,
-    SVELTE_ELEMENT, SVELTE_SELF, SVELTE_WINDOW, SlotElementLegacy, SnippetBlock, SpreadAttribute,
-    SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteHead,
-    SvelteWindow, Text, TransitionDirection, TransitionDirective, UseDirective, is_svg,
+    SVELTE_ELEMENT, SVELTE_HEAD, SVELTE_META_TAG_LIST, SVELTE_SELF, SVELTE_WINDOW,
+    SlotElementLegacy, SnippetBlock, SpreadAttribute, StyleDirective, SvelteBody, SvelteBoundary,
+    SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteHead, SvelteWindow, Text,
+    TransitionDirection, TransitionDirective, UseDirective, is_svelte_meta_tag, is_svg,
 };
 use svelte_component_semantics::{ScopeId, SymbolFlags, SymbolId, walk_bindings};
 use svelte_diagnostics::codes::fuzzymatch;
@@ -20,10 +22,11 @@ use svelte_span::Span;
 
 use crate::expression_semantics::Volatility;
 use crate::types::data::{
-    BindHostKind, BindPropertyKind, BindTargetSemantics, BindingSemantics, ConstBindingSemantics,
-    ElementSizeKind,
+    BindHostKind, BindPropertyKind, BindTargetSemantics, BindingSemantics, ElementSizeKind,
 };
 use crate::utils::html_tree_validation::{is_tag_valid_with_ancestor, is_tag_valid_with_parent};
+use crate::validate::attrs_have_duplicate;
+use crate::validate::const_assignment::constant_kind;
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
 use crate::{AnalysisData, EventModifier, concat_single_dynamic_expr, event_attribute};
 
@@ -641,12 +644,9 @@ impl TransitionDirectiveKind {
 
 #[derive(Default)]
 struct ElementEventState {
-    has_s5_events: bool,
     has_animate_directive: bool,
     intro_transition: Option<TransitionDirectiveKind>,
     outro_transition: Option<TransitionDirectiveKind>,
-
-    first_on_directive: Option<(Span, String)>,
 }
 
 pub(crate) struct TemplateValidationVisitor {
@@ -657,6 +657,15 @@ pub(crate) struct TemplateValidationVisitor {
     first_legacy_slot_span: Option<Span>,
     saw_render_tag: bool,
     emitted_slot_snippet_conflict: bool,
+
+    mixed_first_on_directive: Option<(Span, String)>,
+    mixed_uses_s5_events: bool,
+    mixed_emitted: bool,
+
+    seen_svelte_head: bool,
+    seen_svelte_window: bool,
+    seen_svelte_document: bool,
+    seen_svelte_body: bool,
 }
 
 impl TemplateValidationVisitor {
@@ -667,6 +676,73 @@ impl TemplateValidationVisitor {
             first_legacy_slot_span: None,
             saw_render_tag: false,
             emitted_slot_snippet_conflict: false,
+            mixed_first_on_directive: None,
+            mixed_uses_s5_events: false,
+            mixed_emitted: false,
+            seen_svelte_head: false,
+            seen_svelte_window: false,
+            seen_svelte_document: false,
+            seen_svelte_body: false,
+        }
+    }
+
+    fn note_root_only_special(
+        &mut self,
+        name: &str,
+        node_span: Span,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        let already_seen = match name {
+            SVELTE_HEAD => {
+                let seen = self.seen_svelte_head;
+                self.seen_svelte_head = true;
+                seen
+            }
+            SVELTE_WINDOW => {
+                let seen = self.seen_svelte_window;
+                self.seen_svelte_window = true;
+                seen
+            }
+            SVELTE_DOCUMENT => {
+                let seen = self.seen_svelte_document;
+                self.seen_svelte_document = true;
+                seen
+            }
+            SVELTE_BODY => {
+                let seen = self.seen_svelte_body;
+                self.seen_svelte_body = true;
+                seen
+            }
+            _ => return,
+        };
+        self.check_root_only_special(name, node_span, already_seen, ctx);
+    }
+
+    fn check_root_only_special(
+        &mut self,
+        name: &str,
+        node_span: Span,
+        already_seen: bool,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        let point = Span::new(node_span.start, node_span.start);
+
+        if already_seen {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteMetaDuplicate {
+                    name: name.to_string(),
+                },
+                point,
+            ));
+        }
+
+        if ctx.parent().is_some() {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteMetaInvalidPlacement {
+                    name: name.to_string(),
+                },
+                point,
+            ));
         }
     }
 
@@ -674,16 +750,18 @@ impl TemplateValidationVisitor {
         Span::new(span.start, span.end)
     }
 
-    fn emit_mixed_syntax_if_needed(&mut self, ctx: &mut VisitContext<'_, '_>) {
-        if let Some(state) = self.element_event_state.pop()
-            && state.has_s5_events
-            && let Some((span, name)) = state.first_on_directive
-        {
-            ctx.warnings_mut().push(Diagnostic::error(
-                DiagnosticKind::MixedEventHandlerSyntaxes { name },
-                span,
-            ));
+    fn maybe_emit_mixed_syntax(&mut self, ctx: &mut VisitContext<'_, '_>) {
+        if self.mixed_emitted || !self.mixed_uses_s5_events {
+            return;
         }
+        let Some((span, name)) = self.mixed_first_on_directive.clone() else {
+            return;
+        };
+        self.mixed_emitted = true;
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::MixedEventHandlerSyntaxes { name },
+            span,
+        ));
     }
 
     fn maybe_warn_legacy_special_element(
@@ -823,9 +901,9 @@ impl TemplateValidationVisitor {
         if ctx
             .parent()
             .is_some_and(|p| matches!(p.kind, ParentKind::Element | ParentKind::SvelteElement))
-            && let Some(state) = self.element_event_state.last_mut()
         {
-            state.has_s5_events = true;
+            self.mixed_uses_s5_events = true;
+            self.maybe_emit_mixed_syntax(ctx);
         }
     }
 }
@@ -851,6 +929,24 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_template_await(ctx, tag.id, &tag.expression);
         self.note_render_tag(ctx);
         check_opening_sigil(tag.span, b'@', ctx);
+
+        let invalid_call = ctx
+            .parsed()
+            .and_then(|parsed| parsed.expr(tag.expression.id()))
+            .and_then(render_tag_call_callee)
+            .is_some_and(|callee| {
+                matches!(
+                    callee.get_inner_expression(),
+                    Expression::StaticMemberExpression(m)
+                        if matches!(m.property.name.as_str(), "bind" | "apply" | "call")
+                )
+            });
+        if invalid_call {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::RenderTagInvalidCallExpression,
+                tag.span,
+            ));
+        }
     }
 
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {
@@ -859,9 +955,19 @@ impl TemplateVisitor for TemplateValidationVisitor {
             && let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(tag.decl.id())
             && decl.declarations.len() > 1
         {
+            let start = decl
+                .declarations
+                .first()
+                .and_then(|d| d.init.as_ref())
+                .map_or(tag.span.start, |e| e.span().start);
+            let end = decl
+                .declarations
+                .last()
+                .and_then(|d| d.init.as_ref())
+                .map_or(tag.span.end, |e| e.span().end);
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::ConstTagInvalidExpression,
-                tag.span,
+                Span::new(start, end),
             ));
         }
 
@@ -900,6 +1006,17 @@ impl TemplateVisitor for TemplateValidationVisitor {
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
         self.element_event_state.push(ElementEventState::default());
         self.maybe_warn_legacy_special_element(&el.name, el.span, ctx);
+        self.note_root_only_special(&el.name, el.span, ctx);
+
+        if el.name.starts_with("svelte:") && !is_svelte_meta_tag(&el.name) {
+            let name_start = el.span.start + 1;
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::SvelteMetaInvalidTag {
+                    list: SVELTE_META_TAG_LIST.to_string(),
+                },
+                Span::new(name_start, name_start + el.name.len() as u32),
+            ));
+        }
 
         if el.name == "title"
             && ctx
@@ -988,6 +1105,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_component_name_lowercase(el, ctx);
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
         check_attribute_unquoted_sequence(&el.attributes, ctx);
+        check_attribute_sequence_expression(&el.attributes, ctx);
         check_event_handler_value(&el.attributes, ctx);
 
         if el.name.contains('-') {
@@ -1056,26 +1174,29 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn leave_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
+    fn leave_element(&mut self, el: &Element, _ctx: &mut VisitContext<'_, '_>) {
         if el.name == "dialog" {
             self.dialog_depth -= 1;
         }
-        self.emit_mixed_syntax_if_needed(ctx);
+        self.element_event_state.pop();
     }
 
     fn leave_slot_element_legacy(
         &mut self,
         _el: &svelte_ast::SlotElementLegacy,
-        ctx: &mut VisitContext<'_, '_>,
+        _ctx: &mut VisitContext<'_, '_>,
     ) {
-        self.emit_mixed_syntax_if_needed(ctx);
+        self.element_event_state.pop();
     }
 
     fn visit_component_node(&mut self, cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
         check_component_directives(&cn.attributes, ctx);
         check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_unquoted_sequence(&cn.attributes, ctx);
+        check_attribute_sequence_expression(&cn.attributes, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
+        check_named_slot_duplicate(cn.id, &cn.attributes, ctx);
+        check_component_default_slot_duplicate(cn, ctx);
     }
 
     fn visit_svelte_component_legacy(
@@ -1088,6 +1209,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_component_directives(&cn.attributes, ctx);
         check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_unquoted_sequence(&cn.attributes, ctx);
+        check_attribute_sequence_expression(&cn.attributes, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
     }
 
@@ -1096,6 +1218,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_component_directives(&cn.attributes, ctx);
         check_component_attribute_warnings(&cn.attributes, ctx);
         check_attribute_unquoted_sequence(&cn.attributes, ctx);
+        check_attribute_sequence_expression(&cn.attributes, ctx);
         check_attribute_quoted(&cn.attributes, ctx);
     }
 
@@ -1119,6 +1242,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 el.span,
             ));
         }
+
+        check_named_slot_duplicate(el.id, &el.attributes, ctx);
 
         for attr in &el.attributes {
             match attr {
@@ -1187,6 +1312,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         validate_svelte_element_this(el, ctx);
         check_plain_attr_warnings(el.id, el.span, &el.attributes, ctx);
         check_attribute_unquoted_sequence(&el.attributes, ctx);
+        check_attribute_sequence_expression(&el.attributes, ctx);
         check_event_handler_value(&el.attributes, ctx);
     }
 
@@ -1197,6 +1323,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 attr.span(),
             ));
         }
+        self.note_root_only_special(SVELTE_HEAD, head.span, ctx);
     }
 
     fn visit_svelte_window(&mut self, window: &SvelteWindow, ctx: &mut VisitContext<'_, '_>) {
@@ -1206,6 +1333,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             window.fragment,
             ctx,
         );
+        self.note_root_only_special(SVELTE_WINDOW, window.span, ctx);
     }
 
     fn visit_svelte_document(&mut self, document: &SvelteDocument, ctx: &mut VisitContext<'_, '_>) {
@@ -1215,6 +1343,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             document.fragment,
             ctx,
         );
+        self.note_root_only_special(SVELTE_DOCUMENT, document.span, ctx);
     }
 
     fn visit_svelte_body(&mut self, body: &SvelteBody, ctx: &mut VisitContext<'_, '_>) {
@@ -1224,6 +1353,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             body.fragment,
             ctx,
         );
+        self.note_root_only_special(SVELTE_BODY, body.span, ctx);
     }
 
     fn visit_svelte_boundary(&mut self, boundary: &SvelteBoundary, ctx: &mut VisitContext<'_, '_>) {
@@ -1256,8 +1386,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
-    fn leave_svelte_element(&mut self, _el: &SvelteElement, ctx: &mut VisitContext<'_, '_>) {
-        self.emit_mixed_syntax_if_needed(ctx);
+    fn leave_svelte_element(&mut self, _el: &SvelteElement, _ctx: &mut VisitContext<'_, '_>) {
+        self.element_event_state.pop();
     }
 
     fn visit_expression_attribute(
@@ -1291,6 +1421,9 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     fn visit_bind_directive(&mut self, dir: &BindDirective, ctx: &mut VisitContext<'_, '_>) {
         if let Some(parent) = current_bind_parent(dir.id, ctx) {
+            if attrs_have_duplicate(parent.attrs) {
+                return;
+            }
             validate_bind_name_and_target(dir, &parent, ctx);
             validate_bind_parent_specifics(dir, &parent, ctx);
         }
@@ -1344,6 +1477,15 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 })
         {
             emit_directive_await_diagnostic(ctx, &dir.expression);
+        }
+    }
+
+    fn visit_style_directive(&mut self, dir: &StyleDirective, ctx: &mut VisitContext<'_, '_>) {
+        if let Some(span) = dir.invalid_modifier {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::StyleDirectiveInvalidModifier,
+                span,
+            ));
         }
     }
 
@@ -1477,12 +1619,18 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 _ => EventModifier::empty(),
             };
             let has_passive = flags.contains(EventModifier::PASSIVE);
-            let has_nonpassive = flags.contains(EventModifier::NONPASSIVE);
-            if has_passive && has_nonpassive {
+            let conflicting = if flags.contains(EventModifier::NONPASSIVE) {
+                Some("nonpassive")
+            } else if flags.contains(EventModifier::PREVENT_DEFAULT) {
+                Some("preventDefault")
+            } else {
+                None
+            };
+            if has_passive && let Some(conflicting) = conflicting {
                 ctx.warnings_mut().push(Diagnostic::error(
                     DiagnosticKind::EventHandlerInvalidModifierCombination {
                         modifier1: "passive".to_string(),
-                        modifier2: "nonpassive".to_string(),
+                        modifier2: conflicting.to_string(),
                     },
                     dir.span,
                 ));
@@ -1498,10 +1646,10 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        if !is_component && let Some(state) = self.element_event_state.last_mut() {
-            state
-                .first_on_directive
+        if !is_component {
+            self.mixed_first_on_directive
                 .get_or_insert((dir.span, dir.name.clone()));
+            self.maybe_emit_mixed_syntax(ctx);
         }
     }
 
@@ -1657,6 +1805,31 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 key_ref.span,
             ));
         }
+
+        let invalid_rune_context = block.context.as_ref().and_then(|ctx_ref| {
+            let parsed = ctx.parsed()?;
+            let Statement::VariableDeclaration(decl) = parsed.stmt(ctx_ref.id())? else {
+                return None;
+            };
+            let BindingPattern::BindingIdentifier(id) = &decl.declarations.first()?.id else {
+                return None;
+            };
+            let name = id.name.as_str();
+            if name == svelte_ast::RUNE_STATE || name == svelte_ast::RUNE_DERIVED {
+                Some((name, ctx_ref.span))
+            } else {
+                None
+            }
+        });
+        if let Some((rune, span)) = invalid_rune_context {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::StateInvalidPlacement {
+                    rune: rune.to_string(),
+                },
+                span,
+            ));
+        }
+
         check_opening_sigil(block.span, b'#', ctx);
     }
 
@@ -2013,11 +2186,11 @@ fn validate_input_bindings(
     let bind_property =
         BindTargetSemantics::from_parent_kind_and_name(parent.parent_kind, dir.name.as_str())
             .map(|semantics| semantics.property());
-    let Some(type_attr) = ctx.data.attribute(parent.id, parent.attrs, "type") else {
-        return;
-    };
+    let type_attr = ctx.data.attribute(parent.id, parent.attrs, "type");
 
-    if !attr_is_text(type_attr) {
+    if let Some(type_attr) = type_attr
+        && !attr_is_text(type_attr)
+    {
         if bind_property != Some(BindPropertyKind::Value)
             || matches!(type_attr, Attribute::BooleanAttribute(_))
         {
@@ -2101,8 +2274,20 @@ fn validate_bind_identifier_value(dir: &BindDirective, ctx: &mut VisitContext<'_
     }
 
     let Some(sym_id) = bind_base_symbol(dir, ctx) else {
+        emit_bind_error(ctx, dir.expression.span, DiagnosticKind::BindInvalidValue);
         return;
     };
+
+    if let Some(thing) = constant_kind(ctx.data, sym_id) {
+        emit_bind_error(
+            ctx,
+            dir.expression.span,
+            DiagnosticKind::ConstantBinding {
+                thing: thing.to_string(),
+            },
+        );
+        return;
+    }
 
     let decl = ctx.data.reactivity.binding_semantics(sym_id);
     let valid = decl_is_bindable_target(&decl)
@@ -2320,10 +2505,11 @@ fn validate_snippet_rest_params(block: &SnippetBlock, ctx: &mut VisitContext<'_,
         return;
     };
 
-    if params.rest.is_some() {
+    if let Some(rest) = &params.rest {
+        let span = Span::new(rest.span.start, rest.span.end);
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SnippetInvalidRestParameter,
-            block.decl.span,
+            span,
         ));
     }
 }
@@ -2372,7 +2558,7 @@ fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitConte
     if should_emit_snippet_conflict(component, block, ctx) {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SnippetConflict,
-            block.decl.span,
+            block.span,
         ));
     }
 }
@@ -2700,12 +2886,21 @@ fn emit_invalid_placement(
 }
 
 fn invalid_text_parent_message(id: NodeId, ctx: &VisitContext<'_, '_>) -> Option<String> {
-    let parent = ctx
-        .data
-        .ancestors(id)
-        .find(|parent| parent.kind == ParentKind::Element)?;
-    let element = ctx.store.get(parent.id).as_element()?;
-    is_tag_valid_with_parent("#text", element.name.as_str())
+    for parent in ctx.data.ancestors(id) {
+        match parent.kind {
+            ParentKind::Element => {
+                let element = ctx.store.get(parent.id).as_element()?;
+                return is_tag_valid_with_parent("#text", element.name.as_str());
+            }
+            ParentKind::ComponentNode
+            | ParentKind::SvelteComponentLegacy
+            | ParentKind::SvelteSelf
+            | ParentKind::SvelteElement
+            | ParentKind::SnippetBlock => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn is_each_block_var_ref(ident: &IdentifierReference<'_>, data: &AnalysisData) -> bool {
@@ -2739,6 +2934,9 @@ fn decl_is_bindable_target(decl: &BindingSemantics) -> bool {
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
@@ -2769,6 +2967,9 @@ fn decl_is_each_item(decl: &BindingSemantics) -> bool {
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
         | BindingSemantics::LegacyApiExport
@@ -2798,6 +2999,9 @@ fn decl_is_each_contextual(decl: &BindingSemantics) -> bool {
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
         | BindingSemantics::LegacyApiExport
@@ -2827,6 +3031,9 @@ fn decl_is_snippet_param(decl: &BindingSemantics) -> bool {
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
         | BindingSemantics::LegacyApiExport
@@ -2879,7 +3086,8 @@ fn maybe_const_tag_invalid_reference(
         .and_then(|ref_id| ctx.data.scoping.get_reference(ref_id).symbol_id())?;
 
     let is_const_tag = match ctx.data.binding_semantics(sym_id) {
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. }) => true,
+        BindingSemantics::Const(_) | BindingSemantics::OptimizedConst(_) => true,
+        BindingSemantics::DeclarationTag | BindingSemantics::OptimizedDeclarationTag => false,
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedDerived(_)
@@ -2992,6 +3200,108 @@ fn named_component_attr(attr: &Attribute, name: &str) -> bool {
         | Attribute::TransitionDirective(_)
         | Attribute::AnimateDirective(_)
         | Attribute::AttachTag(_) => false,
+    }
+}
+
+fn render_tag_call_callee<'e, 'a>(expr: &'e Expression<'a>) -> Option<&'e Expression<'a>> {
+    match expr.get_inner_expression() {
+        Expression::CallExpression(call) => Some(&call.callee),
+        Expression::ChainExpression(chain) => match &chain.expression {
+            ChainElement::CallExpression(call) => Some(&call.callee),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn check_named_slot_duplicate(
+    child_id: NodeId,
+    attributes: &[Attribute],
+    ctx: &mut VisitContext<'_, '_>,
+) {
+    let Some(parent) = ctx.data.parent(child_id) else {
+        return;
+    };
+    if parent.kind != ParentKind::ComponentNode {
+        return;
+    }
+    let Node::ComponentNode(component) = ctx.store.get(parent.id) else {
+        return;
+    };
+    let Some(slot_span) = attributes.iter().find_map(|a| match a {
+        Attribute::StringAttribute(sa) if sa.name == "slot" => Some(sa.value_span),
+        _ => None,
+    }) else {
+        return;
+    };
+    let slot_name = slot_span.source_text(ctx.source);
+    if slot_name.is_empty() || slot_name == "default" {
+        return;
+    }
+    if !has_prior_named_slot(component, child_id, slot_name, ctx) {
+        return;
+    }
+    let component_name = ctx.source
+        [component.name.span.start as usize..component.name.span.end as usize]
+        .to_string();
+    let name = slot_name.to_string();
+    let span = ctx.store.get(child_id).span();
+    ctx.warnings_mut().push(Diagnostic::error(
+        DiagnosticKind::SlotAttributeDuplicate {
+            name,
+            component: component_name,
+        },
+        span,
+    ));
+}
+
+fn check_component_default_slot_duplicate(cn: &ComponentNode, ctx: &mut VisitContext<'_, '_>) {
+    let default_nodes = ctx.store.fragment_nodes(cn.fragment).to_vec();
+    let has_explicit_default = default_nodes.iter().any(|&id| {
+        node_attributes(ctx.store.get(id)).is_some_and(|attrs| {
+            attrs.iter().any(|a| {
+                matches!(a, Attribute::StringAttribute(sa)
+                    if sa.name == "slot" && sa.value_span.source_text(ctx.source) == "default")
+            })
+        })
+    });
+    if !has_explicit_default {
+        return;
+    }
+    let mut offending = Vec::new();
+    for &id in &default_nodes {
+        let node = ctx.store.get(id);
+        match node {
+            Node::Text(text) if text.value(ctx.source).trim().is_empty() => continue,
+            Node::Comment(_) => continue,
+            _ => {}
+        }
+        let has_slot = node_attributes(node).is_some_and(|attrs| {
+            attrs
+                .iter()
+                .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot"))
+        });
+        if has_slot {
+            continue;
+        }
+        offending.push(node.span());
+    }
+    for span in offending {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::SlotDefaultDuplicate,
+            span,
+        ));
+    }
+}
+
+fn node_attributes(node: &Node) -> Option<&[Attribute]> {
+    match node {
+        Node::Element(el) => Some(&el.attributes),
+        Node::ComponentNode(cn) => Some(&cn.attributes),
+        Node::SvelteSelf(cn) => Some(&cn.attributes),
+        Node::SvelteComponentLegacy(cn) => Some(&cn.attributes),
+        Node::SvelteFragmentLegacy(el) => Some(&el.attributes),
+        _ => None,
     }
 }
 
@@ -3376,9 +3686,32 @@ fn check_attribute_unquoted_sequence(attrs: &[Attribute], ctx: &mut VisitContext
         if !concat.quoted && concat.parts.len() > 1 {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::AttributeUnquotedSequence,
-                attr_value_span(attr),
+                attr.span(),
             ));
         }
+    }
+}
+
+fn check_attribute_sequence_expression(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
+    if !ctx.runes {
+        return;
+    }
+    let mut spans = Vec::new();
+    if let Some(parsed) = ctx.parsed() {
+        for attr in attrs {
+            let Attribute::ExpressionAttribute(ea) = attr else {
+                continue;
+            };
+            if let Some(Expression::SequenceExpression(seq)) = parsed.expr(ea.expression.id()) {
+                spans.push(Span::new(seq.span.start, seq.span.end));
+            }
+        }
+    }
+    for span in spans {
+        ctx.warnings_mut().push(Diagnostic::error(
+            DiagnosticKind::AttributeInvalidSequenceExpression,
+            span,
+        ));
     }
 }
 

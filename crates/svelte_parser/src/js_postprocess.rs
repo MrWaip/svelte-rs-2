@@ -643,19 +643,17 @@ fn relocate_orphaned_comments(program: &mut Program<'_>) {
         if stmt_starts.binary_search(&comment.attached_to).is_ok() {
             return true;
         }
-        let pos = comment.span.end;
-        let nested = stmt_spans
-            .iter()
-            .any(|&(start, end)| start <= comment.span.start && comment.span.end <= end);
+        let container = stmt_starts.partition_point(|&start| start <= comment.span.start);
+        let nested = container > 0 && stmt_spans[container - 1].1 >= comment.span.end;
         if nested {
             return false;
         }
-        match stmt_starts.iter().find(|&&s| s >= pos).copied() {
-            Some(next_start) => {
-                comment.attached_to = next_start;
-                true
-            }
-            None => false,
+        let next = stmt_starts.partition_point(|&start| start < comment.span.end);
+        if next < stmt_starts.len() {
+            comment.attached_to = stmt_starts[next];
+            true
+        } else {
+            false
         }
     });
 }

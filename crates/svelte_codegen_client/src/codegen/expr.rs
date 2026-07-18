@@ -109,8 +109,8 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
     ctx: &Ctx<'a>,
     sym: SymbolId,
 ) -> Option<Expression<'a>> {
-    use svelte_analyze::{BindingSemantics, ConstBindingSemantics, LegacyDependency};
-    if let BindingSemantics::Const(ConstBindingSemantics::ConstTag {
+    use svelte_analyze::{BindingSemantics, ConstTagSemantics, LegacyDependency};
+    if let BindingSemantics::Const(ConstTagSemantics {
         destructured: true,
         owner_node,
         ..

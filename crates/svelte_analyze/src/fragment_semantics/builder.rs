@@ -142,6 +142,7 @@ fn walk(
             | Node::RenderTag(_)
             | Node::HtmlTag(_)
             | Node::ConstTag(_)
+            | Node::DeclarationTag(_)
             | Node::DebugTag(_)
             | Node::SvelteWindow(_)
             | Node::SvelteDocument(_)

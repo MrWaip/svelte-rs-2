@@ -58,6 +58,7 @@ pub(crate) fn run_template<'a, 'b>(
         ignore_query: IgnoreQuery::empty(),
         enclosing_stmt_start: Vec::new(),
         template_owner_node: None,
+        rewrite_top_level_declarations: false,
         in_bind_setter_traverse: false,
         dispatched_member_assignments: rustc_hash::FxHashSet::default(),
         destructure_lhs_depth: 0,
@@ -119,10 +120,13 @@ pub(crate) fn run_template<'a, 'b>(
             continue;
         };
         transformer.template_owner_node = owner;
+        transformer.rewrite_top_level_declarations =
+            owner.is_some_and(|id| component.store.get(id).is_declaration_tag());
         program.body.clear();
         program.body.push(stmt);
 
         traverse_mut_with_ctx(&mut transformer, &mut program, &mut reusable);
+        transformer.rewrite_top_level_declarations = false;
 
         let new_stmt = program
             .body

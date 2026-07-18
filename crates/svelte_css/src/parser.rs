@@ -543,8 +543,8 @@ impl<'src> Parser<'src> {
         loop {
             if self.scanner.is_at_end() {
                 self.recover(
-                    DiagnosticKind::CssSelectorInvalid,
-                    self.scanner.span_from(list_start),
+                    DiagnosticKind::CssExpectedIdentifier,
+                    self.scanner.span_at(),
                 );
                 return None;
             }
@@ -949,25 +949,20 @@ impl<'src> Parser<'src> {
 
         let value = self.read_value();
 
-        if value.start == value.end {
-            let prop_text = self.scanner.source_text(property);
-            if !prop_text.starts_with("--") {
-                self.recover(
-                    DiagnosticKind::CssEmptyDeclaration,
-                    self.scanner.span_from(start),
-                );
-                self.skip_to_semicolon_or_block_end();
-                return None;
-            }
-        }
-
         let end = self.scanner.current_start();
 
         if !self.scanner.is_at(TokenKind::RBrace) && !self.scanner.eat(TokenKind::Semicolon) {
-            self.recover(
-                DiagnosticKind::CssExpectedToken { token: ";".into() },
-                self.scanner.span_from(start),
-            );
+            if self.scanner.is_at_end() {
+                self.recover(
+                    DiagnosticKind::UnexpectedEndOfFile,
+                    self.scanner.span_from(start),
+                );
+            } else {
+                self.recover(
+                    DiagnosticKind::CssExpectedToken { token: ";".into() },
+                    self.scanner.span_from(start),
+                );
+            }
             self.skip_to_semicolon_or_block_end();
             return None;
         }

@@ -18,6 +18,9 @@ fn reads_via_derived_getter(semantics: BindingSemantics) -> bool {
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Store(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::Unresolved => false,
