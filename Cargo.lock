@@ -78,7 +78,15 @@ version = "0.1.0"
 dependencies = [
  "criterion2",
  "glob",
+ "oxc_allocator",
+ "svelte_analyze",
+ "svelte_ast",
+ "svelte_codegen_client",
  "svelte_compiler",
+ "svelte_parser",
+ "svelte_span",
+ "svelte_transform_client",
+ "svelte_types",
 ]
 
 [[package]]

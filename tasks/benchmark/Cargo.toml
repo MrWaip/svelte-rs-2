@@ -40,11 +40,23 @@ path = "src/bin/bench_once.rs"
 name = "profile_all"
 path = "src/bin/profile_all.rs"
 
+[[bin]]
+name = "phase_bench"
+path = "src/bin/phase_bench.rs"
+
 [features]
 default = []
 codspeed = ["criterion2/codspeed"]
 
 [dependencies]
 svelte_compiler = { workspace = true }
+svelte_parser = { workspace = true }
+svelte_analyze = { workspace = true }
+svelte_transform_client = { workspace = true }
+svelte_codegen_client = { workspace = true }
+svelte_types = { workspace = true }
+svelte_span = { workspace = true }
+svelte_ast = { workspace = true }
+oxc_allocator = { workspace = true }
 criterion2 = { workspace = true }
 glob = { workspace = true }
