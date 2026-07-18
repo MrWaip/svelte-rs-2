@@ -410,9 +410,6 @@ impl<'a> Ctx<'a> {
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
     }
-    pub fn has_bind_group(&self, id: NodeId) -> bool {
-        self.query.view.has_bind_group(id)
-    }
     pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
         self.query.view.symbol_blocker(sym)
     }

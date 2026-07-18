@@ -75,6 +75,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
+    pub(in super::super) fn emit_special_value_static(
+        &mut self,
+        state: &mut EmitState<'a>,
+        el_name: &str,
+        val_expr: Expression<'a>,
+        coalesce: bool,
+    ) {
+        let value_assign = self.build_option_value_assign(
+            el_name,
+            val_expr,
+            OptionValueForm::Reflected { coalesce },
+        );
+        state.pending_element_init.push(value_assign);
+    }
+
     fn build_option_value_assign(
         &self,
         el_name: &str,

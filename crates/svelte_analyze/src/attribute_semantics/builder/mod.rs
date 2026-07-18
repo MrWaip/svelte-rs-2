@@ -663,6 +663,34 @@ fn classify_element_attrs(
             Attribute::StringAttribute(a) if is_autofocus_attr(ctx, owner_id, &a.name) => {
                 store.set(a.id, AttributeSemantics::Autofocus);
             }
+            Attribute::StringAttribute(a) if a.name == "value" => {
+                let Some(kind) = special_value_kind_for(el, &a.name) else {
+                    continue;
+                };
+                store.set(
+                    a.id,
+                    AttributeSemantics::SpecialValueAttr(SpecialValueSemantics {
+                        kind,
+                        defined: true,
+                        volatile: false,
+                        concat: None,
+                    }),
+                );
+            }
+            Attribute::BooleanAttribute(a) if a.name == "value" => {
+                let Some(kind) = special_value_kind_for(el, &a.name) else {
+                    continue;
+                };
+                store.set(
+                    a.id,
+                    AttributeSemantics::SpecialValueAttr(SpecialValueSemantics {
+                        kind,
+                        defined: true,
+                        volatile: false,
+                        concat: None,
+                    }),
+                );
+            }
             Attribute::StringAttribute(a)
                 if a.name == "is"
                     && matches!(

@@ -91,32 +91,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ))
     }
 
-    pub(in super::super) fn emit_bind_group_static_value(
-        &mut self,
-        state: &mut EmitState<'a>,
-        el_name: &str,
-        val: &str,
-    ) {
-        let val_expr = self.ctx.b.str_expr(val);
-        let dunder_value_assign = self.ctx.b.assign_expr(
-            AssignLeft::StaticMember(
-                self.ctx
-                    .b
-                    .static_member(self.ctx.b.rid_expr(el_name), "__value"),
-            ),
-            val_expr,
-        );
-        let value_assign = self.ctx.b.assign_stmt(
-            AssignLeft::StaticMember(
-                self.ctx
-                    .b
-                    .static_member(self.ctx.b.rid_expr(el_name), "value"),
-            ),
-            dunder_value_assign,
-        );
-        state.pending_element_init.push(value_assign);
-    }
-
     pub(in super::super) fn emit_bind_group_value(
         &mut self,
         state: &mut EmitState<'a>,
