@@ -1003,6 +1003,28 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
     }
 
+    fn visit_declaration_tag(
+        &mut self,
+        tag: &svelte_ast::DeclarationTag,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        if !ctx.runes && !ctx.data.script.maybe_runes() {
+            ctx.warnings_mut().push(Diagnostic::error(
+                DiagnosticKind::DeclarationTagNoLegacyMode,
+                tag.span,
+            ));
+        }
+
+        if !ctx.data.script.experimental_async
+            && let Some(parsed) = ctx.parsed()
+            && let Some(stmt) = parsed.stmt(tag.declaration.id())
+            && let Some(span) = first_await_span_in_stmt(stmt, tag.declaration.span.start)
+        {
+            ctx.warnings_mut()
+                .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
+        }
+    }
+
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {
         self.element_event_state.push(ElementEventState::default());
         self.maybe_warn_legacy_special_element(&el.name, el.span, ctx);

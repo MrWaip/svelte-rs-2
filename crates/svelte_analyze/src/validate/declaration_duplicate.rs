@@ -58,10 +58,10 @@ pub(super) fn validate(
         }
     }
 
-    validate_top_level_snippet_conflicts(component, data, parsed, diags);
+    validate_top_level_conflicts(component, data, parsed, diags);
 }
 
-fn validate_top_level_snippet_conflicts(
+fn validate_top_level_conflicts(
     component: &Component,
     data: &AnalysisData<'_>,
     parsed: &JsAst<'_>,
@@ -82,11 +82,14 @@ fn validate_top_level_snippet_conflicts(
     }
 
     for &node_id in &component.root_fragment().nodes {
-        let Some(snippet) = component.store.get(node_id).as_snippet_block() else {
-            continue;
+        let node = component.store.get(node_id);
+        let stmt_id = match node {
+            Node::SnippetBlock(snippet) => snippet.decl.id(),
+            Node::DeclarationTag(tag) => tag.declaration.id(),
+            _ => continue,
         };
         let mut names: Vec<SymbolId> = Vec::new();
-        collect_declaration_bindings(parsed, snippet.decl.id(), &mut names);
+        collect_declaration_bindings(parsed, stmt_id, &mut names);
         for symbol_id in names {
             let name = sem.symbol_name(symbol_id);
             if instance_names.contains(name) {

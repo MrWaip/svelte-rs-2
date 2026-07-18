@@ -119,7 +119,9 @@ impl<'a> Scanner<'a> {
                 Some(':') => self.middle_template(),
                 Some('@') => self.at_template(),
                 Some('/') => self.end_template(),
-                Some('c' | 'l') if self.at_declaration_keyword() => self.declaration_tag(),
+                Some('c' | 'l' | 'v' | 'i' | 'e' | 't') if self.at_declaration_tag_keyword() => {
+                    self.declaration_tag()
+                }
                 _ => self.interpolation(),
             };
         }
@@ -222,8 +224,30 @@ impl<'a> Scanner<'a> {
         ch.is_alphabetic() || matches!(ch, '_' | '$')
     }
 
-    fn at_declaration_keyword(&self) -> bool {
-        self.match_keyword_boundary("const") || self.match_keyword_boundary("let")
+    fn at_declaration_tag_keyword(&mut self) -> bool {
+        match self.peek_byte() {
+            Some(b'c') => self.match_keyword_boundary("const"),
+            Some(b'l') => self.match_keyword_boundary("let"),
+            Some(b'v') => self.match_keyword_boundary("var"),
+            Some(b'i') => self.match_keyword_boundary("interface"),
+            Some(b'e') => self.match_keyword_boundary("enum"),
+            Some(b't') => self.at_maybe_type_declaration(),
+            _ => false,
+        }
+    }
+
+    fn at_maybe_type_declaration(&mut self) -> bool {
+        if !self.match_keyword_boundary("type") {
+            return false;
+        }
+        let checkpoint = self.checkpoint();
+        self.current += "type".len();
+        let has_whitespace = self.peek().is_some_and(char::is_whitespace);
+        self.skip_whitespace();
+        let is_declaration =
+            has_whitespace && self.peek().is_some_and(Self::is_js_identifier_start);
+        self.restore(checkpoint);
+        is_declaration
     }
 
     fn match_keyword_boundary(&self, keyword: &str) -> bool {

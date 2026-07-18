@@ -2353,48 +2353,39 @@ mod template {
     );
     diagnostic_case!(
         declaration_tag_invalid_type_var,
-        "template/declaration_tag_invalid_type_var",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_invalid_type_var"
     );
     diagnostic_case!(
         declaration_tag_invalid_type_interface,
-        "template/declaration_tag_invalid_type_interface",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_invalid_type_interface"
     );
     diagnostic_case!(
         declaration_tag_invalid_type_ts_alias,
-        "template/declaration_tag_invalid_type_ts_alias",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_invalid_type_ts_alias"
     );
     diagnostic_case!(
         declaration_tag_no_legacy_mode,
-        "template/declaration_tag_no_legacy_mode",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_no_legacy_mode"
     );
     diagnostic_case!(
         declaration_tag_duplicate,
-        "template/declaration_tag_duplicate",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_duplicate"
     );
     diagnostic_case!(
         declaration_tag_await_no_experimental,
-        "template/declaration_tag_await_no_experimental",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_await_no_experimental"
     );
     diagnostic_case!(
         declaration_tag_type_nonts_parse_error,
-        "template/declaration_tag_type_nonts_parse_error",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_type_nonts_parse_error"
     );
     diagnostic_case!(
         declaration_tag_invalid_type_enum,
-        "template/declaration_tag_invalid_type_enum",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_invalid_type_enum"
     );
     diagnostic_case!(
         declaration_tag_effect_invalid_placement,
-        "template/declaration_tag_effect_invalid_placement",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_effect_invalid_placement"
     );
     diagnostic_case!(
         node_invalid_placement_ssr_in_if_block,

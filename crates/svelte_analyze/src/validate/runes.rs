@@ -1215,6 +1215,28 @@ pub fn validate_const_tag_runes(
     }
 }
 
+pub fn validate_declaration_tag_runes(
+    component: &Component,
+    parsed: &crate::types::data::JsAst,
+    data: &AnalysisData,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if !runes {
+        return;
+    }
+    for node in component.store.iter_nodes() {
+        let svelte_ast::Node::DeclarationTag(tag) = node else {
+            continue;
+        };
+        let Some(stmt) = parsed.stmt(tag.declaration.id()) else {
+            continue;
+        };
+        let mut v = RuneValidator::new(data, diags, false);
+        v.visit_statement(stmt);
+    }
+}
+
 struct ConstTagRuneProbe<'d> {
     reactivity: &'d ReactivitySemantics,
     diags: &'d mut Vec<Diagnostic>,

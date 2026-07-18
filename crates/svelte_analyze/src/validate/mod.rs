@@ -62,6 +62,7 @@ pub fn validate(
     validate_svelte_options_warnings(component, data, runes, diags);
     validate_script_context(component, runes, diags);
     runes::validate_const_tag_runes(component, parsed, data, diags);
+    runes::validate_declaration_tag_runes(component, parsed, data, runes, diags);
     validate_const_tag_cycle_legacy(component, data, diags);
     validate_attribute_duplicate(component, diags);
     validate_attribute_names(component, diags);

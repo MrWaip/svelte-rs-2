@@ -1,6 +1,6 @@
 use oxc_allocator::Allocator;
 use oxc_ast::AstBuilder;
-use oxc_ast::ast::{Expression, Program, Statement};
+use oxc_ast::ast::{Expression, Program, Statement, VariableDeclarationKind};
 use oxc_parser::Parser as OxcParser;
 use oxc_span::{GetSpan, SourceType, Span as OxcSpan};
 
@@ -137,12 +137,46 @@ pub fn parse_script_with_alloc<'a>(
     Ok(program)
 }
 
-pub fn parse_declaration_with_alloc<'a>(
+pub enum DeclarationTagBody<'a> {
+    Declaration(Statement<'a>),
+    InvalidType(Span),
+    ParseError(Diagnostic),
+}
+
+fn is_identifier_continue_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$' || byte >= 0x80
+}
+
+fn unsupported_declaration_keyword_len(source: &str) -> Option<u32> {
+    let bytes = source.as_bytes();
+    let keyword = match bytes.first()? {
+        b'v' => "var",
+        b'i' => "interface",
+        b'e' => "enum",
+        _ => return None,
+    };
+    if !bytes.starts_with(keyword.as_bytes()) {
+        return None;
+    }
+    if bytes
+        .get(keyword.len())
+        .is_some_and(|&byte| is_identifier_continue_byte(byte))
+    {
+        return None;
+    }
+    Some(keyword.len() as u32)
+}
+
+pub fn parse_declaration_body<'a>(
     alloc: &'a Allocator,
     source: &'a str,
     offset: u32,
     typescript: bool,
-) -> Result<Statement<'a>, Diagnostic> {
+) -> DeclarationTagBody<'a> {
+    if let Some(len) = unsupported_declaration_keyword_len(source) {
+        return DeclarationTagBody::InvalidType(Span::new(offset, offset + len));
+    }
+
     let src_type = if typescript {
         SourceType::default()
             .with_typescript(true)
@@ -152,19 +186,45 @@ pub fn parse_declaration_with_alloc<'a>(
     };
     let result = OxcParser::new(alloc, source, src_type).parse();
 
-    if !result.errors.is_empty() {
-        return Err(Diagnostic::invalid_expression(Span::new(
-            offset,
-            offset + source.len() as u32,
-        )));
+    if let Some(error) = result.errors.first() {
+        let label_offset = error
+            .labels
+            .as_ref()
+            .and_then(|labels| labels.first())
+            .map_or(0usize, |label| label.offset());
+        let bytes = source.as_bytes();
+        let mut position = label_offset;
+        while position < bytes.len() && bytes[position].is_ascii_whitespace() {
+            position += 1;
+        }
+        let point = offset + position as u32;
+        return DeclarationTagBody::ParseError(Diagnostic::js_parse_error(
+            Span::new(point, point),
+            error.message.to_string(),
+        ));
     }
 
-    let mut stmt = result.program.body.into_iter().next().ok_or_else(|| {
-        Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-    })?;
+    let Some(mut stmt) = result.program.body.into_iter().next() else {
+        return DeclarationTagBody::ParseError(Diagnostic::js_parse_error(
+            Span::new(offset, offset),
+            "Unexpected token".to_string(),
+        ));
+    };
+
+    let supported = match &stmt {
+        Statement::VariableDeclaration(decl) => matches!(
+            decl.kind,
+            VariableDeclarationKind::Const | VariableDeclarationKind::Let
+        ),
+        _ => false,
+    };
+    if !supported {
+        let raw = stmt.span();
+        return DeclarationTagBody::InvalidType(Span::new(offset + raw.start, offset + raw.end));
+    }
 
     process_statement(alloc, &mut stmt, wrapper_delta(offset, 0, 0), typescript);
-    Ok(stmt)
+    DeclarationTagBody::Declaration(stmt)
 }
 
 pub fn parse_const_declaration_with_alloc<'a>(

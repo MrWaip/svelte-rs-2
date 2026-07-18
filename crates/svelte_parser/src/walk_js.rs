@@ -3,10 +3,11 @@ use svelte_ast::{AstStore, Attribute, Component, ConcatPart, FragmentId, Node, S
 use svelte_diagnostics::Diagnostic;
 
 use crate::parse_js::{
-    ExpressionTagBody, parse_const_declaration_with_alloc, parse_declaration_with_alloc,
-    parse_each_context_with_alloc, parse_each_index_with_alloc, parse_expression_tag_body,
-    parse_expression_with_alloc, parse_script_with_alloc, parse_slot_let_decl_with_alloc,
-    parse_snippet_decl_with_alloc, placeholder_expression, placeholder_statement,
+    DeclarationTagBody, ExpressionTagBody, parse_const_declaration_with_alloc,
+    parse_declaration_body, parse_each_context_with_alloc, parse_each_index_with_alloc,
+    parse_expression_tag_body, parse_expression_with_alloc, parse_script_with_alloc,
+    parse_slot_let_decl_with_alloc, parse_snippet_decl_with_alloc, placeholder_expression,
+    placeholder_statement,
 };
 use crate::scanner::is_reserved_word;
 use crate::types::JsAst;
@@ -422,16 +423,27 @@ fn walk_node<'a>(
         Node::DeclarationTag(tag) => {
             let source = component.source_text(tag.declaration.span);
             let arena_source: &'a str = alloc.alloc_str(source);
-            match parse_declaration_with_alloc(
+            match parse_declaration_body(
                 alloc,
                 arena_source,
                 tag.declaration.span.start,
                 typescript,
             ) {
-                Ok(stmt) => {
+                DeclarationTagBody::Declaration(stmt) => {
                     result.alloc_stmt(tag.declaration.span.start, stmt);
                 }
-                Err(_) => {
+                DeclarationTagBody::InvalidType(span) => {
+                    diags.push(Diagnostic::error(
+                        svelte_diagnostics::DiagnosticKind::DeclarationTagInvalidType,
+                        span,
+                    ));
+                    result.alloc_stmt(
+                        tag.declaration.span.start,
+                        placeholder_statement(alloc, tag.declaration.span.start),
+                    );
+                }
+                DeclarationTagBody::ParseError(diag) => {
+                    diags.push(diag);
                     result.alloc_stmt(
                         tag.declaration.span.start,
                         placeholder_statement(alloc, tag.declaration.span.start),
