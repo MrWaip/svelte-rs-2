@@ -35,6 +35,7 @@ fn check(source: &str, expected: &str) {
     let opts = CompileOptions {
         name: Some("App".into()),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile(source, &opts);
@@ -263,6 +264,7 @@ fn compile_filename_derived_name_is_sanitized() {
     let opts = CompileOptions {
         filename: "src/routes/+page.svelte".into(),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile("", &opts);
@@ -283,6 +285,7 @@ fn compile_explicit_name_reserved_word_is_deconflicted() {
     let opts = CompileOptions {
         name: Some("class".into()),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile("", &opts);
@@ -303,6 +306,7 @@ fn compile_explicit_name_conflict_is_deconflicted() {
     let opts = CompileOptions {
         name: Some("App".into()),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile("<script>let App = 0;</script>", &opts);
@@ -325,6 +329,7 @@ fn compile_filename_derived_name_conflict_is_deconflicted() {
     let opts = CompileOptions {
         filename: "src/routes/counter.svelte".into(),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile("<script>let Counter = 0;</script>", &opts);
