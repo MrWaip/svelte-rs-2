@@ -20,6 +20,18 @@ impl<'a> ServerCodegen<'a> {
             _ => ElementAsyncKind::Sync,
         };
         if async_kind.is_sync() {
+            if self
+                .analysis
+                .fragment_semantics
+                .query(element.fragment)
+                .bindings
+                .declares_local()
+            {
+                let body = self.child_statements(|c| c.emit_element_inline(element))?;
+                let block = self.b.block_stmt(body);
+                self.push_stmt(block);
+                return Ok(());
+            }
             return self.emit_element_inline(element);
         }
         let blockers = async_kind.blockers().to_vec();
@@ -91,6 +103,7 @@ impl<'a> ServerCodegen<'a> {
         };
         if emits_const_tags {
             self.emit_fragment_const_tags_hoisted(element.fragment)?;
+            self.emit_fragment_declaration_tags(element.fragment)?;
         }
 
         self.push_text(&format!("<{}", element.name));

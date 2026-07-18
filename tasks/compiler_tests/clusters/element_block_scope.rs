@@ -1,19 +1,14 @@
 use super::*;
 
-compiler_case!(
-    const_in_element,
-    "element_block_scope/const_in_element",
-    ignore = "declaration-tag as element child: children not wrapped in block scope"
-);
+compiler_case!(const_in_element, "element_block_scope/const_in_element");
 compiler_case!(
     let_derived_in_element,
     "element_block_scope/let_derived_in_element",
-    ignore = "declaration-tag as element child: children not wrapped in block scope"
+    [prod, dev, ssr_todo, ssr_dev_todo]
 );
 compiler_case!(
     shadowing_in_element,
-    "element_block_scope/shadowing_in_element",
-    ignore = "declaration-tag as element child: children not wrapped in block scope"
+    "element_block_scope/shadowing_in_element"
 );
 
 compiler_case!(

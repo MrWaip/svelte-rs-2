@@ -1,6 +1,6 @@
 use std::mem;
 
-use oxc_ast::ast::Statement;
+use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::Volatility;
 use svelte_ast::{Attribute, Namespace, Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
@@ -8,7 +8,7 @@ use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 use crate::codegen::expr::{coarse_wrap, evaluation_is_defined};
 
 use super::super::data_structures::EmitState;
-use super::super::data_structures::{FragmentAnchor, FragmentCtx, MemoValueRef};
+use super::super::data_structures::{FragmentAnchor, FragmentCtx, MemoValueRef, TemplateMemoState};
 use super::super::namespace::from_namespace;
 use super::super::{Codegen, CodegenError, Result};
 
@@ -204,7 +204,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let my_pre_update = mem::take(&mut state.pending_pre_update);
         state.pending_pre_update = prev_pending_pre_update;
 
-        let mut snippet_wrap_start: Option<usize> = None;
+        type BlockWrap<'a> = (
+            usize,
+            Vec<Statement<'a>>,
+            Vec<Statement<'a>>,
+            TemplateMemoState<'a>,
+            Vec<u32>,
+            Vec<Expression<'a>>,
+        );
+        let mut block_wrap: Option<BlockWrap<'a>> = None;
 
         if !is_noscript && !self.ctx.query.view.is_void(el_id) {
             if self.ctx.is_customizable_select(el_id) {
@@ -233,9 +241,25 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .push(self.ctx.b.call_stmt("$.reset", [Arg::Ident(&el_name)]));
                 state.last_fragment_needs_reset = false;
             } else {
-                if self.element_emits_local_snippet(state, el.fragment) {
-                    snippet_wrap_start = Some(state.init.len());
-                }
+                let wrap = self.element_emits_local_snippet(state, el.fragment)
+                    || self
+                        .ctx
+                        .query
+                        .analysis
+                        .fragment_semantics
+                        .query(el.fragment)
+                        .bindings
+                        .declares_local();
+                let saved = wrap.then(|| {
+                    (
+                        state.init.len(),
+                        state.update.len(),
+                        state.after_update.len(),
+                        mem::take(&mut state.shared_memo),
+                        mem::take(&mut state.script_blockers),
+                        mem::take(&mut state.extra_blockers),
+                    )
+                });
                 let child_ctx = ctx.child_of_element(
                     self.ctx,
                     el.name.as_str(),
@@ -260,6 +284,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 } else if !has_var {
                     state.last_fragment_needs_reset = false;
                 }
+                if let Some((init_start, update_start, after_start, memo, sb, eb)) = saved {
+                    let child_update: Vec<Statement<'a>> =
+                        state.update.drain(update_start..).collect();
+                    let child_after: Vec<Statement<'a>> =
+                        state.after_update.drain(after_start..).collect();
+                    let block_memo = mem::replace(&mut state.shared_memo, memo);
+                    let block_sb = mem::replace(&mut state.script_blockers, sb);
+                    let block_eb = mem::replace(&mut state.extra_blockers, eb);
+                    block_wrap = Some((
+                        init_start,
+                        child_update,
+                        child_after,
+                        block_memo,
+                        block_sb,
+                        block_eb,
+                    ));
+                }
             }
         }
 
@@ -279,9 +320,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        if let Some(start) = snippet_wrap_start {
-            let drained: Vec<Statement<'a>> = state.init.drain(start..).collect();
-            state.init.push(self.ctx.b.block_stmt(drained));
+        if let Some((init_start, child_update, child_after, block_memo, block_sb, block_eb)) =
+            block_wrap
+        {
+            let mut block_body: Vec<Statement<'a>> = state.init.drain(init_start..).collect();
+            super::super::effect::emit_template_effect_with_memo(
+                self.ctx,
+                &mut block_body,
+                child_update,
+                block_memo,
+                block_sb,
+                block_eb,
+            )?;
+            block_body.extend(child_after);
+            state.init.push(self.ctx.b.block_stmt(block_body));
         }
 
         if !is_ghost
