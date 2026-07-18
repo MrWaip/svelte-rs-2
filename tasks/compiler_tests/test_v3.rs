@@ -2207,7 +2207,7 @@ compiler_case!(diagnose_svelte_fragment_let_inside_named_slot_component);
 
 compiler_case!(
     diagnose_svelte_component_css_custom_prop_wrapper,
-    [prod, dev_todo]
+    [prod, dev]
 );
 
 compiler_case!(diagnose_component_prop_computed_member_getter);
