@@ -55,6 +55,7 @@ svelte_analyze = { workspace = true }
 svelte_transform_client = { workspace = true }
 svelte_codegen_client = { workspace = true }
 svelte_types = { workspace = true }
+svelte_sourcemap = { workspace = true }
 svelte_span = { workspace = true }
 svelte_ast = { workspace = true }
 oxc_allocator = { workspace = true }

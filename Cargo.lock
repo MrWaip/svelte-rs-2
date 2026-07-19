@@ -85,6 +85,7 @@ dependencies = [
  "svelte_codegen_client",
  "svelte_compiler",
  "svelte_parser",
+ "svelte_sourcemap",
  "svelte_span",
  "svelte_transform_client",
  "svelte_types",

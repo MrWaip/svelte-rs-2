@@ -65,7 +65,15 @@ fn main() {
         let _ = ident_gen.generate(&name);
         let line_index = svelte_span::LineIndex::empty();
         let transform_options = svelte_types::TransformOptions { dev: false };
-        let codegen_options = svelte_types::CodegenOptions::default();
+        let no_map = env::args().any(|a| a == "--no-sourcemap");
+        let codegen_options = svelte_types::CodegenOptions {
+            sourcemap_kind: if no_map {
+                svelte_sourcemap::SourcemapKind::None
+            } else {
+                svelte_sourcemap::SourcemapKind::Default
+            },
+            ..svelte_types::CodegenOptions::default()
+        };
 
         let t0 = Instant::now();
         let transform_data = {
