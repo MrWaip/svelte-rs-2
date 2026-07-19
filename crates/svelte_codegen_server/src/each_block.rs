@@ -305,7 +305,7 @@ impl<'a> ServerCodegen<'a> {
 
         let index_pattern = b
             .ast
-            .binding_pattern_binding_identifier(SPAN, b.ast.atom(index_name));
+            .binding_pattern_binding_identifier(SPAN, b.alloc_str(index_name));
         let index_declarator = b.ast.variable_declarator(
             SPAN,
             VariableDeclarationKind::Let,
@@ -315,9 +315,7 @@ impl<'a> ServerCodegen<'a> {
             false,
         );
 
-        let length_pattern = b
-            .ast
-            .binding_pattern_binding_identifier(SPAN, b.ast.atom(LENGTH_NAME));
+        let length_pattern = b.ast.binding_pattern_binding_identifier(SPAN, LENGTH_NAME);
         let length_init = b.static_member_expr(b.rid_expr(array_name), "length");
         let length_declarator = b.ast.variable_declarator(
             SPAN,
@@ -344,7 +342,7 @@ impl<'a> ServerCodegen<'a> {
 
         let update_target = b
             .ast
-            .simple_assignment_target_assignment_target_identifier(SPAN, b.ast.atom(index_name));
+            .simple_assignment_target_assignment_target_identifier(SPAN, b.alloc_str(index_name));
         let update = b
             .ast
             .expression_update(SPAN, UpdateOperator::Increment, false, update_target);

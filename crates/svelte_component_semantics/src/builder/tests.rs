@@ -31,9 +31,9 @@ fn build_instance_with_type(
 ) -> crate::ComponentSemantics<'static> {
     let parsed = Parser::new(alloc, source, source_type).parse();
     assert!(
-        parsed.errors.is_empty(),
+        parsed.diagnostics.is_empty(),
         "parse errors: {:?}",
-        parsed.errors
+        parsed.diagnostics
     );
 
     let mut builder = ComponentSemanticsBuilder::new();
@@ -49,10 +49,10 @@ fn build_module_and_instance(
     let source_type = SourceType::mjs();
 
     let instance_parsed = Parser::new(alloc, instance_src, source_type).parse();
-    assert!(instance_parsed.errors.is_empty());
+    assert!(instance_parsed.diagnostics.is_empty());
 
     let module_parsed = Parser::new(alloc, module_src, source_type).parse();
-    assert!(module_parsed.errors.is_empty());
+    assert!(module_parsed.diagnostics.is_empty());
 
     let mut builder = ComponentSemanticsBuilder::new();
     builder.add_module_program(&module_parsed.program);
@@ -471,7 +471,7 @@ fn template_expression_resolves_instance_binding() {
     let source_type = SourceType::mjs();
 
     let instance = Parser::new(alloc, "let count = 0;", source_type).parse();
-    assert!(instance.errors.is_empty());
+    assert!(instance.diagnostics.is_empty());
 
     let mut builder = ComponentSemanticsBuilder::new();
     builder.add_instance_program(&instance.program);
@@ -522,7 +522,7 @@ fn template_child_scope_with_binding() {
     let source_type = SourceType::mjs();
 
     let instance = Parser::new(alloc, "let items = [];", source_type).parse();
-    assert!(instance.errors.is_empty());
+    assert!(instance.diagnostics.is_empty());
 
     let mut builder = ComponentSemanticsBuilder::new();
     builder.add_instance_program(&instance.program);
@@ -552,7 +552,7 @@ fn template_shorthand_bind_reference() {
     let source_type = SourceType::mjs();
 
     let instance = Parser::new(alloc, "let value = '';", source_type).parse();
-    assert!(instance.errors.is_empty());
+    assert!(instance.diagnostics.is_empty());
 
     let mut builder = ComponentSemanticsBuilder::new();
     builder.add_instance_program(&instance.program);
@@ -689,8 +689,8 @@ fn node_ids_no_collision_between_programs() {
 
     let module_parsed = Parser::new(alloc, "export const shared = 42;", source_type).parse();
     let instance_parsed = Parser::new(alloc, "let x = shared;", source_type).parse();
-    assert!(module_parsed.errors.is_empty());
-    assert!(instance_parsed.errors.is_empty());
+    assert!(module_parsed.diagnostics.is_empty());
+    assert!(instance_parsed.diagnostics.is_empty());
 
     let mut builder = ComponentSemanticsBuilder::new();
     builder.add_module_program(&module_parsed.program);

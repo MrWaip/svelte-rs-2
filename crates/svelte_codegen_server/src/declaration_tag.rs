@@ -69,7 +69,7 @@ impl<'a> ServerCodegen<'a> {
 
             self.push_stmt(self.b.let_stmt(&target));
 
-            let target_atom = self.b.ast.atom(&target);
+            let target_atom = self.b.alloc_str(&target);
             let assignment_target = AssignmentTarget::AssignmentTargetIdentifier(
                 self.b
                     .alloc(self.b.ast.identifier_reference(SPAN, target_atom)),

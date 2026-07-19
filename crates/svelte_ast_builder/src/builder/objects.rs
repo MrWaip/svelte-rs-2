@@ -30,8 +30,9 @@ impl<'a> Builder<'a> {
 
     fn obj_key_node(&self, key: &str) -> ast::PropertyKey<'a> {
         if is_identifier_name(key) {
-            let key_atom = self.ast.atom(key);
-            ast::PropertyKey::StaticIdentifier(self.alloc(self.ast.identifier_name(SPAN, key_atom)))
+            ast::PropertyKey::StaticIdentifier(
+                self.alloc(self.ast.identifier_name(SPAN, self.alloc_str(key))),
+            )
         } else {
             ast::PropertyKey::StringLiteral(self.alloc(self.str_lit(key)))
         }
@@ -66,7 +67,7 @@ impl<'a> Builder<'a> {
                 ast::ObjectPropertyKind::ObjectProperty(self.alloc(obj_prop))
             }
             ObjProp::Shorthand(name) => {
-                let name_atom = self.ast.atom(name);
+                let name_atom = name;
                 let key_node = ast::PropertyKey::StaticIdentifier(
                     self.alloc(self.ast.identifier_name(SPAN, name_atom)),
                 );
@@ -167,7 +168,7 @@ impl<'a> Builder<'a> {
             }
             ObjProp::Setter(name, param_name, default_expr, body) => {
                 let key_node = self.obj_key_node(name);
-                let param_atom = self.ast.atom(param_name);
+                let param_atom = param_name;
                 let pattern = self
                     .ast
                     .binding_pattern_binding_identifier(SPAN, param_atom);

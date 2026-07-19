@@ -1,4 +1,5 @@
 use std::{
+    cmp::Reverse,
     collections::{BTreeSet, HashMap},
     env,
     fs::{self, File},
@@ -892,7 +893,7 @@ fn print_summary_table(total: usize, ok: usize, grouped: &HashMap<&str, Vec<&Fin
 
 fn write_sized_bucket(sink: &mut dyn Write, reason: &str, items: &[&Finding]) -> io::Result<()> {
     let mut sorted: Vec<&&Finding> = items.iter().collect();
-    sorted.sort_by(|a, b| b.size.cmp(&a.size));
+    sorted.sort_by_key(|b| Reverse(b.size));
     writeln!(sink, "[{reason}] {}", items.len())?;
     let mut subgroups: [(&str, Vec<&&Finding>); 5] = [
         ("xs", Vec::new()),

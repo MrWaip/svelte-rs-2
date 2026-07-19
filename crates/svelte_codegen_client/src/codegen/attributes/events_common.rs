@@ -43,13 +43,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         if matches!(effect, HandlerEffect::Call { .. }) {
             let id = self.ctx.state.gen_ident("event_handler");
+            let id_alloc: &'a str = self.ctx.b.alloc_str(&id);
             let thunk = self.ctx.b.thunk(handler);
             init.push(
                 self.ctx
                     .b
                     .var_stmt(&id, self.ctx.b.call_expr("$.derived", [Arg::Expr(thunk)])),
             );
-            handler = rune_get(&self.ctx.b, &id);
+            handler = rune_get(&self.ctx.b, id_alloc);
         }
 
         build_event_apply_wrapper(

@@ -55,13 +55,13 @@ impl<'a> Scanner<'a> {
         Scanner {
             source,
             bytes: source.as_bytes(),
-            tokens: vec![],
+            tokens: Vec::with_capacity(source.len() / 20),
             diagnostics: vec![],
             prev: 0,
             current: 0,
             start: 0,
             fragment_depth: 0,
-            open_elements: Vec::new(),
+            open_elements: Vec::with_capacity(32),
         }
     }
 
@@ -2259,10 +2259,8 @@ impl<'a> Scanner<'a> {
                         return true;
                     }
                 }
-                '\'' | '"' | '`' => {
-                    if !self.consume_quoted(ch) {
-                        return false;
-                    }
+                '\'' | '"' | '`' if !self.consume_quoted(ch) => {
+                    return false;
                 }
                 _ => {}
             }

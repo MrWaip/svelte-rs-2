@@ -1221,10 +1221,8 @@ fn relative_selector_matches(
                         }
                     }
                 }
-                "is" | "where" => {
-                    if !pseudo_is_or_where_matches(pruner, pc, rule_ctx, elem_id) {
-                        return false;
-                    }
+                "is" | "where" if !pseudo_is_or_where_matches(pruner, pc, rule_ctx, elem_id) => {
+                    return false;
                 }
                 _ => {}
             },

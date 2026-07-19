@@ -1,5 +1,5 @@
 use oxc_allocator::Allocator;
-use oxc_estree::{ESTree, PrettyJSSerializer};
+use oxc_estree::{ESTree, PrettySerializer};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
 use std::env;
@@ -12,14 +12,14 @@ fn main() {
     let source_type = SourceType::mjs();
     let ret = Parser::new(&alloc, &input, source_type).parse();
 
-    if !ret.errors.is_empty() {
-        for err in &ret.errors {
+    if !ret.diagnostics.is_empty() {
+        for err in &ret.diagnostics {
             eprintln!("Error: {err}");
         }
         process::exit(1);
     }
 
-    let mut serializer = PrettyJSSerializer::new(false);
+    let mut serializer = PrettySerializer::new(false, false);
     ret.program.serialize(&mut serializer);
     println!("{}", serializer.into_string());
 }

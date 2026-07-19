@@ -532,10 +532,10 @@ fn is_module_bound<'a>(program: &Program<'a>, name: &str) -> bool {
                                 return true;
                             }
                         }
-                        Declaration::ClassDeclaration(c) => {
-                            if c.id.as_ref().is_some_and(|id| id.name == name) {
-                                return true;
-                            }
+                        Declaration::ClassDeclaration(c)
+                            if c.id.as_ref().is_some_and(|id| id.name == name) =>
+                        {
+                            return true;
                         }
                         _ => {}
                     }

@@ -64,8 +64,8 @@ fn sourcemap_sources_content() {
         .flatten()
         .unwrap_or_else(|| panic!("[{case}] sourcesContent[0] missing"));
     assert_eq!(
-        content.as_ref(),
-        input,
+        content,
+        input.as_str(),
         "[{case}] sourcesContent[0] does not equal full Svelte source"
     );
     assert!(
@@ -112,11 +112,7 @@ fn sourcemap_compile_module_basename() {
     let js_output = result.js.expect("compile_module produced no JS");
     let map = js_output.map.expect("module JS map is None");
     let expected = "Foo.svelte.js";
-    assert_eq!(
-        map.get_file().map(|s| s.as_ref()),
-        None,
-        "[{case}] JS map must not carry file"
-    );
+    assert_eq!(map.get_file(), None, "[{case}] JS map must not carry file");
     let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
     assert_eq!(
         sources,
@@ -135,11 +131,7 @@ fn sourcemap_compile_module_fallback() {
     let js_output = result.js.expect("compile_module produced no JS");
     let map = js_output.map.expect("module JS map is None");
     let expected = "input.svelte.js";
-    assert_eq!(
-        map.get_file().map(|s| s.as_ref()),
-        None,
-        "[{case}] JS map must not carry file"
-    );
+    assert_eq!(map.get_file(), None, "[{case}] JS map must not carry file");
     let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
     assert_eq!(
         sources,
@@ -158,11 +150,7 @@ fn sourcemap_output_filename_relative() {
     let js_output = result.js.expect("compile produced no JS");
     let map = js_output.map.expect("JS map is None");
     let expected = "../src/Foo.svelte";
-    assert_eq!(
-        map.get_file().map(|s| s.as_ref()),
-        None,
-        "[{case}] JS map must not carry file"
-    );
+    assert_eq!(map.get_file(), None, "[{case}] JS map must not carry file");
     let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
     assert_eq!(
         sources,
@@ -180,11 +168,7 @@ fn sourcemap_output_filename_absent() {
     let js_output = result.js.expect("compile produced no JS");
     let map = js_output.map.expect("JS map is None");
     let expected = "Foo.svelte";
-    assert_eq!(
-        map.get_file().map(|s| s.as_ref()),
-        None,
-        "[{case}] JS map must not carry file"
-    );
+    assert_eq!(map.get_file(), None, "[{case}] JS map must not carry file");
     let sources: Vec<String> = map.get_sources().map(|s| s.to_string()).collect();
     assert_eq!(
         sources,
@@ -260,7 +244,7 @@ fn sourcemap_css_output_filename_set() {
     let css_output = result.css.as_ref().expect("CSS output missing");
     let map = css_output.map.as_ref().expect("CSS map None");
     assert_eq!(
-        map.get_file().map(|s| s.as_ref()),
+        map.get_file(),
         Some("Foo.css"),
         "[{case}] map.file != basename of css_output_filename"
     );
@@ -276,7 +260,7 @@ fn sourcemap_css_output_filename_fallback() {
     let css_output = result.css.as_ref().expect("CSS output missing");
     let map = css_output.map.as_ref().expect("CSS map None");
     assert_eq!(
-        map.get_file().map(|s| s.as_ref()),
+        map.get_file(),
         Some("Foo.svelte"),
         "[{case}] map.file != basename of filename"
     );
@@ -302,7 +286,7 @@ fn sourcemap_css_merges_preprocessor_sources() {
         "preprocessor source not merged into css sources"
     );
     assert_eq!(
-        map.get_file().map(|s| s.as_ref()),
+        map.get_file(),
         Some("App.svelte"),
         "css map file must stay basename after merge"
     );

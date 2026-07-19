@@ -47,7 +47,7 @@ pub fn transform_css_with_sourcemap(
     mut stylesheet: StyleSheet,
     source: &str,
     filename: &str,
-) -> (String, SourceMap) {
+) -> (String, SourceMap<'static>) {
     apply_scoping(hash_class, keyframes, &mut stylesheet, source);
     svelte_css::Printer::print_with_sourcemap(
         &stylesheet,

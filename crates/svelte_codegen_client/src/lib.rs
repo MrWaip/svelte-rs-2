@@ -695,7 +695,7 @@ fn build_codegen_output(
         .build(program);
     JsOutput {
         code: ret.code,
-        map: ret.map,
+        map: ret.map.map(|m| m.into_owned()),
     }
 }
 

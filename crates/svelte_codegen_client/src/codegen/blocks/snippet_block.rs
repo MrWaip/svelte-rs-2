@@ -80,10 +80,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             _ => return CodegenError::unexpected_node(block_id, "SnippetBlock"),
         };
         let mut inner_ctx = FragmentCtx::root(self.ctx, body);
-        inner_ctx.anchor = FragmentAnchor::CallbackParam {
-            name: "$$anchor".to_string(),
-            append_inside: false,
-        };
+        inner_ctx.anchor = FragmentAnchor::callback_param("$$anchor", false);
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, body)?;
         let body_stmts = self.pack_callback_body(inner_state, "$$anchor")?;
@@ -155,7 +152,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .ast
-            .binding_pattern_binding_identifier(SPAN, self.ctx.b.ast.atom(name));
+            .binding_pattern_binding_identifier(SPAN, self.ctx.b.alloc_str(name));
         let pattern = if with_noop_default {
             let default_expr = self
                 .ctx
@@ -211,7 +208,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .ctx
                     .b
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ctx.b.ast.atom("$$snip"));
+                    .binding_pattern_binding_identifier(SPAN, "$$snip");
                 Some(mem::replace(&mut param.pattern, dummy))
             };
             out.push(SnippetParamParsed { pattern, default });

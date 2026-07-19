@@ -1,3 +1,4 @@
+use compact_str::CompactString;
 use oxc_ast::ast::Expression;
 use std::iter::empty;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
@@ -319,7 +320,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state
             .init
             .push(b.var_stmt(&name, b.call_expr("$.text", empty::<Arg<'a, '_>>())));
-        state.root_var = Some(name.clone());
+        state.root_var = Some(CompactString::from(name.as_str()));
 
         self.finalize_text_node_emission(state, &name, tpl_expr, needs_effect, extra_blockers)
     }
@@ -344,7 +345,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state
             .init
             .push(b.var_stmt(&name, b.call_expr("$.text", empty::<Arg<'a, '_>>())));
-        state.root_var = Some(name.clone());
+        state.root_var = Some(CompactString::from(name.as_str()));
         self.finalize_text_node_emission(state, &name, tpl_expr, needs_effect, extra_blockers)
     }
 

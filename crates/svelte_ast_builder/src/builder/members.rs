@@ -8,16 +8,16 @@ impl<'a> Builder<'a> {
     pub fn new_target_expr(&self) -> Expression<'a> {
         Expression::MetaProperty(self.alloc(self.ast.meta_property(
             SPAN,
-            self.ast.identifier_name(SPAN, self.ast.atom("new")),
-            self.ast.identifier_name(SPAN, self.ast.atom("target")),
+            self.ast.identifier_name(SPAN, "new"),
+            self.ast.identifier_name(SPAN, "target"),
         )))
     }
 
     pub fn import_meta_expr(&self) -> Expression<'a> {
         Expression::MetaProperty(self.alloc(self.ast.meta_property(
             SPAN,
-            self.ast.identifier_name(SPAN, self.ast.atom("import")),
-            self.ast.identifier_name(SPAN, self.ast.atom("meta")),
+            self.ast.identifier_name(SPAN, "import"),
+            self.ast.identifier_name(SPAN, "meta"),
         )))
     }
 
@@ -51,7 +51,7 @@ impl<'a> Builder<'a> {
         prop: &str,
         span: Span,
     ) -> StaticMemberExpression<'a> {
-        let property = self.ast.identifier_name(SPAN, self.ast.atom(prop));
+        let property = self.ast.identifier_name(SPAN, self.alloc_str(prop));
         self.ast
             .static_member_expression(span, object, property, false)
     }

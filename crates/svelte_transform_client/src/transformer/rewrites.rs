@@ -1487,10 +1487,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         {
             return false;
         }
-        member.object = self
-            .b
-            .ast
-            .expression_identifier(SPAN, self.b.ast.atom("$$props"));
+        member.object = self.b.ast.expression_identifier(SPAN, "$$props");
         true
     }
 }

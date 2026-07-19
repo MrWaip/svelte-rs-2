@@ -1,5 +1,6 @@
 use std::mem;
 
+use compact_str::CompactString;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::Volatility;
 use svelte_ast::{Attribute, Namespace, Node, NodeId};
@@ -235,9 +236,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     el.name.as_str(),
                     el.fragment,
                     el_ns,
-                    FragmentAnchor::ElementContentChild {
-                        parent_var: el_name.clone(),
-                    },
+                    FragmentAnchor::element_content_child(el_name.clone()),
                 );
                 self.emit_fragment(state, &child_ctx, el.fragment)?;
                 state
@@ -269,9 +268,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     el.name.as_str(),
                     el.fragment,
                     el_ns,
-                    FragmentAnchor::Child {
-                        parent_var: el_name.clone(),
-                    },
+                    FragmentAnchor::child(el_name.clone()),
                 );
                 let prev_bound_ce = state.bound_contenteditable;
                 if self.ctx.is_bound_contenteditable(el_id) {
@@ -437,14 +434,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             el_tag,
             el_fragment,
             el_ns,
-            FragmentAnchor::CallbackParam {
-                name: anchor_name.clone(),
-                append_inside: false,
-            },
+            FragmentAnchor::callback_param(anchor_name.clone(), false),
         );
         let mut inner_state = EmitState::new();
         inner_state.suppress_root_finalize = true;
-        inner_state.pending_anchor_idents = Some((fragment_name.clone(), String::new()));
+        inner_state.pending_anchor_idents = Some((
+            CompactString::from(fragment_name.as_str()),
+            CompactString::new(""),
+        ));
 
         let selectedcontent_child: Option<NodeId> =
             if let Node::Element(parent_el) = self.ctx.query.component.store.get(el_id) {

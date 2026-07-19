@@ -130,7 +130,7 @@ impl<'a> ServerTransform<'_, 'a> {
             );
         } else {
             let mut seq: OxcVec<'a, Expression<'a>> =
-                OxcVec::with_capacity_in(setters.len() + 1, self.b.ast.allocator);
+                OxcVec::with_capacity_in(setters.len() + 1, &self.b.ast.allocator);
             for setter in setters {
                 seq.push(setter);
             }

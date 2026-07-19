@@ -48,7 +48,7 @@ impl<'a> ServerTransform<'_, 'a> {
     }
 
     fn shorthand_binding_property(&self, name: &str) -> BindingProperty<'a> {
-        let atom = self.b.ast.atom(name);
+        let atom = self.b.alloc_str(name);
         let key =
             PropertyKey::StaticIdentifier(self.b.alloc(self.b.ast.identifier_name(SPAN, atom)));
         let value = self.b.ast.binding_pattern_binding_identifier(SPAN, atom);
@@ -59,10 +59,10 @@ impl<'a> ServerTransform<'_, 'a> {
         if !self.analysis.output.needs_sanitized_legacy_slots {
             return self.shorthand_binding_property("$$slots");
         }
-        let key_atom = self.b.ast.atom("$$slots");
+        let key_atom = "$$slots";
         let key =
             PropertyKey::StaticIdentifier(self.b.alloc(self.b.ast.identifier_name(SPAN, key_atom)));
-        let value_atom = self.b.ast.atom("$$slots_");
+        let value_atom = "$$slots_";
         let value = self
             .b
             .ast
@@ -193,7 +193,7 @@ impl<'a> ServerTransform<'_, 'a> {
         let placeholder = self
             .b
             .ast
-            .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name));
+            .binding_pattern_binding_identifier(SPAN, tmp_name);
         let pattern = mem::replace(&mut declarator.id, placeholder);
 
         let declaration_is_props = self
@@ -331,7 +331,7 @@ impl<'a> ServerTransform<'_, 'a> {
             kind,
             self.b
                 .ast
-                .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
+                .binding_pattern_binding_identifier(SPAN, self.b.alloc_str(name)),
             NONE,
             Some(value),
             false,

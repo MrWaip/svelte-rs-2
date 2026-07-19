@@ -19,23 +19,23 @@ impl SourcemapKind {
 #[derive(Debug, Default, Clone)]
 pub struct JsOutput {
     pub code: String,
-    pub map: Option<SourceMap>,
+    pub map: Option<SourceMap<'static>>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct CssOutput {
     pub code: String,
-    pub map: Option<SourceMap>,
+    pub map: Option<SourceMap<'static>>,
     pub has_global: bool,
 }
 
 pub struct Sourcemap<'a> {
-    map: SourceMap,
+    map: SourceMap<'static>,
     source: &'a str,
 }
 
 impl<'a> Sourcemap<'a> {
-    pub fn new(map: SourceMap, source: &'a str) -> Self {
+    pub fn new(map: SourceMap<'static>, source: &'a str) -> Self {
         Self { map, source }
     }
 
@@ -59,14 +59,14 @@ impl<'a> Sourcemap<'a> {
         format!("\n/*# sourceMappingURL={} */", self.map.to_data_url())
     }
 
-    pub fn into_inner(self) -> SourceMap {
+    pub fn into_inner(self) -> SourceMap<'static> {
         self.map
     }
 }
 
-pub fn parse_input_map(json: &str) -> Option<SourceMap> {
+pub fn parse_input_map(json: &str) -> Option<SourceMap<'static>> {
     if let Ok(map) = SourceMap::from_json_string(json) {
-        return Some(map);
+        return Some(map.into_owned());
     }
     let mut value: serde_json::Value = serde_json::from_str(json).ok()?;
     if let Some(sources) = value.get_mut("sources").and_then(|v| v.as_array_mut()) {
@@ -76,16 +76,19 @@ pub fn parse_input_map(json: &str) -> Option<SourceMap> {
             }
         }
     }
-    SourceMap::from_json_string(&value.to_string()).ok()
+    let json_str = value.to_string();
+    SourceMap::from_json_string(&json_str)
+        .ok()
+        .map(|m| m.into_owned())
 }
 
 pub fn merge_with_preprocessor(
-    base: SourceMap,
-    preprocessor: &SourceMap,
+    base: SourceMap<'static>,
+    preprocessor: &SourceMap<'_>,
     filename: &str,
     source_name: &str,
     base_offset: (u32, u32),
-) -> SourceMap {
+) -> SourceMap<'static> {
     let file_basename = get_basename(filename);
     let mut combined = compose(&base, preprocessor, base_offset);
     if let Some(file) = base.get_file() {
@@ -104,7 +107,11 @@ pub fn merge_with_preprocessor(
     combined
 }
 
-fn compose(base: &SourceMap, over: &SourceMap, base_offset: (u32, u32)) -> SourceMap {
+fn compose(
+    base: &SourceMap<'_>,
+    over: &SourceMap<'_>,
+    base_offset: (u32, u32),
+) -> SourceMap<'static> {
     let (offset_line, offset_col) = base_offset;
     let over_lookup = over.generate_lookup_table();
     let mut builder = SourceMapBuilder::default();
@@ -129,7 +136,7 @@ fn compose(base: &SourceMap, over: &SourceMap, base_offset: (u32, u32)) -> Sourc
         }
         let content = over
             .get_source_content(source_id)
-            .map_or("", |content| content.as_ref());
+            .map_or("", |content| content);
         let new_source_id = builder.add_source_and_content(source, content);
         let name_id = resolved
             .get_name_id()
@@ -144,7 +151,7 @@ fn compose(base: &SourceMap, over: &SourceMap, base_offset: (u32, u32)) -> Sourc
             name_id,
         );
     }
-    builder.into_sourcemap()
+    builder.into_sourcemap().into_owned()
 }
 
 pub fn get_basename(filename: &str) -> &str {

@@ -12,12 +12,12 @@ pub fn each_item_collection_read_legacy<'a>(
     b: &Builder<'a>,
     analysis: &AnalysisData<'_>,
     source_sym: SymbolId,
-    hoisted_collection_name: Option<&str>,
+    hoisted_collection_name: Option<&'a str>,
 ) -> Expression<'a> {
     if let Some(name) = hoisted_collection_name {
         return thunk_call(b, name);
     }
-    let name = analysis.scoping.symbol_name(source_sym);
+    let name: &'a str = b.alloc_str(analysis.scoping.symbol_name(source_sym));
     read_binding(b, analysis, source_sym, LegacyStateSafety::FromVarDeclared)
         .unwrap_or_else(|| b.rid_expr(name))
 }

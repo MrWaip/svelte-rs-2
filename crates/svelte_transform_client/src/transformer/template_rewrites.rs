@@ -69,7 +69,7 @@ pub(crate) fn rewrite_template_exit<'a>(
         let ast = t.b.ast;
         let arg = mem::replace(
             &mut await_expr.argument,
-            ast.expression_identifier(SPAN, ast.atom("")),
+            ast.expression_identifier(SPAN, ""),
         );
 
         if is_pickled {
@@ -78,7 +78,7 @@ pub(crate) fn rewrite_template_exit<'a>(
             let Expression::AwaitExpression(_) = &*it else {
                 unreachable!()
             };
-            let awaited = mem::replace(it, ast.expression_identifier(SPAN, ast.atom("")));
+            let awaited = mem::replace(it, ast.expression_identifier(SPAN, ""));
             *it = ast.expression_call(SPAN, awaited, NONE, ast.vec(), false);
             return;
         } else if t.dev && !ignored {
@@ -87,7 +87,7 @@ pub(crate) fn rewrite_template_exit<'a>(
             let Expression::AwaitExpression(_) = &*it else {
                 unreachable!()
             };
-            let awaited = mem::replace(it, ast.expression_identifier(SPAN, ast.atom("")));
+            let awaited = mem::replace(it, ast.expression_identifier(SPAN, ""));
             *it = ast.expression_call(SPAN, awaited, NONE, ast.vec(), false);
             return;
         } else {

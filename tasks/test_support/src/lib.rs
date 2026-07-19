@@ -9,7 +9,7 @@ pub fn canonicalize_js(js: &str) -> String {
     let allocator = Allocator::default();
     let source_type = SourceType::default().with_module(true);
     let mut parsed = Parser::new(&allocator, js, source_type).parse();
-    if !parsed.errors.is_empty() {
+    if !parsed.diagnostics.is_empty() {
         return strip_js_comments(js);
     }
     strip_empty_statement_nodes(&mut parsed.program);

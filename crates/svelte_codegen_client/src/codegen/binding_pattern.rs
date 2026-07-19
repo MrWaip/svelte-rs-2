@@ -232,8 +232,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             expr,
                             carrier_count(len, has_rest),
                         );
+                        let name_alloc: &'a str = self.ctx.b.alloc_str(&name);
                         expr = self.ctx.b.computed_member_expr(
-                            rune_get(&self.ctx.b, &name),
+                            rune_get(&self.ctx.b, name_alloc),
                             self.ctx.b.num_expr(index as f64),
                         );
                     }
@@ -247,10 +248,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             expr,
                             None,
                         );
+                        let name_alloc: &'a str = self.ctx.b.alloc_str(&name);
                         let slice_callee = self
                             .ctx
                             .b
-                            .static_member_expr(rune_get(&self.ctx.b, &name), "slice");
+                            .static_member_expr(rune_get(&self.ctx.b, name_alloc), "slice");
                         expr = self
                             .ctx
                             .b

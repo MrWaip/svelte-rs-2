@@ -24,7 +24,7 @@ pub fn read_binding<'a>(
     sym: SymbolId,
     safety: LegacyStateSafety,
 ) -> Option<Expression<'a>> {
-    let name = analysis.scoping.symbol_name(sym);
+    let name: &'a str = b.alloc_str(analysis.scoping.symbol_name(sym));
     if analysis.reactivity.legacy_reactive().is_mutated_import(sym) {
         let wrapper: &str = b.alloc_str(&legacy_reactive_import_wrapper_name(name));
         return Some(b.call_expr_callee(b.rid_expr(wrapper), []));
@@ -35,7 +35,7 @@ pub fn read_binding<'a>(
             ..
         }) => {
             let (prop_name, _origin_kind) = analysis.binding_origin_key(sym)?;
-            Some(props_member(b, prop_name.as_ref()))
+            Some(props_member(b, b.alloc_str(prop_name.as_ref())))
         }
         BindingSemantics::Prop(PropBindingSemantics {
             kind: PropBindingKind::Source { .. },
@@ -47,7 +47,8 @@ pub fn read_binding<'a>(
         }) => Some(b.rid_expr(name)),
         BindingSemantics::LegacyBindableProp(_) => Some(thunk_call(b, name)),
         BindingSemantics::Store(store) => {
-            let dollar_name = analysis.scoping.symbol_name(store.store_symbol);
+            let dollar_name: &'a str =
+                b.alloc_str(analysis.scoping.symbol_name(store.store_symbol));
             Some(thunk_call(b, dollar_name))
         }
         BindingSemantics::LegacyState(state) => {
@@ -96,7 +97,8 @@ pub fn read_binding<'a>(
             | ContextualBindingSemantics::AwaitError
             | ContextualBindingSemantics::LetDirective => Some(rune_get(b, name)),
             ContextualBindingSemantics::LetDirectiveCarrierMember { carrier_symbol } => {
-                let carrier_name = analysis.scoping.symbol_name(carrier_symbol);
+                let carrier_name: &'a str =
+                    b.alloc_str(analysis.scoping.symbol_name(carrier_symbol));
                 Some(member_get_via_get(b, carrier_name, name))
             }
             ContextualBindingSemantics::LetDirectiveDirect => Some(b.rid_expr(name)),

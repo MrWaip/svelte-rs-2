@@ -1,3 +1,4 @@
+use compact_str::CompactString;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_ast::NodeId;
 
@@ -12,7 +13,7 @@ pub(crate) struct EmitState<'a> {
     pub after_update: Vec<Statement<'a>>,
     pub element_after_update: Vec<Statement<'a>>,
     pub bound_contenteditable: bool,
-    pub root_var: Option<String>,
+    pub root_var: Option<CompactString>,
     pub special_elements: Vec<Statement<'a>>,
     pub shared_memo: TemplateMemoState<'a>,
     pub script_blockers: Vec<u32>,
@@ -23,7 +24,7 @@ pub(crate) struct EmitState<'a> {
     pub pending_element_init: Vec<Statement<'a>>,
     pub pending_element_update: Vec<Statement<'a>>,
     pub pending_pre_update: Vec<Statement<'a>>,
-    pub pending_anchor_idents: Option<(String, String)>,
+    pub pending_anchor_idents: Option<(CompactString, CompactString)>,
     pub anchor_comment_pre_emitted: bool,
     pub suppress_root_finalize: bool,
     pub suppress_selectedcontent_for: Option<NodeId>,
