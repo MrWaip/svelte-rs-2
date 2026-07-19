@@ -31,6 +31,7 @@ pub(crate) fn run_template<'a, 'b>(
     component: &'b Component,
     line_index: &'b svelte_span::LineIndex,
     dev: bool,
+    filename: &'b str,
 ) -> TransformData {
     let b = Builder::new(alloc);
     let mut transformer = ComponentTransformer {
@@ -50,7 +51,7 @@ pub(crate) fn run_template<'a, 'b>(
         pending_prop_update_validations: rustc_hash::FxHashMap::default(),
         component_source: "",
         component_line_index: line_index,
-        filename: "",
+        filename,
         next_arrow_name: None,
         ident_gen,
         class_name_stack: Vec::new(),

@@ -2644,18 +2644,37 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
         if !is_simple_expression(default_expr) {
             return PropDefaultKind::Lazy;
         }
-        if let Expression::Identifier(id) = default_expr.get_inner_expression()
-            && let Some(ref_id) = id.reference_id.get()
-            && reference_is_reactive(
-                &self.data.reactivity,
-                &self.data.scoping,
-                ref_id,
-                ReferenceReactivityMode::PropDefault,
-            )
-        {
+        if self.prop_default_has_reactive_ref(default_expr) {
             return PropDefaultKind::Lazy;
         }
         PropDefaultKind::Eager
+    }
+
+    fn prop_default_has_reactive_ref(&self, expr: &Expression<'_>) -> bool {
+        match expr.get_inner_expression() {
+            Expression::Identifier(id) => id.reference_id.get().is_some_and(|ref_id| {
+                reference_is_reactive(
+                    &self.data.reactivity,
+                    &self.data.scoping,
+                    ref_id,
+                    ReferenceReactivityMode::PropDefault,
+                )
+            }),
+            Expression::BinaryExpression(b) => {
+                self.prop_default_has_reactive_ref(&b.left)
+                    || self.prop_default_has_reactive_ref(&b.right)
+            }
+            Expression::LogicalExpression(l) => {
+                self.prop_default_has_reactive_ref(&l.left)
+                    || self.prop_default_has_reactive_ref(&l.right)
+            }
+            Expression::ConditionalExpression(c) => {
+                self.prop_default_has_reactive_ref(&c.test)
+                    || self.prop_default_has_reactive_ref(&c.consequent)
+                    || self.prop_default_has_reactive_ref(&c.alternate)
+            }
+            _ => false,
+        }
     }
 }
 
@@ -2674,19 +2693,29 @@ fn bindable_default_arg<'a>(expr: &'a Expression<'a>) -> Option<&'a Expression<'
 }
 
 fn is_simple_expression(expr: &Expression<'_>) -> bool {
-    matches!(
-        expr.get_inner_expression(),
+    match expr.get_inner_expression() {
         Expression::Identifier(_)
-            | Expression::NullLiteral(_)
-            | Expression::BooleanLiteral(_)
-            | Expression::StringLiteral(_)
-            | Expression::NumericLiteral(_)
-            | Expression::BigIntLiteral(_)
-            | Expression::RegExpLiteral(_)
-            | Expression::TemplateLiteral(_)
-            | Expression::ArrowFunctionExpression(_)
-            | Expression::FunctionExpression(_)
-    )
+        | Expression::NullLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_) => true,
+        Expression::ConditionalExpression(c) => {
+            is_simple_expression(&c.test)
+                && is_simple_expression(&c.consequent)
+                && is_simple_expression(&c.alternate)
+        }
+        Expression::BinaryExpression(b) => {
+            is_simple_expression(&b.left) && is_simple_expression(&b.right)
+        }
+        Expression::LogicalExpression(l) => {
+            is_simple_expression(&l.left) && is_simple_expression(&l.right)
+        }
+        _ => false,
+    }
 }
 
 fn derived_async_kind(call: &CallExpression<'_>) -> DerivedAsyncKind {

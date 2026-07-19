@@ -348,7 +348,7 @@ impl<'a> Ctx<'a> {
     pub fn binding_property_non_reactive_ignored(&self, id: NodeId) -> bool {
         self.query
             .view
-            .is_ignored(id, "binding_property_non_reactive")
+            .is_ignored(id, svelte_analyze::WarningCode::BindingPropertyNonReactive)
     }
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
         self.query.view.needs_textarea_value_lowering(id)

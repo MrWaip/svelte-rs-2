@@ -1750,3 +1750,22 @@ const q = v!;
         det.found
     );
 }
+
+#[track_caller]
+fn assert_reports_error_without_panic(source: &str) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, _js, diags) = crate::parse_with_js(&alloc, source);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.severity == svelte_diagnostics::Severity::Error),
+        "expected an error diagnostic for malformed empty blocks, got {diags:?}"
+    );
+}
+
+#[test]
+fn all_whitespace_block_condition_reports_error_without_panicking_js_walker() {
+    assert_reports_error_without_panic(
+        "{#if }\n{:else if }\n{:else }\n{/if}\n{#each }\n{/each}\n{#snippet }\n{/snippet}",
+    );
+}

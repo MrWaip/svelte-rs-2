@@ -9,7 +9,7 @@ use oxc_ast::ast::{
 };
 use oxc_span::{GetSpan, SPAN};
 
-use svelte_analyze::{DerivedKind, DerivedSource};
+use svelte_analyze::{DerivedKind, DerivedSource, WarningCode};
 
 use svelte_ast_builder::{Arg, AssignLeft, Builder};
 use svelte_component_semantics::{SymbolId, walk_bindings};
@@ -239,7 +239,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let track_inner_await = self.dev
             && !self
                 .ignore_query
-                .is_ignored_at_span(span_start, "await_reactivity_loss");
+                .is_ignored_at_span(span_start, WarningCode::AwaitReactivityLoss);
         let thunk = if let Expression::AwaitExpression(await_expr) = awaited {
             let source_expr = await_expr.unbox().argument;
             if track_inner_await {
@@ -258,7 +258,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             args.push(Arg::Expr(self.b.str_expr(var_name)));
             if !self
                 .ignore_query
-                .is_ignored_at_span(span_start, "await_waterfall")
+                .is_ignored_at_span(span_start, WarningCode::AwaitWaterfall)
             {
                 let (line, col) = self.component_line_index.line_col(init_span_start);
                 let loc = format!("{}:{}:{}", sanitize_location(self.filename), line, col);
@@ -327,7 +327,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let track_inner_await = self.dev
             && !self
                 .ignore_query
-                .is_ignored_at_span(span_start, "await_reactivity_loss");
+                .is_ignored_at_span(span_start, WarningCode::AwaitReactivityLoss);
         let thunk = if let Expression::AwaitExpression(await_expr) = awaited {
             let source_expr = await_expr.unbox().argument;
             let await_inner = self.b.await_expr(source_expr);
@@ -347,7 +347,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
             if !self
                 .ignore_query
-                .is_ignored_at_span(span_start, "await_waterfall")
+                .is_ignored_at_span(span_start, WarningCode::AwaitWaterfall)
             {
                 let (line, col) = self.component_line_index.line_col(init_span_start);
                 let loc = format!("{}:{}:{}", sanitize_location(self.filename), line, col);

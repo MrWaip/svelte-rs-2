@@ -12,3 +12,28 @@ compiler_case!(
     legacy_local_expr_position_dev,
     "member_assign/legacy_local_expr_position_dev"
 );
+compiler_case!(
+    this_member_expr_guard,
+    "member_assign/this_member_expr_guard"
+);
+compiler_case!(
+    attach_member_rhs_expr_dev,
+    "member_assign/attach_member_rhs_expr_dev"
+);
+compiler_case!(
+    attach_prop_rhs_expr_dev,
+    "member_assign/attach_prop_rhs_expr_dev"
+);
+compiler_case!(
+    state_proxy_logical_expr_dev,
+    "member_assign/state_proxy_logical_expr_dev"
+);
+compiler_case!(primitive_rhs_guard, "member_assign/primitive_rhs_guard");
+compiler_case!(
+    event_handler_arrow_guard,
+    "member_assign/event_handler_arrow_guard"
+);
+compiler_case!(
+    conditional_primitive_rhs_guard,
+    "member_assign/conditional_primitive_rhs_guard"
+);

@@ -72,3 +72,7 @@ compiler_case!(
     "bind_this/server_select_bind_this",
     [prod, dev, ssr, ssr_dev]
 );
+compiler_case!(
+    component_each_index_reactive,
+    "bind_this/component_each_index_reactive"
+);

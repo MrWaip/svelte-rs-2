@@ -250,10 +250,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ConcatenationExpr::BareExpr(expr) => expr,
                 ConcatenationExpr::Template(e) => e,
             };
-            let member = b.static_member(b.rid_expr(parent_var), "textContent");
-            state
-                .init
-                .push(b.assign_stmt(AssignLeft::StaticMember(member), final_expr));
+            let is_empty_string = matches!(
+                final_expr.get_inner_expression(),
+                Expression::StringLiteral(lit) if lit.value.is_empty()
+            );
+            if !is_empty_string {
+                let member = b.static_member(b.rid_expr(parent_var), "textContent");
+                state
+                    .init
+                    .push(b.assign_stmt(AssignLeft::StaticMember(member), final_expr));
+            }
             state.last_fragment_needs_reset = false;
             return Ok(());
         }

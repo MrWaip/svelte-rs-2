@@ -1,6 +1,7 @@
 use oxc_ast::ast::{Expression, IdentifierReference};
 use std::borrow::Cow;
 use svelte_component_semantics::{OriginKind, OxcNodeId as SemOxcNodeId, ReferenceId};
+use svelte_diagnostics::codes::WarningCode;
 
 use super::*;
 use crate::element_semantics::{ElementSemantics, LegacyDefaultSlot};
@@ -85,8 +86,12 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         legacy.reads_props_object || legacy.reads_rest_props_object
     }
 
-    pub fn legacy_sanitized_props_excluded_keys(&self) -> &'static [&'static str] {
-        &["children", "$$slots", "$$events", "$$legacy"]
+    pub fn legacy_sanitized_props_excluded_keys(&self) -> Vec<&'static str> {
+        let mut keys = vec!["children", "$$slots", "$$events", "$$legacy"];
+        if self.is_custom_element_target() {
+            keys.push("$$host");
+        }
+        keys
     }
 
     pub fn needs_legacy_rest_props(&self) -> bool {
@@ -204,8 +209,11 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
         self.data.blocker_data().symbol_blocker(sym)
     }
-    pub fn is_ignored(&self, node_id: NodeId, code: &str) -> bool {
-        self.data.output.ignore_data.is_ignored(node_id, code)
+    pub fn is_ignored(&self, node_id: NodeId, code: WarningCode) -> bool {
+        self.data
+            .output
+            .ignore_data
+            .is_ignored_warning(node_id, code)
     }
     pub fn hydration_attribute_changed_ignored(&self, node_id: NodeId) -> bool {
         self.data
@@ -213,11 +221,11 @@ impl<'d, 'a> CodegenView<'d, 'a> {
             .flags
             .hydration_attribute_changed_ignored(node_id)
     }
-    pub fn is_ignored_at_span(&self, span_start: u32, code: &str) -> bool {
+    pub fn is_ignored_at_span(&self, span_start: u32, code: WarningCode) -> bool {
         self.data
             .output
             .ignore_data
-            .is_ignored_at_span(span_start, code)
+            .is_ignored_warning_at_span(span_start, code)
     }
     pub fn expr_has_blockers(&self, id: NodeId) -> bool {
         self.data.expr_has_blockers(id)

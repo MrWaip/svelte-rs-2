@@ -289,6 +289,10 @@ impl<'a> AnalysisData<'a> {
     pub fn console_call_contains_state(&self, call: OxcNodeId) -> bool {
         self.value_evaluation.console_call_contains_state(call)
     }
+    pub fn assignment_value_is_non_primitive(&self, assign: OxcNodeId) -> bool {
+        self.value_evaluation
+            .assignment_value_is_non_primitive(assign)
+    }
     pub fn declarator_semantics(&self, decl_node: OxcNodeId) -> DeclaratorSemantics {
         self.reactivity.declarator_semantics(decl_node)
     }

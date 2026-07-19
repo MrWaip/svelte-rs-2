@@ -8,9 +8,10 @@ use crate::scope::ComponentScoping;
 use crate::types::data::{BindingSemantics, JsAst, SnippetData};
 use compact_str::CompactString;
 use oxc_ast::ast::{
-    Argument, BinaryExpression, BindingPattern, CallExpression, ConditionalExpression, Declaration,
-    Expression, Function, IdentifierReference, LogicalExpression, NewExpression, Statement,
-    StaticMemberExpression, TemplateLiteral, UnaryExpression, VariableDeclaration,
+    Argument, AssignmentExpression, BinaryExpression, BindingPattern, CallExpression,
+    ConditionalExpression, Declaration, Expression, Function, IdentifierReference,
+    LogicalExpression, NewExpression, Statement, StaticMemberExpression, TemplateLiteral,
+    UnaryExpression, VariableDeclaration,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_syntax::node::NodeId as OxcNodeId;
@@ -111,6 +112,7 @@ impl Evaluation {
 pub struct ValueEvaluation {
     by_symbol: FxHashMap<SymbolId, Evaluation>,
     console_state_calls: FxHashSet<OxcNodeId>,
+    non_primitive_assignment_values: FxHashSet<OxcNodeId>,
 }
 
 impl ValueEvaluation {
@@ -123,6 +125,10 @@ impl ValueEvaluation {
 
     pub fn console_call_contains_state(&self, call: OxcNodeId) -> bool {
         self.console_state_calls.contains(&call)
+    }
+
+    pub fn assignment_value_is_non_primitive(&self, assign: OxcNodeId) -> bool {
+        self.non_primitive_assignment_values.contains(&assign)
     }
 }
 
@@ -436,6 +442,10 @@ fn collect_bindings_init<'c, 'a>(
         }
     }
 
+    for expr in parsed.iter_exprs() {
+        collect_expr(expr, &mut map, &mut fn_decls);
+    }
+
     for node in component.store.iter_nodes() {
         let Node::DeclarationTag(tag) = node else {
             continue;
@@ -482,15 +492,16 @@ pub(crate) fn build<'a>(
         );
     }
 
-    let console_state_calls = if dev {
-        collect_console_state_calls(parsed, scoping, semantics, &by_symbol)
+    let (console_state_calls, non_primitive_assignment_values) = if dev {
+        collect_value_eval_facts(parsed, scoping, semantics, &by_symbol, Some(&evaluator))
     } else {
-        FxHashSet::default()
+        (FxHashSet::default(), FxHashSet::default())
     };
 
     ValueEvaluation {
         by_symbol,
         console_state_calls,
+        non_primitive_assignment_values,
     }
 }
 
@@ -500,10 +511,12 @@ pub(crate) fn build_module_console_calls<'a>(
     semantics: &ComponentSemantics<'a>,
 ) -> ValueEvaluation {
     let by_symbol = FxHashMap::default();
-    let console_state_calls = collect_console_state_calls(parsed, scoping, semantics, &by_symbol);
+    let (console_state_calls, non_primitive_assignment_values) =
+        collect_value_eval_facts(parsed, scoping, semantics, &by_symbol, None);
     ValueEvaluation {
         by_symbol,
         console_state_calls,
+        non_primitive_assignment_values,
     }
 }
 
@@ -523,7 +536,9 @@ struct ConsoleStateWalk<'e, 'a> {
     scoping: &'e ComponentScoping<'a>,
     semantics: &'e ComponentSemantics<'a>,
     by_symbol: &'e FxHashMap<SymbolId, Evaluation>,
+    evaluator: Option<&'e ValueEvaluator<'e, 'a>>,
     calls: FxHashSet<OxcNodeId>,
+    non_primitive_assignments: FxHashSet<OxcNodeId>,
 }
 
 impl<'e, 'a> Visit<'a> for ConsoleStateWalk<'e, 'a> {
@@ -532,6 +547,16 @@ impl<'e, 'a> Visit<'a> for ConsoleStateWalk<'e, 'a> {
             self.calls.insert(call.node_id());
         }
         walk::walk_call_expression(self, call);
+    }
+
+    fn visit_assignment_expression(&mut self, assign: &AssignmentExpression<'a>) {
+        if assign.left.as_member_expression().is_some()
+            && let Some(evaluator) = self.evaluator
+            && evaluator.evaluate(&assign.right).has_unknown()
+        {
+            self.non_primitive_assignments.insert(assign.node_id());
+        }
+        walk::walk_assignment_expression(self, assign);
     }
 }
 
@@ -556,6 +581,9 @@ impl<'e, 'a> ConsoleStateWalk<'e, 'a> {
     }
 
     fn arg_has_unknown(&self, expr: &Expression<'a>) -> bool {
+        if let Some(evaluator) = self.evaluator {
+            return evaluator.evaluate(expr).has_unknown();
+        }
         match expr.get_inner_expression() {
             Expression::StringLiteral(_)
             | Expression::NumericLiteral(_)
@@ -582,17 +610,20 @@ impl<'e, 'a> ConsoleStateWalk<'e, 'a> {
     }
 }
 
-fn collect_console_state_calls<'a>(
+fn collect_value_eval_facts<'e, 'a>(
     parsed: &JsAst<'a>,
-    scoping: &ComponentScoping<'a>,
-    semantics: &ComponentSemantics<'a>,
-    by_symbol: &FxHashMap<SymbolId, Evaluation>,
-) -> FxHashSet<OxcNodeId> {
+    scoping: &'e ComponentScoping<'a>,
+    semantics: &'e ComponentSemantics<'a>,
+    by_symbol: &'e FxHashMap<SymbolId, Evaluation>,
+    evaluator: Option<&'e ValueEvaluator<'e, 'a>>,
+) -> (FxHashSet<OxcNodeId>, FxHashSet<OxcNodeId>) {
     let mut walker = ConsoleStateWalk {
         scoping,
         semantics,
         by_symbol,
+        evaluator,
         calls: FxHashSet::default(),
+        non_primitive_assignments: FxHashSet::default(),
     };
     for prog in [parsed.program.as_ref(), parsed.module_program.as_ref()]
         .into_iter()
@@ -606,7 +637,7 @@ fn collect_console_state_calls<'a>(
     for statement in parsed.iter_stmts() {
         walker.visit_statement(statement);
     }
-    walker.calls
+    (walker.calls, walker.non_primitive_assignments)
 }
 
 #[derive(Clone, Debug)]

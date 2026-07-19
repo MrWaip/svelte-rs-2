@@ -157,6 +157,24 @@ fn bind_expr_is_member(ctx: &Ctx<'_, '_>, d: &BindDirective) -> bool {
     }
 }
 
+fn bind_expr_root_is_store_sub(ctx: &Ctx<'_, '_>, d: &BindDirective) -> bool {
+    let Some(expr) = ctx.parsed.expr(d.expression.id()) else {
+        return false;
+    };
+    let mut cur = expr.get_inner_expression();
+    while let Some(member) = cur.as_member_expression() {
+        cur = member.object().get_inner_expression();
+    }
+    let Expression::Identifier(ident) = cur else {
+        return false;
+    };
+    ident.reference_id.get().is_some_and(|ref_id| {
+        ctx.reactivity
+            .reference_semantics(ref_id)
+            .is_store_subscription()
+    })
+}
+
 fn derive_group_keypath(ctx: &Ctx<'_, '_>, d: &BindDirective) -> String {
     let Some(expr) = ctx.parsed.expr(d.expression.id()) else {
         return String::new();
@@ -582,7 +600,8 @@ fn classify_element_attrs(
                     };
                     let needs_binding_validation = bind_expr_is_member(ctx, d)
                         && (!is_this || state.control_depth > 0)
-                        && !matches!(kind, HtmlBindKind::StoreSubscribed { .. });
+                        && !matches!(kind, HtmlBindKind::StoreSubscribed { .. })
+                        && !bind_expr_root_is_store_sub(ctx, d);
                     if matches!(property, ElementBindPropertyKind::Group) {
                         groups.assign(d.id, derive_group_key(ctx, state, d));
                     }
@@ -1375,11 +1394,38 @@ fn derive_event_handler(
     let mut probe = HandlerKindProbe::default();
     probe.visit_expression(expr);
     if probe.has_call {
-        EventHandler::Expression(HandlerEffect::Call)
+        EventHandler::Expression(HandlerEffect::Call {
+            top_level_side_effect: handler_top_level_side_effect(expr),
+            bare_named_call: handler_is_bare_named_call(expr),
+        })
     } else if probe.has_side_effects {
         EventHandler::Expression(HandlerEffect::Mutation)
     } else {
         EventHandler::Expression(HandlerEffect::Pure)
+    }
+}
+
+fn handler_is_bare_named_call(expr: &Expression<'_>) -> bool {
+    let Expression::CallExpression(call) = expr.get_inner_expression() else {
+        return false;
+    };
+    call.arguments.is_empty()
+        && matches!(
+            call.callee.get_inner_expression(),
+            Expression::Identifier(_)
+        )
+}
+
+fn handler_top_level_side_effect(expr: &Expression<'_>) -> bool {
+    match expr.get_inner_expression() {
+        Expression::CallExpression(_)
+        | Expression::NewExpression(_)
+        | Expression::AssignmentExpression(_)
+        | Expression::UpdateExpression(_) => true,
+        Expression::SequenceExpression(seq) => {
+            seq.expressions.iter().any(handler_top_level_side_effect)
+        }
+        _ => false,
     }
 }
 
@@ -2199,7 +2245,7 @@ fn derive_component_bind_target(
         && ctx.dev
         && !ctx
             .ignore_data
-            .is_ignored(d.id, "ownership_invalid_binding")
+            .is_ignored_warning(d.id, crate::WarningCode::OwnershipInvalidBinding)
     {
         ComponentBindTarget::PropSourceOwned
     } else {

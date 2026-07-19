@@ -88,6 +88,7 @@ pub const PROPS_IS_RUNES: u32 = PropsFlags::RUNES.bits();
 pub const PROPS_IS_UPDATED: u32 = PropsFlags::UPDATED.bits();
 pub const PROPS_IS_BINDABLE: u32 = PropsFlags::BINDABLE.bits();
 pub const PROPS_IS_LAZY_INITIAL: u32 = PropsFlags::LAZY_INITIAL.bits();
+pub use svelte_diagnostics::codes::WarningCode;
 pub use utils::{IdentGen, IdentGenSnapshot};
 pub use utils::{
     collapse_attribute_whitespace, concat_single_dynamic_expr, emit_html_attribute_name,

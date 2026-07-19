@@ -336,11 +336,13 @@ impl<'a> Scanner<'a> {
 
     fn trimmed_span(&self, start: usize, end: usize) -> Span {
         let raw = self.slice_source(start, end);
-        let trim_start = raw.len() - raw.trim_start().len();
-        let trim_end = raw.len() - raw.trim_end().len();
-        let span_start = start + trim_start;
-        let span_end = end.saturating_sub(trim_end);
-        Span::new(span_start as u32, span_end as u32)
+        let inner = raw.trim_start();
+        let span_start = start + (raw.len() - inner.len());
+        let inner = inner.trim_end();
+        if inner.is_empty() {
+            return Span::new(span_start as u32, span_start as u32);
+        }
+        Span::new(span_start as u32, (span_start + inner.len()) as u32)
     }
 
     fn attribute_identifier(&mut self) -> Result<AttributeIdentifierType<'a>, Diagnostic> {

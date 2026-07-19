@@ -289,7 +289,13 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 ),
                 sourcemap_kind: options.sourcemap_kind,
             };
-            let transform_options = svelte_types::TransformOptions { dev: options.dev };
+            let transform_options = svelte_types::TransformOptions {
+                dev: options.dev,
+                filename: filename_relative_to_root_dir(
+                    &options.filename,
+                    options.root_dir.as_deref(),
+                ),
+            };
             let js = match options.generate {
                 GenerateMode::Server => {
                     let mut compile_ctx = svelte_types::CompileContext {
@@ -403,7 +409,10 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
             let mut ident_gen = svelte_analyze::IdentGen::with_conflicts(
                 analysis.scoping.collect_all_symbol_names(),
             );
-            let transform_options = svelte_types::TransformOptions { dev };
+            let transform_options = svelte_types::TransformOptions {
+                dev,
+                filename: filename.clone(),
+            };
             svelte_transform_server::transform_module(
                 &js_alloc,
                 &mut program,

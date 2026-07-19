@@ -35,6 +35,35 @@ pub fn is_valid_warning_code(code: &str) -> bool {
         || IGNORABLE_RUNTIME_WARNINGS.contains(&code)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WarningCode {
+    AwaitWaterfall,
+    AwaitReactivityLoss,
+    StateSnapshotUncloneable,
+    BindingPropertyNonReactive,
+    HydrationAttributeChanged,
+    HydrationHtmlChanged,
+    OwnershipInvalidBinding,
+    OwnershipInvalidMutation,
+    BidirectionalControlCharacters,
+}
+
+impl WarningCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            WarningCode::AwaitWaterfall => "await_waterfall",
+            WarningCode::AwaitReactivityLoss => "await_reactivity_loss",
+            WarningCode::StateSnapshotUncloneable => "state_snapshot_uncloneable",
+            WarningCode::BindingPropertyNonReactive => "binding_property_non_reactive",
+            WarningCode::HydrationAttributeChanged => "hydration_attribute_changed",
+            WarningCode::HydrationHtmlChanged => "hydration_html_changed",
+            WarningCode::OwnershipInvalidBinding => "ownership_invalid_binding",
+            WarningCode::OwnershipInvalidMutation => "ownership_invalid_mutation",
+            WarningCode::BidirectionalControlCharacters => "bidirectional_control_characters",
+        }
+    }
+}
+
 pub fn fuzzymatch<'a>(input: &str, candidates: &[&'a str]) -> Option<&'a str> {
     let threshold = (input.len() / 3).max(2);
     let mut best: Option<(&'a str, usize)> = None;

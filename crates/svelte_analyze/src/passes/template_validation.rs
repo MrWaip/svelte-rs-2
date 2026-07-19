@@ -1696,7 +1696,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             .data
             .output
             .ignore_data
-            .is_ignored(text.id, "bidirectional_control_characters")
+            .is_ignored_warning(text.id, crate::WarningCode::BidirectionalControlCharacters)
         {
             return;
         }

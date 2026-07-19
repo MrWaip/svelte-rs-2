@@ -10,7 +10,7 @@ use oxc_ast::ast::{
 use oxc_ast_visit::{VisitMut, walk_mut};
 use oxc_semantic::ScopeFlags;
 use oxc_span::GetSpan;
-use svelte_analyze::{AnalysisData, DeclaratorSemantics, IdentGen};
+use svelte_analyze::{AnalysisData, DeclaratorSemantics, IdentGen, WarningCode};
 use svelte_ast_builder::Builder;
 use svelte_emit_builders::server_refs;
 
@@ -28,14 +28,14 @@ pub(crate) struct ServerTransform<'b, 'a> {
 }
 
 impl<'a> ServerTransform<'_, 'a> {
-    pub(crate) fn is_in_ignored_stmt(&self, code: &str) -> bool {
+    pub(crate) fn is_in_ignored_stmt(&self, code: WarningCode) -> bool {
         let Some(&start) = self.enclosing_stmt_start.last() else {
             return false;
         };
         self.analysis
             .output
             .ignore_data
-            .is_ignored_at_span(start, code)
+            .is_ignored_warning_at_span(start, code)
     }
 }
 

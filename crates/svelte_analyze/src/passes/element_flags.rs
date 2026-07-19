@@ -170,7 +170,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 .data
                 .output
                 .ignore_data
-                .is_ignored(el.id, "hydration_attribute_changed")
+                .is_ignored_warning(el.id, crate::WarningCode::HydrationAttributeChanged)
         {
             ctx.data
                 .elements
@@ -198,7 +198,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
                 .data
                 .output
                 .ignore_data
-                .is_ignored(el.id, "hydration_attribute_changed")
+                .is_ignored_warning(el.id, crate::WarningCode::HydrationAttributeChanged)
         {
             ctx.data
                 .elements
@@ -503,10 +503,10 @@ impl<'src> ElementFlagsVisitor<'src> {
                             let requires_ownership_emit = data.script.dev
                                 && is_identifier_bind
                                 && matches!(mode, ComponentBindMode::PropSource)
-                                && !data
-                                    .output
-                                    .ignore_data
-                                    .is_ignored(bind_id, "ownership_invalid_binding");
+                                && !data.output.ignore_data.is_ignored_warning(
+                                    bind_id,
+                                    crate::WarningCode::OwnershipInvalidBinding,
+                                );
                             if requires_ownership_emit {
                                 data.output.needs_component_bind_ownership = true;
                             }

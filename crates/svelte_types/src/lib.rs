@@ -16,6 +16,7 @@ pub struct CompileContext<'a, 'ctx> {
 #[derive(Default)]
 pub struct TransformOptions {
     pub dev: bool,
+    pub filename: String,
 }
 
 #[derive(Default)]

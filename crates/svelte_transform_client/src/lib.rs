@@ -95,6 +95,7 @@ pub fn transform_component<'a>(
         component,
         line_index,
         dev,
+        &options.filename,
     )
 }
 

@@ -31,11 +31,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             EventHandler::Expression(effect) => effect,
         };
 
-        let has_side_effects = matches!(effect, HandlerEffect::Mutation | HandlerEffect::Call);
-        let remove_parens = remove_parens_hint(&handler);
+        let (has_side_effects, remove_parens) = match effect {
+            HandlerEffect::Pure => (false, false),
+            HandlerEffect::Mutation => (true, false),
+            HandlerEffect::Call {
+                top_level_side_effect,
+                bare_named_call,
+            } => (top_level_side_effect, bare_named_call),
+        };
         let mut handler = handler;
 
-        if matches!(effect, HandlerEffect::Call) {
+        if matches!(effect, HandlerEffect::Call { .. }) {
             let id = self.ctx.state.gen_ident("event_handler");
             let thunk = self.ctx.b.thunk(handler);
             init.push(
@@ -216,18 +222,6 @@ fn arrow_starts_with_trace(expr: &Expression<'_>) -> bool {
         return false;
     };
     is_inspect_trace_call(&es.expression)
-}
-
-fn remove_parens_hint(expr: &Expression<'_>) -> bool {
-    if let Expression::CallExpression(call) = expr.get_inner_expression() {
-        call.arguments.is_empty()
-            && matches!(
-                call.callee.get_inner_expression(),
-                Expression::Identifier(_)
-            )
-    } else {
-        false
-    }
 }
 
 fn build_event_apply_wrapper<'a>(
