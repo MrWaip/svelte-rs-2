@@ -1,5 +1,5 @@
 [build]
-rustflags = ["-A", "deprecated"]
+rustflags = ["-A", "deprecated", "-C", "target-cpu=native"]
 
 [target.wasm32-unknown-unknown]
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
