@@ -1821,6 +1821,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_template_await(ctx, block.id, &block.expression);
         if let Some(key_ref) = block.key.as_ref()
             && block.context.is_none()
+            && each_block_key_is_keyed(block, key_ref, ctx)
         {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::EachKeyWithoutAs,
@@ -2013,6 +2014,31 @@ fn current_bind_parent<'d>(
         }),
         _ => None,
     }
+}
+
+fn each_block_key_is_keyed(
+    block: &EachBlock,
+    key_ref: &svelte_ast::ExprRef,
+    ctx: &VisitContext<'_, '_>,
+) -> bool {
+    let Some(parsed) = ctx.parsed() else {
+        return true;
+    };
+    let Some(Expression::Identifier(key_id)) = parsed.expr(key_ref.id()) else {
+        return true;
+    };
+    let Some(index_ref) = block.index.as_ref() else {
+        return true;
+    };
+    let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(index_ref.id()) else {
+        return true;
+    };
+    let Some(BindingPattern::BindingIdentifier(index_id)) =
+        decl.declarations.first().map(|d| &d.id)
+    else {
+        return true;
+    };
+    key_id.name.as_str() != index_id.name.as_str()
 }
 
 fn bind_expression_kind(

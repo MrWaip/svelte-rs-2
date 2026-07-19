@@ -10,10 +10,6 @@ workspace = true
 svelte_compiler = { workspace = true }
 svelte_diagnostics = { workspace = true }
 test_support = { workspace = true }
-oxc_allocator = { workspace = true }
-oxc_codegen = { workspace = true }
-oxc_parser = { workspace = true }
-oxc_span = { workspace = true }
 rayon = "1.10.0"
 similar = "2.7.0"
 terminal_size = "0.4.1"

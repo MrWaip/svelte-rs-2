@@ -6,7 +6,7 @@ use std::{
 use pretty_assertions::assert_eq;
 use svelte_compiler::{GenerateMode, compile, compile_module};
 use test_support::{
-    canonicalize_injected_css_in_js, strip_js_comments, strip_reference_only_css_markers,
+    canonicalize_injected_css_in_js, canonicalize_js, strip_reference_only_css_markers,
 };
 
 use crate::cases::{cluster_case_dir, load_cluster_case, load_cluster_module_case};
@@ -18,7 +18,7 @@ fn normalize_css(s: &str) -> String {
 }
 
 fn normalize_js(js: &str) -> String {
-    strip_js_comments(&canonicalize_injected_css_in_js(js))
+    canonicalize_injected_css_in_js(&canonicalize_js(js))
 }
 
 pub fn assert_compiler_module_prod(case: &str) {

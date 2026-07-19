@@ -2141,10 +2141,6 @@ dependencies = [
 name = "sweep"
 version = "0.1.0"
 dependencies = [
- "oxc_allocator",
- "oxc_codegen",
- "oxc_parser",
- "oxc_span",
  "rayon",
  "serde",
  "serde_json",
@@ -2200,6 +2196,8 @@ dependencies = [
  "lightningcss",
  "oxc_allocator",
  "oxc_ast",
+ "oxc_ast_visit",
+ "oxc_codegen",
  "oxc_parser",
  "oxc_span",
  "serde_json",

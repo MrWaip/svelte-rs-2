@@ -1,6 +1,10 @@
 use super::*;
 
 compiler_case!(overload_instance_fn, "typescript/overload/instance_fn");
+compiler_module_case!(
+    overload_class_method_module,
+    "typescript/overload/class_method_module"
+);
 compiler_case!(
     overload_module_export_fn,
     "typescript/overload/module_export_fn"

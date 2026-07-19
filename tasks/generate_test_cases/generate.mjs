@@ -1,10 +1,14 @@
 import { compile, compileModule } from "svelte/compiler";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { stripTypeScriptTypes } from "node:module";
 import { transformSync as oxcTransformSync } from "oxc-transform";
 
 function stripTsToJs(source) {
-  return oxcTransformSync("input.ts", source).code;
+  stripTypeScriptTypes(source, { mode: "strip" });
+  return oxcTransformSync("input.ts", source, {
+    typescript: { onlyRemoveTypeImports: true },
+  }).code;
 }
 
 const inputPath = process.env.INPUT_FILE || "/dev/stdin";

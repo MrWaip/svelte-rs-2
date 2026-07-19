@@ -1,8 +1,63 @@
 use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, StyleSheet};
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey, Statement};
+use oxc_ast::ast::{Expression, ObjectPropertyKind, Program, PropertyKey, Statement};
+use oxc_codegen::{Codegen, CodegenOptions, CommentOptions};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
+
+pub fn canonicalize_js(js: &str) -> String {
+    let allocator = Allocator::default();
+    let source_type = SourceType::default().with_module(true);
+    let mut parsed = Parser::new(&allocator, js, source_type).parse();
+    if !parsed.errors.is_empty() {
+        return strip_js_comments(js);
+    }
+    strip_empty_statement_nodes(&mut parsed.program);
+    Codegen::new()
+        .with_options(CodegenOptions {
+            comments: CommentOptions::disabled(),
+            ..CodegenOptions::default()
+        })
+        .build(&parsed.program)
+        .code
+}
+
+fn strip_empty_statement_nodes(program: &mut Program<'_>) {
+    use oxc_allocator::Vec as OxcVec;
+    use oxc_ast::ast::{BlockStatement, FunctionBody, StaticBlock, SwitchCase};
+    use oxc_ast_visit::{VisitMut, walk_mut};
+
+    struct Stripper;
+
+    fn retain<'a>(stmts: &mut OxcVec<'a, Statement<'a>>) {
+        stmts.retain(|stmt| !matches!(stmt, Statement::EmptyStatement(_)));
+    }
+
+    impl<'a> VisitMut<'a> for Stripper {
+        fn visit_program(&mut self, it: &mut Program<'a>) {
+            retain(&mut it.body);
+            walk_mut::walk_program(self, it);
+        }
+        fn visit_block_statement(&mut self, it: &mut BlockStatement<'a>) {
+            retain(&mut it.body);
+            walk_mut::walk_block_statement(self, it);
+        }
+        fn visit_function_body(&mut self, it: &mut FunctionBody<'a>) {
+            retain(&mut it.statements);
+            walk_mut::walk_function_body(self, it);
+        }
+        fn visit_static_block(&mut self, it: &mut StaticBlock<'a>) {
+            retain(&mut it.body);
+            walk_mut::walk_static_block(self, it);
+        }
+        fn visit_switch_case(&mut self, it: &mut SwitchCase<'a>) {
+            retain(&mut it.consequent);
+            walk_mut::walk_switch_case(self, it);
+        }
+    }
+
+    Stripper.visit_program(program);
+}
 
 pub fn canonicalize_injected_css_in_js(js: &str) -> String {
     let spans = find_injected_css_spans(js);
@@ -290,5 +345,33 @@ mod tests {
             "const s = \"/* not a comment */\";\n",
             "const s = \"/* not a comment */\";\n",
         );
+    }
+
+    #[test]
+    fn canonicalize_collapses_comment_induced_import_layout() {
+        let ours = "export function load(url) {\n\treturn import(\n\t\t/* @vite-ignore */\n\t\turl\n\t);\n}\n";
+        let reference = "export function load(url) {\n\treturn import(url);\n}\n";
+        assert_eq!(canonicalize_js(ours), canonicalize_js(reference));
+    }
+
+    #[test]
+    fn canonicalize_drops_comments_and_keeps_code() {
+        let with_comment = "// note\nconst a = 1;\n";
+        let without = "const a = 1;\n";
+        assert_eq!(canonicalize_js(with_comment), canonicalize_js(without));
+    }
+
+    #[test]
+    fn canonicalize_keeps_real_difference_visible() {
+        assert_ne!(
+            canonicalize_js("const a = 1;\n"),
+            canonicalize_js("const a = 2;\n")
+        );
+    }
+
+    #[test]
+    fn canonicalize_falls_back_on_parse_error() {
+        let broken = "const a = ;;;( /* x */";
+        assert_eq!(canonicalize_js(broken), strip_js_comments(broken));
     }
 }

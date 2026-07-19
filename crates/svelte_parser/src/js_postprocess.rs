@@ -336,6 +336,7 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
                 }
                 ClassElement::MethodDefinition(method) => {
                     method.r#type != MethodDefinitionType::TSAbstractMethodDefinition
+                        && method.value.body.is_some()
                 }
                 ClassElement::TSIndexSignature(_) => false,
                 _ => true,

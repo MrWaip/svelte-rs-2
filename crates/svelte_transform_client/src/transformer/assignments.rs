@@ -67,7 +67,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(root) = self.member_root_identifier(member) else {
             return false;
         };
-        self.analysis.is_none() || root.reference_id.get().is_some()
+        let Some(analysis) = self.analysis else {
+            return true;
+        };
+        let Some(ref_id) = root.reference_id.get() else {
+            return false;
+        };
+        analysis.scoping.get_reference(ref_id).symbol_id().is_some()
     }
 
     fn is_excluded_owner_arrow_body(&self, ctx: &TraverseCtx<'a, ()>) -> bool {

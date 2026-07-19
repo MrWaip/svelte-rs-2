@@ -4,6 +4,12 @@ use compiler_tests::harness::{
 };
 use compiler_tests::{compiler_case, compiler_module_case};
 
+#[path = "clusters/comments.rs"]
+mod comments;
+
+#[path = "clusters/empty_statement.rs"]
+mod empty_statement;
+
 #[path = "clusters/events.rs"]
 mod events;
 

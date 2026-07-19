@@ -14,10 +14,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use oxc_allocator::Allocator;
-use oxc_codegen::Codegen;
-use oxc_parser::Parser;
-use oxc_span::SourceType;
 use rayon::prelude::*;
 use serde::Deserialize;
 use similar::{ChangeTag, TextDiff};
@@ -503,15 +499,20 @@ fn sweep_file(
     if let Some(message) = &reference.read_error {
         return vec![finding("read-error", file, "", 0, Some(message.clone()))];
     }
-    if let Some(message) = &reference.format_error {
-        return vec![finding("format-error", file, "", 0, Some(message.clone()))];
-    }
 
     let source = match fs::read_to_string(file) {
         Ok(source) => source,
         Err(err) => return vec![finding("read-error", file, "", 0, Some(err.to_string()))],
     };
     let is_module = file.ends_with(".svelte.js") || file.ends_with(".svelte.ts");
+
+    if let Some(message) = &reference.format_error {
+        let ours = run_our_cell(&source, file, root_dir, is_module, mode, &CELLS[0]);
+        if matches!(ours, OurCell::Error { .. }) {
+            return vec![];
+        }
+        return vec![finding("format-error", file, "", 0, Some(message.clone()))];
+    }
 
     let our_cells: Vec<OurCell> = CELLS
         .iter()
@@ -690,14 +691,7 @@ fn our_error_codes(our: &OurCell) -> BTreeSet<String> {
 }
 
 fn canonical_js(source: &str) -> String {
-    let formatted = format_js(source);
-    test_support::strip_js_comments(&test_support::canonicalize_injected_css_in_js(&formatted))
-}
-
-fn format_js(source: &str) -> String {
-    let allocator = Allocator::default();
-    let parsed = Parser::new(&allocator, source, SourceType::default()).parse();
-    Codegen::new().build(&parsed.program).code
+    test_support::canonicalize_injected_css_in_js(&test_support::canonicalize_js(source))
 }
 
 fn normalize_css(css: &str) -> String {

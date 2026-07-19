@@ -37,3 +37,7 @@ compiler_case!(
     conditional_primitive_rhs_guard,
     "member_assign/conditional_primitive_rhs_guard"
 );
+compiler_case!(
+    global_root_expr_guard,
+    "member_assign/global_root_expr_guard"
+);

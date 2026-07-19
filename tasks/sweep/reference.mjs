@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { compile, compileModule } from "svelte/compiler";
+import { stripTypeScriptTypes } from "node:module";
 import { transformSync as oxcTransformSync } from "oxc-transform";
 
 function stripTsToJs(source) {
-  return oxcTransformSync("input.ts", source).code;
+  stripTypeScriptTypes(source, { mode: "strip" });
+  return oxcTransformSync("input.ts", source, {
+    typescript: { onlyRemoveTypeImports: true },
+  }).code;
 }
 
 function stripVersionComment(code) {
