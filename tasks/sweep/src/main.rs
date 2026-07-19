@@ -2,13 +2,18 @@ use std::{
     collections::{BTreeSet, HashMap},
     env,
     fs::{self, File},
-    io::{self, BufWriter, Write},
+    io::{self, BufWriter, IsTerminal, Write},
     panic,
     path::{Path, PathBuf},
     process::{self, Command, ExitCode, Stdio},
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    thread,
+    time::{Duration, Instant},
 };
 
-use glob::glob;
 use oxc_allocator::Allocator;
 use oxc_codegen::Codegen;
 use oxc_parser::Parser;
@@ -23,7 +28,57 @@ use svelte_diagnostics::Severity;
 
 const USAGE: &str = "usage: sweep [--mode=auto|runes|legacy] [--chunk=N] [--print-diffs] [--out=<file>] <directory>";
 
-const DEFAULT_CHUNK: usize = 300;
+const MIN_CHUNK: usize = 300;
+const MAX_CHUNK: usize = 4000;
+
+fn auto_chunk(files: usize) -> usize {
+    let cores = thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(8);
+    (files / (cores * 8)).clamp(MIN_CHUNK, MAX_CHUNK)
+}
+
+const PROGRESS_TICK: Duration = Duration::from_millis(120);
+
+fn with_progress<T>(enabled: bool, tick: impl Fn() + Sync, work: impl FnOnce() -> T) -> T {
+    if !enabled {
+        return work();
+    }
+    let stop = AtomicBool::new(false);
+    thread::scope(|scope| {
+        scope.spawn(|| {
+            while !stop.load(Ordering::Relaxed) {
+                tick();
+                thread::sleep(PROGRESS_TICK);
+            }
+        });
+        let result = work();
+        stop.store(true, Ordering::Relaxed);
+        result
+    })
+}
+
+fn format_secs(elapsed: Duration) -> String {
+    format!("{:.2}s", elapsed.as_secs_f64())
+}
+
+fn draw_progress(text: &str) {
+    let width = terminal_size::terminal_size()
+        .map(|(terminal_size::Width(w), _)| w as usize)
+        .unwrap_or(120)
+        .saturating_sub(1)
+        .max(1);
+    let line: String = text.chars().take(width).collect();
+    let mut err = io::stderr().lock();
+    let _ = write!(err, "\r\x1b[2K{line}");
+    let _ = err.flush();
+}
+
+fn clear_progress() {
+    let mut err = io::stderr().lock();
+    let _ = write!(err, "\r\x1b[2K");
+    let _ = err.flush();
+}
 
 struct CellSpec {
     label: &'static str,
@@ -69,7 +124,7 @@ enum Mode {
 struct Cli {
     directory: String,
     mode: Mode,
-    chunk: usize,
+    chunk: Option<usize>,
     print_diffs: bool,
     out: Option<String>,
 }
@@ -77,7 +132,7 @@ struct Cli {
 fn parse_cli(args: &[String]) -> Result<Cli, String> {
     let mut directory: Option<String> = None;
     let mut mode = Mode::Auto;
-    let mut chunk = DEFAULT_CHUNK;
+    let mut chunk: Option<usize> = None;
     let mut print_diffs = false;
     let mut out: Option<String> = None;
     for arg in args.iter().skip(1) {
@@ -94,12 +149,13 @@ fn parse_cli(args: &[String]) -> Result<Cli, String> {
                 other => return Err(format!("unknown --mode value: {other}")),
             };
         } else if let Some(value) = arg.strip_prefix("--chunk=") {
-            chunk = value
+            let parsed: usize = value
                 .parse()
                 .map_err(|_| format!("invalid --chunk value: {value}"))?;
-            if chunk == 0 {
+            if parsed == 0 {
                 return Err("--chunk must be greater than zero".to_string());
             }
+            chunk = Some(parsed);
         } else if arg == "--print-diffs" {
             print_diffs = true;
         } else if arg.starts_with("--") {
@@ -204,12 +260,6 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let files = enumerate_files(&directory);
-    if files.is_empty() {
-        eprintln!("sweep: no svelte files found in {}", directory.display());
-        return ExitCode::from(2);
-    }
-
     let mode_label = match cli.mode {
         Mode::Auto => "auto",
         Mode::Runes => "runes",
@@ -217,27 +267,88 @@ fn main() -> ExitCode {
     };
     println!("scan: {}", directory.display());
     println!("mode: {mode_label}");
-    println!("files: {}", files.len());
 
     panic::set_hook(Box::new(|_| {}));
+    let progress = io::stderr().is_terminal();
 
-    let reference = match fetch_reference(&root, &files, cli.mode, cli.chunk) {
+    let enumerate_started = Instant::now();
+    let files = enumerate_files(&directory, progress);
+    if progress {
+        clear_progress();
+    }
+    if files.is_empty() {
+        eprintln!("sweep: no svelte files found in {}", directory.display());
+        return ExitCode::from(2);
+    }
+    let enumerate_elapsed = enumerate_started.elapsed();
+    println!(
+        "files: {} ({})",
+        files.len(),
+        format_secs(enumerate_elapsed)
+    );
+
+    let chunk = cli.chunk.unwrap_or_else(|| auto_chunk(files.len()));
+
+    let reference_started = Instant::now();
+    let reference = match fetch_reference(&root, &files, cli.mode, chunk, progress) {
         Ok(reference) => reference,
         Err(err) => {
             eprintln!("sweep: reference compiler failed: {err}");
             return ExitCode::from(4);
         }
     };
+    let reference_elapsed = reference_started.elapsed();
 
     let root_dir = root.display().to_string();
-    let findings: Vec<Finding> = files
-        .par_iter()
-        .flat_map(|file| sweep_file(file, &root_dir, cli.mode, reference.get(file)))
-        .collect();
+    let total = files.len();
+    let processed = AtomicUsize::new(0);
+    let mismatched = AtomicUsize::new(0);
+    let current = Mutex::new(String::new());
+
+    let compare_started = Instant::now();
+    let findings: Vec<Finding> = with_progress(
+        progress,
+        || {
+            let done = processed.load(Ordering::Relaxed);
+            let bad = mismatched.load(Ordering::Relaxed);
+            let latest = current.lock().map(|file| file.clone()).unwrap_or_default();
+            draw_progress(&format!(
+                "[{done}/{total}] ok={} bad={bad} {latest}",
+                done - bad
+            ));
+        },
+        || {
+            files
+                .par_iter()
+                .flat_map(|file| {
+                    let file_findings = sweep_file(file, &root_dir, cli.mode, reference.get(file));
+                    if let Ok(mut latest) = current.lock() {
+                        file.clone_into(&mut latest);
+                    }
+                    processed.fetch_add(1, Ordering::Relaxed);
+                    if !file_findings.is_empty() {
+                        mismatched.fetch_add(1, Ordering::Relaxed);
+                    }
+                    file_findings
+                })
+                .collect()
+        },
+    );
+    if progress {
+        clear_progress();
+    }
+    let compare_elapsed = compare_started.elapsed();
 
     if let Err(err) = report(&files, &findings, cli.print_diffs, cli.out.as_deref()) {
         eprintln!("sweep: write report: {err}");
     }
+
+    println!(
+        "time: enumerate {}  reference {}  compare {}",
+        format_secs(enumerate_elapsed),
+        format_secs(reference_elapsed),
+        format_secs(compare_elapsed)
+    );
 
     if findings.is_empty() {
         ExitCode::SUCCESS
@@ -246,18 +357,52 @@ fn main() -> ExitCode {
     }
 }
 
-fn enumerate_files(directory: &Path) -> Vec<String> {
-    let mut files: Vec<String> = Vec::new();
-    for pattern in ["**/*.svelte", "**/*.svelte.js", "**/*.svelte.ts"] {
-        let full = directory.join(pattern);
-        let Some(full) = full.to_str() else { continue };
-        let Ok(entries) = glob(full) else { continue };
-        for entry in entries.flatten() {
-            files.push(entry.display().to_string());
-        }
-    }
+fn enumerate_files(directory: &Path, progress: bool) -> Vec<String> {
+    let counter = AtomicUsize::new(0);
+    let mut files = walk_dir(directory, progress, &counter);
     files.sort();
     files.dedup();
+    files
+}
+
+fn is_target(name: &str) -> bool {
+    name.ends_with(".svelte") || name.ends_with(".svelte.js") || name.ends_with(".svelte.ts")
+}
+
+fn walk_dir(dir: &Path, progress: bool, counter: &AtomicUsize) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<String> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_dir = match entry.file_type() {
+            Ok(file_type) if file_type.is_symlink() => path.is_dir(),
+            Ok(file_type) => file_type.is_dir(),
+            Err(_) => false,
+        };
+        if is_dir {
+            subdirs.push(path);
+        } else if entry.file_name().to_str().is_some_and(is_target) {
+            files.push(path.display().to_string());
+            if progress {
+                let seen = counter.fetch_add(1, Ordering::Relaxed) + 1;
+                if seen.is_multiple_of(256) {
+                    draw_progress(&format!("finding: {seen} files"));
+                }
+            }
+        }
+    }
+
+    let nested: Vec<Vec<String>> = subdirs
+        .par_iter()
+        .map(|sub| walk_dir(sub, progress, counter))
+        .collect();
+    for chunk in nested {
+        files.extend(chunk);
+    }
     files
 }
 
@@ -274,15 +419,37 @@ fn fetch_reference(
     files: &[String],
     mode: Mode,
     chunk: usize,
+    progress: bool,
 ) -> Result<HashMap<String, ReferenceFile>, String> {
     let script = root.join("tasks/sweep/reference.mjs");
     let config = mode_config_json(mode);
     let chunks: Vec<(usize, &[String])> = files.chunks(chunk).enumerate().collect();
+    let total_chunks = chunks.len();
+    let total_files = files.len();
+    let done = AtomicUsize::new(0);
 
-    let partials: Vec<Result<HashMap<String, ReferenceFile>, String>> = chunks
-        .par_iter()
-        .map(|(index, batch)| run_reference_chunk(root, &script, &config, *index, batch))
-        .collect();
+    let partials: Vec<Result<HashMap<String, ReferenceFile>, String>> = with_progress(
+        progress,
+        || {
+            draw_progress(&format!(
+                "reference: [{}/{total_chunks} chunks] {total_files} files",
+                done.load(Ordering::Relaxed)
+            ));
+        },
+        || {
+            chunks
+                .par_iter()
+                .map(|(index, batch)| {
+                    let result = run_reference_chunk(root, &script, &config, *index, batch);
+                    done.fetch_add(1, Ordering::Relaxed);
+                    result
+                })
+                .collect()
+        },
+    );
+    if progress {
+        clear_progress();
+    }
 
     let mut reference = HashMap::with_capacity(files.len());
     for partial in partials {
@@ -552,6 +719,28 @@ fn render_diff(before: &str, after: &str) -> String {
         .to_string()
 }
 
+fn colorize_diff(diff: &str) -> String {
+    const RED: &str = "\x1b[31m";
+    const GREEN: &str = "\x1b[32m";
+    const CYAN: &str = "\x1b[36m";
+    const RESET: &str = "\x1b[0m";
+    diff.split_inclusive('\n')
+        .map(|raw| {
+            let line = raw.strip_suffix('\n').unwrap_or(raw);
+            let newline = if raw.ends_with('\n') { "\n" } else { "" };
+            if line.starts_with("+++") || line.starts_with("---") || line.starts_with("@@") {
+                format!("{CYAN}{line}{RESET}{newline}")
+            } else if line.starts_with('+') {
+                format!("{GREEN}{line}{RESET}{newline}")
+            } else if line.starts_with('-') {
+                format!("{RED}{line}{RESET}{newline}")
+            } else {
+                raw.to_string()
+            }
+        })
+        .collect()
+}
+
 fn finding(
     reason: &'static str,
     file: &str,
@@ -597,13 +786,14 @@ fn report(
         grouped.entry(finding.reason).or_default().push(finding);
     }
 
+    let color = out.is_none() && io::stdout().is_terminal();
     let stdout = io::stdout();
     {
         let mut sink: Box<dyn Write> = match out {
             Some(path) => Box::new(BufWriter::new(File::create(path)?)),
             None => Box::new(stdout.lock()),
         };
-        write_detail(&mut sink, findings, &grouped, print_diffs)?;
+        write_detail(&mut sink, findings, &grouped, print_diffs, color)?;
         sink.flush()?;
     }
 
@@ -619,7 +809,29 @@ fn write_detail(
     findings: &[Finding],
     grouped: &HashMap<&str, Vec<&Finding>>,
     print_diffs: bool,
+    color: bool,
 ) -> io::Result<()> {
+    if print_diffs {
+        for finding in findings {
+            if let Some(diff) = &finding.diff
+                && (finding.reason == "js" || finding.reason == "css")
+            {
+                writeln!(sink)?;
+                let tag = if finding.mode.is_empty() {
+                    finding.reason.to_string()
+                } else {
+                    format!("{}/{}", finding.reason, finding.mode)
+                };
+                writeln!(sink, "--- {} [{tag}] ---", finding.file)?;
+                if color {
+                    write!(sink, "{}", colorize_diff(diff))?;
+                } else {
+                    write!(sink, "{diff}")?;
+                }
+            }
+        }
+    }
+
     for reason in REASON_ORDER {
         let Some(items) = grouped.get(reason) else {
             continue;
@@ -635,23 +847,6 @@ fn write_detail(
                 } else {
                     writeln!(sink, "  {} [{}]", item.file, item.mode)?;
                 }
-            }
-        }
-    }
-
-    if print_diffs {
-        for finding in findings {
-            if let Some(diff) = &finding.diff
-                && (finding.reason == "js" || finding.reason == "css")
-            {
-                writeln!(sink)?;
-                let tag = if finding.mode.is_empty() {
-                    finding.reason.to_string()
-                } else {
-                    format!("{}/{}", finding.reason, finding.mode)
-                };
-                writeln!(sink, "--- {} [{tag}] ---", finding.file)?;
-                write!(sink, "{diff}")?;
             }
         }
     }

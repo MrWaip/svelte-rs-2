@@ -124,6 +124,6 @@ npm-build:
 build-native:
     npm run --prefix packages/svelte-rs2 build:release
 
-# Parity-sweep a directory: our compiler vs svelte/compiler across client+server × dev+prod, always dry-run. Flags: --mode=auto|runes|legacy --chunk=N --print-diffs --out=<file>
+# Parity-sweep a directory: our compiler vs svelte/compiler across client+server × dev+prod, always dry-run. Flags: --mode=auto|runes|legacy --chunk=N (default auto) --print-diffs --out=<file>
 sweep-run pathname *flags:
-    cargo run -q --release -p sweep -- {{pathname}} {{flags}}
+    cargo run --profile sweep -p sweep -- {{pathname}} {{flags}}
