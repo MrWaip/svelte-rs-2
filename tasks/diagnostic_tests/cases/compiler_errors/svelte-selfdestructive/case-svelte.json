@@ -1,0 +1,8 @@
+[
+  {
+    "code": "svelte_meta_invalid_tag",
+    "end": 32,
+    "severity": "error",
+    "start": 10
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "css_global_block_invalid_modifier_start",
+    "end": 77,
+    "severity": "error",
+    "start": 75
+  }
+]

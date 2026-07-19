@@ -36,3 +36,8 @@ compiler_case!(
     is_attribute_static_under_spread,
     "custom_element/is_attribute_static_under_spread"
 );
+compiler_case!(
+    legacy_rest_props_excludes_host,
+    "custom_element/legacy_rest_props_excludes_host"
+);
+compiler_case!(shadow_mode_closed, "custom_element/shadow_mode_closed");

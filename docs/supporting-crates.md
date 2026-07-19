@@ -1,7 +1,7 @@
 # PRD: Поддерживающие крэйты (корневой)
 
 label: supporting-crates
-topics: svelte_ast_builder, svelte_emit_builders, svelte_transform_css, css scoping, IdentGen, emit builders (store/binding/runes/props/legacy_wrap/server_refs)
+topics: svelte_ast_builder, svelte_emit_builders, svelte_transform_css, css scoping, injected styles, IdentGen, emit builders (store/binding/runes/props/legacy_wrap/server_refs)
 
 Корневой PRD для поддерживающих крэйтов: `svelte_ast_builder`, `svelte_emit_builders`, `svelte_transform_css`.
 
@@ -28,6 +28,7 @@ Public entry: `transform_css(...)`, `transform_css_with_usage(...)`, `compact_cs
 - **Назначение:** применяет CSS-scoping (`svelte-<hash>`-класс), прунит неиспользуемые селекторы, пишет переписанный текст в `*_override`-поля на `svelte_css::ast`. Читает `CssAnalysis` из анализа.
 - **Инварианты:** единственный writer `*_override`-полей; оригинальные span'ы + строки идентификаторов остаются нетронуты. Новой классификации селекторов нет — ей владеет анализ.
 - **Анти-паттерны:** пере-парсинг CSS / переклассификация селекторов тут; трогание CSS AST-полей кроме `*_override`.
+- **Injected CSS сверяется семантически, не побайтово.** Строка `$$css.code` (`css: injected` / custom element, встраивается в JS) — единственное место, где выходной JS намеренно не байт-парити с Оригиналом: мы минифицируем её в обоих режимах, Оригинал в dev сохраняет исходное форматирование. Парити держится через `test_support::canonicalize_injected_css_in_js` — переминификацию `$$css.code` обеих сторон через lightningcss во всех точках сверки (харнес, quick-check, sweep). Sourcemap injected CSS парити не держит. Не выравнивать под Оригинал — расхождение намеренное; причина и механизм — `adr/0003-injected-css-semantic-compare.md`.
 
 ## Связь с другими документами
 
@@ -36,3 +37,4 @@ Public entry: `transform_css(...)`, `transform_css_with_usage(...)`, `compact_cs
 - `transform.md`, `codegen.md` — потребители `Builder` и `emit_builders`.
 - `reactivity-semantics.md` — `BindingSemantics` для `$.store_*`-форм.
 - `compiler.md` — CSS-шаг пайплайна.
+- `adr/0003-injected-css-semantic-compare.md` — почему injected CSS сверяется семантически.

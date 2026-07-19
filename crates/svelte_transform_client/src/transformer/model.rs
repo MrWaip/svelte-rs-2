@@ -7,7 +7,9 @@ use crate::data::TransformData;
 use rustc_hash::{FxHashMap, FxHashSet};
 use svelte_ast::{Component, NodeId as SvelteNodeId};
 
-use svelte_analyze::{AnalysisData, BindingSemantics, ComponentScoping, IdentGen, JsAst};
+use svelte_analyze::{
+    AnalysisData, BindingSemantics, ComponentScoping, IdentGen, JsAst, WarningCode,
+};
 
 use svelte_ast_builder::Builder;
 
@@ -58,9 +60,12 @@ impl<'d, 'a> IgnoreQuery<'d, 'a> {
         Self { analysis: None }
     }
 
-    pub(crate) fn is_ignored_at_span(&self, span_start: u32, code: &str) -> bool {
-        self.analysis
-            .is_some_and(|a| a.output.ignore_data.is_ignored_at_span(span_start, code))
+    pub(crate) fn is_ignored_at_span(&self, span_start: u32, code: WarningCode) -> bool {
+        self.analysis.is_some_and(|a| {
+            a.output
+                .ignore_data
+                .is_ignored_warning_at_span(span_start, code)
+        })
     }
 }
 
@@ -101,6 +106,8 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
 
     pub(crate) template_owner_node: Option<SvelteNodeId>,
 
+    pub(crate) rewrite_top_level_declarations: bool,
+
     pub(crate) in_bind_setter_traverse: bool,
 
     pub(crate) dispatched_member_assignments: rustc_hash::FxHashSet<u32>,
@@ -115,10 +122,20 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
 }
 
 impl<'b, 'a> ComponentTransformer<'b, 'a> {
-    pub(crate) fn is_in_ignored_stmt(&self, code: &str) -> bool {
+    pub(crate) fn is_in_ignored_stmt(&self, code: WarningCode) -> bool {
         self.enclosing_stmt_start
             .last()
             .is_some_and(|&start| self.ignore_query.is_ignored_at_span(start, code))
+    }
+
+    pub(crate) fn is_template_owner_ignored(&self, code: WarningCode) -> bool {
+        let Some(owner) = self.template_owner_node else {
+            return false;
+        };
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        analysis.output.ignore_data.is_ignored_warning(owner, code)
     }
 
     pub(crate) fn binding_semantics_for_symbol(

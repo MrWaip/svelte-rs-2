@@ -1,0 +1,11 @@
+
+	.d.svelte-1u1mcs6 ~ .e:where(.svelte-1u1mcs6) { color: green; }
+	.a.svelte-1u1mcs6 ~ .g:where(.svelte-1u1mcs6) { color: green; }
+	.a.svelte-1u1mcs6 ~ .b:where(.svelte-1u1mcs6) { color: green; }
+	.f.svelte-1u1mcs6 ~ .g:where(.svelte-1u1mcs6) { color: green; }
+	.b.svelte-1u1mcs6 ~ .g:where(.svelte-1u1mcs6) { color: green; }
+
+	/* no match */
+	
+	
+	

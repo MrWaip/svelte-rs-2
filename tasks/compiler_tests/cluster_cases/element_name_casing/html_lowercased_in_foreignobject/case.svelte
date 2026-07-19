@@ -1,0 +1,1 @@
+<svg><foreignObject><dIV>x</dIV></foreignObject></svg>

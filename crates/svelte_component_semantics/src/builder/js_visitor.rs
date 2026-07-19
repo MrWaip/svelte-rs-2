@@ -705,15 +705,7 @@ impl<'s, 'a> Visit<'a> for JsSemanticVisitor<'s, 'a> {
 }
 
 fn store_candidate_base(name: &str) -> Option<&str> {
-    if name.starts_with('$')
-        && name.len() > 1
-        && !name.starts_with("$$")
-        && !svelte_ast::is_rune_name(name)
-    {
-        Some(&name[1..])
-    } else {
-        None
-    }
+    svelte_ast::store_subscription_base(name)
 }
 
 fn mark_member_mutation_roots<'a>(

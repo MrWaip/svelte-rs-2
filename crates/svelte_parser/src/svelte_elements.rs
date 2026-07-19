@@ -1,5 +1,3 @@
-use std::mem;
-
 use svelte_ast::{
     AstStore, Attribute, Component, CssMode, CustomElementConfig, Element, Namespace, Node, NodeId,
     SVELTE_BODY, SVELTE_BOUNDARY, SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_FRAGMENT, SVELTE_HEAD,
@@ -11,118 +9,60 @@ use svelte_span::Span;
 
 use crate::{Parser, TagError, validate_custom_element_tag};
 
+#[derive(Clone, Copy)]
+enum SpecialRootElement {
+    Head,
+    Window,
+    Document,
+    Body,
+}
+
+fn is_svelte_options(store: &AstStore, id: NodeId) -> bool {
+    store
+        .get(id)
+        .as_element()
+        .is_some_and(|el| el.name == SVELTE_OPTIONS)
+}
+
 impl<'a> Parser<'a> {
-    pub(crate) fn validate_root_only_special_elements(&mut self, component: &Component) {
-        #[derive(Default)]
-        struct Seen {
-            head: bool,
-            window: bool,
-            document: bool,
-            body: bool,
-        }
-
-        let mut seen = Seen::default();
-        let mut current_level = component.root_fragment().nodes.clone();
-        let mut next_level = Vec::new();
-        let mut at_root = true;
-
-        while !current_level.is_empty() {
-            next_level.clear();
-
-            for &id in &current_level {
-                let node = component.store.get(id);
-
-                if let Node::Element(el) = node
-                    && matches!(
-                        el.name.as_str(),
-                        "svelte:head" | "svelte:window" | "svelte:document" | "svelte:body"
-                    )
-                {
-                    let already_seen = match el.name.as_str() {
-                        "svelte:head" => seen.head,
-                        "svelte:window" => seen.window,
-                        "svelte:document" => seen.document,
-                        "svelte:body" => seen.body,
-                        _ => unreachable!("only root-only special elements are tracked here"),
-                    };
-
-                    if already_seen {
-                        self.recover(Diagnostic::error(
-                            svelte_diagnostics::DiagnosticKind::SvelteMetaDuplicate {
-                                name: el.name.clone(),
-                            },
-                            Span::new(el.span.start, el.span.start),
-                        ));
-                    } else {
-                        match el.name.as_str() {
-                            "svelte:head" => seen.head = true,
-                            "svelte:window" => seen.window = true,
-                            "svelte:document" => seen.document = true,
-                            "svelte:body" => seen.body = true,
-                            _ => {
-                                unreachable!("only root-only special elements are tracked here")
-                            }
-                        }
-                    }
-
-                    if !at_root {
-                        self.recover(Diagnostic::error(
-                            svelte_diagnostics::DiagnosticKind::SvelteMetaInvalidPlacement {
-                                name: el.name.clone(),
-                            },
-                            Span::new(el.span.start, el.span.start),
-                        ));
-                    }
-                }
-
-                extend_child_node_ids(&component.store, node, &mut next_level);
-            }
-
-            current_level.clear();
-            mem::swap(&mut current_level, &mut next_level);
-            at_root = false;
-        }
-    }
-
     pub(crate) fn extract_svelte_options(&mut self, component: &mut Component) {
         let root_id = component.root;
-        let options_idx = component
-            .store
-            .fragment(root_id)
-            .nodes
-            .iter()
-            .position(|&id| {
-                component
-                    .store
-                    .get(id)
-                    .as_element()
-                    .is_some_and(|el| el.name == SVELTE_OPTIONS)
-            });
 
-        let Some(idx) = options_idx else {
-            return;
+        let (idx, has_another) = {
+            let mut options = component
+                .store
+                .fragment(root_id)
+                .nodes
+                .iter()
+                .enumerate()
+                .filter(|(_, id)| is_svelte_options(&component.store, **id))
+                .map(|(i, _)| i);
+            let Some(idx) = options.next() else {
+                return;
+            };
+            (idx, options.next().is_some())
         };
 
         let node_id = component.store.fragment_mut(root_id).nodes.remove(idx);
         let node = component.store.get(node_id);
-        let el = node
-            .as_element()
-            .expect("node was found via options_idx — must be an element");
+        let Some(el) = node.as_element() else {
+            return;
+        };
 
-        let has_another = component.fragment_nodes(root_id).iter().any(|&id| {
-            component
-                .store
-                .get(id)
-                .as_element()
-                .is_some_and(|e| e.name == SVELTE_OPTIONS)
-        });
         if has_another {
             self.recover(Diagnostic::svelte_options_duplicate(el.span));
         }
 
-        let body_empty = component.fragment_nodes(el.fragment).is_empty();
-        if !body_empty {
-            self.recover(Diagnostic::svelte_options_no_children(el.span));
+        let nodes = component.fragment_nodes(el.fragment);
+        if let (Some(&first), Some(&last)) = (nodes.first(), nodes.last()) {
+            let start = component.store.get(first).span().start;
+            let end = component.store.get(last).span().end;
+            self.recover(Diagnostic::error(
+                svelte_diagnostics::DiagnosticKind::SvelteMetaInvalidContent {
+                    name: SVELTE_OPTIONS.to_string(),
+                },
+                Span::new(start, end),
+            ));
         }
 
         component.options = Some(self.read_svelte_options(el));
@@ -159,17 +99,24 @@ impl<'a> Parser<'a> {
                         "false" => {
                             self.process_svelte_option_bool(&ea.name, false, el.span, &mut options);
                         }
-                        _ => {
-                            if ea.name == "customElement" {
+                        _ => match ea.name.as_str() {
+                            "customElement" => {
                                 self.process_custom_element_expression(
                                     ea.expression.span,
                                     el.span,
                                     &mut options,
                                 );
-                            } else {
+                            }
+                            "namespace" => {
+                                self.recover(Diagnostic::svelte_options_invalid_attribute_value(
+                                    el.span,
+                                    r#""html", "mathml" or "svg""#.into(),
+                                ));
+                            }
+                            _ => {
                                 self.recover(Diagnostic::svelte_options_invalid_attribute(el.span));
                             }
-                        }
+                        },
                     }
                 }
                 _ => {
@@ -246,9 +193,7 @@ impl<'a> Parser<'a> {
                 if let Some(tag_err) = validate_custom_element_tag(value) {
                     match tag_err {
                         TagError::Invalid => {
-                            self.recover(Diagnostic::svelte_options_invalid_custom_element_tag(
-                                span,
-                            ));
+                            self.recover(Diagnostic::svelte_options_invalid_tagname(span));
                         }
                         TagError::Reserved => {
                             self.recover(Diagnostic::svelte_options_reserved_tag_name(span));
@@ -287,119 +232,59 @@ impl<'a> Parser<'a> {
             return;
         }
         if !expr_text.starts_with('{') {
-            self.recover(Diagnostic::svelte_options_invalid_attribute(el_span));
+            self.recover(Diagnostic::svelte_options_invalid_custom_element_tag(
+                el_span,
+            ));
             return;
         }
         options.custom_element = Some(CustomElementConfig::Expression(expression_span));
     }
-    pub(crate) fn convert_svelte_head(component: &mut Component) {
+    pub(crate) fn convert_special_root_elements(component: &mut Component) {
         let root_id = component.root;
         let len = component.fragment_nodes(root_id).len();
         for i in 0..len {
             let id = component.fragment_nodes(root_id)[i];
-            if component
-                .store
-                .get(id)
-                .as_element()
-                .is_none_or(|el| el.name != SVELTE_HEAD)
-            {
-                continue;
-            }
+            let kind = match component.store.get(id).as_element() {
+                Some(el) if el.name == SVELTE_HEAD => SpecialRootElement::Head,
+                Some(el) if el.name == SVELTE_WINDOW => SpecialRootElement::Window,
+                Some(el) if el.name == SVELTE_DOCUMENT => SpecialRootElement::Document,
+                Some(el) if el.name == SVELTE_BODY => SpecialRootElement::Body,
+                _ => continue,
+            };
             let Node::Element(el) = component.store.take(id) else {
                 unreachable!()
             };
-            component.store.fragment_mut(el.fragment).role =
-                svelte_ast::FragmentRole::SvelteHeadBody;
-            component.store.replace(
-                id,
-                Node::SvelteHead(SvelteHead {
+            let node = match kind {
+                SpecialRootElement::Head => {
+                    component.store.fragment_mut(el.fragment).role =
+                        svelte_ast::FragmentRole::SvelteHeadBody;
+                    Node::SvelteHead(SvelteHead {
+                        id: el.id,
+                        span: el.span,
+                        attributes: el.attributes,
+                        fragment: el.fragment,
+                    })
+                }
+                SpecialRootElement::Window => Node::SvelteWindow(SvelteWindow {
                     id: el.id,
                     span: el.span,
                     attributes: el.attributes,
                     fragment: el.fragment,
                 }),
-            );
-        }
-    }
-    pub(crate) fn convert_svelte_window(component: &mut Component) {
-        let root_id = component.root;
-        let len = component.fragment_nodes(root_id).len();
-        for i in 0..len {
-            let id = component.fragment_nodes(root_id)[i];
-            if component
-                .store
-                .get(id)
-                .as_element()
-                .is_none_or(|el| el.name != SVELTE_WINDOW)
-            {
-                continue;
-            }
-            let Node::Element(el) = component.store.take(id) else {
-                unreachable!()
-            };
-            component.store.replace(
-                id,
-                Node::SvelteWindow(SvelteWindow {
+                SpecialRootElement::Document => Node::SvelteDocument(SvelteDocument {
                     id: el.id,
                     span: el.span,
                     attributes: el.attributes,
                     fragment: el.fragment,
                 }),
-            );
-        }
-    }
-    pub(crate) fn convert_svelte_document(component: &mut Component) {
-        let root_id = component.root;
-        let len = component.fragment_nodes(root_id).len();
-        for i in 0..len {
-            let id = component.fragment_nodes(root_id)[i];
-            if component
-                .store
-                .get(id)
-                .as_element()
-                .is_none_or(|el| el.name != SVELTE_DOCUMENT)
-            {
-                continue;
-            }
-            let Node::Element(el) = component.store.take(id) else {
-                unreachable!()
-            };
-            component.store.replace(
-                id,
-                Node::SvelteDocument(SvelteDocument {
+                SpecialRootElement::Body => Node::SvelteBody(SvelteBody {
                     id: el.id,
                     span: el.span,
                     attributes: el.attributes,
                     fragment: el.fragment,
                 }),
-            );
-        }
-    }
-    pub(crate) fn convert_svelte_body(component: &mut Component) {
-        let root_id = component.root;
-        let len = component.fragment_nodes(root_id).len();
-        for i in 0..len {
-            let id = component.fragment_nodes(root_id)[i];
-            if component
-                .store
-                .get(id)
-                .as_element()
-                .is_none_or(|el| el.name != SVELTE_BODY)
-            {
-                continue;
-            }
-            let Node::Element(el) = component.store.take(id) else {
-                unreachable!()
             };
-            component.store.replace(
-                id,
-                Node::SvelteBody(SvelteBody {
-                    id: el.id,
-                    span: el.span,
-                    attributes: el.attributes,
-                    fragment: el.fragment,
-                }),
-            );
+            component.store.replace(id, node);
         }
     }
     pub(crate) fn convert_slot_element_legacy(store: &mut AstStore, node_ids: &[NodeId]) {
@@ -546,7 +431,7 @@ impl<'a> Parser<'a> {
         }
     }
 }
-fn for_each_child_fragment(node: &Node, mut f: impl FnMut(svelte_ast::FragmentId)) {
+pub(crate) fn for_each_child_fragment(node: &Node, mut f: impl FnMut(svelte_ast::FragmentId)) {
     match node {
         Node::Element(el) => f(el.fragment),
         Node::SlotElementLegacy(el) => f(el.fragment),
@@ -606,6 +491,7 @@ fn for_each_child_fragment(node: &Node, mut f: impl FnMut(svelte_ast::FragmentId
         | Node::RenderTag(_)
         | Node::HtmlTag(_)
         | Node::ConstTag(_)
+        | Node::DeclarationTag(_)
         | Node::DebugTag(_)
         | Node::Error(_) => {}
     }

@@ -330,7 +330,11 @@ mod tests {
     fn summarize(source: &str) -> Vec<String> {
         let alloc = Allocator::default();
         let ret = Parser::new(&alloc, source, SourceType::mjs()).parse();
-        assert!(ret.errors.is_empty(), "parse errors: {:?}", ret.errors);
+        assert!(
+            ret.diagnostics.is_empty(),
+            "parse errors: {:?}",
+            ret.diagnostics
+        );
         let stmt = ret.program.body.first().expect("one statement");
         let Statement::VariableDeclaration(decl) = stmt else {
             panic!("expected var declaration");
@@ -534,7 +538,11 @@ mod tests {
     fn summarize_assign(source: &str) -> Vec<String> {
         let alloc = Allocator::default();
         let ret = Parser::new(&alloc, source, SourceType::mjs()).parse();
-        assert!(ret.errors.is_empty(), "parse errors: {:?}", ret.errors);
+        assert!(
+            ret.diagnostics.is_empty(),
+            "parse errors: {:?}",
+            ret.diagnostics
+        );
         let stmt = ret.program.body.first().expect("one statement");
         let Statement::ExpressionStatement(es) = stmt else {
             panic!("expected expression statement");
@@ -680,7 +688,11 @@ mod tests {
     fn array_index_steps(source: &str) -> Vec<(u32, u32, bool)> {
         let alloc = Allocator::default();
         let ret = Parser::new(&alloc, source, SourceType::mjs()).parse();
-        assert!(ret.errors.is_empty(), "parse errors: {:?}", ret.errors);
+        assert!(
+            ret.diagnostics.is_empty(),
+            "parse errors: {:?}",
+            ret.diagnostics
+        );
         let Statement::ExpressionStatement(es) = ret.program.body.first().expect("one statement")
         else {
             panic!("expected expression statement");

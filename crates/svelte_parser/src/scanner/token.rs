@@ -1,3 +1,4 @@
+use svelte_ast::TransitionDirection;
 use svelte_diagnostics::Diagnostic;
 use svelte_span::{GetSpan, Span};
 
@@ -19,6 +20,7 @@ pub enum TokenType {
     RenderTag(RenderTagToken),
     HtmlTag(HtmlTagToken),
     ConstTag(ConstTagToken),
+    DeclarationTag(DeclarationTagToken),
     DebugTag(DebugTagToken),
     StartKeyTag(StartKeyTag),
     EndKeyTag,
@@ -36,6 +38,7 @@ pub struct ScriptTag {
     pub is_module: bool,
 
     pub context_deprecated: bool,
+    pub invalid_context: Option<Span>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -116,6 +119,7 @@ pub struct StyleDirective {
     pub name_span: Span,
     pub value: AttributeValue,
     pub important: bool,
+    pub invalid_modifier: Option<Span>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -167,7 +171,7 @@ pub struct TransitionDirective {
 
     pub has_expression: bool,
 
-    pub direction_prefix: String,
+    pub direction: TransitionDirection,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -271,6 +275,11 @@ pub struct ConstTagToken {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct DeclarationTagToken {
+    pub statement_span: Span,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct DebugTagToken {
     pub identifiers: Vec<Span>,
 }
@@ -342,36 +351,23 @@ pub enum AttributeIdentifierType<'a> {
 }
 
 impl<'a> AttributeIdentifierType<'a> {
-    pub fn is_class_directive(name: &str) -> bool {
-        name == "class"
-    }
-
-    pub fn is_style_directive(name: &str) -> bool {
-        name == "style"
-    }
-
-    pub fn is_bind_directive(name: &str) -> bool {
-        name == "bind"
-    }
-
-    pub fn is_let_directive(name: &str) -> bool {
-        name == "let"
-    }
-
-    pub fn is_use_directive(name: &str) -> bool {
-        name == "use"
-    }
-
-    pub fn is_on_directive(name: &str) -> bool {
-        name == "on"
-    }
-
-    pub fn is_transition_directive(name: &str) -> bool {
-        name == "transition" || name == "in" || name == "out"
-    }
-
-    pub fn is_animate_directive(name: &str) -> bool {
-        name == "animate"
+    pub fn classify_directive(
+        name: &'a str,
+        value_span: Span,
+        value: &'a str,
+    ) -> Option<AttributeIdentifierType<'a>> {
+        let directive = match name {
+            "class" => Self::ClassDirective(value_span, value),
+            "style" => Self::StyleDirective(value_span, value),
+            "bind" => Self::BindDirective(value_span, value),
+            "let" => Self::LetDirectiveLegacy(value_span, value),
+            "use" => Self::UseDirective(value_span, value),
+            "on" => Self::OnDirectiveLegacy(value_span, value),
+            "transition" | "in" | "out" => Self::TransitionDirective(value_span, name),
+            "animate" => Self::AnimateDirective(value_span, value),
+            _ => return None,
+        };
+        Some(directive)
     }
 
     pub fn is_empty(&self) -> bool {

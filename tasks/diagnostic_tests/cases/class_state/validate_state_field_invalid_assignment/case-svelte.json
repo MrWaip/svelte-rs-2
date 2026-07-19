@@ -1,0 +1,8 @@
+[
+  {
+    "code": "state_field_invalid_assignment",
+    "end": 57,
+    "severity": "error",
+    "start": 42
+  }
+]

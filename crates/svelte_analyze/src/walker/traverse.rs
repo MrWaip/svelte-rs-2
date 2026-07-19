@@ -216,6 +216,12 @@ fn walk_template_inner(
                 }
                 dispatch_stmt(visitors, tag.id, &tag.decl, ctx);
             }
+            Node::DeclarationTag(tag) => {
+                for v in visitors.iter_mut() {
+                    v.visit_declaration_tag(tag, ctx);
+                }
+                dispatch_stmt(visitors, tag.id, &tag.declaration, ctx);
+            }
             Node::DebugTag(tag) => {
                 for v in visitors.iter_mut() {
                     v.visit_debug_tag(tag, ctx);
@@ -447,6 +453,7 @@ fn node_id_of(node: &Node) -> NodeId {
         Node::RenderTag(n) => n.id,
         Node::HtmlTag(n) => n.id,
         Node::ConstTag(n) => n.id,
+        Node::DeclarationTag(n) => n.id,
         Node::DebugTag(n) => n.id,
         Node::KeyBlock(n) => n.id,
         Node::SvelteHead(n) => n.id,

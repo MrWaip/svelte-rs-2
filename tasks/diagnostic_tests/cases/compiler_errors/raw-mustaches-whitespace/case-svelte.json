@@ -1,0 +1,8 @@
+[
+  {
+    "code": "expected_whitespace",
+    "end": 6,
+    "severity": "error",
+    "start": 6
+  }
+]

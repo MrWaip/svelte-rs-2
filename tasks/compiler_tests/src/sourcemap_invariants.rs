@@ -16,15 +16,13 @@ pub fn assert_sourcemap_invariants(case: &str, input: &str, map: &SourceMap, kin
     assert_generated_positions_monotone(case, map);
 }
 
-fn assert_sources_content_matches_input(case: &str, input: &str, map: &SourceMap) {
+fn assert_sources_content_matches_input(case: &str, input: &str, map: &SourceMap<'_>) {
     let first = map.get_source_contents().next().flatten();
-    let actual = first
-        .map(|s| s.as_ref())
-        .unwrap_or_else(|| panic!("[{case}] sourcesContent[0] missing"));
+    let actual = first.unwrap_or_else(|| panic!("[{case}] sourcesContent[0] missing"));
     assert_eq!(actual, input, "[{case}] sourcesContent[0] != input");
 }
 
-fn assert_below_skeleton_threshold(case: &str, map: &SourceMap) {
+fn assert_below_skeleton_threshold(case: &str, map: &SourceMap<'_>) {
     let mut total = 0u32;
     let mut zero_zero = 0u32;
     for tok in map.get_tokens() {
@@ -43,7 +41,7 @@ fn assert_below_skeleton_threshold(case: &str, map: &SourceMap) {
     );
 }
 
-fn assert_generated_positions_monotone(case: &str, map: &SourceMap) {
+fn assert_generated_positions_monotone(case: &str, map: &SourceMap<'_>) {
     let mut current_line = 0u32;
     let mut current_col = 0u32;
     for (idx, tok) in map.get_tokens().enumerate() {

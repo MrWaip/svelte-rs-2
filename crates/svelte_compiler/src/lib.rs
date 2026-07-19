@@ -14,6 +14,16 @@ pub struct CompileResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+fn apply_suppress(diagnostics: &mut Vec<Diagnostic>, suppress: &[String]) {
+    if suppress.is_empty() {
+        return;
+    }
+    diagnostics.retain(|diagnostic| {
+        diagnostic.severity != svelte_diagnostics::Severity::Warning
+            || !suppress.iter().any(|code| code == diagnostic.kind.code())
+    });
+}
+
 fn filename_relative_to_root_dir(filename: &str, root_dir: Option<&str>) -> String {
     let normalized = filename.replace('\\', "/");
     let Some(rd) = root_dir else {
@@ -150,7 +160,17 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let mut css_text: Option<String> = None;
         let mut css_map: Option<svelte_sourcemap::SourceMap> = None;
         if let Some((ss, css_diags)) = css_parsed {
-            analyze_diags.extend(css_diags);
+            let css_offset = component
+                .css
+                .as_ref()
+                .map_or(0, |block| block.content_span.start);
+            analyze_diags.extend(css_diags.into_iter().map(|mut diag| {
+                diag.span = svelte_span::Span::new(
+                    diag.span.start + css_offset,
+                    diag.span.end + css_offset,
+                );
+                diag
+            }));
             let inject_styles = resolved_css_mode(&component, options) == CssMode::Injected
                 || analysis.output.is_custom_element_target;
             svelte_analyze::analyze_css_pass(
@@ -262,13 +282,20 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 dev: options.dev,
                 hmr: options.hmr,
                 experimental_async: options.experimental.async_,
+                disclose_version: options.disclose_version,
                 filename: filename_relative_to_root_dir(
                     &options.filename,
                     options.root_dir.as_deref(),
                 ),
                 sourcemap_kind: options.sourcemap_kind,
             };
-            let transform_options = svelte_types::TransformOptions { dev: options.dev };
+            let transform_options = svelte_types::TransformOptions {
+                dev: options.dev,
+                filename: filename_relative_to_root_dir(
+                    &options.filename,
+                    options.root_dir.as_deref(),
+                ),
+            };
             let js = match options.generate {
                 GenerateMode::Server => {
                     let mut compile_ctx = svelte_types::CompileContext {
@@ -326,6 +353,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
     };
 
     diagnostics.extend(analyze_diags);
+    apply_suppress(&mut diagnostics, &options.suppress);
     let source_name =
         svelte_sourcemap::get_source_name(&options.filename, options.output_filename.as_deref());
     CompileResult {
@@ -349,8 +377,9 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
 
     let js_alloc = oxc_allocator::Allocator::default();
 
-    let (analysis, mut parsed, diagnostics) =
+    let (analysis, mut parsed, mut diagnostics) =
         svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
+    apply_suppress(&mut diagnostics, &options.suppress);
 
     if options.generate == GenerateMode::False
         || diagnostics
@@ -380,7 +409,10 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
             let mut ident_gen = svelte_analyze::IdentGen::with_conflicts(
                 analysis.scoping.collect_all_symbol_names(),
             );
-            let transform_options = svelte_types::TransformOptions { dev };
+            let transform_options = svelte_types::TransformOptions {
+                dev,
+                filename: filename.clone(),
+            };
             svelte_transform_server::transform_module(
                 &js_alloc,
                 &mut program,

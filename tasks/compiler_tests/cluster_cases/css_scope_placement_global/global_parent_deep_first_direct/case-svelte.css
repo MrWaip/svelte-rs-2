@@ -1,0 +1,6 @@
+
+	.x {
+		.a.svelte-1oo9t8i {
+			.b:where(.svelte-1oo9t8i) { color: green; }
+		}
+	}

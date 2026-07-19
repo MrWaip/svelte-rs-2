@@ -56,9 +56,11 @@ pub(super) fn build<'a>(component: &Component, parsed: &JsAst<'a>, data: &mut An
             };
             let mut refs: SmallVec<[ReferenceId; 4]> = SmallVec::new();
             let mut reactive_rune_call = false;
+            let mut ignored_impure = false;
             let mut collector = RefCollector {
                 refs: &mut refs,
                 reactive_rune_call: &mut reactive_rune_call,
+                has_impure: &mut ignored_impure,
             };
             collector.visit_statement(stmt);
             for ref_id in refs {

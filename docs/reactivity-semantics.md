@@ -1,7 +1,7 @@
 # PRD: ReactivitySemantics (корневой)
 
 label: reactivity-semantics
-topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$store, legacy state, $: reactive statement, maybe-reactive, contextual (each-item/index/await), BindingSemantics, ReferenceSemantics, OptimizedDerived, proxy, writeback reactivity
+topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$store, legacy state, $: reactive statement, maybe-reactive, contextual (each-item/index/await), BindingSemantics, ReferenceSemantics, OptimizedDerived, OptimizedConst, OptimizedDeclarationTag, proxy, writeback reactivity
 
 Корневой PRD для кластера `crates/svelte_analyze/src/reactivity_semantics/`.
 Описывает архитектурную рамку и перечень реактивных фич. Алгоритмы классификации каждой фичи — в дочерних PRD 
@@ -42,7 +42,7 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 
 `BindingSemantics`:
 
-- `is_reactive()` — биндинг есть **Реактивный источник** по глоссарию: чтение идёт через реактивную ячейку рантайма либо трактуется реактивно (state/derived/prop/legacy-state/store/contextual/maybe-reactive). False — статичные чтения: `OptimizedDerived`/`OptimizedRune` (демотированы в плоские значения), `RuntimeRune` (статичные runtime-значения), `Const`, `NonReactive`, `LegacyApiExport`, `Unresolved`. `is_reactive() == false` — только про ось реактивного источника. Демотация (`OptimizedRune`/`OptimizedDerived`) оптимизирует *объявление* (убирает runtime-ячейку), но не делает чтение биндинга ненаблюдаемым; читать это как `Static`-изменчивость нельзя — чтение остаётся изменчивым, пока значение не свёрнуто в `Known`-константу, по той же причине, по которой Оригинал держит здесь `has_state`.
+- `is_reactive()` — биндинг есть **Реактивный источник** по глоссарию: чтение идёт через реактивную ячейку рантайма либо трактуется реактивно (state/derived/prop/legacy-state/store/contextual/maybe-reactive). False — статичные чтения: `OptimizedDerived`/`OptimizedRune` (демотированы в плоские значения), `RuntimeRune` (статичные runtime-значения), `Const`/`OptimizedConst`/`DeclarationTag`/`OptimizedDeclarationTag`, `NonReactive`, `LegacyApiExport`, `Unresolved`. `is_reactive() == false` — только про ось реактивного источника. Демотация (`OptimizedRune`/`OptimizedDerived`) оптимизирует *объявление* (убирает runtime-ячейку), но не делает чтение биндинга ненаблюдаемым; читать это как `Static`-изменчивость нельзя — чтение остаётся изменчивым, пока значение не свёрнуто в `Known`-константу, по той же причине, по которой Оригинал держит здесь `has_state`.
 - `is_store()` — биндинг стор-подписки (`Store(_)` пишется только на `$`-символ).
 - `is_props()` — проп любого вида: `$props()` или `export let` (LEGACY(svelte4)); `is_runes_prop()` / `is_legacy_prop()` — точные половины; `is_rest_props()` — `...rest` в `$props()`.
 - `is_bindable()` — проп синтаксически объявлен `$bindable()`; тотальный по `PropBindingSemantics.bindable`, стабилен под демоцией `Source → NonSource`.
@@ -72,7 +72,7 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 8. **Ортогональные оси — раздельно** (уточнение границы #5). #5 требует завести вариант, когда потребитель собирает **один** доменный ответ из сырых полей на **одном** сайте. Но когда фактов **две независимые оси**, спрашиваемые в **разных** местах, их декартово произведение — **не** доменная категория:
    - (а) **Не плоди N×M вариантов.** Признак нарушения — имя варианта склеено из двух ортогональных прилагательных (`Destructured`+`Default`+`Legacy`). Каждая ось — свой запрос по id (`binding_semantics` / `reference_semantics`), потребитель комбинирует на месте.
    - (б) **Выводимое не храни.** Если ось выводится из другой оси + структуры AST (`walk_bindings`, форма bind-выражения identifier-vs-member), её не держат ни вариантом енама, ни side-table/методом по `SymbolId` — потребитель выводит на месте. Side-table законен только для **невыводимого** факта (как `each_rest_symbols`), не для «срезать угол».
-9. **Two-stage reactivity around evaluation.** Reactivity is built as syntactic stage 1 (`build_v2`) → `ValueEvaluation` → finalizing stage (`FinalizeReactivity`); the evaluation dependency belongs solely to `OptimizedDerived`, which needs the evaluated value of a `$derived` expression. `proxy` and `class_field_semantics` are finalized in the same stage but rest only on stage-1 facts plus the AST — not on evaluation — so they merely co-reside there.
+9. **Two-stage reactivity around evaluation.** Reactivity is built as syntactic stage 1 (`build_v2`) → `ValueEvaluation` → finalizing stage (`FinalizeReactivity`); the evaluation dependency belongs solely to `OptimizedDerived`, which needs the evaluated value of a `$derived` expression. `proxy` and `class_field_semantics` are finalized in the same stage but rest only on stage-1 facts plus the AST — not on evaluation — so they merely co-reside there. Demoting a reactive const/declaration tag to its `OptimizedConst`/`OptimizedDeclarationTag` variant stays in stage 1: the gate is whether the initializer observes a reactive source (reference facts), not the initializer's evaluated value — so it does not extend the evaluation dependency the way `OptimizedDerived` does.
 
 ## Карта реактивных фич (scope корневого PRD)
 

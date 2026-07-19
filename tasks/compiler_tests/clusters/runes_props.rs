@@ -15,6 +15,10 @@ compiler_case!(
 );
 compiler_case!(assignment_default, "runes/props/assignment/default");
 compiler_case!(
+    assignment_default_template_literal,
+    "runes/props/assignment/default_template_literal"
+);
+compiler_case!(
     assignment_nested_array,
     "runes/props/assignment/nested_array"
 );
@@ -72,4 +76,16 @@ compiler_case!(
 compiler_case!(
     arrow_default_before_bindable_prop,
     "runes/props/arrow_default_before_bindable_prop"
+);
+compiler_case!(
+    bindable_member_index_mutation_ownership,
+    "runes/props/bindable_member_index_mutation_ownership"
+);
+compiler_case!(
+    eager_static_concat_default,
+    "runes/props/eager_static_concat_default"
+);
+compiler_case!(
+    lazy_prop_ref_binary_default,
+    "runes/props/lazy_prop_ref_binary_default"
 );

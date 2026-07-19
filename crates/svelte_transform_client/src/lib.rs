@@ -95,6 +95,7 @@ pub fn transform_component<'a>(
         component,
         line_index,
         dev,
+        &options.filename,
     )
 }
 
@@ -321,6 +322,9 @@ fn walk_node<'a>(
                 let tmp = ctx.ident_gen.generate("computed_const");
                 ctx.transform_data.const_tag_tmp_names.insert(tag.id, tmp);
             }
+        }
+        Node::DeclarationTag(tag) => {
+            ctx.stmt_handles.push((tag.declaration.id(), Some(tag.id)));
         }
         Node::KeyBlock(block) => {
             ctx.expr_handles

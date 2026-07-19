@@ -30,12 +30,11 @@ pub(in crate::codegen) fn getter_return_member<'a, 'b>(
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn bind_each_context_vars(&self, bind: &BindDirective) -> Vec<SymbolId> {
-        let AttributeSemantics::ElementBind(payload) =
-            self.ctx.query.analysis.attributes.get(bind.id)
-        else {
-            return Vec::new();
-        };
-        payload.each_context_vars.to_vec()
+        match self.ctx.query.analysis.attributes.get(bind.id) {
+            AttributeSemantics::ElementBind(payload) => payload.each_context_vars.to_vec(),
+            AttributeSemantics::ComponentBind(payload) => payload.each_context_vars.to_vec(),
+            _ => Vec::new(),
+        }
     }
 
     fn clone_member_substituting_each_context(

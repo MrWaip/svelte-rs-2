@@ -204,6 +204,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         var: &str,
         kind: &HtmlBindKind,
     ) -> Statement<'a> {
+        let var: &'a str = self.ctx.b.alloc_str(var);
         let getter = self.build_binding_getter(var, kind);
         let mut args: Vec<Arg<'a, '_>> = vec![Arg::StrRef(axis), Arg::Expr(getter)];
         if !matches!(kind, HtmlBindKind::BindableProp) || self.ctx.state.dev {
@@ -213,7 +214,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         self.ctx.b.call_stmt("$.bind_window_scroll", args)
     }
 
-    fn build_binding_getter(&self, var: &str, kind: &HtmlBindKind) -> Expression<'a> {
+    fn build_binding_getter(&self, var: &'a str, kind: &HtmlBindKind) -> Expression<'a> {
         if let HtmlBindKind::BindableProp | HtmlBindKind::StoreSubscribed { .. } = kind {
             if self.ctx.state.dev {
                 let call = self

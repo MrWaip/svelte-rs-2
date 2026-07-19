@@ -1,0 +1,4 @@
+
+	.foo {
+		&:has(x.svelte-7j1hjx) { color: green; }
+	}

@@ -7,7 +7,7 @@ use oxc_ast::ast::{
 };
 use oxc_span::GetSpan;
 use oxc_traverse::{Ancestor, TraverseCtx};
-use svelte_analyze::{ClassFieldSemantics, ReferenceSemantics};
+use svelte_analyze::{ClassFieldSemantics, ReferenceSemantics, WarningCode};
 use svelte_component_semantics::ReferenceId;
 
 use svelte_ast_builder::Arg;
@@ -16,9 +16,7 @@ use super::async_check::is_expression_async;
 use super::model::PendingPropMutationValidation;
 
 use super::model::ComponentTransformer;
-use crate::rune_refs::{
-    replace_expr_root_in_assign_target, replace_expr_root_in_simple_target, should_proxy,
-};
+use crate::rune_refs::{replace_expr_root_in_assign_target, replace_expr_root_in_simple_target};
 
 fn root_object_span_start(member: &MemberExpression<'_>) -> u32 {
     let mut cur: &Expression<'_> = match member {
@@ -62,6 +60,44 @@ impl<'a> ComponentTransformer<'_, 'a> {
         Some(root_id)
     }
 
+    fn dev_assign_root_is_plain_identifier(&self, target: &AssignmentTarget<'a>) -> bool {
+        let Some(member) = target.as_member_expression() else {
+            return false;
+        };
+        let Some(root) = self.member_root_identifier(member) else {
+            return false;
+        };
+        let Some(analysis) = self.analysis else {
+            return true;
+        };
+        let Some(ref_id) = root.reference_id.get() else {
+            return false;
+        };
+        analysis.scoping.get_reference(ref_id).symbol_id().is_some()
+    }
+
+    fn is_excluded_owner_arrow_body(&self, ctx: &TraverseCtx<'a, ()>) -> bool {
+        let Some(owner) = self.template_owner_node else {
+            return false;
+        };
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        if !analysis.attributes.get(owner).is_event_or_binding() {
+            return false;
+        }
+        for ancestor in ctx.ancestors() {
+            match ancestor {
+                Ancestor::ParenthesizedExpressionExpression(_)
+                | Ancestor::ExpressionStatementExpression(_)
+                | Ancestor::FunctionBodyStatements(_) => continue,
+                Ancestor::ArrowFunctionExpressionBody(_) => return true,
+                _ => return false,
+            }
+        }
+        false
+    }
+
     fn prop_mutation_segments_from_member(
         &self,
         target: &MemberExpression<'a>,
@@ -96,6 +132,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
     fn prop_mutation_path_segment_expr(&self, expr: &Expression<'a>) -> Option<Expression<'a>> {
         match expr.get_inner_expression() {
             Expression::StringLiteral(lit) => Some(self.b.str_expr(lit.value.as_str())),
+            Expression::NumericLiteral(lit) => Some(self.b.num_expr(lit.value)),
             Expression::Identifier(id) => {
                 let idref = self.b.rid_at(id.name.as_str(), id.span);
                 idref.reference_id.set(id.reference_id.get());
@@ -142,7 +179,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         segments: Vec<Expression<'a>>,
         span_start: u32,
     ) {
-        if !self.dev || self.is_in_ignored_stmt("ownership_invalid_mutation") {
+        if !self.dev || self.is_in_ignored_stmt(WarningCode::OwnershipInvalidMutation) {
             return;
         }
         self.needs_ownership_validator = true;
@@ -178,7 +215,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         mutation_info: PendingPropMutationValidation<'a>,
         _span_start: u32,
     ) {
-        if !self.dev || self.is_in_ignored_stmt("ownership_invalid_mutation") {
+        if !self.dev || self.is_in_ignored_stmt(WarningCode::OwnershipInvalidMutation) {
             return;
         }
         self.needs_ownership_validator = true;
@@ -264,7 +301,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        if !self.is_in_ignored_stmt("ownership_invalid_mutation") {
+        if !self.is_in_ignored_stmt(WarningCode::OwnershipInvalidMutation) {
             self.needs_ownership_validator = true;
         }
 
@@ -425,7 +462,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        if !self.is_in_ignored_stmt("ownership_invalid_mutation") {
+        if !self.is_in_ignored_stmt(WarningCode::OwnershipInvalidMutation) {
             self.needs_ownership_validator = true;
         }
 
@@ -606,6 +643,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
+        self.apply_dev_member_assign_wrap(node, is_expr_stmt, ctx);
+    }
+
+    pub(crate) fn apply_dev_member_assign_wrap(
+        &mut self,
+        node: &mut Expression<'a>,
+        is_expr_stmt: bool,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) {
         let Expression::AssignmentExpression(assign) = node else {
             return;
         };
@@ -625,10 +671,15 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let op_literal = assign_op_literal(assign.operator);
         let is_static = matches!(&assign.left, AssignmentTarget::StaticMemberExpression(_));
         let is_computed = matches!(&assign.left, AssignmentTarget::ComputedMemberExpression(_));
+        let rhs_non_primitive = self
+            .analysis
+            .is_some_and(|analysis| analysis.assignment_value_is_non_primitive(assign.node_id()));
         let should_rewrite_assign = op_literal.is_some()
             && (is_static || is_computed)
-            && should_proxy(&assign.right)
-            && !self.in_bind_setter_traverse;
+            && rhs_non_primitive
+            && self.dev_assign_root_is_plain_identifier(&assign.left)
+            && !self.in_bind_setter_traverse
+            && !self.is_excluded_owner_arrow_body(ctx);
         if !should_rewrite_assign {
             return;
         }
@@ -834,7 +885,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
 
     pub(crate) fn rewrite_dev_await_tracking(&self, node: &mut Expression<'a>) {
         if let Expression::AwaitExpression(await_expr) = node {
-            if self.is_in_ignored_stmt("await_reactivity_loss") {
+            if self.is_in_ignored_stmt(WarningCode::AwaitReactivityLoss) {
                 return;
             }
             if is_internal_async_await(&await_expr.argument) {
@@ -862,7 +913,7 @@ fn is_internal_async_await(arg: &Expression<'_>) -> bool {
     matches!(id.name.as_str(), "$.async_derived" | "$.save")
 }
 
-fn assignment_parent_is_expression_statement(ctx: &TraverseCtx<'_, ()>) -> bool {
+pub(crate) fn assignment_parent_is_expression_statement(ctx: &TraverseCtx<'_, ()>) -> bool {
     let mut ancestors = ctx
         .ancestors()
         .filter(|a| !matches!(a, Ancestor::ParenthesizedExpressionExpression(_)));

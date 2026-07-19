@@ -1,7 +1,7 @@
 use compact_str::CompactString;
 use svelte_css::{
-    AtRule, Block, BlockChild, CombinatorKind, ComplexSelector, RelativeSelector, SelectorList,
-    SimpleSelector, StyleRule, StyleSheet, Visit, visit as css_visit,
+    AtRule, Block, BlockChild, CombinatorKind, ComplexSelector, Declaration, RelativeSelector,
+    SelectorList, SimpleSelector, StyleRule, StyleSheet, Visit, visit as css_visit,
 };
 use svelte_diagnostics::Diagnostic;
 use svelte_diagnostics::DiagnosticKind;
@@ -34,7 +34,7 @@ pub fn analyze_css_pass(
     let keyframes = collect_keyframe_names(stylesheet, css_text);
 
     let css_diag_start = diagnostics.len();
-    let mut validator = CssValidator::new(css_block.content_span.start, diagnostics);
+    let mut validator = CssValidator::new(css_block.content_span.start, css_text, diagnostics);
     validator.visit_stylesheet(stylesheet);
     let has_css_errors = diagnostics[css_diag_start..]
         .iter()
@@ -177,6 +177,7 @@ struct RuleContext {
 
 struct CssValidator<'a> {
     css_offset: u32,
+    source: &'a str,
     diagnostics: &'a mut Vec<Diagnostic>,
 
     rule_stack: Vec<RuleContext>,
@@ -185,9 +186,10 @@ struct CssValidator<'a> {
 }
 
 impl<'a> CssValidator<'a> {
-    fn new(css_offset: u32, diagnostics: &'a mut Vec<Diagnostic>) -> Self {
+    fn new(css_offset: u32, source: &'a str, diagnostics: &'a mut Vec<Diagnostic>) -> Self {
         Self {
             css_offset,
+            source,
             diagnostics,
             rule_stack: Vec::new(),
             in_pseudo_class: false,
@@ -299,13 +301,17 @@ impl<'a> CssValidator<'a> {
         };
 
         let is_lone_global_with_nesting_arg = rule.prelude.children.len() == 1
-            && rule.prelude.children[0].children.len() == 1
-            && rule.prelude.children[0].children[0].selectors.len() == 1
-            && matches!(
-                &rule.prelude.children[0].children[0].selectors[0],
-                SimpleSelector::Global { args: Some(args), .. }
-                if is_nesting_in_global_args(args)
-            );
+            && rule.prelude.children[0]
+                .children
+                .first()
+                .is_some_and(|rel| {
+                    rel.selectors.len() == 1
+                        && matches!(
+                            &rel.selectors[0],
+                            SimpleSelector::Global { args: Some(args), .. }
+                            if is_nesting_in_global_args(args)
+                        )
+                });
 
         self.rule_stack.push(RuleContext {
             is_lone_global_block,
@@ -432,6 +438,16 @@ fn has_declaration(block: &Block) -> bool {
 impl Visit for CssValidator<'_> {
     fn visit_style_rule(&mut self, node: &StyleRule) {
         self.validate_rule(node);
+    }
+
+    fn visit_declaration(&mut self, node: &Declaration) {
+        if node.value.start != node.value.end {
+            return;
+        }
+        let property = &self.source[node.property.start as usize..node.property.end as usize];
+        if !property.starts_with("--") {
+            self.emit(DiagnosticKind::CssEmptyDeclaration, node.span);
+        }
     }
 
     fn visit_complex_selector(&mut self, node: &ComplexSelector) {

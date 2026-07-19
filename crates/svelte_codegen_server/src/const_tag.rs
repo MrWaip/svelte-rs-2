@@ -1,7 +1,7 @@
 use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, Expression, Statement};
 use oxc_span::SPAN;
 use oxc_syntax::node::NodeId as OxcNodeId;
-use svelte_analyze::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
+use svelte_analyze::{BlockSemantics, ConstTagBlockSemantics, FragmentDeclarationAsyncKind};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{SymbolId, walk_bindings};
@@ -15,7 +15,7 @@ impl<'a> ServerCodegen<'a> {
             BlockSemantics::ConstTag(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(id, "const tag")),
         };
-        if !matches!(sem.async_kind, ConstTagAsyncKind::Sync) {
+        if !matches!(sem.async_kind, FragmentDeclarationAsyncKind::Sync) {
             return Err(CodegenError::Unsupported(id, "async const tag"));
         }
         let stmt = self
@@ -39,7 +39,7 @@ impl<'a> ServerCodegen<'a> {
 
             self.push_stmt(self.b.let_stmt(&target));
 
-            let target_atom = self.b.ast.atom(&target);
+            let target_atom = self.b.alloc_str(&target);
             let assignment_target = AssignmentTarget::AssignmentTargetIdentifier(
                 self.b
                     .alloc(self.b.ast.identifier_reference(SPAN, target_atom)),
@@ -52,15 +52,15 @@ impl<'a> ServerCodegen<'a> {
             );
 
             let body = match &sem.async_kind {
-                ConstTagAsyncKind::Awaited { blockers } => {
+                FragmentDeclarationAsyncKind::Awaited { blockers } => {
                     self.push_blocker_thunk(blockers, &mut thunks);
                     self.b.async_thunk(assignment)
                 }
-                ConstTagAsyncKind::Deferred { blockers } => {
+                FragmentDeclarationAsyncKind::Deferred { blockers } => {
                     self.push_blocker_thunk(blockers, &mut thunks);
                     self.b.thunk(assignment)
                 }
-                ConstTagAsyncKind::Sync => self.b.thunk(assignment),
+                FragmentDeclarationAsyncKind::Sync => self.b.thunk(assignment),
             };
             thunks.push(body);
             let thunk_idx = (thunks.len() - 1) as u32;
@@ -107,7 +107,7 @@ impl<'a> ServerCodegen<'a> {
         Ok((symbol, name, value))
     }
 
-    fn push_blocker_thunk(&self, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
+    pub(crate) fn push_blocker_thunk(&self, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
         if blockers.is_empty() {
             return;
         }

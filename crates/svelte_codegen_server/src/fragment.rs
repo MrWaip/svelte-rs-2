@@ -159,6 +159,7 @@ impl<'a> ServerCodegen<'a> {
             Node::Text(_)
             | Node::SnippetBlock(_)
             | Node::ConstTag(_)
+            | Node::DeclarationTag(_)
             | Node::DebugTag(_)
             | Node::SvelteHead(_)
             | Node::SvelteFragmentLegacy(_)
@@ -190,8 +191,18 @@ impl<'a> ServerCodegen<'a> {
     pub(crate) fn emit_fragment_hoisted(&mut self, id: FragmentId) -> Result<()> {
         self.emit_fragment_titles(id)?;
         self.emit_fragment_const_tags_hoisted(id)?;
+        self.emit_fragment_declaration_tags(id)?;
         self.emit_fragment_snippets_debug_head(id)?;
         Ok(())
+    }
+
+    pub(crate) fn emit_fragment_declaration_tags(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+        let declaration_tags: Vec<NodeId> = node_ids
+            .into_iter()
+            .filter(|&nid| matches!(self.component.store.get(nid), Node::DeclarationTag(_)))
+            .collect();
+        self.emit_declaration_tags(&declaration_tags)
     }
 
     pub(crate) fn emit_fragment_const_tags_hoisted(&mut self, id: FragmentId) -> Result<()> {
@@ -202,8 +213,10 @@ impl<'a> ServerCodegen<'a> {
             .copied()
             .filter_map(|nid| match self.analysis.block_semantics(nid) {
                 BlockSemantics::ConstTag(sem) => {
-                    let is_async =
-                        !matches!(sem.async_kind, svelte_analyze::ConstTagAsyncKind::Sync);
+                    let is_async = !matches!(
+                        sem.async_kind,
+                        svelte_analyze::FragmentDeclarationAsyncKind::Sync
+                    );
                     Some((sem.order_rank, nid, is_async))
                 }
                 _ => None,
@@ -296,6 +309,7 @@ fn is_expression_tag(node: &Node) -> bool {
         | Node::RenderTag(_)
         | Node::HtmlTag(_)
         | Node::ConstTag(_)
+        | Node::DeclarationTag(_)
         | Node::DebugTag(_)
         | Node::KeyBlock(_)
         | Node::SvelteHead(_)
@@ -317,6 +331,7 @@ fn is_filtered_out(node: &Node, preserve_comments: bool) -> bool {
         Node::Comment(_) => !preserve_comments,
         Node::SnippetBlock(_)
         | Node::ConstTag(_)
+        | Node::DeclarationTag(_)
         | Node::DebugTag(_)
         | Node::SvelteHead(_)
         | Node::SvelteWindow(_)

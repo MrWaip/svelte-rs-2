@@ -58,6 +58,17 @@ impl StyleRule {
                 SimpleSelector::Global { args: None, .. }
             )
     }
+
+    pub fn is_global_block(&self) -> bool {
+        self.prelude.children.iter().any(|complex| {
+            complex.children.iter().any(|relative| {
+                matches!(
+                    relative.selectors.first(),
+                    Some(SimpleSelector::Global { args: None, .. })
+                )
+            })
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "css_empty_declaration",
+    "end": 34,
+    "severity": "error",
+    "start": 28
+  }
+]

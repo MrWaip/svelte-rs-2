@@ -1,0 +1,4 @@
+
+	div.svelte-u7wz8i {
+		p:where(.svelte-u7wz8i).x { color: green; }
+	}

@@ -1,0 +1,7 @@
+
+	.d.svelte-v8ftti + .e:where(.svelte-v8ftti) { color: green; }
+	.a.svelte-v8ftti + .b:where(.svelte-v8ftti) { color: green; }
+	.c.svelte-v8ftti + .f:where(.svelte-v8ftti) { color: green; }
+
+	/* no match */
+	

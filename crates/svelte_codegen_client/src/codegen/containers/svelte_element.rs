@@ -113,10 +113,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             "",
             svelte_el_fragment,
             child_ns,
-            FragmentAnchor::CallbackParam {
-                name: "$$anchor".to_string(),
-                append_inside: false,
-            },
+            FragmentAnchor::callback_param("$$anchor", false),
         );
         let mut inner_state = EmitState::new();
 
@@ -130,6 +127,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             } else {
                 None
             }
+        } else if attributes.is_empty()
+            && self.ctx.is_css_scoped(el_id)
+            && !self.ctx.css_hash().is_empty()
+        {
+            Some(String::new())
         } else {
             None
         };

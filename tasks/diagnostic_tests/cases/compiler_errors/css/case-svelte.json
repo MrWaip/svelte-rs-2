@@ -1,0 +1,8 @@
+[
+  {
+    "code": "css_expected_identifier",
+    "end": 25,
+    "severity": "error",
+    "start": 25
+  }
+]

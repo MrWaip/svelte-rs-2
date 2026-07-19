@@ -1,0 +1,5 @@
+
+	div.svelte-ldoo4m {
+		.x { animation: svelte-ldoo4m-test 1s; }
+	}
+	@keyframes svelte-ldoo4m-test { to { opacity: 1; } }

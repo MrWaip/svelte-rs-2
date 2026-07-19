@@ -459,10 +459,8 @@ impl<'src> Parser<'src> {
                 return None;
             }
 
-            match self.parse_complex_selector(inside_pseudo) {
-                Some(sel) => children.push(sel),
-                None => return None,
-            }
+            let sel = self.parse_complex_selector(inside_pseudo)?;
+            children.push(sel);
             let end = self.scanner.prev_end;
 
             self.scanner.skip_whitespace_and_comments();
@@ -543,8 +541,8 @@ impl<'src> Parser<'src> {
         loop {
             if self.scanner.is_at_end() {
                 self.recover(
-                    DiagnosticKind::CssSelectorInvalid,
-                    self.scanner.span_from(list_start),
+                    DiagnosticKind::CssExpectedIdentifier,
+                    self.scanner.span_at(),
                 );
                 return None;
             }
@@ -638,10 +636,8 @@ impl<'src> Parser<'src> {
 
                 TokenKind::LBracket => {
                     self.scanner.advance();
-                    match self.parse_attribute_selector_inner(start) {
-                        Some(attr) => rel.selectors.push(SimpleSelector::Attribute(attr)),
-                        None => return None,
-                    }
+                    let attr = self.parse_attribute_selector_inner(start)?;
+                    rel.selectors.push(SimpleSelector::Attribute(attr));
                 }
 
                 _ => {
@@ -949,25 +945,20 @@ impl<'src> Parser<'src> {
 
         let value = self.read_value();
 
-        if value.start == value.end {
-            let prop_text = self.scanner.source_text(property);
-            if !prop_text.starts_with("--") {
-                self.recover(
-                    DiagnosticKind::CssEmptyDeclaration,
-                    self.scanner.span_from(start),
-                );
-                self.skip_to_semicolon_or_block_end();
-                return None;
-            }
-        }
-
         let end = self.scanner.current_start();
 
         if !self.scanner.is_at(TokenKind::RBrace) && !self.scanner.eat(TokenKind::Semicolon) {
-            self.recover(
-                DiagnosticKind::CssExpectedToken { token: ";".into() },
-                self.scanner.span_from(start),
-            );
+            if self.scanner.is_at_end() {
+                self.recover(
+                    DiagnosticKind::UnexpectedEndOfFile,
+                    self.scanner.span_from(start),
+                );
+            } else {
+                self.recover(
+                    DiagnosticKind::CssExpectedToken { token: ";".into() },
+                    self.scanner.span_from(start),
+                );
+            }
             self.skip_to_semicolon_or_block_end();
             return None;
         }

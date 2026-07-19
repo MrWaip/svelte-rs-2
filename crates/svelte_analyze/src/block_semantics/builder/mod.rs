@@ -1,6 +1,7 @@
 mod await_;
 mod common;
 mod const_tag;
+mod declaration_tag;
 mod each;
 mod html_tag;
 mod if_;

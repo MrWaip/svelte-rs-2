@@ -24,7 +24,7 @@ impl<'a> Builder<'a> {
     pub fn var_uninit_stmt(&self, name: &str) -> Statement<'a> {
         let pattern = self
             .ast
-            .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
+            .binding_pattern_binding_identifier(SPAN, self.alloc_str(name));
         let decl = self.ast.variable_declarator(
             SPAN,
             VariableDeclarationKind::Var,
@@ -45,7 +45,7 @@ impl<'a> Builder<'a> {
     pub fn let_stmt(&self, name: &str) -> Statement<'a> {
         let pattern = self
             .ast
-            .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
+            .binding_pattern_binding_identifier(SPAN, self.alloc_str(name));
         let decl = self.ast.variable_declarator(
             SPAN,
             VariableDeclarationKind::Let,
@@ -73,7 +73,7 @@ impl<'a> Builder<'a> {
             .map(|name| {
                 let pattern = self
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
+                    .binding_pattern_binding_identifier(SPAN, self.alloc_str(name));
                 self.ast.variable_declarator(
                     SPAN,
                     VariableDeclarationKind::Var,
@@ -113,7 +113,7 @@ impl<'a> Builder<'a> {
             .map(|name| {
                 let pattern = self
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
+                    .binding_pattern_binding_identifier(SPAN, self.alloc_str(name));
                 self.ast.variable_declarator(
                     SPAN,
                     VariableDeclarationKind::Let,
@@ -143,7 +143,7 @@ impl<'a> Builder<'a> {
             .map(|(name, init)| {
                 let pattern = self
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
+                    .binding_pattern_binding_identifier(SPAN, self.alloc_str(name));
                 self.ast
                     .variable_declarator(SPAN, kind, pattern, NONE, Some(init), false)
             })
@@ -160,7 +160,7 @@ impl<'a> Builder<'a> {
             .map(|name| {
                 let pattern = self
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
+                    .binding_pattern_binding_identifier(SPAN, self.alloc_str(name));
                 Some(pattern)
             })
             .collect();
@@ -191,7 +191,7 @@ impl<'a> Builder<'a> {
             .map(|name| {
                 let pattern = self
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(name.as_str()));
+                    .binding_pattern_binding_identifier(SPAN, self.alloc_str(name.as_str()));
                 Some(pattern)
             })
             .collect();
@@ -224,13 +224,13 @@ impl<'a> Builder<'a> {
         let properties: Vec<_> = names
             .iter()
             .map(|name| {
-                let atom = self.ast.atom(name.as_str());
+                let atom = name.as_str();
                 let key = ast::PropertyKey::StaticIdentifier(
-                    self.alloc(self.ast.identifier_name(SPAN, atom)),
+                    self.alloc(self.ast.identifier_name(SPAN, self.alloc_str(atom))),
                 );
                 let value = self
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ast.atom(name.as_str()));
+                    .binding_pattern_binding_identifier(SPAN, self.alloc_str(name.as_str()));
                 self.ast.binding_property(SPAN, key, value, true, false)
             })
             .collect();
@@ -259,9 +259,9 @@ impl<'a> Builder<'a> {
         let properties: Vec<_> = names
             .iter()
             .map(|name| {
-                let atom = self.ast.atom(name.as_str());
+                let atom = name.as_str();
                 let key = ast::PropertyKey::StaticIdentifier(
-                    self.alloc(self.ast.identifier_name(SPAN, atom)),
+                    self.alloc(self.ast.identifier_name(SPAN, self.alloc_str(atom))),
                 );
                 let value = self.rid_expr(name);
                 self.ast.object_property_kind_object_property(
@@ -353,7 +353,7 @@ impl<'a> Builder<'a> {
     ) -> Statement<'a> {
         let pattern = self
             .ast
-            .binding_pattern_binding_identifier(SPAN, self.ast.atom(name));
+            .binding_pattern_binding_identifier(SPAN, self.alloc_str(name));
         let decl = self
             .ast
             .variable_declarator(SPAN, kind, pattern, NONE, Some(init), false);
@@ -392,9 +392,9 @@ impl<'a> Builder<'a> {
                 AssignmentTarget::ComputedMemberExpression(self.alloc(m))
             }
             AssignLeft::Ident(name) => {
-                let atom = self.ast.atom(&name);
+                let atom = &name;
                 AssignmentTarget::AssignmentTargetIdentifier(
-                    self.alloc(self.ast.identifier_reference(SPAN, atom)),
+                    self.alloc(self.ast.identifier_reference(SPAN, self.alloc_str(atom))),
                 )
             }
         };

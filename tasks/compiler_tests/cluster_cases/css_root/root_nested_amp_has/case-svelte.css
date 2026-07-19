@@ -1,0 +1,4 @@
+
+	:root {
+		&:has(h1.svelte-el5nsy) { color: green; }
+	}

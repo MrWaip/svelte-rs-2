@@ -17,3 +17,61 @@ compiler_case!(
     runes_bindable_select,
     "select_value_dispatch/runes_bindable_select"
 );
+
+compiler_case!(
+    attr_select_static_string,
+    "select_value_dispatch/attr_select_static_string"
+);
+compiler_case!(
+    attr_select_boolean,
+    "select_value_dispatch/attr_select_boolean"
+);
+compiler_case!(
+    attr_select_multiple_static,
+    "select_value_dispatch/attr_select_multiple_static"
+);
+compiler_case!(
+    attr_option_boolean,
+    "select_value_dispatch/attr_option_boolean"
+);
+compiler_case!(
+    attr_select_dynamic_guard,
+    "select_value_dispatch/attr_select_dynamic_guard"
+);
+compiler_case!(
+    attr_option_static_string_guard,
+    "select_value_dispatch/attr_option_static_string_guard"
+);
+compiler_case!(
+    attr_option_dynamic_guard,
+    "select_value_dispatch/attr_option_dynamic_guard"
+);
+compiler_case!(
+    attr_option_synthetic_guard,
+    "select_value_dispatch/attr_option_synthetic_guard"
+);
+compiler_case!(
+    attr_select_spread_guard,
+    "select_value_dispatch/attr_select_spread_guard"
+);
+compiler_case!(
+    attr_input_group_boolean,
+    "select_value_dispatch/attr_input_group_boolean",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
+compiler_case!(
+    attr_input_checked_static_string,
+    "select_value_dispatch/attr_input_checked_static_string"
+);
+compiler_case!(
+    attr_input_checked_boolean,
+    "select_value_dispatch/attr_input_checked_boolean"
+);
+compiler_case!(
+    attr_input_group_static_string_guard,
+    "select_value_dispatch/attr_input_group_static_string_guard"
+);
+compiler_case!(
+    attr_input_group_dynamic_guard,
+    "select_value_dispatch/attr_input_group_dynamic_guard"
+);

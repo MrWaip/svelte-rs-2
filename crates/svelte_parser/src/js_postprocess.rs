@@ -1,21 +1,19 @@
-use std::cell::Cell;
 use std::mem;
 
-use oxc_allocator::{Allocator, Box as OxcBox};
+use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     AccessorProperty, ArrowFunctionExpression, AssignmentTarget, BindingPattern, BlockStatement,
     CallExpression, CatchParameter, ChainElement, ChainExpression, Class, ClassBody, ClassElement,
-    DoWhileStatement, EmptyStatement, Expression, ForInStatement, ForOfStatement, ForStatement,
-    FormalParameter, FormalParameterRest, FormalParameters, Function, FunctionBody, FunctionType,
-    IfStatement, ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionType, NewExpression,
-    NullLiteral, Program, PropertyDefinition, PropertyDefinitionType, SimpleAssignmentTarget,
-    Statement, StaticBlock, TSModuleBlock, TSModuleDeclaration, TSType, TSTypeAnnotation,
-    TSTypeParameterDeclaration, TSTypeParameterInstantiation, TaggedTemplateExpression,
-    VariableDeclarator, WhileStatement, match_member_expression,
+    DoWhileStatement, Expression, ForInStatement, ForOfStatement, ForStatement, FormalParameter,
+    FormalParameterRest, FormalParameters, Function, FunctionBody, FunctionType, IfStatement,
+    ImportDeclarationSpecifier, MethodDefinition, MethodDefinitionType, NewExpression, Program,
+    PropertyDefinition, PropertyDefinitionType, SimpleAssignmentTarget, Statement, StaticBlock,
+    TSModuleBlock, TSModuleDeclaration, TSType, TSTypeAnnotation, TSTypeParameterDeclaration,
+    TSTypeParameterInstantiation, TaggedTemplateExpression, VariableDeclarator, WhileStatement,
+    match_member_expression,
 };
 use oxc_ast_visit::{VisitMut, walk_mut};
 use oxc_span::{GetSpan, SPAN, Span};
-use oxc_syntax::node::NodeId;
 use oxc_syntax::scope::ScopeFlags;
 
 pub(crate) struct JsPostprocessor<'a> {
@@ -34,13 +32,8 @@ impl<'a> JsPostprocessor<'a> {
     }
 
     fn dummy_expr(&self) -> Expression<'a> {
-        Expression::NullLiteral(OxcBox::new_in(
-            NullLiteral {
-                span: SPAN,
-                node_id: Cell::new(NodeId::DUMMY),
-            },
-            self.alloc,
-        ))
+        let ast = oxc_ast::AstBuilder::new(self.alloc);
+        ast.expression_null_literal(SPAN)
     }
 
     fn take_expr(&self, expr: &mut Expression<'a>) -> Expression<'a> {
@@ -158,13 +151,8 @@ impl<'a> JsPostprocessor<'a> {
     fn replace_ts_only_body_with_empty(&self, stmt: &mut Statement<'a>) {
         if is_pure_ts_type_statement(stmt) {
             let span = stmt.span();
-            *stmt = Statement::EmptyStatement(OxcBox::new_in(
-                EmptyStatement {
-                    span,
-                    node_id: Cell::new(NodeId::DUMMY),
-                },
-                self.alloc,
-            ));
+            let ast = oxc_ast::AstBuilder::new(self.alloc);
+            *stmt = Statement::EmptyStatement(ast.alloc(ast.empty_statement(span)));
         }
     }
 
@@ -336,6 +324,7 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
                 }
                 ClassElement::MethodDefinition(method) => {
                     method.r#type != MethodDefinitionType::TSAbstractMethodDefinition
+                        && method.value.body.is_some()
                 }
                 ClassElement::TSIndexSignature(_) => false,
                 _ => true,
@@ -643,19 +632,17 @@ fn relocate_orphaned_comments(program: &mut Program<'_>) {
         if stmt_starts.binary_search(&comment.attached_to).is_ok() {
             return true;
         }
-        let pos = comment.span.end;
-        let nested = stmt_spans
-            .iter()
-            .any(|&(start, end)| start <= comment.span.start && comment.span.end <= end);
+        let container = stmt_starts.partition_point(|&start| start <= comment.span.start);
+        let nested = container > 0 && stmt_spans[container - 1].1 >= comment.span.end;
         if nested {
             return false;
         }
-        match stmt_starts.iter().find(|&&s| s >= pos).copied() {
-            Some(next_start) => {
-                comment.attached_to = next_start;
-                true
-            }
-            None => false,
+        let next = stmt_starts.partition_point(|&start| start < comment.span.end);
+        if next < stmt_starts.len() {
+            comment.attached_to = stmt_starts[next];
+            true
+        } else {
+            false
         }
     });
 }

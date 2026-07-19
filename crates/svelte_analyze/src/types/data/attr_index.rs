@@ -1,48 +1,51 @@
 use compact_str::CompactString;
-use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use std::borrow::Cow;
 use svelte_ast::{Attribute, NodeId};
 
+const INLINE_ATTRS: usize = 8;
+
 pub struct AttrIndex {
-    by_name: FxHashMap<CompactString, SmallVec<[u16; 1]>>,
+    entries: SmallVec<[(CompactString, u16); INLINE_ATTRS]>,
 }
 
 impl AttrIndex {
     pub fn build(attrs: &[Attribute], source: &str) -> Self {
-        let mut by_name: FxHashMap<CompactString, SmallVec<[u16; 1]>> =
-            FxHashMap::with_capacity_and_hasher(attrs.len(), Default::default());
+        let mut entries: SmallVec<[(CompactString, u16); INLINE_ATTRS]> = SmallVec::new();
         for (i, attr) in attrs.iter().enumerate() {
             if let Some(name) = attr_index_name(attr, source) {
-                by_name.entry(name).or_default().push(i as u16);
+                entries.push((name, i as u16));
             }
         }
-        Self { by_name }
+        Self { entries }
     }
 
     #[inline]
     pub fn has(&self, name: &str) -> bool {
-        self.by_name.contains_key(lookup_key(name).as_ref())
+        self.entries
+            .iter()
+            .any(|(n, _)| n.eq_ignore_ascii_case(name))
     }
 
     #[inline]
     pub fn first<'a>(&self, attrs: &'a [Attribute], name: &str) -> Option<&'a Attribute> {
-        let pos = *self.by_name.get(lookup_key(name).as_ref())?.first()?;
-        Some(&attrs[pos as usize])
+        self.entries
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, pos)| &attrs[*pos as usize])
     }
 
-    pub fn all<'idx, 'attrs>(
-        &'idx self,
+    pub fn all<'attrs>(
+        &self,
         attrs: &'attrs [Attribute],
         name: &str,
-    ) -> impl Iterator<Item = &'attrs Attribute> + 'idx
-    where
-        'attrs: 'idx,
-    {
-        self.by_name
-            .get(lookup_key(name).as_ref())
-            .into_iter()
-            .flat_map(move |positions| positions.iter().map(move |&pos| &attrs[pos as usize]))
+    ) -> impl Iterator<Item = &'attrs Attribute> {
+        let positions: SmallVec<[u16; 4]> = self
+            .entries
+            .iter()
+            .filter(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, pos)| *pos)
+            .collect();
+        positions.into_iter().map(move |pos| &attrs[pos as usize])
     }
 
     #[inline]
@@ -68,18 +71,5 @@ fn attr_index_name(attr: &Attribute, _source: &str) -> Option<CompactString> {
         | Attribute::AnimateDirective(_)
         | Attribute::AttachTag(_) => return None,
     };
-    Some(if n.bytes().any(|b| b.is_ascii_uppercase()) {
-        CompactString::from(n.to_ascii_lowercase())
-    } else {
-        CompactString::from(n)
-    })
-}
-
-#[inline]
-fn lookup_key(name: &str) -> Cow<'_, str> {
-    if name.bytes().any(|b| b.is_ascii_uppercase()) {
-        Cow::Owned(name.to_ascii_lowercase())
-    } else {
-        Cow::Borrowed(name)
-    }
+    Some(CompactString::from(n))
 }

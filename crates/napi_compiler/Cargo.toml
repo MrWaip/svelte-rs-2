@@ -10,10 +10,11 @@ workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2.16.16", default-features = false, features = ["napi8"] }
-napi-derive = "2.16.13"
+napi = { version = "3", features = ["napi8"] }
+napi-derive = "3"
 svelte_compiler = { workspace = true }
 svelte_diagnostics = { workspace = true }
+mimalloc = { version = "0.1", features = ["local_dynamic_tls"] }
 
 [build-dependencies]
-napi-build = "2.1.4"
+napi-build = "2"

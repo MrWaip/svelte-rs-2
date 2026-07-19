@@ -1,0 +1,8 @@
+[
+  {
+    "code": "unexpected_eof",
+    "end": 2,
+    "severity": "error",
+    "start": 2
+  }
+]

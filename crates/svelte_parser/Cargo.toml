@@ -27,4 +27,4 @@ memchr = "2"
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 oxc_ast = { workspace = true, features = ["serialize"] }
-oxc_estree = { version = "0.117.0", features = ["serialize"] }
+oxc_estree = { version = "0.140.0", features = ["serialize"] }

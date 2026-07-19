@@ -40,7 +40,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             } => {
                 let frag_name = match state.pending_anchor_idents.as_ref() {
                     Some((f, _)) => f.clone(),
-                    None => self.ctx.state.gen_ident("fragment"),
+                    None => self.ctx.state.gen_ident_compact("fragment"),
                 };
                 state.root_var = Some(frag_name.clone());
                 ChildAnchor::FragmentFirstChild {
@@ -225,8 +225,8 @@ fn emit_child_node<'a, 'ctx>(
                 state.template.pop_element();
 
                 let expr = make_sibling_expr(cg, prev, *skipped, initial, false)?;
-                let node_name = match state.pending_anchor_idents.take() {
-                    Some((_, n)) if !n.is_empty() => n,
+                let node_name: String = match state.pending_anchor_idents.take() {
+                    Some((_, n)) if !n.is_empty() => n.into(),
                     _ => cg.ctx.state.gen_ident("node"),
                 };
                 let b = &cg.ctx.state.b;
@@ -240,8 +240,8 @@ fn emit_child_node<'a, 'ctx>(
 
             state.template.push_comment(None);
             let expr = make_sibling_expr(cg, prev, *skipped, initial, false)?;
-            let node_name = match state.pending_anchor_idents.take() {
-                Some((_, n)) if !n.is_empty() => n,
+            let node_name: String = match state.pending_anchor_idents.take() {
+                Some((_, n)) if !n.is_empty() => n.into(),
                 _ => cg.ctx.state.gen_ident("node"),
             };
             let b = &cg.ctx.state.b;
@@ -267,8 +267,8 @@ fn flush_sibling_var<'a, 'ctx>(
     name_hint: &str,
 ) -> Result<String> {
     let expr = make_sibling_expr(cg, prev, *skipped, initial, is_text)?;
-    let reserved_node = if name_hint == "node" {
-        state.pending_anchor_idents.take().map(|(_, n)| n)
+    let reserved_node: Option<String> = if name_hint == "node" {
+        state.pending_anchor_idents.take().map(|(_, n)| n.into())
     } else {
         None
     };

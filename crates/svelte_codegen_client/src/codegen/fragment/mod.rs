@@ -5,6 +5,7 @@ mod prepare;
 mod process_children;
 mod types;
 
+use compact_str::CompactString;
 use oxc_ast::ast::{Expression, Statement};
 use std::iter::empty;
 use svelte_analyze::{AttributeSemantics, ComponentCssPropValue, SnippetPlacement, Volatility};
@@ -46,7 +47,7 @@ fn single_fragment_anchor<'a>(ctx: &FragmentCtx<'a>) -> Result<ConcatenationAnch
             })
         }
         FragmentAnchor::Child { parent_var } => Ok(ConcatenationAnchor::SingleFragmentChild {
-            parent_var: parent_var.clone(),
+            parent_var: parent_var.to_string(),
         }),
         FragmentAnchor::ElementContentChild { .. } => {
             CodegenError::unexpected_child("Single", "ElementContentChild anchor")
@@ -129,7 +130,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         {
-            use svelte_analyze::{BlockSemantics, ConstTagAsyncKind};
+            use svelte_analyze::{BlockSemantics, FragmentDeclarationAsyncKind};
             let recording_slot_const_tags = state.legacy_slot_record_const_tag_end;
             if recording_slot_const_tags {
                 state.legacy_slot_const_tag_start = Some(state.init.len());
@@ -141,10 +142,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         return false;
                     };
                     match s.async_kind {
-                        ConstTagAsyncKind::Awaited { .. } | ConstTagAsyncKind::Deferred { .. } => {
-                            true
-                        }
-                        ConstTagAsyncKind::Sync => false,
+                        FragmentDeclarationAsyncKind::Awaited { .. }
+                        | FragmentDeclarationAsyncKind::Deferred { .. } => true,
+                        FragmentDeclarationAsyncKind::Sync => false,
                     }
                 });
             let mut ordered: SmallVec<[NodeId; 4]> = bucket.const_tags.iter().copied().collect();
@@ -166,6 +166,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.legacy_slot_const_tag_end = Some(state.init.len());
             }
         }
+
+        let declaration_tag_ids: SmallVec<[NodeId; 2]> =
+            bucket.declaration_tags.iter().copied().collect();
+        self.emit_declaration_tags(state, &declaration_tag_ids)?;
 
         let multi_first_is_block = matches!(
             &strategy,
@@ -267,8 +271,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         if let Some(insert_idx) = pre_emit_insert_idx {
-            let frag = self.ctx.state.gen_ident("fragment");
-            let node = self.ctx.state.gen_ident("node");
+            let frag = self.ctx.state.gen_ident_compact("fragment");
+            let node = self.ctx.state.gen_ident_compact("node");
             let b = &self.ctx.state.b;
             let stmt = b.var_stmt(&frag, b.call_expr("$.comment", empty::<Arg<'a, '_>>()));
             state.init.insert(insert_idx, stmt);
@@ -280,11 +284,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let special_block_end = state.init.len();
 
         if needs_anchor_reserve && !pre_emit_frag_pending && !state.suppress_root_finalize {
-            let frag = self.ctx.state.gen_ident("fragment");
+            let frag = self.ctx.state.gen_ident_compact("fragment");
             if skip_node_reserve {
-                state.pending_anchor_idents = Some((frag, String::new()));
+                state.pending_anchor_idents = Some((frag, CompactString::new("")));
             } else {
-                let node = self.ctx.state.gen_ident("node");
+                let node = self.ctx.state.gen_ident_compact("node");
                 state.pending_anchor_idents = Some((frag, node));
             }
         }
@@ -379,7 +383,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         "non-Child anchor for controlled each",
                     );
                 };
-                let parent_name = parent_var.clone();
+                let parent_name = parent_var.to_string();
                 let sem = match self.ctx.query.analysis.block_semantics(id) {
                     svelte_analyze::BlockSemantics::Each(s) => s.clone(),
                     _ => {
@@ -627,10 +631,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn refine_strategy(&self, strategy: ContentStrategy, ctx: &FragmentCtx<'a>) -> ContentStrategy {
         match &strategy {
-            ContentStrategy::SingleElement(id) | ContentStrategy::SingleBlock(id) => {
-                if self.is_css_wrapped_component(*id) {
-                    return ContentStrategy::CssWrappedComponent(*id);
-                }
+            ContentStrategy::SingleElement(id) | ContentStrategy::SingleBlock(id)
+                if self.is_css_wrapped_component(*id) =>
+            {
+                return ContentStrategy::CssWrappedComponent(*id);
             }
             _ => {}
         }
@@ -731,10 +735,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let anchor_ident = match &ctx.anchor {
             FragmentAnchor::Root => "$$anchor".to_string(),
-            FragmentAnchor::CallbackParam { name, .. } => name.clone(),
+            FragmentAnchor::CallbackParam { name, .. } => name.to_string(),
             FragmentAnchor::Child { parent_var }
-            | FragmentAnchor::ElementContentChild { parent_var } => parent_var.clone(),
-            FragmentAnchor::SiblingVar { var } => var.clone(),
+            | FragmentAnchor::ElementContentChild { parent_var } => parent_var.to_string(),
+            FragmentAnchor::SiblingVar { var } => var.to_string(),
         };
         state.init.push(
             self.ctx
@@ -847,9 +851,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let prev_init_len = state.init.len();
         let mut wrapper_ctx = ctx.clone();
-        wrapper_ctx.anchor = FragmentAnchor::SiblingVar {
-            var: format!("{}.lastChild", node_ident),
-        };
+        wrapper_ctx.anchor = FragmentAnchor::sibling_var(format!("{}.lastChild", node_ident));
         wrapper_ctx.namespace = namespace;
         self.emit_component_inline_memo(state, &wrapper_ctx, component_id, memo_counter)?;
         let mut component_stmts: Vec<_> = state.init.drain(prev_init_len..).collect();
@@ -997,11 +999,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         let tpl_name = self.hoist_template_dedup(dedup_key, from_html);
 
-        let var_name = match state.root_var.as_deref() {
-            Some(name) => name.to_string(),
+        let var_name = match state.root_var.take() {
+            Some(name) => name,
             None => match strategy_kind {
-                StrategyKind::Multi => self.ctx.state.gen_ident("fragment"),
-                StrategyKind::SingleElement => self.ctx.state.gen_ident("root"),
+                StrategyKind::Multi => self.ctx.state.gen_ident_compact("fragment"),
+                StrategyKind::SingleElement => self.ctx.state.gen_ident_compact("root"),
             },
         };
 
@@ -1067,7 +1069,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     b.call_expr("$.text", [Arg::StrRef(text)])
                 };
                 state.init.push(b.var_stmt(&name, call));
-                state.root_var = Some(name);
+                state.root_var = Some(CompactString::from(name.as_str()));
             }
             FragmentAnchor::CallbackParam {
                 append_inside: true,
@@ -1081,7 +1083,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     b.call_expr("$.text", [Arg::StrRef(text)])
                 };
                 state.init.push(b.var_stmt(&name, call));
-                state.root_var = Some(name);
+                state.root_var = Some(CompactString::from(name.as_str()));
             }
             FragmentAnchor::Child { .. } | FragmentAnchor::ElementContentChild { .. } => {
                 let html = ctx.static_html_of(part).unwrap_or(text);
@@ -1116,7 +1118,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             FragmentAnchor::Root | FragmentAnchor::CallbackParam { .. } => {
                 if is_html_element {
                     let el_name = self.emit_element(state, ctx, el_id, None)?;
-                    state.root_var = Some(el_name);
+                    state.root_var = Some(CompactString::from(el_name.as_str()));
                 } else {
                     self.emit_element(state, ctx, el_id, None)?;
                 }

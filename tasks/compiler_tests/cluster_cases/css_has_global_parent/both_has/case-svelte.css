@@ -1,0 +1,5 @@
+
+	.foo {
+		.svelte-1thlyq7:has(x:where(.svelte-1thlyq7)) { color: green; }
+		&:has(x.svelte-1thlyq7) { color: green; }
+	}

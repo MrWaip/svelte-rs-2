@@ -8,11 +8,15 @@ use compiler_tests::sourcemap_invariants::assert_sourcemap_invariants;
 use compiler_tests::{compiler_case, compiler_module_case};
 use pretty_assertions::assert_eq;
 use svelte_compiler::{GenerateMode, compile, compile_module};
-use test_support::strip_reference_only_css_markers;
+use test_support::{canonicalize_injected_css_in_js, strip_reference_only_css_markers};
 
 fn normalize_css(s: &str) -> String {
     let stripped = strip_reference_only_css_markers(s);
     stripped.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn normalize_js(js: &str) -> String {
+    canonicalize_injected_css_in_js(js)
 }
 
 fn assert_compiler_prod(case: &str) {
@@ -31,7 +35,11 @@ fn assert_compiler_prod(case: &str) {
         .write_all(js.as_bytes())
         .expect("test invariant");
 
-    assert_eq!(js, expected_js, "[{case}] JS mismatch");
+    assert_eq!(
+        normalize_js(&js),
+        normalize_js(&expected_js),
+        "[{case}] JS mismatch"
+    );
 
     if let Some(map) = js_output.map.as_ref() {
         assert_sourcemap_invariants(case, &input, map, svelte_compiler::SourcemapKind::Default);
@@ -67,7 +75,11 @@ fn assert_compiler_dev(case: &str) {
         .expect("test invariant")
         .write_all(dev_js.as_bytes())
         .expect("test invariant");
-    assert_eq!(dev_js, expected_dev_js, "[{case}] dev JS mismatch");
+    assert_eq!(
+        normalize_js(&dev_js),
+        normalize_js(&expected_dev_js),
+        "[{case}] dev JS mismatch"
+    );
 }
 
 fn assert_compiler_ssr(case: &str) {
@@ -85,7 +97,11 @@ fn assert_compiler_ssr(case: &str) {
         .expect("test invariant")
         .write_all(server_js.as_bytes())
         .expect("test invariant");
-    assert_eq!(server_js, expected_server_js, "[{case}] server JS mismatch");
+    assert_eq!(
+        normalize_js(&server_js),
+        normalize_js(&expected_server_js),
+        "[{case}] server JS mismatch"
+    );
 }
 
 fn assert_compiler_ssr_dev(case: &str) {
@@ -105,7 +121,8 @@ fn assert_compiler_ssr_dev(case: &str) {
         .write_all(server_js.as_bytes())
         .expect("test invariant");
     assert_eq!(
-        server_js, expected_server_js,
+        normalize_js(&server_js),
+        normalize_js(&expected_server_js),
         "[{case}] server dev JS mismatch"
     );
 }
@@ -132,7 +149,7 @@ compiler_case!(css_scope_spread_attribute);
 
 compiler_case!(css_unused_external);
 
-compiler_case!(css_unused_injected, [prod, dev_todo, ssr, ssr_dev_todo]);
+compiler_case!(css_unused_injected);
 
 compiler_case!(css_nested_style);
 
@@ -252,14 +269,11 @@ compiler_case!(diagnose_legacy_const_destructure_keeps_siblings);
 
 compiler_case!(legacy_const_member_mutation_through_ts_non_null);
 
-compiler_case!(
-    css_injected_append_styles_with_stores_order,
-    [prod, dev_todo, ssr, ssr_dev_todo]
-);
+compiler_case!(css_injected_append_styles_with_stores_order);
 
 compiler_case!(css_scoped_basic);
 
-compiler_case!(css_injected, [prod, dev_todo, ssr, ssr_dev_todo]);
+compiler_case!(css_injected);
 
 compiler_case!(css_global_basic);
 
@@ -2207,7 +2221,7 @@ compiler_case!(diagnose_svelte_fragment_let_inside_named_slot_component);
 
 compiler_case!(
     diagnose_svelte_component_css_custom_prop_wrapper,
-    [prod, dev_todo]
+    [prod, dev]
 );
 
 compiler_case!(diagnose_component_prop_computed_member_getter);

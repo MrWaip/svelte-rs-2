@@ -4,8 +4,7 @@ generate:
 
 # Rebuild napi in release and benchmark our compiler vs svelte/compiler across all .svelte files
 bench-compare:
-    cargo build --release -p napi_compiler
-    node packages/svelte-rs2/scripts/stage-native-dev.mjs
+    npm run --prefix packages/svelte-rs2 build:release
     node tasks/compiler_bench/compare.mjs
 
 # Run all diagnostic integration tests (aggregated summary via nextest)
@@ -111,25 +110,20 @@ playground:
 
 # Build the debug addon, wire it into the local package, and run the JS smoke test
 npm-smoke:
-    cargo build -p napi_compiler
-    node packages/svelte-rs2/scripts/prepare-local-main-package.mjs
+    npm run --prefix packages/svelte-rs2 build
     node packages/svelte-rs2/scripts/smoke.mjs
 
 # Build production-like local npm tarballs for testing in a consumer app
 npm-build:
-    cargo build -p napi_compiler --release
-    npm run --prefix packages/svelte-rs2 prepare-platform-package
+    npm run --prefix packages/svelte-rs2 build:release
+    node_modules/.bin/napi create-npm-dirs --package-json-path packages/svelte-rs2/package.json --npm-dir packages/svelte-rs2/npm
+    node_modules/.bin/napi artifacts --package-json-path packages/svelte-rs2/package.json --output-dir packages/svelte-rs2/compiler/native --npm-dir packages/svelte-rs2/npm
     npm pack ./packages/svelte-rs2 --silent
-    npm pack ./packages/svelte-rs2-linux-x64-gnu --silent
-    npm pack ./packages/svelte-rs2-linux-arm64-gnu --silent
-    npm pack ./packages/svelte-rs2-darwin-arm64 --silent
-    npm pack ./packages/svelte-rs2-darwin-x64 --silent
 
-# Build the native addon and stage it into the local dev path of the main package (shared by sweep)
+# Build the native addon and stage it into the local dev path of the main package
 build-native:
-    cargo build -p napi_compiler --release
-    node packages/svelte-rs2/scripts/stage-native-dev.mjs
+    npm run --prefix packages/svelte-rs2 build:release
 
-# Build the native addon, install the workspace from root, and run the sweep against a pathname (extra flags: --dry-run --dev --ssr --print-diffs)
-sweep-run pathname *flags: build-native
-    node packages/svelte-rs2-sweep/cli.mjs {{pathname}} {{flags}}
+# Parity-sweep a directory: our compiler vs svelte/compiler across client+server × dev+prod, always dry-run. Flags: --mode=auto|runes|legacy --chunk=N (default auto) --print-diffs --out=<file>
+sweep-run pathname *flags:
+    cargo run --profile sweep -p sweep -- {{pathname}} {{flags}}

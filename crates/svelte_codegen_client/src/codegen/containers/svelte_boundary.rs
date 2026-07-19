@@ -98,10 +98,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let inner_ctx = ctx.child_of_block(
             self.ctx,
             boundary.fragment,
-            FragmentAnchor::CallbackParam {
-                name: "$$anchor".to_string(),
-                append_inside: false,
-            },
+            FragmentAnchor::callback_param("$$anchor", false),
         );
 
         let const_tag_ids: Vec<NodeId> = self

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "element_invalid_closing_tag",
+    "end": 38,
+    "severity": "error",
+    "start": 38
+  }
+]

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "css_expected_identifier",
+    "end": 9,
+    "severity": "error",
+    "start": 9
+  }
+]

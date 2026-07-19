@@ -45,7 +45,7 @@ impl<'a> Builder<'a> {
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
         span: Span,
     ) -> CallExpression<'a> {
-        let ident = self.ast.expression_identifier(SPAN, self.ast.atom(callee));
+        let ident = self.ast.expression_identifier(SPAN, self.alloc_str(callee));
         let args = args.into_iter().map(|a| self.arg_to_argument(a));
         self.ast
             .call_expression(span, ident, NONE, self.ast.vec_from_iter(args), false)
@@ -64,7 +64,7 @@ impl<'a> Builder<'a> {
         callee: &str,
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
     ) -> Expression<'a> {
-        let ident = self.ast.expression_identifier(SPAN, self.ast.atom(callee));
+        let ident = self.ast.expression_identifier(SPAN, self.alloc_str(callee));
         let args = args.into_iter().map(|a| self.arg_to_argument(a));
         Expression::NewExpression(self.alloc(self.ast.new_expression(
             SPAN,
@@ -130,7 +130,7 @@ impl<'a> Builder<'a> {
         member: &str,
         args: impl IntoIterator<Item = Arg<'a, 'short>>,
     ) -> Expression<'a> {
-        let property = self.ast.identifier_name(SPAN, self.ast.atom(member));
+        let property = self.ast.identifier_name(SPAN, self.alloc_str(member));
         let callee_inner = self
             .ast
             .static_member_expression(SPAN, object, property, true);

@@ -25,14 +25,15 @@ pub use entry::{TransformScriptOutput, transform_script};
 pub use location::sanitize_location;
 pub use model::IgnoreQuery;
 
+use svelte_analyze::WarningCode;
 pub(crate) use svelte_analyze::{
     PROPS_IS_BINDABLE, PROPS_IS_IMMUTABLE, PROPS_IS_LAZY_INITIAL, PROPS_IS_RUNES, PROPS_IS_UPDATED,
 };
 
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, CallExpression, Class, ClassBody, Expression, ForOfStatement,
-    Function, FunctionBody, ObjectProperty, Statement, VariableDeclarator,
+    ArrowFunctionExpression, Class, ClassBody, Expression, ForOfStatement, Function, FunctionBody,
+    ObjectProperty, Statement, VariableDeclarator,
 };
 use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
@@ -103,7 +104,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
-            if !self.function_info_stack.is_empty() {
+            if !self.function_info_stack.is_empty() || self.rewrite_top_level_declarations {
                 self.rewrite_binding_declarations(stmts, ctx);
             }
             return;
@@ -124,17 +125,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             return;
         }
         self.process_statement_block(stmts);
-    }
-
-    fn enter_call_expression(
-        &mut self,
-        node: &mut CallExpression<'a>,
-        _ctx: &mut TraverseCtx<'a, ()>,
-    ) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
-        self.capture_call_label_name(node);
     }
 
     fn enter_class(&mut self, node: &mut Class<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
@@ -206,7 +196,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         if node.r#await
             && self.dev
             && self.experimental_async
-            && !self.is_in_ignored_stmt("await_reactivity_loss")
+            && !self.is_in_ignored_stmt(WarningCode::AwaitReactivityLoss)
         {
             use svelte_ast_builder::Arg;
             let right = self.b.move_expr(&mut node.right);
@@ -229,7 +219,12 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         match node {
             Expression::AssignmentExpression(_) => self.transform_assignment(node, ctx),
             Expression::UpdateExpression(_) => self.transform_update(node, ctx),
-            Expression::CallExpression(_) => self.rewrite_call_expression(node),
+            Expression::CallExpression(_) => {
+                if let Expression::CallExpression(call) = &*node {
+                    self.capture_call_label_name(call);
+                }
+                self.rewrite_call_expression(node);
+            }
             Expression::StaticMemberExpression(_) | Expression::ChainExpression(_) => {
                 self.rewrite_member_expression(node, ctx)
             }

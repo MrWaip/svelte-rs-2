@@ -1,0 +1,1 @@
+<svg><clipPath id="c"></clipPath><linearGradient id="g"></linearGradient></svg>

@@ -5,29 +5,29 @@ use svelte_ast_builder::Builder;
 
 use crate::runtime::dollar_member;
 
-pub fn rune_get<'a>(b: &Builder<'a>, name: &str) -> Expression<'a> {
+pub fn rune_get<'a>(b: &Builder<'a>, name: &'a str) -> Expression<'a> {
     let ast = b.ast;
     let callee = dollar_member(b, "get");
-    let arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(name)));
+    let arg = Argument::from(ast.expression_identifier(SPAN, name));
     ast.expression_call(SPAN, callee, NONE, ast.vec1(arg), false)
 }
 
-pub fn rune_safe_get<'a>(b: &Builder<'a>, name: &str) -> Expression<'a> {
+pub fn rune_safe_get<'a>(b: &Builder<'a>, name: &'a str) -> Expression<'a> {
     let ast = b.ast;
     let callee = dollar_member(b, "safe_get");
-    let arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(name)));
+    let arg = Argument::from(ast.expression_identifier(SPAN, name));
     ast.expression_call(SPAN, callee, NONE, ast.vec1(arg), false)
 }
 
 pub fn rune_set<'a>(
     b: &Builder<'a>,
-    name: &str,
+    name: &'a str,
     value: Expression<'a>,
     proxy: bool,
 ) -> Expression<'a> {
     let ast = b.ast;
     let callee = dollar_member(b, "set");
-    let name_arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(name)));
+    let name_arg = Argument::from(ast.expression_identifier(SPAN, name));
     let value_arg = Argument::from(value);
     if proxy {
         let true_arg = Argument::from(ast.expression_boolean_literal(SPAN, true));
@@ -49,10 +49,14 @@ pub fn rune_set<'a>(
     }
 }
 
-pub fn member_get_via_get<'a>(b: &Builder<'a>, signal_name: &str, prop: &str) -> Expression<'a> {
+pub fn member_get_via_get<'a>(
+    b: &Builder<'a>,
+    signal_name: &'a str,
+    prop: &'a str,
+) -> Expression<'a> {
     let ast = b.ast;
     let get_call = rune_get(b, signal_name);
-    let property = ast.identifier_name(SPAN, ast.atom(prop));
+    let property = ast.identifier_name(SPAN, prop);
     Expression::StaticMemberExpression(
         ast.alloc(ast.static_member_expression(SPAN, get_call, property, false)),
     )

@@ -1,0 +1,4 @@
+
+	.known.svelte-5xgcxy {
+		.a:where(.svelte-5xgcxy) { color: green; }
+	}

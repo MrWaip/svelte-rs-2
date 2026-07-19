@@ -16,6 +16,7 @@ pub struct CompileContext<'a, 'ctx> {
 #[derive(Default)]
 pub struct TransformOptions {
     pub dev: bool,
+    pub filename: String,
 }
 
 #[derive(Default)]
@@ -23,6 +24,7 @@ pub struct CodegenOptions {
     pub dev: bool,
     pub hmr: bool,
     pub experimental_async: bool,
+    pub disclose_version: bool,
     pub filename: String,
     pub sourcemap_kind: SourcemapKind,
 }

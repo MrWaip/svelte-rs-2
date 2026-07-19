@@ -1,0 +1,8 @@
+[
+  {
+    "code": "attribute_empty_shorthand",
+    "end": 6,
+    "severity": "error",
+    "start": 6
+  }
+]

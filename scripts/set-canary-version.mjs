@@ -12,25 +12,14 @@ if (!version) {
   throw new Error('Usage: node scripts/set-canary-version.mjs <version>');
 }
 
-const packageJsonPaths = [
-  'packages/svelte-rs2/package.json',
-  'packages/svelte-rs2-linux-x64-gnu/package.json',
-  'packages/svelte-rs2-darwin-arm64/package.json',
-  'packages/svelte-rs2-darwin-x64/package.json'
-];
+const filePath = path.resolve(repoRoot, 'packages/svelte-rs2/package.json');
+const pkg = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+pkg.version = version;
 
-for (const relPath of packageJsonPaths) {
-  const filePath = path.resolve(repoRoot, relPath);
-  const pkg = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  pkg.version = version;
-
-  if (relPath === 'packages/svelte-rs2/package.json') {
-    for (const depName of Object.keys(pkg.optionalDependencies ?? {})) {
-      pkg.optionalDependencies[depName] = version;
-    }
-  }
-
-  fs.writeFileSync(filePath, `${JSON.stringify(pkg, null, 2)}\n`);
+for (const depName of Object.keys(pkg.optionalDependencies ?? {})) {
+  pkg.optionalDependencies[depName] = version;
 }
 
-console.log(`Updated package versions to ${version}`);
+fs.writeFileSync(filePath, `${JSON.stringify(pkg, null, 2)}\n`);
+
+console.log(`Updated @mrwaip/svelte-rs2 version to ${version}`);

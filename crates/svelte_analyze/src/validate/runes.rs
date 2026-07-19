@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use std::mem;
 
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentPattern,
+    Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentPattern,
     AssignmentTarget, BindingPattern, CallExpression, Declaration, ExportDefaultDeclaration,
     ExportDefaultDeclarationKind, ExportSpecifier, Expression, ExpressionStatement, Function,
     IdentifierReference, ImportDeclarationSpecifier, MemberExpression, MethodDefinition,
@@ -12,7 +12,7 @@ use oxc_ast::ast::{
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
-    walk_export_default_declaration, walk_expression_statement, walk_function,
+    walk_export_default_declaration, walk_expression, walk_expression_statement, walk_function,
     walk_member_expression, walk_method_definition, walk_property_definition,
     walk_static_member_expression,
 };
@@ -79,15 +79,19 @@ pub(super) fn validate(
     data: &AnalysisData,
     program: &Program<'_>,
     runes: bool,
+    is_instance_script: bool,
     diags: &mut Vec<Diagnostic>,
 ) {
     validate_invalid_lifecycle_imports(program, runes, diags);
     if runes {
-        let mut v = RuneValidator::new(data, diags, true);
+        let mut v = RuneValidator::new(data, diags, is_instance_script);
         v.visit_program(program);
     }
     validate_state_referenced_locally_derived(data, program, diags);
     validate_rest_prop_illegal_access(data, program, diags);
+    if runes {
+        validate_rune_names(data, program, diags);
+    }
 }
 
 fn validate_invalid_lifecycle_imports(
@@ -102,6 +106,12 @@ fn validate_invalid_lifecycle_imports(
         let Statement::ImportDeclaration(import) = stmt else {
             continue;
         };
+        if import.source.value.as_str().starts_with("svelte/internal") {
+            diags.push(Diagnostic::error(
+                DiagnosticKind::ImportSvelteInternalForbidden,
+                Span::new(import.span.start, import.span.end),
+            ));
+        }
         if import.source.value.as_str() != "svelte" {
             continue;
         }
@@ -349,6 +359,29 @@ pub(super) fn validate_invalid_exports(
     }
 }
 
+pub(super) fn validate_default_export_state(
+    data: &AnalysisData,
+    program: &Program<'_>,
+    scope: ScopeId,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for stmt in &program.body {
+        let Statement::ExportDefaultDeclaration(export) = stmt else {
+            continue;
+        };
+        let ExportDefaultDeclarationKind::Identifier(id) = &export.declaration else {
+            continue;
+        };
+        let Some(sym_id) = data.scoping.find_binding(scope, id.name.as_str()) else {
+            continue;
+        };
+        let Some(kind) = export_kind_for_symbol(data, sym_id) else {
+            continue;
+        };
+        push_unique(diags, kind, Span::new(export.span.start, export.span.end));
+    }
+}
+
 fn declaration_export_kind(data: &AnalysisData, decl: &Declaration<'_>) -> Option<DiagnosticKind> {
     let Declaration::VariableDeclaration(var_decl) = decl else {
         return None;
@@ -559,42 +592,18 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
             return;
         };
 
-        if !self.is_instance_script {
-            match &sem {
-                DeclaratorSemantics::RuneProps => {
-                    self.diags.push(Diagnostic::error(
-                        DiagnosticKind::PropsInvalidPlacement,
-                        self.span(call.span),
-                    ));
-                }
-                DeclaratorSemantics::RuntimeRuneCall {
-                    kind: RuntimeRuneKind::PropsId,
-                } => {
-                    self.diags.push(Diagnostic::error(
-                        DiagnosticKind::PropsIdInvalidPlacement,
-                        self.span(call.span),
-                    ));
-                }
-                DeclaratorSemantics::RuntimeRuneCall {
-                    kind: RuntimeRuneKind::Host,
-                } => {
-                    if !call.arguments.is_empty() {
-                        self.diags.push(Diagnostic::error(
-                            DiagnosticKind::RuneInvalidArguments {
-                                rune: rune_name.into(),
-                            },
-                            self.span(call.span),
-                        ));
-                    } else {
-                        self.diags.push(Diagnostic::error(
-                            DiagnosticKind::HostInvalidPlacement,
-                            self.span(call.span),
-                        ));
-                    }
-                }
-                _ => {}
-            }
-            walk_call_expression(self, call);
+        if rune_name != "$inspect"
+            && call
+                .arguments
+                .iter()
+                .any(|arg| matches!(arg, Argument::SpreadElement(_)))
+        {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::RuneInvalidSpread {
+                    rune: rune_name.into(),
+                },
+                self.span(call.span),
+            ));
             return;
         }
 
@@ -669,7 +678,10 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
                 } else {
                     self.has_props_rune = true;
                 }
-                if !self.in_var_declarator_init || self.function_depth > 0 {
+                if !self.is_instance_script
+                    || !self.in_var_declarator_init
+                    || self.function_depth > 0
+                {
                     self.diags.push(Diagnostic::error(
                         DiagnosticKind::PropsInvalidPlacement,
                         self.span(call.span),
@@ -792,7 +804,7 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
                             },
                             self.span(call.span),
                         ));
-                    } else if !self.custom_element {
+                    } else if !self.is_instance_script || !self.custom_element {
                         self.diags.push(Diagnostic::error(
                             DiagnosticKind::HostInvalidPlacement,
                             self.span(call.span),
@@ -827,7 +839,10 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
                     } else {
                         self.has_props_id = true;
                     }
-                    if !self.in_var_declarator_init || self.function_depth > 0 {
+                    if !self.is_instance_script
+                        || !self.in_var_declarator_init
+                        || self.function_depth > 0
+                    {
                         self.diags.push(Diagnostic::error(
                             DiagnosticKind::PropsIdInvalidPlacement,
                             self.span(call.span),
@@ -842,7 +857,18 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
                         ));
                     }
                 }
-                RuntimeRuneKind::EffectPending | RuntimeRuneKind::StateSnapshot => {}
+                RuntimeRuneKind::StateSnapshot => {
+                    if call.arguments.len() != 1 {
+                        self.diags.push(Diagnostic::error(
+                            DiagnosticKind::RuneInvalidArgumentsLength {
+                                rune: rune_name.into(),
+                                args: "exactly one argument".into(),
+                            },
+                            self.span(call.span),
+                        ));
+                    }
+                }
+                RuntimeRuneKind::EffectPending => {}
             },
             _ => {}
         }
@@ -965,6 +991,147 @@ impl<'a> Visit<'a> for RuneValidator<'_> {
     }
 }
 
+fn rune_root<'x, 'a>(expr: &'x Expression<'a>) -> Option<&'x IdentifierReference<'a>> {
+    match expr.get_inner_expression() {
+        Expression::Identifier(id) => Some(id),
+        Expression::StaticMemberExpression(m) => rune_root(&m.object),
+        Expression::ComputedMemberExpression(m) => rune_root(&m.object),
+        _ => None,
+    }
+}
+
+fn validate_rune_names(
+    data: &AnalysisData<'_>,
+    program: &Program<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut v = RuneNameValidator {
+        data,
+        diags,
+        _phantom: PhantomData,
+    };
+    v.visit_program(program);
+}
+
+struct RuneNameValidator<'a, 'b> {
+    data: &'b AnalysisData<'a>,
+    diags: &'b mut Vec<Diagnostic>,
+    _phantom: PhantomData<&'a ()>,
+}
+
+impl<'a> RuneNameValidator<'a, '_> {
+    fn is_unbound(&self, id: &IdentifierReference<'a>) -> bool {
+        id.reference_id
+            .get()
+            .and_then(|r| self.data.scoping.try_get_reference(r))
+            .and_then(|reference| reference.symbol_id())
+            .is_none()
+    }
+
+    fn process_chain(&mut self, expr: &Expression<'a>, called: bool) -> bool {
+        let inner = expr.get_inner_expression();
+        let Some(root) = rune_root(inner) else {
+            return false;
+        };
+        if !svelte_ast::is_rune_name(root.name.as_str()) || !self.is_unbound(root) {
+            return false;
+        }
+
+        let mut name = root.name.to_string();
+        let stopped = self.walk_rune_members(inner, &mut name, called);
+
+        if !stopped && !called {
+            self.diags.push(Diagnostic::error(
+                DiagnosticKind::RuneMissingParentheses,
+                Span::new(inner.span().start, inner.span().end),
+            ));
+        }
+        true
+    }
+
+    fn walk_rune_members(
+        &mut self,
+        expr: &Expression<'a>,
+        name: &mut String,
+        called: bool,
+    ) -> bool {
+        match expr {
+            Expression::StaticMemberExpression(m) => {
+                if self.walk_rune_members(m.object.get_inner_expression(), name, called) {
+                    return true;
+                }
+                name.push('.');
+                name.push_str(m.property.name.as_str());
+                self.check_rune_keypath(name, m.span, called)
+            }
+            Expression::ComputedMemberExpression(m) => {
+                if self.walk_rune_members(m.object.get_inner_expression(), name, called) {
+                    return true;
+                }
+                self.diags.push(Diagnostic::error(
+                    DiagnosticKind::RuneInvalidComputedProperty,
+                    Span::new(m.span.start, m.span.end),
+                ));
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn check_rune_keypath(&mut self, name: &str, span: OxcSpan, called: bool) -> bool {
+        let (kind, tolerated) = match svelte_ast::classify_rune_keypath(name) {
+            svelte_ast::RuneKeypath::Valid => return false,
+            svelte_ast::RuneKeypath::Renamed {
+                replacement,
+                tolerated_when_called,
+            } => (
+                DiagnosticKind::RuneRenamed {
+                    name: name.to_string(),
+                    replacement: replacement.into(),
+                },
+                tolerated_when_called,
+            ),
+            svelte_ast::RuneKeypath::Removed {
+                tolerated_when_called,
+            } => (
+                DiagnosticKind::RuneRemoved {
+                    name: name.to_string(),
+                },
+                tolerated_when_called,
+            ),
+            svelte_ast::RuneKeypath::Unknown => (
+                DiagnosticKind::RuneInvalidName {
+                    name: name.to_string(),
+                },
+                false,
+            ),
+        };
+        if called && tolerated {
+            return true;
+        }
+        self.diags
+            .push(Diagnostic::error(kind, Span::new(span.start, span.end)));
+        true
+    }
+}
+
+impl<'a> Visit<'a> for RuneNameValidator<'a, '_> {
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if self.process_chain(&call.callee, true) {
+            self.visit_arguments(&call.arguments);
+            return;
+        }
+        walk_call_expression(self, call);
+    }
+
+    fn visit_expression(&mut self, expr: &Expression<'a>) {
+        if self.process_chain(expr, false) {
+            return;
+        }
+        walk_expression(self, expr);
+    }
+}
+
 fn validate_rest_prop_illegal_access(
     data: &AnalysisData<'_>,
     program: &Program<'_>,
@@ -1045,6 +1212,28 @@ pub fn validate_const_tag_runes(
             };
             probe.visit_expression(init);
         }
+    }
+}
+
+pub fn validate_declaration_tag_runes(
+    component: &Component,
+    parsed: &crate::types::data::JsAst,
+    data: &AnalysisData,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    if !runes {
+        return;
+    }
+    for node in component.store.iter_nodes() {
+        let svelte_ast::Node::DeclarationTag(tag) = node else {
+            continue;
+        };
+        let Some(stmt) = parsed.stmt(tag.declaration.id()) else {
+            continue;
+        };
+        let mut v = RuneValidator::new(data, diags, false);
+        v.visit_statement(stmt);
     }
 }
 

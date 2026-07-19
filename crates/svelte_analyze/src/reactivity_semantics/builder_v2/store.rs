@@ -129,6 +129,9 @@ fn rune_named_base_is_store(data: &AnalysisData, base_name: &str) -> bool {
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Unresolved => false,
     }
 }

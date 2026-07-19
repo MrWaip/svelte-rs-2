@@ -8,7 +8,7 @@ use svelte_css::{
     VisitMut,
     visit::{
         walk_at_rule_mut, walk_complex_selector_mut, walk_selector_list_mut,
-        walk_simple_selector_args_mut, walk_style_rule_mut,
+        walk_simple_selector_args_mut,
     },
 };
 use svelte_sourcemap::SourceMap;
@@ -47,7 +47,7 @@ pub fn transform_css_with_sourcemap(
     mut stylesheet: StyleSheet,
     source: &str,
     filename: &str,
-) -> (String, SourceMap) {
+) -> (String, SourceMap<'static>) {
     apply_scoping(hash_class, keyframes, &mut stylesheet, source);
     svelte_css::Printer::print_with_sourcemap(
         &stylesheet,
@@ -72,7 +72,7 @@ fn apply_scoping(
         suppress_scoping_depth: 0,
         specificity_bumped: false,
         selector_list_depth: 0,
-        rule_depth: 0,
+        ancestor_has_local: false,
     };
     scoper.visit_stylesheet_mut(stylesheet);
 }
@@ -85,7 +85,7 @@ struct ScopeSelectors<'a> {
     suppress_scoping_depth: usize,
     specificity_bumped: bool,
     selector_list_depth: usize,
-    rule_depth: usize,
+    ancestor_has_local: bool,
 }
 
 impl VisitMut for ScopeSelectors<'_> {
@@ -95,9 +95,11 @@ impl VisitMut for ScopeSelectors<'_> {
         for child in children {
             match child {
                 StyleSheetChild::Rule(Rule::Style(sr)) if sr.is_lone_global_block() => {
+                    self.suppress_scoping_depth += 1;
                     for block_child in sr.block.children {
                         match block_child {
-                            BlockChild::Rule(rule) => {
+                            BlockChild::Rule(mut rule) => {
+                                self.visit_rule_mut(&mut rule);
                                 new_children.push(StyleSheetChild::Rule(rule));
                             }
                             BlockChild::Comment(c) => {
@@ -106,6 +108,7 @@ impl VisitMut for ScopeSelectors<'_> {
                             _ => {}
                         }
                     }
+                    self.suppress_scoping_depth -= 1;
                 }
                 StyleSheetChild::Rule(mut rule) => {
                     self.visit_rule_mut(&mut rule);
@@ -123,9 +126,21 @@ impl VisitMut for ScopeSelectors<'_> {
         for child in children {
             match child {
                 BlockChild::Rule(Rule::Style(sr)) if sr.is_lone_global_block() => {
+                    self.suppress_scoping_depth += 1;
                     for block_child in sr.block.children {
-                        new_children.push(block_child);
+                        match block_child {
+                            BlockChild::Rule(mut rule) => {
+                                self.visit_rule_mut(&mut rule);
+                                new_children.push(BlockChild::Rule(rule));
+                            }
+                            BlockChild::Declaration(mut d) => {
+                                self.visit_declaration_mut(&mut d);
+                                new_children.push(BlockChild::Declaration(d));
+                            }
+                            other => new_children.push(other),
+                        }
                     }
+                    self.suppress_scoping_depth -= 1;
                 }
                 BlockChild::Rule(mut rule) => {
                     self.visit_rule_mut(&mut rule);
@@ -142,15 +157,25 @@ impl VisitMut for ScopeSelectors<'_> {
     }
 
     fn visit_style_rule_mut(&mut self, node: &mut StyleRule) {
-        self.rule_depth += 1;
-        walk_style_rule_mut(self, node);
-        self.rule_depth -= 1;
+        let was_ancestor_has_local = self.ancestor_has_local;
+        let this_rule_has_local = node.prelude.children.iter().any(complex_has_local_selector);
+        let is_global_block = node.is_global_block();
+        self.visit_selector_list_mut(&mut node.prelude);
+        self.ancestor_has_local = was_ancestor_has_local || this_rule_has_local;
+        if is_global_block {
+            self.suppress_scoping_depth += 1;
+        }
+        self.visit_block_mut(&mut node.block);
+        if is_global_block {
+            self.suppress_scoping_depth -= 1;
+        }
+        self.ancestor_has_local = was_ancestor_has_local;
     }
 
     fn visit_complex_selector_mut(&mut self, node: &mut ComplexSelector) {
         let was_after_bare_global = self.after_bare_global;
         let was_specificity_bumped = self.specificity_bumped;
-        let has_implicit_nesting = self.rule_depth > 1 && !complex_has_explicit_nesting(node);
+        let has_implicit_nesting = self.ancestor_has_local && !complex_has_explicit_nesting(node);
         self.after_bare_global = false;
         if has_implicit_nesting {
             self.specificity_bumped = true;
@@ -163,6 +188,7 @@ impl VisitMut for ScopeSelectors<'_> {
             return;
         }
 
+        merge_bare_global_compound(node);
         expand_inline_global_with_combinators(node);
 
         walk_complex_selector_mut(self, node);
@@ -182,7 +208,7 @@ impl VisitMut for ScopeSelectors<'_> {
         let should_reset = self.selector_list_depth == 0;
         self.selector_list_depth += 1;
         if should_reset {
-            self.specificity_bumped = self.rule_depth > 1;
+            self.specificity_bumped = self.ancestor_has_local;
         }
         walk_selector_list_mut(self, node);
         self.selector_list_depth -= 1;
@@ -190,25 +216,24 @@ impl VisitMut for ScopeSelectors<'_> {
     }
 
     fn visit_relative_selector_mut(&mut self, node: &mut RelativeSelector) {
-        let suppress_scoping = self.suppress_scoping_depth > 0;
+        let suppress_scoping =
+            self.suppress_scoping_depth > 0 || compound_has_unscoped_pseudo(node);
+        let leading_pseudo_scope = !suppress_scoping
+            && !self.after_bare_global
+            && compound_is_pseudo_only_scopable(&node.selectors);
         let mut new_selectors = Vec::with_capacity(node.selectors.len() + 1);
         let mut has_local_scopable = false;
-        let mut scope_inserted = false;
         let mut unscoped_tail = self.after_bare_global;
         let mut has_nesting_selector = false;
-        let mut has_prior_selectors = false;
+        let mut scope_contributor = leading_pseudo_scope;
         let mut global_unwrapped = false;
+        let mut last_local_end: Option<usize> = None;
 
         for sel in node.selectors.drain(..) {
             match sel {
                 SimpleSelector::Global {
                     args: Some(args), ..
                 } => {
-                    if has_local_scopable && !scope_inserted {
-                        new_selectors.push(self.scope_modifier());
-                        scope_inserted = true;
-                    }
-
                     global_unwrapped = true;
                     for complex in args.children {
                         for rel in complex.children {
@@ -221,27 +246,40 @@ impl VisitMut for ScopeSelectors<'_> {
                     self.after_bare_global = true;
                 }
                 _ => {
-                    if matches!(sel, SimpleSelector::Nesting(_)) {
+                    let is_nesting = matches!(sel, SimpleSelector::Nesting(_));
+                    if is_nesting {
                         has_nesting_selector = true;
                     }
-                    if !suppress_scoping && !unscoped_tail && is_scopable(&sel) {
+                    let this_scopable = !suppress_scoping && !unscoped_tail && is_scopable(&sel);
+                    if this_scopable {
                         has_local_scopable = true;
                     }
                     new_selectors.push(sel);
+                    if this_scopable {
+                        last_local_end = Some(new_selectors.len());
+                    }
 
                     if let Some(last) = new_selectors.last_mut() {
                         let was_specificity_bumped = self.specificity_bumped;
-                        if has_prior_selectors
-                            || has_local_scopable
-                            || scope_inserted
-                            || has_nesting_selector
-                        {
+                        if scope_contributor {
                             self.specificity_bumped = true;
                         }
+                        if unscoped_tail {
+                            self.suppress_scoping_depth += 1;
+                        }
                         self.visit_simple_selector_mut(last);
+                        if unscoped_tail {
+                            self.suppress_scoping_depth -= 1;
+                        }
                         self.specificity_bumped = was_specificity_bumped;
                     }
-                    has_prior_selectors = true;
+
+                    let this_contributes = if is_nesting {
+                        self.ancestor_has_local
+                    } else {
+                        true
+                    };
+                    scope_contributor |= this_contributes;
                 }
             }
         }
@@ -251,35 +289,25 @@ impl VisitMut for ScopeSelectors<'_> {
             && !unscoped_tail
             && !has_nesting_selector
             && !global_unwrapped
-            && !new_selectors.is_empty()
-            && new_selectors.iter().all(|s| {
-                matches!(
-                    s,
-                    SimpleSelector::PseudoClass(_) | SimpleSelector::PseudoElement(_)
-                )
-            })
-            && pseudo_only_compound_is_scopable(&new_selectors)
+            && compound_is_pseudo_only_scopable(&new_selectors)
         {
             has_local_scopable = true;
         }
 
-        if has_local_scopable && !scope_inserted && !has_nesting_selector {
-            let mut insert_pos = new_selectors.len();
-            while insert_pos > 0 {
-                match &new_selectors[insert_pos - 1] {
-                    SimpleSelector::PseudoClass(_) | SimpleSelector::PseudoElement(_) => {
-                        insert_pos -= 1;
-                    }
-                    _ => break,
-                }
+        if has_local_scopable && !has_nesting_selector {
+            let insert_pos =
+                last_local_end.unwrap_or_else(|| position_before_trailing_pseudos(&new_selectors));
+            let modifier = self.scope_modifier();
+            let universal_pos = insert_pos.checked_sub(1).filter(|&pos| {
+                matches!(&new_selectors[pos], SimpleSelector::Type { name, .. } if name == "*")
+            });
+            match universal_pos {
+                Some(pos) => new_selectors[pos] = modifier,
+                None => new_selectors.insert(insert_pos, modifier),
             }
-            if !suppress_scoping && has_nesting_selector {
-                self.specificity_bumped = true;
-            }
-            new_selectors.insert(insert_pos, self.scope_modifier());
         }
 
-        if !suppress_scoping && has_nesting_selector {
+        if !suppress_scoping && has_nesting_selector && self.ancestor_has_local {
             self.specificity_bumped = true;
         }
 
@@ -461,12 +489,79 @@ fn not_args_stay_unscoped(args: &SelectorList) -> bool {
         .all(|complex| complex.children.len() == 1)
 }
 
+fn compound_has_unscoped_pseudo(node: &RelativeSelector) -> bool {
+    node.selectors.iter().any(|selector| {
+        matches!(selector, SimpleSelector::PseudoClass(pc) if pc.name == "root" || pc.name == "host")
+    })
+}
+
+fn position_before_trailing_pseudos(selectors: &[SimpleSelector]) -> usize {
+    let mut pos = selectors.len();
+    while pos > 0 {
+        match &selectors[pos - 1] {
+            SimpleSelector::PseudoClass(_) | SimpleSelector::PseudoElement(_) => pos -= 1,
+            _ => break,
+        }
+    }
+    pos
+}
+
+fn compound_is_pseudo_only_scopable(selectors: &[SimpleSelector]) -> bool {
+    !selectors.is_empty()
+        && selectors.iter().all(|selector| {
+            matches!(
+                selector,
+                SimpleSelector::PseudoClass(_) | SimpleSelector::PseudoElement(_)
+            )
+        })
+        && pseudo_only_compound_is_scopable(selectors)
+}
+
 fn is_entirely_global(complex: &ComplexSelector) -> bool {
     complex.children.len() == 1
         && complex.children[0].selectors.len() == 1
         && matches!(
             &complex.children[0].selectors[0],
             SimpleSelector::Global { args: Some(_), .. }
+        )
+}
+
+fn merge_bare_global_compound(node: &mut ComplexSelector) {
+    if !node.children.iter().any(starts_with_bare_global_compound) {
+        return;
+    }
+
+    let children = mem::take(&mut node.children);
+    let mut out = svelte_css::RelativeSelectorVec::new();
+    for mut rel in children {
+        if !starts_with_bare_global_compound(&rel) {
+            out.push(rel);
+            continue;
+        }
+
+        let is_descendant = matches!(
+            rel.combinator.map(|combinator| combinator.kind),
+            Some(CombinatorKind::Descendant)
+        );
+        if is_descendant && let Some(prev) = out.last_mut() {
+            prev.selectors.append(&mut rel.selectors);
+            continue;
+        }
+
+        if rel.combinator.is_none() {
+            rel.selectors
+                .insert(0, SimpleSelector::Nesting(Span::new(0, 0)));
+        }
+        out.push(rel);
+    }
+    node.children = out;
+}
+
+fn starts_with_bare_global_compound(rel: &RelativeSelector) -> bool {
+    rel.selectors.len() > 1
+        && matches!(
+            rel.selectors.first(),
+            Some(SimpleSelector::Global { args: None, .. })
         )
 }
 
@@ -614,6 +709,13 @@ fn pseudo_only_compound_is_scopable(selectors: &[SimpleSelector]) -> bool {
         }
         _ => true,
     }
+}
+
+fn complex_has_local_selector(complex: &ComplexSelector) -> bool {
+    complex
+        .children
+        .iter()
+        .any(|rel| rel.selectors.iter().any(is_scopable))
 }
 
 fn is_scopable(sel: &SimpleSelector) -> bool {

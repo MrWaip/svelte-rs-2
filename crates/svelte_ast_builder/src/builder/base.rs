@@ -20,7 +20,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn bid_at(&self, name: &str, span: Span) -> BindingIdentifier<'a> {
-        self.ast.binding_identifier(span, self.ast.atom(name))
+        self.ast.binding_identifier(span, self.alloc_str(name))
     }
 
     pub fn rid(&self, name: &str) -> IdentifierReference<'a> {
@@ -28,7 +28,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn rid_at(&self, name: &str, span: Span) -> IdentifierReference<'a> {
-        self.ast.identifier_reference(span, self.ast.atom(name))
+        self.ast.identifier_reference(span, self.alloc_str(name))
     }
 
     pub fn rid_expr(&self, name: &str) -> Expression<'a> {
@@ -74,7 +74,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn str_lit_at(&self, value: &str, span: Span) -> StringLiteral<'a> {
-        self.ast.string_literal(span, self.ast.atom(value), None)
+        self.ast.string_literal(span, self.alloc_str(value), None)
     }
 
     pub fn str_expr(&self, value: &str) -> Expression<'a> {

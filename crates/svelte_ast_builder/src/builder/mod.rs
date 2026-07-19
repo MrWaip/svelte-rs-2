@@ -8,15 +8,13 @@ use oxc_ast::{
         BindingIdentifier, CallExpression, ChainElement, ComputedMemberExpression,
         ExportDefaultDeclarationKind, Expression, FormalParameters, Function, FunctionType,
         IdentifierReference, ImportDeclarationSpecifier, ImportOrExportKind, ModuleDeclaration,
-        NumericLiteral, Program, Statement, StaticMemberExpression, StringLiteral,
+        NumericLiteral, Program, Statement, StaticMemberExpression, Str, StringLiteral,
         TemplateElementValue, TemplateLiteral, VariableDeclarationKind,
     },
 };
 use oxc_parser::Parser as OxcParser;
-use oxc_span::{Atom, SPAN, SourceType, Span};
-use oxc_syntax::node::NodeId as OxcNodeId;
+use oxc_span::{SPAN, SourceType, Span};
 use oxc_syntax::scope::ScopeId;
-use std::cell::Cell;
 
 mod base;
 mod calls;

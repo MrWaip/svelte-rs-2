@@ -51,6 +51,38 @@ fn is_undeclared_global_store(data: &AnalysisData<'_>, base_symbol: SymbolId) ->
         .is_non_reactive()
 }
 
+pub(super) fn validate_dollar_globals(
+    data: &AnalysisData<'_>,
+    source: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    const RESERVED: &[&str] = &["$$props", "$$restProps", "$$slots"];
+    for (name, refs) in data.scoping.root_unresolved_references() {
+        let name = name.as_str();
+        if !name.starts_with('$') || RESERVED.contains(&name) {
+            continue;
+        }
+        if name != "$" && name.as_bytes().get(1) != Some(&b'$') {
+            continue;
+        }
+        let Some(span) = earliest_reference_span(data, refs) else {
+            continue;
+        };
+        if source.get(span.start as usize..span.end as usize) != Some(name) {
+            continue;
+        }
+        diags.push(Diagnostic::error(
+            DiagnosticKind::GlobalReferenceInvalid {
+                name: name.to_string(),
+            },
+            Span {
+                start: span.start,
+                end: span.end,
+            },
+        ));
+    }
+}
+
 fn push_global_reference_invalid(
     data: &AnalysisData<'_>,
     name: &str,
@@ -182,6 +214,9 @@ impl<'ast> Visit<'ast> for StandaloneModuleStoreValidator<'_> {
 
 impl<'ast> Visit<'ast> for ModuleStoreValidator<'_> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'ast>) {
+        if svelte_ast::is_rune_name(ident.name.as_str()) {
+            return;
+        }
         let Some(ref_id) = ident.reference_id.get() else {
             return;
         };
@@ -282,6 +317,9 @@ fn declared_as_rune_or_prop(data: &AnalysisData, sym_id: SymbolId) -> bool {
         | BindingSemantics::LegacyState(_) => true,
         BindingSemantics::Store(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive

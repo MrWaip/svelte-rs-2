@@ -28,10 +28,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let inner_ctx = parent_ctx.child_of_block(
             self.ctx,
             effective_fragment,
-            FragmentAnchor::CallbackParam {
-                name: "$$anchor".to_string(),
-                append_inside: false,
-            },
+            FragmentAnchor::callback_param("$$anchor", false),
         );
         let mut inner_state = EmitState::new();
         inner_state.skip_snippets = true;

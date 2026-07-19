@@ -28,7 +28,7 @@ pub(crate) fn rewrite_legacy_reactive<'a>(
     let stmt_meta_by_node: FxHashMap<OxcNodeId, &LegacyReactiveStatement> =
         topo.iter().map(|s| (s.stmt_node, *s)).collect();
 
-    let allocator = b.ast.allocator;
+    let allocator = &b.ast.allocator;
     let old_body = mem::replace(&mut program.body, OxcVec::new_in(allocator));
 
     let mut bodies_by_node: FxHashMap<OxcNodeId, Statement<'a>> = FxHashMap::default();
@@ -176,9 +176,8 @@ fn build_deps_thunk<'a>(
         return b.arrow_expr(b.no_params(), [b.expr_stmt(single)]);
     }
 
-    let allocator = b.ast.allocator;
     let mut seq_vec: OxcVec<'a, Expression<'a>> =
-        OxcVec::with_capacity_in(dep_exprs.len(), allocator);
+        OxcVec::with_capacity_in(dep_exprs.len(), &b.ast.allocator);
     for expr in dep_exprs {
         seq_vec.push(expr);
     }
@@ -215,7 +214,11 @@ fn build_dep_read<'a>(
         }
         BindingSemantics::Store(_) => b.call_expr_callee(b.rid_expr(name), []),
         BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => b.rid_expr(name),
-        BindingSemantics::Const(_) | BindingSemantics::Contextual(_) => b.rid_expr(name),
+        BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
+        | BindingSemantics::Contextual(_) => b.rid_expr(name),
         BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => b.rid_expr(name),
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)

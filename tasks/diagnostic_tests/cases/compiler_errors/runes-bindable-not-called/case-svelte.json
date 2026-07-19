@@ -1,0 +1,8 @@
+[
+  {
+    "code": "rune_missing_parentheses",
+    "end": 29,
+    "severity": "error",
+    "start": 20
+  }
+]

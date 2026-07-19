@@ -8,6 +8,12 @@ pub(crate) trait TemplateVisitor {
     fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_html_tag(&mut self, tag: &HtmlTag, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_const_tag(&mut self, tag: &ConstTag, ctx: &mut VisitContext<'_, '_>) {}
+    fn visit_declaration_tag(
+        &mut self,
+        tag: &svelte_ast::DeclarationTag,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+    }
     fn visit_debug_tag(&mut self, tag: &DebugTag, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_element(&mut self, el: &Element, ctx: &mut VisitContext<'_, '_>) {}
     fn visit_slot_element_legacy(

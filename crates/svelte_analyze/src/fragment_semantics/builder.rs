@@ -4,7 +4,9 @@ use svelte_ast::{
 
 use crate::AnalysisData;
 
-use super::data::{FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace};
+use super::data::{
+    FragmentBindings, FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace,
+};
 
 struct WsContext {
     preserve: bool,
@@ -39,10 +41,12 @@ fn walk(
     } else {
         FragmentWhitespace::Collapse
     };
-    out.record(fragment_id, FragmentSemantics { whitespace });
+
+    let mut bindings = FragmentBindings::None;
 
     for id in store.fragment_nodes(fragment_id).iter().copied() {
         match store.get(id) {
+            Node::DeclarationTag(_) => bindings = FragmentBindings::Local,
             Node::Element(el) => {
                 let name = el.name.as_str();
                 let child_ns = fragment_is_svg(el.fragment, data);
@@ -149,6 +153,14 @@ fn walk(
             | Node::Error(_) => {}
         }
     }
+
+    out.record(
+        fragment_id,
+        FragmentSemantics {
+            whitespace,
+            bindings,
+        },
+    );
 }
 
 fn walk_block(

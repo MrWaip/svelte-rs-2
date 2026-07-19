@@ -3,11 +3,13 @@ use svelte_ast::{AstStore, Attribute, Component, ConcatPart, FragmentId, Node, S
 use svelte_diagnostics::Diagnostic;
 
 use crate::parse_js::{
-    ExpressionTagBody, parse_const_declaration_with_alloc, parse_each_context_with_alloc,
-    parse_each_index_with_alloc, parse_expression_tag_body, parse_expression_with_alloc,
-    parse_script_with_alloc, parse_slot_let_decl_with_alloc, parse_snippet_decl_with_alloc,
-    placeholder_expression,
+    DeclarationTagBody, ExpressionTagBody, parse_const_declaration_with_alloc,
+    parse_declaration_body, parse_each_context_with_alloc, parse_each_index_with_alloc,
+    parse_expression_tag_body, parse_expression_with_alloc, parse_script_with_alloc,
+    parse_slot_let_decl_with_alloc, parse_snippet_decl_with_alloc, placeholder_expression,
+    placeholder_statement,
 };
+use crate::scanner::is_reserved_word;
 use crate::types::JsAst;
 
 pub(crate) fn parse_js<'a>(
@@ -136,10 +138,10 @@ fn parse_span<'a>(
             result.alloc_stmt(span.start, stmt);
             result.alloc_expr(span.start, placeholder_expression(alloc, span.start));
         }
-        ExpressionTagBody::Invalid => {
-            diags.push(Diagnostic::invalid_expression(svelte_span::Span::new(
-                span.start, span.end,
-            )));
+        ExpressionTagBody::Invalid(diag) => {
+            diags.push(diag.unwrap_or_else(|| {
+                Diagnostic::invalid_expression(svelte_span::Span::new(span.start, span.end))
+            }));
             result.alloc_expr(span.start, placeholder_expression(alloc, span.start));
         }
     }
@@ -151,13 +153,34 @@ fn parse_binding_pattern<'a>(
     span: svelte_span::Span,
     typescript: bool,
     result: &mut JsAst<'a>,
-    _diags: &mut Vec<Diagnostic>,
 ) {
     let source = component.source_text(span);
     let arena_source: &'a str = alloc.alloc_str(source);
     if let Some(stmt) = parse_each_context_with_alloc(alloc, arena_source, span.start, typescript) {
         result.alloc_stmt(span.start, stmt);
     }
+}
+
+fn emit_each_context_parse_error(
+    component: &Component,
+    span: svelte_span::Span,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let trimmed = component.source_text(span).trim();
+    let diagnostic = if is_reserved_word(trimmed) {
+        Diagnostic::error(
+            svelte_diagnostics::DiagnosticKind::UnexpectedKeyword,
+            svelte_span::Span::new(span.start, span.end),
+        )
+    } else {
+        Diagnostic::error(
+            svelte_diagnostics::DiagnosticKind::JsParseError {
+                message: "Unexpected token".to_string(),
+            },
+            svelte_span::Span::new(span.start, span.end),
+        )
+    };
+    diags.push(diagnostic);
 }
 
 fn walk_fragment<'a>(
@@ -281,6 +304,9 @@ fn walk_node<'a>(
                     parse_each_context_with_alloc(alloc, arena_ctx, ctx_span.start, typescript)
                 {
                     result.alloc_stmt(ctx_span.start, stmt);
+                } else {
+                    emit_each_context_parse_error(component, ctx_span, diags);
+                    result.alloc_stmt(ctx_span.start, placeholder_statement(alloc, ctx_span.start));
                 }
             }
 
@@ -366,7 +392,7 @@ fn walk_node<'a>(
                 .into_iter()
                 .flatten()
             {
-                parse_binding_pattern(alloc, component, r.span, typescript, result, diags);
+                parse_binding_pattern(alloc, component, r.span, typescript, result);
             }
 
             if let Some(p) = block.pending {
@@ -392,6 +418,37 @@ fn walk_node<'a>(
                     result.alloc_stmt(tag.decl.span.start, stmt);
                 }
                 Err(diag) => diags.push(diag),
+            }
+        }
+        Node::DeclarationTag(tag) => {
+            let source = component.source_text(tag.declaration.span);
+            let arena_source: &'a str = alloc.alloc_str(source);
+            match parse_declaration_body(
+                alloc,
+                arena_source,
+                tag.declaration.span.start,
+                typescript,
+            ) {
+                DeclarationTagBody::Declaration(stmt) => {
+                    result.alloc_stmt(tag.declaration.span.start, stmt);
+                }
+                DeclarationTagBody::InvalidType(span) => {
+                    diags.push(Diagnostic::error(
+                        svelte_diagnostics::DiagnosticKind::DeclarationTagInvalidType,
+                        span,
+                    ));
+                    result.alloc_stmt(
+                        tag.declaration.span.start,
+                        placeholder_statement(alloc, tag.declaration.span.start),
+                    );
+                }
+                DeclarationTagBody::ParseError(diag) => {
+                    diags.push(diag);
+                    result.alloc_stmt(
+                        tag.declaration.span.start,
+                        placeholder_statement(alloc, tag.declaration.span.start),
+                    );
+                }
             }
         }
         Node::SvelteHead(head) => {

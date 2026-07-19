@@ -1,0 +1,4 @@
+
+	.a.svelte-1uoiiwh + .c:where(.svelte-1uoiiwh) {
+		color: green;
+	}

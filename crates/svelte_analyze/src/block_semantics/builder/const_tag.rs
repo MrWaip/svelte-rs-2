@@ -1,7 +1,6 @@
-use super::super::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
+use super::super::{BlockSemantics, ConstTagBlockSemantics};
 use super::common::declarator_from_stmt;
 use super::walker::Ctx;
-use crate::expression_semantics::{ExpressionSemantics, Volatility};
 use oxc_ast::ast::Statement;
 use svelte_ast::ConstTag;
 
@@ -17,22 +16,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
     let Some(_) = declarator_from_stmt(stmt) else {
         return;
     };
-    let async_kind = match ctx.expressions.get(tag.id) {
-        ExpressionSemantics::Expression(d) => {
-            let blockers = d.blockers.clone();
-            match d.volatility {
-                Volatility::Asynchronous => ConstTagAsyncKind::Awaited { blockers },
-                Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
-                    if blockers.is_empty() {
-                        ConstTagAsyncKind::Sync
-                    } else {
-                        ConstTagAsyncKind::Deferred { blockers }
-                    }
-                }
-            }
-        }
-        ExpressionSemantics::NonSpecial => ConstTagAsyncKind::Sync,
-    };
+    let async_kind = super::common::async_kind_from_expression(ctx.expressions.get(tag.id));
 
     let order_rank = ctx
         .reactivity
@@ -56,8 +40,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
 mod tests {
     use crate::tests::{analyze_source, analyze_source_experimental_async};
     use crate::{
-        AnalysisData, BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics,
-        DeclaratorSemantics, DerivedAsyncKind,
+        AnalysisData, BlockSemantics, ConstTagBlockSemantics, DeclaratorSemantics,
+        DerivedAsyncKind, FragmentDeclarationAsyncKind,
     };
     use oxc_ast::{AstKind, ast::BindingPattern};
     use svelte_ast::{Component, ConstTag, Node};
@@ -144,7 +128,7 @@ mod tests {
     fn const_tag_simple_sync() {
         with_const_tag(r#"{#if true}{@const x = 1}<p>{x}</p>{/if}"#, |sem, data| {
             assert_eq!(pattern_facts(sem, data), (1, false));
-            assert!(matches!(sem.async_kind, ConstTagAsyncKind::Sync));
+            assert!(matches!(sem.async_kind, FragmentDeclarationAsyncKind::Sync));
         });
     }
 
@@ -155,7 +139,7 @@ mod tests {
 {#if true}{@const { a, b } = obj}<p>{a} {b}</p>{/if}"#,
             |sem, data| {
                 assert_eq!(pattern_facts(sem, data), (2, true));
-                assert!(matches!(sem.async_kind, ConstTagAsyncKind::Sync));
+                assert!(matches!(sem.async_kind, FragmentDeclarationAsyncKind::Sync));
             },
         );
     }
@@ -256,7 +240,7 @@ mod tests {
 {#if true}{@const doubled = count * 2}<p>{doubled}</p>{/if}"#,
             |sem, data| {
                 assert_eq!(pattern_facts(sem, data), (1, false));
-                assert!(matches!(sem.async_kind, ConstTagAsyncKind::Sync));
+                assert!(matches!(sem.async_kind, FragmentDeclarationAsyncKind::Sync));
             },
         );
     }

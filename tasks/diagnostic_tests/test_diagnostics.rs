@@ -1,8 +1,10 @@
-use std::{cmp, fs, fs::read_to_string, path::Path};
+use std::{cmp, fs, fs::read_to_string, path::Path, path::PathBuf};
 
 use pretty_assertions::assert_eq;
 use serde::{Deserialize, Serialize};
-use svelte_compiler::{CompileOptions, Namespace, RunesOption, compile};
+use svelte_compiler::{
+    CompileOptions, ModuleCompileOptions, Namespace, RunesOption, compile, compile_module,
+};
 use svelte_diagnostics::Severity;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -13,14 +15,21 @@ struct ExpectedDiagnostic {
     end: u32,
 }
 
-fn case_input_and_options(case: &str) -> (String, CompileOptions) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+fn case_dir(case: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("cases")
         .join(case)
-        .join("case.svelte");
+}
+
+fn is_module_case(case: &str) -> bool {
+    case_dir(case).join("case.svelte.js").exists()
+}
+
+fn case_input_and_options(case: &str) -> (String, CompileOptions) {
+    let dir = case_dir(case);
+    let path = dir.join("case.svelte");
     let input = read_to_string(&path).expect("test invariant");
 
-    let dir = path.parent().expect("test invariant");
     let config_path = dir.join("config.json");
     let mut opts = CompileOptions {
         name: Some("App".into()),
@@ -34,11 +43,11 @@ fn case_input_and_options(case: &str) -> (String, CompileOptions) {
         if let Some(dev) = config.get("dev").and_then(|v| v.as_bool()) {
             opts.dev = dev;
         }
-        if let Some(runes) = config.get("runes").and_then(|v| v.as_bool()) {
-            opts.runes = if runes {
-                RunesOption::Runes
-            } else {
-                RunesOption::Legacy
+        if let Some(runes) = config.get("runes") {
+            opts.runes = match runes.as_bool() {
+                Some(true) => RunesOption::Runes,
+                Some(false) => RunesOption::Legacy,
+                None => RunesOption::Auto,
             };
         }
         if let Some(ce) = config.get("customElement").and_then(|v| v.as_bool()) {
@@ -76,8 +85,17 @@ fn expected_diagnostics(case: &str) -> Vec<ExpectedDiagnostic> {
 }
 
 fn normalize_actual_diagnostics(case: &str) -> Vec<ExpectedDiagnostic> {
-    let (input, opts) = case_input_and_options(case);
-    let diagnostics = compile(&input, &opts).diagnostics;
+    let diagnostics = if is_module_case(case) {
+        let input = read_to_string(case_dir(case).join("case.svelte.js")).expect("test invariant");
+        let opts = ModuleCompileOptions {
+            filename: "case.svelte.js".into(),
+            ..Default::default()
+        };
+        compile_module(&input, &opts).diagnostics
+    } else {
+        let (input, opts) = case_input_and_options(case);
+        compile(&input, &opts).diagnostics
+    };
     let normalized: Vec<ExpectedDiagnostic> = diagnostics
         .into_iter()
         .map(|diagnostic| ExpectedDiagnostic {
@@ -567,6 +585,24 @@ mod attributes {
     use super::*;
 
     diagnostic_case!(
+        validate_attribute_expected_equals,
+        "attributes/validate_attribute_expected_equals"
+    );
+
+    diagnostic_case!(
+        validate_attribute_invalid_name_brace,
+        "attributes/validate_attribute_invalid_name_brace"
+    );
+    diagnostic_case!(
+        validate_attribute_invalid_name_star,
+        "attributes/validate_attribute_invalid_name_star"
+    );
+    diagnostic_case!(
+        validate_attribute_invalid_name_semicolon,
+        "attributes/validate_attribute_invalid_name_semicolon"
+    );
+
+    diagnostic_case!(
         attribute_global_event_reference_missing_binding,
         "attributes/attribute_global_event_reference_missing_binding"
     );
@@ -619,6 +655,7 @@ mod attributes {
 mod css {
     use super::*;
 
+    diagnostic_case!(css_empty_declaration, "css/css_empty_declaration");
     diagnostic_case!(
         css_unused_selector_svelte_ignore,
         "css/css_unused_selector_svelte_ignore"
@@ -704,6 +741,18 @@ mod css {
         "css/css_nesting_selector_valid_in_global"
     );
     diagnostic_case!(css_selector_invalid, "css/css_selector_invalid");
+    diagnostic_case!(
+        css_expected_identifier_eof,
+        "css/css_expected_identifier_eof"
+    );
+    diagnostic_case!(
+        css_nesting_selector_valid_after_global,
+        "css/css_nesting_selector_valid_after_global"
+    );
+    diagnostic_case!(
+        css_nesting_selector_invalid_in_global,
+        "css/css_nesting_selector_invalid_in_global"
+    );
     diagnostic_case!(
         css_global_block_with_nested_rules_ok,
         "css/css_global_block_with_nested_rules_ok"
@@ -848,6 +897,38 @@ mod css_prune {
 mod bind {
     use super::*;
 
+    diagnostic_case!(
+        validate_constant_binding_const,
+        "bind/validate_constant_binding_const"
+    );
+    diagnostic_case!(
+        validate_constant_binding_import,
+        "bind/validate_constant_binding_import"
+    );
+    diagnostic_case!(
+        validate_constant_binding_let_directive,
+        "bind/validate_constant_binding_let_directive"
+    );
+    diagnostic_case!(
+        validate_constant_binding_const_tag,
+        "bind/validate_constant_binding_const_tag"
+    );
+    diagnostic_case!(
+        validate_constant_binding_await_then,
+        "bind/validate_constant_binding_await_then"
+    );
+    diagnostic_case!(
+        validate_constant_binding_await_catch,
+        "bind/validate_constant_binding_await_catch"
+    );
+    diagnostic_case!(
+        validate_bind_invalid_value_global,
+        "bind/validate_bind_invalid_value_global"
+    );
+    diagnostic_case!(
+        validate_bind_checked_missing_type,
+        "bind/validate_bind_checked_missing_type"
+    );
     diagnostic_case!(
         validate_bind_invalid_name,
         "bind/validate_bind_invalid_name"
@@ -1027,6 +1108,15 @@ mod events {
     use super::*;
 
     diagnostic_case!(
+        validate_event_modifier_passive_preventdefault,
+        "events/validate_event_modifier_passive_preventdefault"
+    );
+    diagnostic_case!(
+        validate_mixed_event_handler_syntaxes,
+        "events/validate_mixed_event_handler_syntaxes"
+    );
+
+    diagnostic_case!(
         on_directive_invalid_modifier,
         "events/on_directive_invalid_modifier"
     );
@@ -1041,6 +1131,18 @@ mod events {
     diagnostic_case!(
         on_directive_mixed_syntax_svelte_element,
         "events/on_directive_mixed_syntax_svelte_element"
+    );
+    diagnostic_case!(
+        on_directive_mixed_syntax_svelte_window,
+        "events/on_directive_mixed_syntax_svelte_window"
+    );
+    diagnostic_case!(
+        on_directive_mixed_syntax_svelte_body,
+        "events/on_directive_mixed_syntax_svelte_body"
+    );
+    diagnostic_case!(
+        on_directive_mixed_syntax_svelte_document,
+        "events/on_directive_mixed_syntax_svelte_document"
     );
     diagnostic_case!(
         on_directive_no_mixed_when_event_prop_on_child_component,
@@ -1062,6 +1164,11 @@ mod events {
 
 mod directives {
     use super::*;
+
+    diagnostic_case!(
+        validate_style_directive_invalid_modifier,
+        "directives/validate_style_directive_invalid_modifier"
+    );
 
     diagnostic_case!(
         validate_transition_duplicate_transition,
@@ -1120,6 +1227,22 @@ mod directives {
 mod options {
     use super::*;
 
+    diagnostic_case!(
+        validate_options_namespace_non_literal,
+        "options/validate_options_namespace_non_literal"
+    );
+    diagnostic_case!(
+        validate_options_customelement_invalid_tagname,
+        "options/validate_options_customelement_invalid_tagname"
+    );
+    diagnostic_case!(
+        validate_options_customelement_non_string,
+        "options/validate_options_customelement_non_string"
+    );
+    diagnostic_case!(
+        validate_options_customelement_emoji_valid,
+        "options/validate_options_customelement_emoji_valid"
+    );
     diagnostic_case!(
         options_deprecated_accessors_runes,
         "options/options_deprecated_accessors_runes"
@@ -1269,9 +1392,70 @@ mod props {
     );
 }
 
+mod class_state {
+    use super::*;
+
+    diagnostic_case!(
+        validate_state_field_duplicate_field_ctor,
+        "class_state/validate_state_field_duplicate_field_ctor"
+    );
+    diagnostic_case!(
+        validate_state_field_duplicate_ctor_ctor,
+        "class_state/validate_state_field_duplicate_ctor_ctor"
+    );
+    diagnostic_case!(
+        validate_state_field_duplicate_string_key,
+        "class_state/validate_state_field_duplicate_string_key"
+    );
+    diagnostic_case!(
+        validate_state_field_duplicate_computed_literal,
+        "class_state/validate_state_field_duplicate_computed_literal"
+    );
+    diagnostic_case!(
+        validate_duplicate_class_field_state,
+        "class_state/validate_duplicate_class_field_state"
+    );
+    diagnostic_case!(
+        validate_state_invalid_placement_nested,
+        "class_state/validate_state_invalid_placement_nested"
+    );
+    diagnostic_case!(
+        validate_state_invalid_placement_computed_dynamic,
+        "class_state/validate_state_invalid_placement_computed_dynamic"
+    );
+    diagnostic_case!(
+        validate_state_field_invalid_assignment,
+        "class_state/validate_state_field_invalid_assignment"
+    );
+    diagnostic_case!(
+        validate_state_field_invalid_assignment_nested,
+        "class_state/validate_state_field_invalid_assignment_nested"
+    );
+    diagnostic_case!(
+        validate_state_private_field_ctor_no_error,
+        "class_state/validate_state_private_field_ctor_no_error"
+    );
+}
+
 mod runes {
     use super::*;
 
+    diagnostic_case!(
+        validate_rune_invalid_spread_state,
+        "runes/validate_rune_invalid_spread_state"
+    );
+    diagnostic_case!(
+        validate_rune_invalid_spread_state_raw,
+        "runes/validate_rune_invalid_spread_state_raw"
+    );
+    diagnostic_case!(
+        validate_rune_invalid_spread_derived,
+        "runes/validate_rune_invalid_spread_derived"
+    );
+    diagnostic_case!(
+        validate_rune_invalid_spread_derived_by,
+        "runes/validate_rune_invalid_spread_derived_by"
+    );
     diagnostic_case!(
         validate_derived_illegal_await_expression,
         "runes/validate_derived_illegal_await_expression"
@@ -1639,6 +1823,20 @@ mod special {
     use super::*;
 
     diagnostic_case!(
+        validate_namespaced_element_name_no_error,
+        "special/validate_namespaced_element_name_no_error"
+    );
+
+    diagnostic_case!(
+        validate_script_invalid_context,
+        "special/validate_script_invalid_context"
+    );
+    diagnostic_case!(
+        validate_global_reference_invalid_script,
+        "special/validate_global_reference_invalid_script"
+    );
+
+    diagnostic_case!(
         svelte_head_illegal_attribute,
         "special/svelte_head_illegal_attribute"
     );
@@ -1744,6 +1942,11 @@ mod special {
 
 mod module {
     use super::*;
+
+    diagnostic_case!(
+        validate_declaration_duplicate_module_import,
+        "module/validate_declaration_duplicate_module_import"
+    );
 
     diagnostic_case!(
         validate_module_illegal_default_export,
@@ -1873,6 +2076,14 @@ mod const_tag {
     use super::*;
 
     diagnostic_case!(
+        validate_declaration_duplicate_const_tag_same_name,
+        "const_tag/validate_declaration_duplicate_const_tag_same_name"
+    );
+    diagnostic_case!(
+        validate_declaration_duplicate_const_tag_each_item,
+        "const_tag/validate_declaration_duplicate_const_tag_each_item"
+    );
+    diagnostic_case!(
         validate_const_tag_invalid_placement_root,
         "const_tag/validate_const_tag_invalid_placement_root"
     );
@@ -1930,6 +2141,19 @@ mod each {
     use super::*;
 
     diagnostic_case!(
+        validate_each_context_reserved_word,
+        "each/validate_each_context_reserved_word"
+    );
+    diagnostic_case!(
+        validate_each_context_destructured_reserved,
+        "each/validate_each_context_destructured_reserved"
+    );
+    diagnostic_case!(
+        validate_each_context_destructured_object_reserved,
+        "each/validate_each_context_destructured_object_reserved"
+    );
+
+    diagnostic_case!(
         validate_each_animation_missing_key,
         "each/validate_each_animation_missing_key"
     );
@@ -1975,9 +2199,13 @@ mod snippets {
     use super::*;
 
     diagnostic_case!(
+        validate_snippet_param_whitespace_no_error,
+        "snippets/validate_snippet_param_whitespace_no_error"
+    );
+
+    diagnostic_case!(
         snippet_name_duplicate_instance_binding,
-        "snippets/snippet_name_duplicate_instance_binding",
-        ignore = "snippet duplicate declaration check added in svelte 5.56.4"
+        "snippets/snippet_name_duplicate_instance_binding"
     );
     diagnostic_case!(
         validate_snippet_parameter_assignment,
@@ -2027,6 +2255,37 @@ mod snippets {
 
 mod template {
     use super::*;
+
+    diagnostic_case!(
+        validate_html_tag_in_attribute,
+        "template/validate_html_tag_in_attribute"
+    );
+    diagnostic_case!(
+        validate_html_tag_in_textarea,
+        "template/validate_html_tag_in_textarea"
+    );
+    diagnostic_case!(
+        validate_if_block_in_attribute,
+        "template/validate_if_block_in_attribute"
+    );
+    diagnostic_case!(
+        validate_each_block_in_textarea,
+        "template/validate_each_block_in_textarea"
+    );
+
+    diagnostic_case!(
+        validate_snippet_in_table_row_no_error,
+        "template/validate_snippet_in_table_row_no_error"
+    );
+
+    diagnostic_case!(
+        validate_debug_tag_invalid_arguments,
+        "template/validate_debug_tag_invalid_arguments"
+    );
+    diagnostic_case!(
+        validate_global_reference_invalid_markup,
+        "template/validate_global_reference_invalid_markup"
+    );
 
     diagnostic_case!(
         validate_attach_tag_illegal_await_expression,
@@ -2106,38 +2365,39 @@ mod template {
     );
     diagnostic_case!(
         declaration_tag_invalid_type_var,
-        "template/declaration_tag_invalid_type_var",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_invalid_type_var"
     );
     diagnostic_case!(
         declaration_tag_invalid_type_interface,
-        "template/declaration_tag_invalid_type_interface",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_invalid_type_interface"
     );
     diagnostic_case!(
         declaration_tag_invalid_type_ts_alias,
-        "template/declaration_tag_invalid_type_ts_alias",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_invalid_type_ts_alias"
     );
     diagnostic_case!(
         declaration_tag_no_legacy_mode,
-        "template/declaration_tag_no_legacy_mode",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_no_legacy_mode"
     );
     diagnostic_case!(
         declaration_tag_duplicate,
-        "template/declaration_tag_duplicate",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_duplicate"
     );
     diagnostic_case!(
         declaration_tag_await_no_experimental,
-        "template/declaration_tag_await_no_experimental",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_await_no_experimental"
     );
     diagnostic_case!(
         declaration_tag_type_nonts_parse_error,
-        "template/declaration_tag_type_nonts_parse_error",
-        ignore = "declaration-tag: unimplemented (svelte 5.56.4)"
+        "template/declaration_tag_type_nonts_parse_error"
+    );
+    diagnostic_case!(
+        declaration_tag_invalid_type_enum,
+        "template/declaration_tag_invalid_type_enum"
+    );
+    diagnostic_case!(
+        declaration_tag_effect_invalid_placement,
+        "template/declaration_tag_effect_invalid_placement"
     );
     diagnostic_case!(
         node_invalid_placement_ssr_in_if_block,
@@ -2218,6 +2478,31 @@ mod typescript {
     diagnostic_case!(namespace_with_value, "typescript/namespace_with_value");
 }
 
+mod assignments {
+    use super::*;
+
+    diagnostic_case!(
+        validate_constant_assignment_event_handler,
+        "assignments/validate_constant_assignment_event_handler"
+    );
+    diagnostic_case!(
+        validate_constant_assignment_destructuring,
+        "assignments/validate_constant_assignment_destructuring"
+    );
+    diagnostic_case!(
+        validate_constant_assignment_nested_destructuring,
+        "assignments/validate_constant_assignment_nested_destructuring"
+    );
+    diagnostic_case!(
+        validate_constant_assignment_const_tag_update,
+        "assignments/validate_constant_assignment_const_tag_update"
+    );
+    diagnostic_case!(
+        validate_constant_assignment_shadowed_no_error,
+        "assignments/validate_constant_assignment_shadowed_no_error"
+    );
+}
+
 mod await_ {
     use super::*;
 
@@ -2264,5 +2549,509 @@ mod await_ {
     diagnostic_case!(
         validate_svelte_component_this_illegal_await_expression,
         "await/validate_svelte_component_this_illegal_await_expression"
+    );
+}
+
+mod compiler_errors {
+    use super::*;
+
+    diagnostic_case!(attribute_empty, "compiler_errors/attribute-empty");
+    diagnostic_case!(
+        attribute_sequence_expression,
+        "compiler_errors/attribute-sequence-expression"
+    );
+    diagnostic_case!(
+        attribute_sequence_expression_2,
+        "compiler_errors/attribute-sequence-expression-2"
+    );
+    diagnostic_case!(attribute_unique, "compiler_errors/attribute-unique");
+    diagnostic_case!(
+        attribute_unique_binding,
+        "compiler_errors/attribute-unique-binding"
+    );
+    diagnostic_case!(
+        attribute_unique_bind,
+        "compiler_errors/attribute-unique-bind"
+    );
+    diagnostic_case!(
+        attribute_unique_class,
+        "compiler_errors/attribute-unique-class"
+    );
+    diagnostic_case!(
+        attribute_unique_shorthand,
+        "compiler_errors/attribute-unique-shorthand"
+    );
+    diagnostic_case!(
+        attribute_unique_style,
+        "compiler_errors/attribute-unique-style"
+    );
+    diagnostic_case!(catch_before_closing, "compiler_errors/catch-before-closing");
+    diagnostic_case!(catch_without_await, "compiler_errors/catch-without-await");
+    diagnostic_case!(
+        class_state_field_static,
+        "compiler_errors/class-state-field-static"
+    );
+    diagnostic_case!(comment_unclosed, "compiler_errors/comment-unclosed");
+    diagnostic_case!(
+        component_invalid_name,
+        "compiler_errors/component-invalid-name"
+    );
+    diagnostic_case!(
+        component_slot_duplicate_error,
+        "compiler_errors/component-slot-duplicate-error"
+    );
+    diagnostic_case!(
+        component_slot_duplicate_error_2,
+        "compiler_errors/component-slot-duplicate-error-2"
+    );
+    diagnostic_case!(
+        component_slot_duplicate_error_3,
+        "compiler_errors/component-slot-duplicate-error-3"
+    );
+    diagnostic_case!(
+        component_slot_duplicate_error_4,
+        "compiler_errors/component-slot-duplicate-error-4"
+    );
+    diagnostic_case!(
+        component_slot_duplicate_error_5,
+        "compiler_errors/component-slot-duplicate-error-5"
+    );
+    diagnostic_case!(
+        component_slot_duplicate_error_6,
+        "compiler_errors/component-slot-duplicate-error-6"
+    );
+    diagnostic_case!(
+        component_slot_nested_error,
+        "compiler_errors/component-slot-nested-error"
+    );
+    diagnostic_case!(
+        component_slot_nested_error_2,
+        "compiler_errors/component-slot-nested-error-2"
+    );
+    diagnostic_case!(
+        component_slot_nested_error_3,
+        "compiler_errors/component-slot-nested-error-3"
+    );
+    diagnostic_case!(const_tag_cyclical, "compiler_errors/const-tag-cyclical");
+    diagnostic_case!(const_tag_sequence, "compiler_errors/const-tag-sequence");
+    diagnostic_case!(
+        const_tag_snippet_invalid_reference_1,
+        "compiler_errors/const-tag-snippet-invalid-reference-1"
+    );
+    diagnostic_case!(
+        const_tag_snippet_invalid_reference_2,
+        "compiler_errors/const-tag-snippet-invalid-reference-2"
+    );
+    diagnostic_case!(const_tag_whitespace, "compiler_errors/const-tag-whitespace");
+    diagnostic_case!(css, "compiler_errors/css");
+    diagnostic_case!(
+        css_global_block_combinator,
+        "compiler_errors/css-global-block-combinator"
+    );
+    diagnostic_case!(
+        css_global_block_combinator_2,
+        "compiler_errors/css-global-block-combinator-2"
+    );
+    diagnostic_case!(
+        css_global_block_declaration,
+        "compiler_errors/css-global-block-declaration"
+    );
+    diagnostic_case!(
+        css_global_block_in_pseudoclass,
+        "compiler_errors/css-global-block-in-pseudoclass"
+    );
+    diagnostic_case!(
+        css_global_block_multiple_1,
+        "compiler_errors/css-global-block-multiple-1"
+    );
+    diagnostic_case!(
+        css_global_block_multiple_2,
+        "compiler_errors/css-global-block-multiple-2"
+    );
+    diagnostic_case!(css_global_modifier, "compiler_errors/css-global-modifier");
+    diagnostic_case!(
+        css_global_modifier_start_1,
+        "compiler_errors/css-global-modifier-start-1"
+    );
+    diagnostic_case!(
+        css_global_modifier_start_2,
+        "compiler_errors/css-global-modifier-start-2"
+    );
+    diagnostic_case!(
+        css_nesting_selector_root,
+        "compiler_errors/css-nesting-selector-root"
+    );
+    diagnostic_case!(
+        declaration_tag_trailing_slash,
+        "compiler_errors/declaration-tag-trailing-slash"
+    );
+    diagnostic_case!(
+        dollar_binding_declaration_legacy,
+        "compiler_errors/dollar-binding-declaration-legacy"
+    );
+    diagnostic_case!(
+        dollar_binding_declaration_runes,
+        "compiler_errors/dollar-binding-declaration-runes"
+    );
+    diagnostic_case!(
+        dollar_binding_declaration_runes_2,
+        "compiler_errors/dollar-binding-declaration-runes-2"
+    );
+    diagnostic_case!(
+        dollar_binding_global,
+        "compiler_errors/dollar-binding-global"
+    );
+    diagnostic_case!(
+        dollar_binding_global_js,
+        "compiler_errors/dollar-binding-global-js"
+    );
+    diagnostic_case!(
+        dollar_binding_import,
+        "compiler_errors/dollar-binding-import"
+    );
+    diagnostic_case!(
+        dynamic_element_binding_invalid,
+        "compiler_errors/dynamic-element-binding-invalid"
+    );
+    diagnostic_case!(each_key_without_as, "compiler_errors/each-key-without-as");
+    diagnostic_case!(effect_active_rune, "compiler_errors/effect-active-rune");
+    diagnostic_case!(element_invalid_name, "compiler_errors/element-invalid-name");
+    diagnostic_case!(else_before_closing, "compiler_errors/else-before-closing");
+    diagnostic_case!(
+        else_before_closing_2,
+        "compiler_errors/else-before-closing-2"
+    );
+    diagnostic_case!(
+        else_before_closing_3,
+        "compiler_errors/else-before-closing-3"
+    );
+    diagnostic_case!(
+        else_if_before_closing,
+        "compiler_errors/else-if-before-closing"
+    );
+    diagnostic_case!(
+        else_if_before_closing_2,
+        "compiler_errors/else-if-before-closing-2"
+    );
+    diagnostic_case!(else_if_without_if, "compiler_errors/else-if-without-if");
+    diagnostic_case!(
+        empty_attribute_shorthand,
+        "compiler_errors/empty-attribute-shorthand"
+    );
+    diagnostic_case!(
+        empty_classname_binding,
+        "compiler_errors/empty-classname-binding"
+    );
+    diagnostic_case!(empty_directive_name, "compiler_errors/empty-directive-name");
+    diagnostic_case!(
+        export_default_derived_state_indirect,
+        "compiler_errors/export-default-derived-state-indirect"
+    );
+    diagnostic_case!(
+        export_default_state_indirect,
+        "compiler_errors/export-default-state-indirect"
+    );
+    diagnostic_case!(export_derived_state, "compiler_errors/export-derived-state");
+    diagnostic_case!(
+        export_derived_state_indirect,
+        "compiler_errors/export-derived-state-indirect"
+    );
+    diagnostic_case!(
+        export_not_defined_module,
+        "compiler_errors/export-not-defined-module"
+    );
+    diagnostic_case!(export_state, "compiler_errors/export-state");
+    diagnostic_case!(
+        export_state_indirect,
+        "compiler_errors/export-state-indirect"
+    );
+    diagnostic_case!(export_state_module, "compiler_errors/export-state-module");
+    diagnostic_case!(illegal_expression, "compiler_errors/illegal-expression");
+    diagnostic_case!(
+        invalid_arguments_usage,
+        "compiler_errors/invalid-arguments-usage"
+    );
+    diagnostic_case!(invalid_rune_name, "compiler_errors/invalid-rune-name");
+    diagnostic_case!(
+        invalid_rune_name_shadowed,
+        "compiler_errors/invalid-rune-name-shadowed"
+    );
+    diagnostic_case!(
+        invalid_snippet_binding,
+        "compiler_errors/invalid-snippet-binding"
+    );
+    diagnostic_case!(
+        invalid_snippet_mutation,
+        "compiler_errors/invalid-snippet-mutation"
+    );
+    diagnostic_case!(
+        legacy_no_const_assignment,
+        "compiler_errors/legacy-no-const-assignment"
+    );
+    diagnostic_case!(
+        legacy_no_const_update,
+        "compiler_errors/legacy-no-const-update"
+    );
+    diagnostic_case!(malformed_snippet, "compiler_errors/malformed-snippet");
+    diagnostic_case!(malformed_snippet_2, "compiler_errors/malformed-snippet-2");
+    diagnostic_case!(multiple_styles, "compiler_errors/multiple-styles");
+    diagnostic_case!(options_children, "compiler_errors/options-children");
+    diagnostic_case!(
+        raw_mustaches_whitespace,
+        "compiler_errors/raw-mustaches-whitespace"
+    );
+    diagnostic_case!(
+        render_tag_invalid_call,
+        "compiler_errors/render-tag-invalid-call"
+    );
+    diagnostic_case!(
+        runes_before_after_update,
+        "compiler_errors/runes-before-after-update"
+    );
+    diagnostic_case!(
+        runes_bindable_not_called,
+        "compiler_errors/runes-bindable-not-called"
+    );
+    diagnostic_case!(
+        runes_duplicate_props,
+        "compiler_errors/runes-duplicate-props"
+    );
+    diagnostic_case!(runes_export_let, "compiler_errors/runes-export-let");
+    diagnostic_case!(
+        runes_export_named_state,
+        "compiler_errors/runes-export-named-state"
+    );
+    diagnostic_case!(
+        runes_invalid_each_binding,
+        "compiler_errors/runes-invalid-each-binding"
+    );
+    diagnostic_case!(
+        runes_invalid_each_binding_this,
+        "compiler_errors/runes-invalid-each-binding-this"
+    );
+    diagnostic_case!(
+        runes_invalid_each_mutation,
+        "compiler_errors/runes-invalid-each-mutation"
+    );
+    diagnostic_case!(
+        runes_module_store_subscription,
+        "compiler_errors/runes-module-store-subscription"
+    );
+    diagnostic_case!(
+        runes_no_const_assignment,
+        "compiler_errors/runes-no-const-assignment"
+    );
+    diagnostic_case!(
+        runes_no_const_assignment_module,
+        "compiler_errors/runes-no-const-assignment-module"
+    );
+    diagnostic_case!(
+        runes_no_const_update,
+        "compiler_errors/runes-no-const-update"
+    );
+    diagnostic_case!(runes_no_rune_each, "compiler_errors/runes-no-rune-each");
+    diagnostic_case!(
+        runes_props_illegal_name_1,
+        "compiler_errors/runes-props-illegal-name-1"
+    );
+    diagnostic_case!(
+        runes_props_illegal_name_2,
+        "compiler_errors/runes-props-illegal-name-2"
+    );
+    diagnostic_case!(
+        runes_props_not_called,
+        "compiler_errors/runes-props-not-called"
+    );
+    diagnostic_case!(
+        runes_wrong_bindable_args,
+        "compiler_errors/runes-wrong-bindable-args"
+    );
+    diagnostic_case!(
+        runes_wrong_bindable_placement,
+        "compiler_errors/runes-wrong-bindable-placement"
+    );
+    diagnostic_case!(
+        runes_wrong_bindable_placement_module,
+        "compiler_errors/runes-wrong-bindable-placement-module"
+    );
+    diagnostic_case!(
+        runes_wrong_derived_args,
+        "compiler_errors/runes-wrong-derived-args"
+    );
+    diagnostic_case!(
+        runes_wrong_derived_args_module,
+        "compiler_errors/runes-wrong-derived-args-module"
+    );
+    diagnostic_case!(
+        runes_wrong_derived_placement,
+        "compiler_errors/runes-wrong-derived-placement"
+    );
+    diagnostic_case!(
+        runes_wrong_derived_placement_module,
+        "compiler_errors/runes-wrong-derived-placement-module"
+    );
+    diagnostic_case!(
+        runes_wrong_effect_args,
+        "compiler_errors/runes-wrong-effect-args"
+    );
+    diagnostic_case!(
+        runes_wrong_effect_args_module,
+        "compiler_errors/runes-wrong-effect-args-module"
+    );
+    diagnostic_case!(
+        runes_wrong_effect_placement,
+        "compiler_errors/runes-wrong-effect-placement"
+    );
+    diagnostic_case!(
+        runes_wrong_effect_placement_module,
+        "compiler_errors/runes-wrong-effect-placement-module"
+    );
+    diagnostic_case!(
+        runes_wrong_host_placement,
+        "compiler_errors/runes-wrong-host-placement"
+    );
+    diagnostic_case!(
+        runes_wrong_host_placement_module,
+        "compiler_errors/runes-wrong-host-placement-module"
+    );
+    diagnostic_case!(
+        runes_wrong_props_args,
+        "compiler_errors/runes-wrong-props-args"
+    );
+    diagnostic_case!(
+        runes_wrong_props_placement_instance,
+        "compiler_errors/runes-wrong-props-placement-instance"
+    );
+    diagnostic_case!(
+        runes_wrong_props_placement_module,
+        "compiler_errors/runes-wrong-props-placement-module"
+    );
+    diagnostic_case!(
+        runes_wrong_state_args,
+        "compiler_errors/runes-wrong-state-args"
+    );
+    diagnostic_case!(
+        runes_wrong_state_args_module,
+        "compiler_errors/runes-wrong-state-args-module"
+    );
+    diagnostic_case!(
+        runes_wrong_state_placement,
+        "compiler_errors/runes-wrong-state-placement"
+    );
+    diagnostic_case!(
+        runes_wrong_state_placement_module,
+        "compiler_errors/runes-wrong-state-placement-module"
+    );
+    diagnostic_case!(
+        runes_wrong_state_raw_args,
+        "compiler_errors/runes-wrong-state-raw-args"
+    );
+    diagnostic_case!(
+        runes_wrong_state_raw_args_module,
+        "compiler_errors/runes-wrong-state-raw-args-module"
+    );
+    diagnostic_case!(
+        runes_wrong_state_snapshot_args,
+        "compiler_errors/runes-wrong-state-snapshot-args"
+    );
+    diagnostic_case!(script_unclosed, "compiler_errors/script-unclosed");
+    diagnostic_case!(script_unclosed_eof, "compiler_errors/script-unclosed-eof");
+    diagnostic_case!(self_reference, "compiler_errors/self-reference");
+    diagnostic_case!(
+        slot_conflicting_with_render_tag,
+        "compiler_errors/slot-conflicting-with-render-tag"
+    );
+    diagnostic_case!(
+        snippet_children_conflict,
+        "compiler_errors/snippet-children-conflict"
+    );
+    diagnostic_case!(
+        snippet_invalid_export,
+        "compiler_errors/snippet-invalid-export"
+    );
+    diagnostic_case!(snippet_rest_args, "compiler_errors/snippet-rest-args");
+    diagnostic_case!(
+        store_autosub_context_module,
+        "compiler_errors/store-autosub-context-module"
+    );
+    diagnostic_case!(store_contextual, "compiler_errors/store-contextual");
+    diagnostic_case!(
+        store_global_disallowed,
+        "compiler_errors/store-global-disallowed"
+    );
+    diagnostic_case!(
+        store_prevent_user_declarations,
+        "compiler_errors/store-prevent-user-declarations"
+    );
+    diagnostic_case!(store_shadow_scope, "compiler_errors/store-shadow-scope");
+    diagnostic_case!(store_shadow_scope_2, "compiler_errors/store-shadow-scope-2");
+    diagnostic_case!(store_shadow_scope_3, "compiler_errors/store-shadow-scope-3");
+    diagnostic_case!(
+        store_template_expression_scope,
+        "compiler_errors/store-template-expression-scope"
+    );
+    diagnostic_case!(style_unclosed, "compiler_errors/style-unclosed");
+    diagnostic_case!(style_unclosed_eof, "compiler_errors/style-unclosed-eof");
+    diagnostic_case!(
+        svelte_internal_import,
+        "compiler_errors/svelte-internal-import"
+    );
+    diagnostic_case!(
+        svelte_internal_import_module,
+        "compiler_errors/svelte-internal-import-module"
+    );
+    diagnostic_case!(
+        svelte_selfdestructive,
+        "compiler_errors/svelte-selfdestructive"
+    );
+    diagnostic_case!(then_before_closing, "compiler_errors/then-before-closing");
+    diagnostic_case!(then_without_await, "compiler_errors/then-without-await");
+    diagnostic_case!(
+        unbalanced_curly_component,
+        "compiler_errors/unbalanced-curly-component"
+    );
+    diagnostic_case!(
+        unbalanced_curly_element,
+        "compiler_errors/unbalanced-curly-element"
+    );
+    diagnostic_case!(
+        unclosed_attribute_self_close_tag,
+        "compiler_errors/unclosed-attribute-self-close-tag"
+    );
+    diagnostic_case!(
+        unexpected_end_of_input,
+        "compiler_errors/unexpected-end-of-input"
+    );
+    diagnostic_case!(
+        unexpected_end_of_input_b,
+        "compiler_errors/unexpected-end-of-input-b"
+    );
+    diagnostic_case!(
+        unexpected_end_of_input_c,
+        "compiler_errors/unexpected-end-of-input-c"
+    );
+    diagnostic_case!(
+        unexpected_end_of_input_d,
+        "compiler_errors/unexpected-end-of-input-d"
+    );
+    diagnostic_case!(
+        unmatched_closing_tag,
+        "compiler_errors/unmatched-closing-tag"
+    );
+    diagnostic_case!(
+        unmatched_closing_tag_autoclose,
+        "compiler_errors/unmatched-closing-tag-autoclose"
+    );
+    diagnostic_case!(
+        unmatched_closing_tag_autoclose_2,
+        "compiler_errors/unmatched-closing-tag-autoclose-2"
+    );
+    diagnostic_case!(void_closing, "compiler_errors/void-closing");
+    diagnostic_case!(window_children, "compiler_errors/window-children");
+    diagnostic_case!(window_duplicate, "compiler_errors/window-duplicate");
+    diagnostic_case!(window_inside_block, "compiler_errors/window-inside-block");
+    diagnostic_case!(
+        window_inside_element,
+        "compiler_errors/window-inside-element"
     );
 }

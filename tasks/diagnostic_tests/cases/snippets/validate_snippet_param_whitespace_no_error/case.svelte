@@ -1,0 +1,3 @@
+{#snippet ok () }
+	asd
+{/snippet}

@@ -15,7 +15,7 @@ use crate::expression_semantics::{
     ValueClass, Volatility,
 };
 use crate::reactivity_semantics::data::{
-    BindingSemantics, ConstBindingSemantics, ContextualBindingSemantics, EachIndexStrategy,
+    BindingSemantics, ConstTagSemantics, ContextualBindingSemantics, EachIndexStrategy,
     EachItemStrategy, PropBindingKind, PropBindingSemantics, ReactivitySemantics,
     ReferenceSemantics, StateKind,
 };
@@ -91,6 +91,7 @@ pub fn build<'a>(
 ) -> (AttributeSemanticsStore, BindingGroupTable) {
     let attach_eval = ValueEvaluator::new(
         parsed,
+        component,
         scoping,
         semantics,
         reactivity,
@@ -154,6 +155,24 @@ fn bind_expr_is_member(ctx: &Ctx<'_, '_>, d: &BindDirective) -> bool {
         ),
         _ => false,
     }
+}
+
+fn bind_expr_root_is_store_sub(ctx: &Ctx<'_, '_>, d: &BindDirective) -> bool {
+    let Some(expr) = ctx.parsed.expr(d.expression.id()) else {
+        return false;
+    };
+    let mut cur = expr.get_inner_expression();
+    while let Some(member) = cur.as_member_expression() {
+        cur = member.object().get_inner_expression();
+    }
+    let Expression::Identifier(ident) = cur else {
+        return false;
+    };
+    ident.reference_id.get().is_some_and(|ref_id| {
+        ctx.reactivity
+            .reference_semantics(ref_id)
+            .is_store_subscription()
+    })
 }
 
 fn derive_group_keypath(ctx: &Ctx<'_, '_>, d: &BindDirective) -> String {
@@ -241,11 +260,12 @@ fn reference_symbol_needs_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData, sym: Sy
         return true;
     }
     match ctx.reactivity.binding_semantics(sym) {
-        BindingSemantics::Const(ConstBindingSemantics::ConstTag {
-            reactive,
+        BindingSemantics::Const(ConstTagSemantics {
             initial_is_function,
             ..
-        }) => reactive && !initial_is_function,
+        }) => !initial_is_function,
+        BindingSemantics::DeclarationTag => true,
+        BindingSemantics::OptimizedConst(_) | BindingSemantics::OptimizedDeclarationTag => false,
         BindingSemantics::Contextual(ContextualBindingSemantics::EachIndex(
             EachIndexStrategy::Direct,
         )) => false,
@@ -324,6 +344,9 @@ fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool 
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
         | BindingSemantics::LegacyApiExport
@@ -331,11 +354,19 @@ fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool 
     }
 }
 
-fn handler_reads_through_cell(semantics: BindingSemantics) -> bool {
+fn is_reactive_const_binding(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
+    matches!(
+        ctx.reactivity.binding_semantics(sym),
+        BindingSemantics::Const(_) | BindingSemantics::DeclarationTag
+    )
+}
+
+fn handler_reads_through_cell(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
+    let semantics = ctx.reactivity.binding_semantics(sym);
     if let BindingSemantics::Contextual(_) = semantics {
         return handler_reads_through_contextual_getter(semantics);
     }
-    semantics.is_reactive() || semantics.is_reactive_const_tag()
+    semantics.is_reactive() || is_reactive_const_binding(ctx, sym)
 }
 
 fn handler_symbol_is_function(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
@@ -359,11 +390,9 @@ fn references_include_reactive_const_tag(ctx: &Ctx<'_, '_>, expr_id: NodeId) -> 
     let Some(data) = ctx.expression_data(expr_id) else {
         return false;
     };
-    data.references.iter().any(|&sym| {
-        ctx.reactivity
-            .binding_semantics(sym)
-            .is_reactive_const_tag()
-    })
+    data.references
+        .iter()
+        .any(|&sym| is_reactive_const_binding(ctx, sym))
 }
 
 impl<'a, 'p> Ctx<'a, 'p> {
@@ -571,7 +600,8 @@ fn classify_element_attrs(
                     };
                     let needs_binding_validation = bind_expr_is_member(ctx, d)
                         && (!is_this || state.control_depth > 0)
-                        && !matches!(kind, HtmlBindKind::StoreSubscribed { .. });
+                        && !matches!(kind, HtmlBindKind::StoreSubscribed { .. })
+                        && !bind_expr_root_is_store_sub(ctx, d);
                     if matches!(property, ElementBindPropertyKind::Group) {
                         groups.assign(d.id, derive_group_key(ctx, state, d));
                     }
@@ -651,6 +681,34 @@ fn classify_element_attrs(
             }
             Attribute::StringAttribute(a) if is_autofocus_attr(ctx, owner_id, &a.name) => {
                 store.set(a.id, AttributeSemantics::Autofocus);
+            }
+            Attribute::StringAttribute(a) if a.name == "value" => {
+                let Some(kind) = special_value_kind_for(el, &a.name) else {
+                    continue;
+                };
+                store.set(
+                    a.id,
+                    AttributeSemantics::SpecialValueAttr(SpecialValueSemantics {
+                        kind,
+                        defined: true,
+                        volatile: false,
+                        concat: None,
+                    }),
+                );
+            }
+            Attribute::BooleanAttribute(a) if a.name == "value" => {
+                let Some(kind) = special_value_kind_for(el, &a.name) else {
+                    continue;
+                };
+                store.set(
+                    a.id,
+                    AttributeSemantics::SpecialValueAttr(SpecialValueSemantics {
+                        kind,
+                        defined: true,
+                        volatile: false,
+                        concat: None,
+                    }),
+                );
             }
             Attribute::StringAttribute(a)
                 if a.name == "is"
@@ -1322,9 +1380,7 @@ fn derive_event_handler(
                     .is_store_subscription()
             });
             let needs_wrap = is_store_subscription
-                || symbol.is_some_and(|sym| {
-                    handler_reads_through_cell(ctx.reactivity.binding_semantics(sym))
-                });
+                || symbol.is_some_and(|sym| handler_reads_through_cell(ctx, sym));
             if needs_wrap {
                 return EventHandler::Expression(HandlerEffect::Pure);
             }
@@ -1338,11 +1394,38 @@ fn derive_event_handler(
     let mut probe = HandlerKindProbe::default();
     probe.visit_expression(expr);
     if probe.has_call {
-        EventHandler::Expression(HandlerEffect::Call)
+        EventHandler::Expression(HandlerEffect::Call {
+            top_level_side_effect: handler_top_level_side_effect(expr),
+            bare_named_call: handler_is_bare_named_call(expr),
+        })
     } else if probe.has_side_effects {
         EventHandler::Expression(HandlerEffect::Mutation)
     } else {
         EventHandler::Expression(HandlerEffect::Pure)
+    }
+}
+
+fn handler_is_bare_named_call(expr: &Expression<'_>) -> bool {
+    let Expression::CallExpression(call) = expr.get_inner_expression() else {
+        return false;
+    };
+    call.arguments.is_empty()
+        && matches!(
+            call.callee.get_inner_expression(),
+            Expression::Identifier(_)
+        )
+}
+
+fn handler_top_level_side_effect(expr: &Expression<'_>) -> bool {
+    match expr.get_inner_expression() {
+        Expression::CallExpression(_)
+        | Expression::NewExpression(_)
+        | Expression::AssignmentExpression(_)
+        | Expression::UpdateExpression(_) => true,
+        Expression::SequenceExpression(seq) => {
+            seq.expressions.iter().any(handler_top_level_side_effect)
+        }
+        _ => false,
     }
 }
 
@@ -2037,6 +2120,9 @@ fn derive_each_context_vars(ctx: &Ctx<'_, '_>, d: &BindDirective) -> SmallVec<[S
             | BindingSemantics::LegacyBindableProp(_)
             | BindingSemantics::LegacyState(_)
             | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
@@ -2159,7 +2245,7 @@ fn derive_component_bind_target(
         && ctx.dev
         && !ctx
             .ignore_data
-            .is_ignored(d.id, "ownership_invalid_binding")
+            .is_ignored_warning(d.id, crate::WarningCode::OwnershipInvalidBinding)
     {
         ComponentBindTarget::PropSourceOwned
     } else {

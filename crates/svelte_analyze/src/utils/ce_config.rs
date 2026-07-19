@@ -44,10 +44,20 @@ pub(crate) fn extract_ce_config_from_expr(
                         let PropertyKey::StaticIdentifier(id) = &sp.key else {
                             continue;
                         };
-                        if id.name.as_str() == "delegatesFocus"
-                            && let Expression::BooleanLiteral(lit) = &sp.value
-                        {
-                            config.delegates_focus = lit.value;
+                        match id.name.as_str() {
+                            "delegatesFocus" => {
+                                if let Expression::BooleanLiteral(lit) = &sp.value {
+                                    config.delegates_focus = lit.value;
+                                }
+                            }
+                            "mode" => {
+                                if let Expression::StringLiteral(lit) = &sp.value
+                                    && lit.value.as_str() == "closed"
+                                {
+                                    config.shadow = svelte_parser::CeDomMode::Closed;
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }

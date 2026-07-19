@@ -1,0 +1,8 @@
+[
+  {
+    "code": "duplicate_class_field",
+    "end": 96,
+    "severity": "error",
+    "start": 74
+  }
+]

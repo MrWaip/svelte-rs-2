@@ -1,0 +1,4 @@
+
+	:root {
+		.svelte-1xbipjb:has(x:where(.svelte-1xbipjb)) { color: green; }
+	}

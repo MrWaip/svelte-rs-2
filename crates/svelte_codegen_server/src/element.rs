@@ -6,7 +6,7 @@ use svelte_analyze::{
     ContentEditableKind, ElementAsyncKind, ElementSemantics, ElementValueRole, TextareaBody,
     TextareaSegment,
 };
-use svelte_ast::{Attribute, Element, Node, NodeId};
+use svelte_ast::{Attribute, Element, Node, NodeId, is_void};
 use svelte_ast_builder::{Arg, TemplatePart};
 
 use crate::error::{CodegenError, Result};
@@ -20,6 +20,18 @@ impl<'a> ServerCodegen<'a> {
             _ => ElementAsyncKind::Sync,
         };
         if async_kind.is_sync() {
+            if self
+                .analysis
+                .fragment_semantics
+                .query(element.fragment)
+                .bindings
+                .declares_local()
+            {
+                let body = self.child_statements(|c| c.emit_element_inline(element))?;
+                let block = self.b.block_stmt(body);
+                self.push_stmt(block);
+                return Ok(());
+            }
             return self.emit_element_inline(element);
         }
         let blockers = async_kind.blockers().to_vec();
@@ -37,6 +49,18 @@ impl<'a> ServerCodegen<'a> {
         let call = self.wrap_arrow(arrow, &blockers, "$$renderer.child", "$$renderer.async");
         self.push_stmt(call);
         Ok(())
+    }
+
+    fn element_name(&self, id: NodeId) -> Option<&str> {
+        match self.analysis.element_semantics.query(id) {
+            ElementSemantics::RegularElement(sem) => Some(sem.name.as_str()),
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_)
+            | ElementSemantics::SvelteElement(_)
+            | ElementSemantics::LegacySlot(_)
+            | ElementSemantics::LegacyComponentSlots(_) => None,
+        }
     }
 
     fn value_role(&self, id: NodeId) -> ElementValueRole {
@@ -91,12 +115,17 @@ impl<'a> ServerCodegen<'a> {
         };
         if emits_const_tags {
             self.emit_fragment_const_tags_hoisted(element.fragment)?;
+            self.emit_fragment_declaration_tags(element.fragment)?;
         }
 
-        self.push_text(&format!("<{}", element.name));
+        let name = self
+            .element_name(element.id)
+            .unwrap_or(element.name.as_str())
+            .to_string();
+        self.push_text(&format!("<{name}"));
         self.emit_element_attributes(element.id, &element.attributes)?;
         self.emit_replay_events(element.id);
-        if self.analysis.is_void(element.id) {
+        if is_void(&name) {
             self.push_text("/>");
         } else {
             self.push_text(">");
@@ -144,8 +173,8 @@ impl<'a> ServerCodegen<'a> {
             self.push_text("<!>");
         }
 
-        if !self.analysis.is_void(element.id) {
-            self.push_text(&format!("</{}>", element.name));
+        if !is_void(&name) {
+            self.push_text(&format!("</{name}>"));
         }
 
         if self.dev {
@@ -340,7 +369,10 @@ impl<'a> ServerCodegen<'a> {
     }
 
     fn emit_raw_text_element(&mut self, element: &'a Element, raw_content: String) -> Result<()> {
-        let name = element.name.clone();
+        let name = self
+            .element_name(element.id)
+            .unwrap_or(element.name.as_str())
+            .to_string();
         let raw_statements = self.child_statements(|codegen| {
             codegen.push_text(&format!("<{name}"));
             codegen.emit_element_attributes(element.id, &element.attributes)?;
@@ -370,7 +402,10 @@ impl<'a> ServerCodegen<'a> {
 
     fn push_element_stmt(&self, element: &Element) -> Statement<'a> {
         let (line, col) = self.line_index.line_col(element.span.start);
-        let name: &str = self.b.alloc_str(&element.name);
+        let name: &str = self.b.alloc_str(
+            self.element_name(element.id)
+                .unwrap_or(element.name.as_str()),
+        );
         self.b.expr_stmt(self.b.call_expr(
             "$.push_element",
             [

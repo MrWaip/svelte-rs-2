@@ -172,7 +172,7 @@ compiler_case!(
 compiler_case!(
     runes_sub_store_mutate_callback_param,
     "stores/runes_sub/store_mutate_callback_param",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     runes_sub_held_store_member_read_guard,

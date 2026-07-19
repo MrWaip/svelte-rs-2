@@ -1,6 +1,15 @@
 use super::*;
 
 compiler_case!(
+    dynamic_member_of_call_no_side_effect,
+    "events/dynamic_member_of_call_no_side_effect"
+);
+compiler_case!(
+    dynamic_call_top_level_side_effect_guard,
+    "events/dynamic_call_top_level_side_effect_guard"
+);
+
+compiler_case!(
     legacy_dev_arrow_handler_return,
     "events/legacy_dev_arrow_handler_return"
 );
@@ -128,4 +137,8 @@ compiler_case!(
 compiler_case!(
     window_hyphenated_event_name,
     "events/window_hyphenated_event_name"
+);
+compiler_case!(
+    dynamic_call_reassigned_remove_parens,
+    "events/dynamic_call_reassigned_remove_parens"
 );

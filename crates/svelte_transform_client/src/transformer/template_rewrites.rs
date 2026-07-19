@@ -34,7 +34,10 @@ pub(crate) fn rewrite_template_enter<'a>(
         if super::state_legacy::is_destructure_assignment_lhs(it) {
             t.destructure_lhs_depth += 1;
         }
-        t.dispatch_member_assignment(it, false, ctx);
+        if !t.dispatch_member_assignment(it, false, ctx) {
+            let is_expr_stmt = super::assignments::assignment_parent_is_expression_statement(ctx);
+            t.apply_dev_member_assign_wrap(it, is_expr_stmt, ctx);
+        }
     }
 }
 
@@ -59,14 +62,14 @@ pub(crate) fn rewrite_template_exit<'a>(
             analysis
                 .output
                 .ignore_data
-                .is_ignored(id, "await_reactivity_loss")
+                .is_ignored_warning(id, svelte_analyze::WarningCode::AwaitReactivityLoss)
         });
         let is_pickled = analysis.pickled_awaits.contains(await_expr.node_id());
 
         let ast = t.b.ast;
         let arg = mem::replace(
             &mut await_expr.argument,
-            ast.expression_identifier(SPAN, ast.atom("")),
+            ast.expression_identifier(SPAN, ""),
         );
 
         if is_pickled {
@@ -75,7 +78,7 @@ pub(crate) fn rewrite_template_exit<'a>(
             let Expression::AwaitExpression(_) = &*it else {
                 unreachable!()
             };
-            let awaited = mem::replace(it, ast.expression_identifier(SPAN, ast.atom("")));
+            let awaited = mem::replace(it, ast.expression_identifier(SPAN, ""));
             *it = ast.expression_call(SPAN, awaited, NONE, ast.vec(), false);
             return;
         } else if t.dev && !ignored {
@@ -84,7 +87,7 @@ pub(crate) fn rewrite_template_exit<'a>(
             let Expression::AwaitExpression(_) = &*it else {
                 unreachable!()
             };
-            let awaited = mem::replace(it, ast.expression_identifier(SPAN, ast.atom("")));
+            let awaited = mem::replace(it, ast.expression_identifier(SPAN, ""));
             *it = ast.expression_call(SPAN, awaited, NONE, ast.vec(), false);
             return;
         } else {

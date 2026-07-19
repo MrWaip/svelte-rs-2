@@ -8,9 +8,10 @@ use crate::scope::ComponentScoping;
 use crate::types::data::{BindingSemantics, JsAst, SnippetData};
 use compact_str::CompactString;
 use oxc_ast::ast::{
-    Argument, BinaryExpression, BindingPattern, CallExpression, ConditionalExpression, Declaration,
-    Expression, Function, IdentifierReference, LogicalExpression, NewExpression, Statement,
-    StaticMemberExpression, TemplateLiteral, UnaryExpression, VariableDeclaration,
+    Argument, AssignmentExpression, BinaryExpression, BindingPattern, CallExpression,
+    ConditionalExpression, Declaration, Expression, Function, IdentifierReference,
+    LogicalExpression, NewExpression, Statement, StaticMemberExpression, TemplateLiteral,
+    UnaryExpression, VariableDeclaration,
 };
 use oxc_ast_visit::{Visit, walk};
 use oxc_syntax::node::NodeId as OxcNodeId;
@@ -111,6 +112,7 @@ impl Evaluation {
 pub struct ValueEvaluation {
     by_symbol: FxHashMap<SymbolId, Evaluation>,
     console_state_calls: FxHashSet<OxcNodeId>,
+    non_primitive_assignment_values: FxHashSet<OxcNodeId>,
 }
 
 impl ValueEvaluation {
@@ -123,6 +125,10 @@ impl ValueEvaluation {
 
     pub fn console_call_contains_state(&self, call: OxcNodeId) -> bool {
         self.console_state_calls.contains(&call)
+    }
+
+    pub fn assignment_value_is_non_primitive(&self, assign: OxcNodeId) -> bool {
+        self.non_primitive_assignment_values.contains(&assign)
     }
 }
 
@@ -167,6 +173,7 @@ pub struct ValueEvaluator<'c, 'a> {
 impl<'c, 'a> ValueEvaluator<'c, 'a> {
     pub fn new(
         parsed: &'c JsAst<'a>,
+        component: &Component,
         scoping: &'c ComponentScoping<'a>,
         semantics: &'c ComponentSemantics<'a>,
         reactivity: &'c ReactivitySemantics,
@@ -174,7 +181,7 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
         read_context: ReadContext,
         dev: bool,
     ) -> Self {
-        let (bindings_init, function_decls) = collect_bindings_init(parsed);
+        let (bindings_init, function_decls) = collect_bindings_init(parsed, component);
         Self {
             scoping,
             semantics,
@@ -286,6 +293,9 @@ fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
         BindingSemantics::NonReactive
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
@@ -294,6 +304,7 @@ fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
 
 fn collect_bindings_init<'c, 'a>(
     parsed: &'c JsAst<'a>,
+    component: &Component,
 ) -> (FxHashMap<SymbolId, &'c Expression<'a>>, FxHashSet<SymbolId>) {
     let cap = parsed.program.as_ref().map_or(0, |p| p.body.len())
         + parsed.module_program.as_ref().map_or(0, |p| p.body.len());
@@ -430,11 +441,26 @@ fn collect_bindings_init<'c, 'a>(
             collect_stmt(stmt, &mut map, &mut fn_decls);
         }
     }
+
+    for expr in parsed.iter_exprs() {
+        collect_expr(expr, &mut map, &mut fn_decls);
+    }
+
+    for node in component.store.iter_nodes() {
+        let Node::DeclarationTag(tag) = node else {
+            continue;
+        };
+        if let Some(Statement::VariableDeclaration(vd)) = parsed.stmt(tag.declaration.id()) {
+            ingest_var_decl(vd, &mut map);
+        }
+    }
+
     (map, fn_decls)
 }
 
 pub(crate) fn build<'a>(
     parsed: &JsAst<'a>,
+    component: &Component,
     scoping: &ComponentScoping<'a>,
     semantics: &ComponentSemantics<'a>,
     snippets: &SnippetData,
@@ -443,6 +469,7 @@ pub(crate) fn build<'a>(
 ) -> ValueEvaluation {
     let evaluator = ValueEvaluator::new(
         parsed,
+        component,
         scoping,
         semantics,
         reactivity,
@@ -465,15 +492,16 @@ pub(crate) fn build<'a>(
         );
     }
 
-    let console_state_calls = if dev {
-        collect_console_state_calls(parsed, scoping, semantics, &by_symbol)
+    let (console_state_calls, non_primitive_assignment_values) = if dev {
+        collect_value_eval_facts(parsed, scoping, semantics, &by_symbol, Some(&evaluator))
     } else {
-        FxHashSet::default()
+        (FxHashSet::default(), FxHashSet::default())
     };
 
     ValueEvaluation {
         by_symbol,
         console_state_calls,
+        non_primitive_assignment_values,
     }
 }
 
@@ -483,10 +511,12 @@ pub(crate) fn build_module_console_calls<'a>(
     semantics: &ComponentSemantics<'a>,
 ) -> ValueEvaluation {
     let by_symbol = FxHashMap::default();
-    let console_state_calls = collect_console_state_calls(parsed, scoping, semantics, &by_symbol);
+    let (console_state_calls, non_primitive_assignment_values) =
+        collect_value_eval_facts(parsed, scoping, semantics, &by_symbol, None);
     ValueEvaluation {
         by_symbol,
         console_state_calls,
+        non_primitive_assignment_values,
     }
 }
 
@@ -506,7 +536,9 @@ struct ConsoleStateWalk<'e, 'a> {
     scoping: &'e ComponentScoping<'a>,
     semantics: &'e ComponentSemantics<'a>,
     by_symbol: &'e FxHashMap<SymbolId, Evaluation>,
+    evaluator: Option<&'e ValueEvaluator<'e, 'a>>,
     calls: FxHashSet<OxcNodeId>,
+    non_primitive_assignments: FxHashSet<OxcNodeId>,
 }
 
 impl<'e, 'a> Visit<'a> for ConsoleStateWalk<'e, 'a> {
@@ -515,6 +547,16 @@ impl<'e, 'a> Visit<'a> for ConsoleStateWalk<'e, 'a> {
             self.calls.insert(call.node_id());
         }
         walk::walk_call_expression(self, call);
+    }
+
+    fn visit_assignment_expression(&mut self, assign: &AssignmentExpression<'a>) {
+        if assign.left.as_member_expression().is_some()
+            && let Some(evaluator) = self.evaluator
+            && evaluator.evaluate(&assign.right).has_unknown()
+        {
+            self.non_primitive_assignments.insert(assign.node_id());
+        }
+        walk::walk_assignment_expression(self, assign);
     }
 }
 
@@ -539,6 +581,9 @@ impl<'e, 'a> ConsoleStateWalk<'e, 'a> {
     }
 
     fn arg_has_unknown(&self, expr: &Expression<'a>) -> bool {
+        if let Some(evaluator) = self.evaluator {
+            return evaluator.evaluate(expr).has_unknown();
+        }
         match expr.get_inner_expression() {
             Expression::StringLiteral(_)
             | Expression::NumericLiteral(_)
@@ -565,17 +610,20 @@ impl<'e, 'a> ConsoleStateWalk<'e, 'a> {
     }
 }
 
-fn collect_console_state_calls<'a>(
+fn collect_value_eval_facts<'e, 'a>(
     parsed: &JsAst<'a>,
-    scoping: &ComponentScoping<'a>,
-    semantics: &ComponentSemantics<'a>,
-    by_symbol: &FxHashMap<SymbolId, Evaluation>,
-) -> FxHashSet<OxcNodeId> {
+    scoping: &'e ComponentScoping<'a>,
+    semantics: &'e ComponentSemantics<'a>,
+    by_symbol: &'e FxHashMap<SymbolId, Evaluation>,
+    evaluator: Option<&'e ValueEvaluator<'e, 'a>>,
+) -> (FxHashSet<OxcNodeId>, FxHashSet<OxcNodeId>) {
     let mut walker = ConsoleStateWalk {
         scoping,
         semantics,
         by_symbol,
+        evaluator,
         calls: FxHashSet::default(),
+        non_primitive_assignments: FxHashSet::default(),
     };
     for prog in [parsed.program.as_ref(), parsed.module_program.as_ref()]
         .into_iter()
@@ -589,7 +637,7 @@ fn collect_console_state_calls<'a>(
     for statement in parsed.iter_stmts() {
         walker.visit_statement(statement);
     }
-    walker.calls
+    (walker.calls, walker.non_primitive_assignments)
 }
 
 #[derive(Clone, Debug)]
@@ -1004,19 +1052,39 @@ fn eval_unary(
     guard: &mut FxHashSet<OxcNodeId>,
 ) -> EvalSet {
     use UnaryOperator::*;
+    let arg = eval_set(&u.argument, ctx, guard);
+    if let Some(v) = single_known(&arg)
+        && let Some(folded) = fold_unary_known(u.operator, v)
+    {
+        return smallvec![EvalAtom::Known(folded)];
+    }
     match u.operator {
         LogicalNot | Delete => smallvec![EvalAtom::Class(ValueClass::Boolean)],
         Void => smallvec![EvalAtom::Known(KnownValue::Undefined)],
         Typeof => smallvec![EvalAtom::Class(ValueClass::String)],
-        UnaryNegation | UnaryPlus | BitwiseNot => {
-            let arg = eval_set(&u.argument, ctx, guard);
-            if let Some(v) = single_known(&arg)
-                && let Some(folded) = fold_unary_numeric(u.operator, v)
-            {
-                return smallvec![EvalAtom::Known(folded)];
-            }
-            smallvec![EvalAtom::Class(ValueClass::Number)]
-        }
+        UnaryNegation | UnaryPlus | BitwiseNot => smallvec![EvalAtom::Class(ValueClass::Number)],
+    }
+}
+
+fn fold_unary_known(op: UnaryOperator, v: &KnownValue) -> Option<KnownValue> {
+    use UnaryOperator::*;
+    match op {
+        Typeof => Some(KnownValue::Str(CompactString::from(known_typeof(v)))),
+        Void => Some(KnownValue::Undefined),
+        Delete => Some(KnownValue::Bool(true)),
+        LogicalNot => Some(KnownValue::Bool(is_falsy(v))),
+        UnaryNegation | UnaryPlus | BitwiseNot => fold_unary_numeric(op, v),
+    }
+}
+
+fn known_typeof(v: &KnownValue) -> &'static str {
+    match v {
+        KnownValue::Null => "object",
+        KnownValue::Undefined => "undefined",
+        KnownValue::Bool(_) => "boolean",
+        KnownValue::Num(_) => "number",
+        KnownValue::Str(_) => "string",
+        KnownValue::BigInt => "bigint",
     }
 }
 
@@ -1138,6 +1206,9 @@ fn eval_identifier(
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive

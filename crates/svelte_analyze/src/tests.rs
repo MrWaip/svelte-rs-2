@@ -1,8 +1,6 @@
 use crate::passes::fragment_topology::fragment_items as fragment_items_fn;
 use crate::reactivity_semantics::data::PropDefaultKind;
-use crate::types::data::{
-    BindTargetSemantics, BindingSemantics, ConstBindingSemantics, ParentKind,
-};
+use crate::types::data::{BindTargetSemantics, BindingSemantics, ConstTagSemantics, ParentKind};
 use crate::{
     AttributeSemantics, BlockSemantics, ClassSemantics, EachIndexStrategy, EachItemStrategy,
     GroupBindValue, OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
@@ -837,7 +835,7 @@ fn assert_const_tag_owner(data: &AnalysisData, name: &str) {
     assert!(
         matches!(
             data.binding_semantics(sym_id),
-            BindingSemantics::Const(ConstBindingSemantics::ConstTag { .. })
+            BindingSemantics::Const(ConstTagSemantics { .. }) | BindingSemantics::OptimizedConst(_)
         ),
         "expected '{name}' to have a Const declaration semantic",
     );
@@ -1746,6 +1744,33 @@ fn template_element_index_tracks_css_candidates() {
     assert!(id_candidates.contains(&div.id));
     assert!(!id_candidates.contains(&span.id));
     assert!(id_candidates.contains(&p.id));
+}
+
+#[track_caller]
+fn assert_element_name(data: &AnalysisData, component: &Component, raw: &str, expected: &str) {
+    let el = find_element(component.root, component, raw)
+        .unwrap_or_else(|| panic!("no element <{raw}>"));
+    let got = match data.element_semantics.query(el.id) {
+        crate::ElementSemantics::RegularElement(sem) => Some(sem.name.as_str()),
+        _ => None,
+    };
+    assert_eq!(
+        got,
+        Some(expected),
+        "canonical name for <{raw}>: expected {expected:?}, got {got:?}"
+    );
+}
+
+#[test]
+fn html_element_name_is_lowercased() {
+    let (component, data) = analyze_source("<dIV>hi</dIV>");
+    assert_element_name(&data, &component, "dIV", "div");
+}
+
+#[test]
+fn svg_element_name_preserves_case_guard() {
+    let (component, data) = analyze_source(r#"<svg><clipPath id="c"></clipPath></svg>"#);
+    assert_element_name(&data, &component, "clipPath", "clipPath");
 }
 
 #[test]
@@ -7902,7 +7927,7 @@ async function baz() { return 2; }
 
     fn evaluate_binding_init(source: &'static str, name: &str) -> Evaluation {
         use crate::value_evaluation::{ReadContext, ValueEvaluator};
-        let (_component, data, parsed) = analyze_source_with_parsed(source);
+        let (component, data, parsed) = analyze_source_with_parsed(source);
         let sym = data
             .scoping
             .semantics()
@@ -7911,6 +7936,7 @@ async function baz() { return 2; }
             .unwrap_or_else(|| panic!("binding '{name}' not found"));
         let evaluator = ValueEvaluator::new(
             &parsed,
+            &component,
             &data.scoping,
             data.scoping.semantics(),
             &data.reactivity,
@@ -9464,7 +9490,7 @@ const s = writable(0);</script>
 
     #[test]
     fn element_bind_checked_bindable_prop() {
-        let source = r#"<script>let { checked = $bindable() } = $props();</script><input bind:checked={checked} />"#;
+        let source = r#"<script>let { checked = $bindable() } = $props();</script><input type="checkbox" bind:checked={checked} />"#;
         let (component, data) = analyze_source(source);
         let attr_id = find_element_bind(&component, "input", "checked").expect("attr");
 

@@ -198,10 +198,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     Attribute::ConcatenationAttribute(a) => {
                         self.emit_attr_concatenation(state, owner_id, owner_tag, owner_var, a)?;
                     }
+                    Attribute::StringAttribute(a) => {
+                        let text = a.value(&self.ctx.query.component.source).to_string();
+                        let val = self.ctx.b.str_expr(&text);
+                        self.emit_special_value_static(state, owner_var, val, !s.defined);
+                    }
+                    Attribute::BooleanAttribute(_) => {
+                        let val = self.ctx.b.bool_expr(true);
+                        self.emit_special_value_static(state, owner_var, val, !s.defined);
+                    }
                     _ => {
                         return CodegenError::semantic_mismatch(
                             attr_id,
-                            "SpecialValueAttr requires ExpressionAttribute or ConcatenationAttribute",
+                            "SpecialValueAttr requires a value attribute",
                         );
                     }
                 },
@@ -371,17 +380,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 AttributeSemantics::NonSpecial => match attr {
                     Attribute::StringAttribute(a) => {
-                        if a.name == "value"
-                            && (self.ctx.has_bind_group(owner_id) || owner_tag == "option")
-                        {
-                            if (self.ctx.has_bind_group(owner_id) && owner_tag == "input")
-                                || owner_tag == "option"
-                            {
-                                let val = a.value(&self.ctx.query.component.source);
-                                self.emit_bind_group_static_value(state, owner_var, val);
-                            }
-                            continue;
-                        }
                         let val = a.value(&self.ctx.query.component.source);
                         state.template.set_attribute(&a.name, Some(val.to_string()));
                     }
@@ -389,13 +387,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         state.template.set_attribute(&a.name, Some(String::new()));
                     }
                     Attribute::ExpressionAttribute(a) => {
-                        if a.name == "value"
-                            && owner_tag == "input"
-                            && self.ctx.has_bind_group(owner_id)
-                        {
-                            deferred_bind_group_value = Some(a);
-                            continue;
-                        }
                         self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
                     }
                     Attribute::ConcatenationAttribute(_) => {

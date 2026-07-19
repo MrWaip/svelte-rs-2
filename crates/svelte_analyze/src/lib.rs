@@ -30,17 +30,17 @@ pub use passes::css_analyze::analyze_css_pass;
 pub mod scope;
 pub mod types;
 pub(crate) mod utils;
-mod validate;
+pub(crate) mod validate;
 pub(crate) mod walker;
 
 pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
-    BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
-    EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
-    EachKeyKind, HtmlTagAsyncKind, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch,
-    IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind,
-    RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement,
-    SnippetSlotKey,
+    BlockSemantics, ConstTagBlockSemantics, DeclarationTagBlockSemantics, EachAsyncKind,
+    EachBlockSemantics, EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
+    EachItemKind, EachKeyKind, FragmentDeclarationAsyncKind, HtmlTagAsyncKind, IfAlternate,
+    IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind, KeyBlockSemantics,
+    RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics,
+    SnippetParam, SnippetPlacement, SnippetSlotKey,
 };
 pub use element_semantics::{
     BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementReplayEvent, ElementSemantics,
@@ -55,7 +55,7 @@ pub use types::data::{
     AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
     BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
     ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
-    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstBindingSemantics,
+    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind, ContextualReadSemantics,
     CssAnalysis, DeclaratorGroup, DeclaratorSemantics, DerivedAsyncKind,
     DerivedDeclarationSemantics, DerivedKind, DerivedSource, DocumentBindKind, EachIndexStrategy,
@@ -88,6 +88,7 @@ pub const PROPS_IS_RUNES: u32 = PropsFlags::RUNES.bits();
 pub const PROPS_IS_UPDATED: u32 = PropsFlags::UPDATED.bits();
 pub const PROPS_IS_BINDABLE: u32 = PropsFlags::BINDABLE.bits();
 pub const PROPS_IS_LAZY_INITIAL: u32 = PropsFlags::LAZY_INITIAL.bits();
+pub use svelte_diagnostics::codes::WarningCode;
 pub use utils::{IdentGen, IdentGenSnapshot};
 pub use utils::{
     collapse_attribute_whitespace, concat_single_dynamic_expr, emit_html_attribute_name,
@@ -205,15 +206,15 @@ pub fn analyze_module<'a>(
 
     match svelte_parser::parse_module(alloc, source, is_ts) {
         Ok(program) => {
-            let mut builder = svelte_component_semantics::ComponentSemanticsBuilder::new();
+            let mut builder = svelte_component_semantics::ComponentSemanticsBuilder::with_capacity(
+                source.len() / 6,
+            );
             builder.add_instance_program(&program);
             let mut scoping = scope::ComponentScoping::from_semantics(builder.finish());
             scoping.build_template_scope_set();
 
             data.scoping = scoping;
             data.script.runes_mode = svelte_ast::RunesMode::Runes;
-
-            validate::validate_standalone_module(&data, &program, true, &mut diags);
 
             parsed.program = Some(program);
             let stub_component =
@@ -235,6 +236,10 @@ pub fn analyze_module<'a>(
                 data.scoping.semantics(),
                 dev,
             );
+
+            if let Some(program) = parsed.program.as_ref() {
+                validate::validate_standalone_module(&data, program, source, true, &mut diags);
+            }
 
             data.script.dev = dev;
             if dev {
