@@ -1885,13 +1885,17 @@ impl ReactivitySemantics {
         let mut declarators: IndexVec<OxcNodeId, Option<DeclaratorSemantics>> =
             IndexVec::with_capacity(node_count as usize);
         declarators.resize_with(node_count as usize, || None);
+        let symbols_cap = node_count as usize / 8;
         Self {
-            bindings: IndexVec::new(),
+            bindings: IndexVec::with_capacity(symbols_cap),
             declarators,
-            declarator_node_by_symbol: FxHashMap::default(),
+            declarator_node_by_symbol: FxHashMap::with_capacity_and_hasher(
+                symbols_cap,
+                Default::default(),
+            ),
             deferred_derived_sources: Vec::new(),
             store_declaration_symbols: Vec::new(),
-            reference_facts: IndexVec::new(),
+            reference_facts: IndexVec::with_capacity(node_count as usize / 4),
             class_field_semantics: FxHashMap::default(),
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
             contextual_owner: FxHashMap::default(),

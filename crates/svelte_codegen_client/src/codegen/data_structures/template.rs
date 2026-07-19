@@ -1,5 +1,3 @@
-use std::fmt::Write;
-
 pub(crate) enum TemplateNode {
     Text(String),
     Comment(Option<String>),
@@ -97,11 +95,15 @@ impl Template {
     }
 
     pub fn as_html(&self) -> String {
-        let mut out = String::new();
+        let mut out = String::with_capacity(self.estimate_size());
         for node in &self.nodes {
             stringify(node, &mut out);
         }
         out
+    }
+
+    fn estimate_size(&self) -> usize {
+        estimate_nodes(&self.nodes)
     }
 
     fn current_mut(&mut self) -> &mut Vec<TemplateNode> {
@@ -119,11 +121,41 @@ impl Default for Template {
     }
 }
 
+fn estimate_nodes(nodes: &[TemplateNode]) -> usize {
+    let mut size = 0;
+    for node in nodes {
+        match node {
+            TemplateNode::Text(s) => size += s.len(),
+            TemplateNode::Comment(Some(data)) if !data.is_empty() => size += 7 + data.len(),
+            TemplateNode::Comment(_) => size += 3,
+            TemplateNode::Element {
+                name,
+                attributes,
+                children,
+                ..
+            } => {
+                size += 2 + name.len() + 3 + name.len() + 1;
+                for (key, value) in attributes {
+                    size += 1 + key.len();
+                    if let Some(val) = value {
+                        size += 3 + val.len();
+                    }
+                }
+                size += estimate_nodes(children);
+            }
+        }
+    }
+    size
+}
+
+#[inline]
 fn stringify(node: &TemplateNode, out: &mut String) {
     match node {
         TemplateNode::Text(s) => out.push_str(s),
         TemplateNode::Comment(Some(data)) if !data.is_empty() => {
-            let _ = write!(out, "<!--{data}-->");
+            out.push_str("<!--");
+            out.push_str(data);
+            out.push_str("-->");
         }
         TemplateNode::Comment(_) => out.push_str("<!>"),
         TemplateNode::Element {
@@ -132,7 +164,8 @@ fn stringify(node: &TemplateNode, out: &mut String) {
             children,
             is_html,
         } => {
-            let _ = write!(out, "<{name}");
+            out.push('<');
+            out.push_str(name);
             for (key, value) in attributes {
                 out.push(' ');
                 if *is_html {
@@ -141,7 +174,9 @@ fn stringify(node: &TemplateNode, out: &mut String) {
                     out.push_str(key);
                 }
                 if let Some(val) = value {
-                    let _ = write!(out, "=\"{}\"", escape_html_attr(val));
+                    out.push_str("=\"");
+                    escape_html_attr_into(val, out);
+                    out.push('"');
                 }
             }
             if is_void(name) {
@@ -151,12 +186,15 @@ fn stringify(node: &TemplateNode, out: &mut String) {
                 for child in children {
                     stringify(child, out);
                 }
-                let _ = write!(out, "</{name}>");
+                out.push_str("</");
+                out.push_str(name);
+                out.push('>');
             }
         }
     }
 }
 
+#[inline]
 fn push_ascii_lowercase(out: &mut String, s: &str) {
     let bytes = s.as_bytes();
     let mut i = 0;
@@ -175,8 +213,12 @@ fn push_ascii_lowercase(out: &mut String, s: &str) {
     }
 }
 
-pub(crate) fn escape_html_attr(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
+#[inline]
+fn escape_html_attr_into(s: &str, out: &mut String) {
+    if !s.bytes().any(|b| b == b'&' || b == b'"' || b == b'<') {
+        out.push_str(s);
+        return;
+    }
     for ch in s.chars() {
         match ch {
             '&' => out.push_str("&amp;"),
@@ -185,9 +227,15 @@ pub(crate) fn escape_html_attr(s: &str) -> String {
             _ => out.push(ch),
         }
     }
+}
+
+pub(crate) fn escape_html_attr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    escape_html_attr_into(s, &mut out);
     out
 }
 
+#[inline]
 fn is_void(name: &str) -> bool {
     matches!(
         name,

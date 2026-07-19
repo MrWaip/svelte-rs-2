@@ -60,3 +60,4 @@ svelte_ast = { workspace = true }
 oxc_allocator = { workspace = true }
 criterion2 = { workspace = true }
 glob = { workspace = true }
+mimalloc = { workspace = true }

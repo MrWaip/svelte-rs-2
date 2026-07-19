@@ -30,10 +30,11 @@ pub struct ExpressionSemanticsStore {
 }
 
 impl ExpressionSemanticsStore {
-    pub(crate) fn new(_node_count: u32) -> Self {
+    pub(crate) fn new(node_count: u32) -> Self {
+        let cap = node_count as usize / 4;
         Self {
-            entries: FxHashMap::default(),
-            by_oxc: FxHashMap::default(),
+            entries: FxHashMap::with_capacity_and_hasher(cap, Default::default()),
+            by_oxc: FxHashMap::with_capacity_and_hasher(cap, Default::default()),
             context_signals: ContextSignal::empty(),
         }
     }
