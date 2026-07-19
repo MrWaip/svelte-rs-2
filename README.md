@@ -24,13 +24,13 @@ Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.56.4**) — same
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/benchmark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./assets/benchmark-light.svg">
-  <img src="./assets/benchmark.svg" alt="svelte-rs compiler benchmark — ~13× faster than svelte/compiler, ~6× faster than rsvelte" width="720">
+  <img src="./assets/benchmark.svg" alt="svelte-rs compiler benchmark — ~13× faster than svelte/compiler, ~13× faster than rsvelte" width="720">
 </picture>
 
 - **Byte-exact JS output** — **~2,600 cases** (1,404 cluster + 1,199 legacy), each diffed against the reference compiler in all four modes (client/server × dev/prod) — **10,000+ passing comparisons**.
 - **Diagnostics parity** — **731 cases** across 26 categories (a11y, runes, CSS, TypeScript, …), matched against `svelte/compiler`'s own warnings and errors by code, severity, and span.
 - **Drop-in** — same `compile()` / `compileModule()` API as `svelte/compiler`.
-- **~13× faster** across the full 2,825-file corpus (client 12.7×, server 13.6×, dev variants ~12×).
+- **~13× faster** across the ~2,950-file corpus (client 13.0×, server 14.1×, dev variants 12.6–14.2×).
 - **Ready to try** — wired into a fork of `vite-plugin-svelte`, so it runs in a real Vite app today.
 
 ## Install
@@ -122,16 +122,16 @@ Parity target: **svelte@5.56.4**. Check this before logging an issue.
 
 ## Benchmarks
 
-Whole-corpus throughput: **2,825 real `.svelte` files**, each compiled in every mode, single-threaded, one file at a time. Median of 5 runs, measured 2026-07-18 via `just bench-compare` on a 12-core Linux x64.
+Whole-corpus throughput: **~2,950 real `.svelte` files**, each compiled in every mode, single-threaded, one file at a time. Median of 5 runs, measured 2026-07-19 via `just bench-compare` on Apple Silicon (macOS arm64), against **svelte@5.56.4** and **rsvelte 0.2.6**.
 
 | mode | svelte | rsvelte | ours | vs svelte | vs rsvelte |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| client | 1403.8 ms | 676.6 ms | 110.9 ms | **12.7×** | **6.1×** |
-| client-dev | 1490.9 ms | 913.1 ms | 127.1 ms | **11.7×** | **7.2×** |
-| ssr | 1222.6 ms | 533.0 ms | 89.9 ms | **13.6×** | **5.9×** |
-| ssr-dev | 1321.6 ms | 667.2 ms | 101.7 ms | **13.0×** | **6.6×** |
+| client | 1416.8 ms | 1387.4 ms | 109.1 ms | **13.0×** | **12.7×** |
+| client-dev | 1456.6 ms | 1688.7 ms | 115.9 ms | **12.6×** | **14.6×** |
+| ssr | 1254.1 ms | 1137.2 ms | 88.8 ms | **14.1×** | **12.8×** |
+| ssr-dev | 1334.7 ms | 1225.5 ms | 93.7 ms | **14.2×** | **13.1×** |
 
-Reproduce with `just bench-compare`. Per-run instruction-count benchmarks (64 total) also run on every commit via [CodSpeed](https://codspeed.io/MrWaip/svelte-rs-2). The [rsvelte](#alternatives) column appears when its native binding is installed. Speedup climbs further on large single components, where fixed per-file overhead amortizes.
+Reproduce with `just bench-compare`. Per-run instruction-count benchmarks (64 total) also run on every commit via [CodSpeed](https://codspeed.io/MrWaip/svelte-rs-2). The [rsvelte](#alternatives) column appears when its native binding is installed. These are rsvelte's serial `compile` numbers, matching our single-file harness; its parallel `compileBatch` (rayon) reaches ~3× over `svelte/compiler` on this machine, yet our single-threaded compiler is still faster than rsvelte's 12-core batch. rsvelte's serial path is also markedly slower on arm64 than on x64 — on x64 it lands closer to ~2× over `svelte/compiler`. Speedup climbs further on large single components, where fixed per-file overhead amortizes.
 
 ## Alternatives
 
