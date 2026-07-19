@@ -1,3 +1,4 @@
+use compact_str::CompactString;
 use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::Volatility;
 use svelte_ast::{Node, NodeId};
@@ -154,7 +155,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             state.init[init_len_before..post_const].rotate_left(attr_len);
         }
         let after_const_tags = init_len_before + (post_const.saturating_sub(pre_const));
-        state.root_var = Some(el_name);
+        state.root_var = Some(CompactString::from(el_name.as_str()));
         let slot_fragment = match self.ctx.query.component.store.get(slot_el_id) {
             Node::Element(el) => el.fragment,
             Node::SlotElementLegacy(el) => el.fragment,

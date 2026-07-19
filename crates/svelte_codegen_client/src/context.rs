@@ -1,5 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
+use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
@@ -147,6 +148,10 @@ impl<'a> CodegenState<'a> {
 
     pub fn gen_ident(&mut self, prefix: &str) -> String {
         self.ident_gen.generate(prefix)
+    }
+
+    pub fn gen_ident_compact(&mut self, prefix: &str) -> CompactString {
+        self.ident_gen.generate_compact(prefix)
     }
 
     pub fn add_delegated_event(&mut self, event_name: String) {

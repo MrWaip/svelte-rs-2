@@ -5,6 +5,7 @@ mod prepare;
 mod process_children;
 mod types;
 
+use compact_str::CompactString;
 use oxc_ast::ast::{Expression, Statement};
 use std::iter::empty;
 use svelte_analyze::{AttributeSemantics, ComponentCssPropValue, SnippetPlacement, Volatility};
@@ -270,8 +271,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         if let Some(insert_idx) = pre_emit_insert_idx {
-            let frag = self.ctx.state.gen_ident("fragment");
-            let node = self.ctx.state.gen_ident("node");
+            let frag = self.ctx.state.gen_ident_compact("fragment");
+            let node = self.ctx.state.gen_ident_compact("node");
             let b = &self.ctx.state.b;
             let stmt = b.var_stmt(&frag, b.call_expr("$.comment", empty::<Arg<'a, '_>>()));
             state.init.insert(insert_idx, stmt);
@@ -283,11 +284,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let special_block_end = state.init.len();
 
         if needs_anchor_reserve && !pre_emit_frag_pending && !state.suppress_root_finalize {
-            let frag = self.ctx.state.gen_ident("fragment");
+            let frag = self.ctx.state.gen_ident_compact("fragment");
             if skip_node_reserve {
-                state.pending_anchor_idents = Some((frag, String::new()));
+                state.pending_anchor_idents = Some((frag, CompactString::new("")));
             } else {
-                let node = self.ctx.state.gen_ident("node");
+                let node = self.ctx.state.gen_ident_compact("node");
                 state.pending_anchor_idents = Some((frag, node));
             }
         }
@@ -998,11 +999,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         let tpl_name = self.hoist_template_dedup(dedup_key, from_html);
 
-        let var_name = match state.root_var.as_deref() {
-            Some(name) => name.to_string(),
+        let var_name = match state.root_var.take() {
+            Some(name) => name,
             None => match strategy_kind {
-                StrategyKind::Multi => self.ctx.state.gen_ident("fragment"),
-                StrategyKind::SingleElement => self.ctx.state.gen_ident("root"),
+                StrategyKind::Multi => self.ctx.state.gen_ident_compact("fragment"),
+                StrategyKind::SingleElement => self.ctx.state.gen_ident_compact("root"),
             },
         };
 
@@ -1068,7 +1069,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     b.call_expr("$.text", [Arg::StrRef(text)])
                 };
                 state.init.push(b.var_stmt(&name, call));
-                state.root_var = Some(name);
+                state.root_var = Some(CompactString::from(name.as_str()));
             }
             FragmentAnchor::CallbackParam {
                 append_inside: true,
@@ -1082,7 +1083,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     b.call_expr("$.text", [Arg::StrRef(text)])
                 };
                 state.init.push(b.var_stmt(&name, call));
-                state.root_var = Some(name);
+                state.root_var = Some(CompactString::from(name.as_str()));
             }
             FragmentAnchor::Child { .. } | FragmentAnchor::ElementContentChild { .. } => {
                 let html = ctx.static_html_of(part).unwrap_or(text);
@@ -1117,7 +1118,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             FragmentAnchor::Root | FragmentAnchor::CallbackParam { .. } => {
                 if is_html_element {
                     let el_name = self.emit_element(state, ctx, el_id, None)?;
-                    state.root_var = Some(el_name);
+                    state.root_var = Some(CompactString::from(el_name.as_str()));
                 } else {
                     self.emit_element(state, ctx, el_id, None)?;
                 }
