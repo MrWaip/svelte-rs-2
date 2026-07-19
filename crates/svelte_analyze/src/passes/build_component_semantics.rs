@@ -20,7 +20,8 @@ pub(crate) fn build<'d, 'a>(
     parsed: &'d mut JsAst<'a>,
     data: &mut AnalysisData<'a>,
 ) {
-    let mut builder = ComponentSemanticsBuilder::new();
+    let node_count = component.node_count() as usize;
+    let mut builder = ComponentSemanticsBuilder::with_capacity(node_count);
 
     if let Some(module_program) = parsed.module_program.as_ref() {
         builder.add_module_program(module_program);
@@ -30,7 +31,6 @@ pub(crate) fn build<'d, 'a>(
         builder.add_instance_program(program);
     }
 
-    let node_count = component.node_count() as usize;
     let expr_id_map: FxHashMap<u32, OxcNodeId> =
         FxHashMap::with_capacity_and_hasher(node_count, Default::default());
     let stmt_id_map: FxHashMap<u32, OxcNodeId> =

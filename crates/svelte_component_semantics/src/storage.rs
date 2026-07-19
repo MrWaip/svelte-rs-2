@@ -162,7 +162,7 @@ impl<'a> ComponentSemantics<'a> {
         let symbols_cap = (node_count / 8).max(16);
         let refs_cap = (node_count / 4).max(32);
         let scopes_cap = (node_count / 12).max(8);
-        let js_cap = node_count;
+        let js_cap = node_count.max(128);
 
         let mut scopes = ScopeTable::with_capacity(scopes_cap);
         scopes.add_scope(None, ScopeFlags::Top | ScopeFlags::Function);

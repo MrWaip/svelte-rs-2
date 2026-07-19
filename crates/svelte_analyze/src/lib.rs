@@ -206,7 +206,9 @@ pub fn analyze_module<'a>(
 
     match svelte_parser::parse_module(alloc, source, is_ts) {
         Ok(program) => {
-            let mut builder = svelte_component_semantics::ComponentSemanticsBuilder::new();
+            let mut builder = svelte_component_semantics::ComponentSemanticsBuilder::with_capacity(
+                source.len() / 6,
+            );
             builder.add_instance_program(&program);
             let mut scoping = scope::ComponentScoping::from_semantics(builder.finish());
             scoping.build_template_scope_set();
