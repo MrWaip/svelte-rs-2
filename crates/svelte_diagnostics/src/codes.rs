@@ -35,6 +35,35 @@ pub fn is_valid_warning_code(code: &str) -> bool {
         || IGNORABLE_RUNTIME_WARNINGS.contains(&code)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WarningCode {
+    AwaitWaterfall,
+    AwaitReactivityLoss,
+    StateSnapshotUncloneable,
+    BindingPropertyNonReactive,
+    HydrationAttributeChanged,
+    HydrationHtmlChanged,
+    OwnershipInvalidBinding,
+    OwnershipInvalidMutation,
+    BidirectionalControlCharacters,
+}
+
+impl WarningCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            WarningCode::AwaitWaterfall => "await_waterfall",
+            WarningCode::AwaitReactivityLoss => "await_reactivity_loss",
+            WarningCode::StateSnapshotUncloneable => "state_snapshot_uncloneable",
+            WarningCode::BindingPropertyNonReactive => "binding_property_non_reactive",
+            WarningCode::HydrationAttributeChanged => "hydration_attribute_changed",
+            WarningCode::HydrationHtmlChanged => "hydration_html_changed",
+            WarningCode::OwnershipInvalidBinding => "ownership_invalid_binding",
+            WarningCode::OwnershipInvalidMutation => "ownership_invalid_mutation",
+            WarningCode::BidirectionalControlCharacters => "bidirectional_control_characters",
+        }
+    }
+}
+
 pub fn fuzzymatch<'a>(input: &str, candidates: &[&'a str]) -> Option<&'a str> {
     let threshold = (input.len() / 3).max(2);
     let mut best: Option<(&'a str, usize)> = None;
@@ -142,6 +171,45 @@ mod tests {
             ours,
             reference,
             "IGNORABLE_RUNTIME_WARNINGS drifted from svelte/src/constants.js at {}",
+            path.display()
+        );
+    }
+
+    fn warning_codes_in_dts(content: &str) -> Vec<String> {
+        let start = content
+            .find("export type WarningCode =")
+            .expect("WarningCode union present");
+        let rest = &content[start..];
+        let end = rest.find(';').expect("union terminator");
+        let body = &rest[..end];
+        let parts: Vec<&str> = body.split('\'').collect();
+        let mut codes = Vec::new();
+        let mut i = 1;
+        while i < parts.len() {
+            codes.push(parts[i].to_string());
+            i += 2;
+        }
+        codes
+    }
+
+    #[test]
+    fn warning_code_union_in_sync_with_all_warning_codes() {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let path = manifest_dir.join("../../packages/svelte-rs2/compiler/index.d.ts");
+        let Ok(content) = fs::read_to_string(&path) else {
+            return;
+        };
+        let mut union = warning_codes_in_dts(&content);
+        union.sort();
+        let mut reference: Vec<String> = DiagnosticKind::all_warning_codes()
+            .iter()
+            .map(|code| code.to_string())
+            .collect();
+        reference.sort();
+        assert_eq!(
+            union,
+            reference,
+            "WarningCode union in {} drifted from DiagnosticKind::all_warning_codes(); regenerate it",
             path.display()
         );
     }

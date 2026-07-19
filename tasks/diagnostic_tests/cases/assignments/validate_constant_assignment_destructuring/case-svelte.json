@@ -1,0 +1,8 @@
+[
+  {
+    "code": "constant_assignment",
+    "end": 63,
+    "severity": "error",
+    "start": 31
+  }
+]

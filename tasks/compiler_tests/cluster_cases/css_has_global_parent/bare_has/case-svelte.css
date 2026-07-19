@@ -1,0 +1,4 @@
+
+	.foo {
+		.svelte-1v3ugr9:has(x:where(.svelte-1v3ugr9)) { color: green; }
+	}

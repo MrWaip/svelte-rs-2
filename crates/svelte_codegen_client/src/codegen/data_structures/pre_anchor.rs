@@ -1,9 +1,11 @@
+use compact_str::CompactString;
+
 pub(crate) struct PreAnchor {
-    pub node_name: String,
-    pub frag_name: Option<String>,
+    pub node_name: CompactString,
+    pub frag_name: Option<CompactString>,
     pub needs_template_comment: bool,
     pub is_child: bool,
-    pub parent_var: Option<String>,
-    pub callback_param: Option<String>,
-    pub sibling_var: Option<String>,
+    pub parent_var: Option<CompactString>,
+    pub callback_param: Option<CompactString>,
+    pub sibling_var: Option<CompactString>,
 }

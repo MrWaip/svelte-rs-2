@@ -1,5 +1,9 @@
 use super::*;
 
+compiler_case!(
+    key_equals_index_no_context,
+    "each/key_equals_index_no_context"
+);
 compiler_case!(declaration_legacy_alias, "each/declaration/legacy/alias");
 compiler_case!(
     declaration_legacy_array_hole,

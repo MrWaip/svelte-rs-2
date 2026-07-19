@@ -1,0 +1,4 @@
+
+	:root {
+		.svelte-qww9og:has(h1:where(.svelte-qww9og)) { color: green; }
+	}

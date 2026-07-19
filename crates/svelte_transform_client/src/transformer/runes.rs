@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use oxc_traverse::{Ancestor, TraverseCtx};
 
-use svelte_analyze::{DeclaratorSemantics, RuntimeRuneKind};
+use svelte_analyze::{DeclaratorSemantics, RuntimeRuneKind, WarningCode};
 
 use super::model::ComponentTransformer;
 
@@ -37,8 +37,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             return;
         }
 
-        let dev_snapshot_ignored =
-            self.dev && self.is_in_ignored_stmt("state_snapshot_uncloneable");
+        let dev_snapshot_ignored = self.dev
+            && (self.is_in_ignored_stmt(WarningCode::StateSnapshotUncloneable)
+                || self.is_template_owner_ignored(WarningCode::StateSnapshotUncloneable));
         if self.rewrite_shared_call(node, dev_snapshot_ignored) {
             return;
         }

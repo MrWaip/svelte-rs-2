@@ -97,11 +97,18 @@ fn decode_named_entity(rest: &str, is_attribute_value: bool) -> Option<(char, us
     let limit = bytes.len().min(MAX_ENTITY_LEN);
     let ascii_len = bytes[..limit].iter().take_while(|b| b.is_ascii()).count();
     let mut best = None;
+    let mut lo = 0;
+    let mut hi = NAMED_ENTITIES.len();
 
     for end in 1..=ascii_len {
         let candidate = &rest[..end];
-        if let Ok(index) = NAMED_ENTITIES.binary_search_by_key(&candidate, |(name, _)| *name) {
-            let name = NAMED_ENTITIES[index].0;
+        lo += NAMED_ENTITIES[lo..hi].partition_point(|(name, _)| *name < candidate);
+        hi = lo + NAMED_ENTITIES[lo..hi].partition_point(|(name, _)| name.starts_with(candidate));
+        if lo == hi {
+            break;
+        }
+        if NAMED_ENTITIES[lo].0 == candidate {
+            let name = NAMED_ENTITIES[lo].0;
             if is_attribute_value && !name.ends_with(';') {
                 let next = bytes.get(end).copied();
                 let blocks = match next {
@@ -112,7 +119,7 @@ fn decode_named_entity(rest: &str, is_attribute_value: bool) -> Option<(char, us
                     continue;
                 }
             }
-            best = Some((NAMED_ENTITIES[index].1, end));
+            best = Some((NAMED_ENTITIES[lo].1, end));
         }
     }
 

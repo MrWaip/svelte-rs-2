@@ -1,0 +1,8 @@
+[
+  {
+    "code": "directive_missing_name",
+    "end": 10,
+    "severity": "error",
+    "start": 4
+  }
+]

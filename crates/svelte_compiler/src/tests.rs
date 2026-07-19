@@ -35,6 +35,7 @@ fn check(source: &str, expected: &str) {
     let opts = CompileOptions {
         name: Some("App".into()),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile(source, &opts);
@@ -198,11 +199,72 @@ fn error_recovery_returns_diagnostics() {
     assert!(!result.diagnostics.is_empty());
 }
 
+fn compile_diagnostics(source: &str, suppress: &[&str]) -> Vec<svelte_diagnostics::Diagnostic> {
+    let opts = CompileOptions {
+        name: Some("App".into()),
+        suppress: suppress.iter().map(|code| code.to_string()).collect(),
+        ..Default::default()
+    };
+    compile(source, &opts).diagnostics
+}
+
+#[track_caller]
+fn assert_lacks_code(diagnostics: &[svelte_diagnostics::Diagnostic], code: &str) {
+    let codes: Vec<&str> = diagnostics.iter().map(|d| d.kind.code()).collect();
+    assert!(
+        !codes.contains(&code),
+        "expected no `{code}` diagnostic, got: {codes:?}"
+    );
+}
+
+#[track_caller]
+fn assert_contains_code(diagnostics: &[svelte_diagnostics::Diagnostic], code: &str) {
+    let codes: Vec<&str> = diagnostics.iter().map(|d| d.kind.code()).collect();
+    assert!(
+        codes.contains(&code),
+        "expected `{code}` diagnostic, got: {codes:?}"
+    );
+}
+
+#[track_caller]
+fn assert_has_error(diagnostics: &[svelte_diagnostics::Diagnostic]) {
+    let has_error = diagnostics
+        .iter()
+        .any(|d| d.severity == svelte_diagnostics::Severity::Error);
+    let codes: Vec<&str> = diagnostics.iter().map(|d| d.kind.code()).collect();
+    assert!(
+        has_error,
+        "expected at least one error-severity diagnostic, got: {codes:?}"
+    );
+}
+
+#[test]
+fn unsuppressed_warning_is_reported() {
+    let diagnostics = compile_diagnostics("<div></div><style>.unused{color:red}</style>", &[]);
+    assert_contains_code(&diagnostics, "css_unused_selector");
+}
+
+#[test]
+fn suppress_drops_targeted_warning() {
+    let diagnostics = compile_diagnostics(
+        "<div></div><style>.unused{color:red}</style>",
+        &["css_unused_selector"],
+    );
+    assert_lacks_code(&diagnostics, "css_unused_selector");
+}
+
+#[test]
+fn suppress_never_drops_errors() {
+    let diagnostics = compile_diagnostics("<div>", &["css_unused_selector", "element_unclosed"]);
+    assert_has_error(&diagnostics);
+}
+
 #[test]
 fn compile_filename_derived_name_is_sanitized() {
     let opts = CompileOptions {
         filename: "src/routes/+page.svelte".into(),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile("", &opts);
@@ -223,6 +285,7 @@ fn compile_explicit_name_reserved_word_is_deconflicted() {
     let opts = CompileOptions {
         name: Some("class".into()),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile("", &opts);
@@ -243,6 +306,7 @@ fn compile_explicit_name_conflict_is_deconflicted() {
     let opts = CompileOptions {
         name: Some("App".into()),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile("<script>let App = 0;</script>", &opts);
@@ -265,6 +329,7 @@ fn compile_filename_derived_name_conflict_is_deconflicted() {
     let opts = CompileOptions {
         filename: "src/routes/counter.svelte".into(),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     let result = compile("<script>let Counter = 0;</script>", &opts);

@@ -18,13 +18,27 @@ impl FragmentWhitespace {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FragmentBindings {
+    None,
+    Local,
+}
+
+impl FragmentBindings {
+    pub fn declares_local(self) -> bool {
+        matches!(self, FragmentBindings::Local)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FragmentSemantics {
     pub whitespace: FragmentWhitespace,
+    pub bindings: FragmentBindings,
 }
 
 impl FragmentSemantics {
     const DEFAULT: FragmentSemantics = FragmentSemantics {
         whitespace: FragmentWhitespace::Collapse,
+        bindings: FragmentBindings::None,
     };
 }
 

@@ -596,6 +596,9 @@ pub fn generate<'a>(
     };
 
     let mut program_body: Vec<Statement<'_>> = Vec::new();
+    if ctx.state.disclose_version {
+        program_body.push(b.bare_import("svelte/internal/disclose-version"));
+    }
     if ctx.state.experimental_async {
         program_body.push(b.bare_import("svelte/internal/flags/async"));
     }
@@ -692,7 +695,7 @@ fn build_codegen_output(
         .build(program);
     JsOutput {
         code: ret.code,
-        map: ret.map,
+        map: ret.map.map(|m| m.into_owned()),
     }
 }
 

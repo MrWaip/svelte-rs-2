@@ -436,6 +436,7 @@ fn visit_node_for_namespace(
         | Node::RenderTag(_)
         | Node::HtmlTag(_)
         | Node::ConstTag(_)
+        | Node::DeclarationTag(_)
         | Node::DebugTag(_)
         | Node::SvelteHead(_)
         | Node::SvelteFragmentLegacy(_)
@@ -635,6 +636,7 @@ fn fragment_has_rich_content(
         match store.get(id) {
             Node::Comment(_)
             | Node::ConstTag(_)
+            | Node::DeclarationTag(_)
             | Node::DebugTag(_)
             | Node::ExpressionTag(_)
             | Node::SnippetBlock(_) => {}

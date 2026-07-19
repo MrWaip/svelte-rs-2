@@ -1,0 +1,8 @@
+[
+  {
+    "code": "void_element_invalid_content",
+    "end": 23,
+    "severity": "error",
+    "start": 23
+  }
+]

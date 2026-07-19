@@ -18,6 +18,9 @@ fn reads_via_derived_getter(semantics: BindingSemantics) -> bool {
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Store(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::Unresolved => false,
@@ -53,7 +56,7 @@ pub fn server_store_base_read<'a>(
 fn store_subs_assign<'a>(b: &Builder<'a>) -> Expression<'a> {
     let ast = b.ast;
     let target = AssignmentTarget::AssignmentTargetIdentifier(
-        ast.alloc(ast.identifier_reference(SPAN, ast.atom("$$store_subs"))),
+        ast.alloc(ast.identifier_reference(SPAN, "$$store_subs")),
     );
     let empty_object = ast.expression_object(SPAN, ast.vec());
     Expression::AssignmentExpression(ast.alloc(ast.assignment_expression(
@@ -161,15 +164,13 @@ pub fn rewrite_identifier_read<'a>(
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::Derived(_),
             safe,
-        } => {
-            if reads_runtime_derived(analysis, ref_id) {
-                let callee = b.rid_expr(id.name.as_str());
-                *expr = if safe {
-                    b.maybe_call_expr(callee, [])
-                } else {
-                    b.call_expr_callee(callee, [])
-                };
-            }
+        } if reads_runtime_derived(analysis, ref_id) => {
+            let callee = b.rid_expr(id.name.as_str());
+            *expr = if safe {
+                b.maybe_call_expr(callee, [])
+            } else {
+                b.call_expr_callee(callee, [])
+            };
         }
         _ => {}
     }

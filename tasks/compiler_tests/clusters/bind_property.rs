@@ -8,3 +8,7 @@ compiler_case!(natural_width_prop, "bind_property/natural_width_prop");
 
 compiler_case!(guard_checked_prop, "bind_property/guard_checked_prop");
 compiler_case!(guard_open_member, "bind_property/guard_open_member");
+compiler_case!(
+    store_member_no_validate,
+    "bind_property/store_member_no_validate"
+);

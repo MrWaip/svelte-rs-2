@@ -12,9 +12,9 @@ use svelte_ast::{
 use svelte_component_semantics::{OxcNodeId, ReferenceId};
 
 use super::super::data::{
-    BindingFacts, ContextualBindingSemantics, ContextualReadKind, DeclaratorSemantics,
-    EachIndexStrategy, EachItemStrategy, LegacyStateSemantics, ReferenceSemantics,
-    SnippetParamStrategy,
+    BindingFacts, ContextualBindingSemantics, ContextualReadKind, DeclaratorGroup,
+    DeclaratorSemantics, EachIndexStrategy, EachItemStrategy, LegacyStateSemantics,
+    ReferenceSemantics, SnippetParamStrategy,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
@@ -198,6 +198,38 @@ impl TemplateVisitor for TemplateDeclarationCollector<'_> {
                 initial_is_function,
                 tag.id,
             );
+        }
+    }
+
+    fn visit_declaration_tag(
+        &mut self,
+        tag: &svelte_ast::DeclarationTag,
+        ctx: &mut VisitContext<'_, '_>,
+    ) {
+        let Some(parsed) = ctx.parsed() else {
+            return;
+        };
+        let Some(stmt) = parsed.stmt(tag.declaration.id()) else {
+            return;
+        };
+        let Statement::VariableDeclaration(decl) = stmt else {
+            return;
+        };
+        let mut syms: Vec<SymbolId> = Vec::new();
+        for declarator in &decl.declarations {
+            if matches!(
+                ctx.data
+                    .reactivity
+                    .declarator_semantics(declarator.node_id())
+                    .group(),
+                DeclaratorGroup::Rune
+            ) {
+                continue;
+            }
+            svelte_component_semantics::walk_bindings(&declarator.id, |v| syms.push(v.symbol));
+        }
+        for sym in syms {
+            ctx.data.reactivity.record_declaration_tag_binding(sym);
         }
     }
 
@@ -567,6 +599,9 @@ fn collect_each_block_collection_sources_legacy(
                 | BindingFacts::LegacyApiExport
                 | BindingFacts::Store(_)
                 | BindingFacts::Const(_)
+                | BindingFacts::OptimizedConst(_)
+                | BindingFacts::DeclarationTag
+                | BindingFacts::OptimizedDeclarationTag
                 | BindingFacts::Contextual(
                     ContextualBindingSemantics::EachIndex(_)
                     | ContextualBindingSemantics::AwaitError

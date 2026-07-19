@@ -1,5 +1,5 @@
 use oxc_ast::ast::Expression;
-use svelte_analyze::{BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics};
+use svelte_analyze::{BlockSemantics, ConstTagBlockSemantics, FragmentDeclarationAsyncKind};
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft};
 
@@ -70,15 +70,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .b
                 .assign_expr(AssignLeft::Ident(d.target.to_string()), d.derived);
             let body = match &sem.async_kind {
-                ConstTagAsyncKind::Awaited { blockers } => {
+                FragmentDeclarationAsyncKind::Awaited { blockers } => {
                     build_blocker_thunks(self.ctx, blockers, &mut thunks);
                     self.ctx.b.async_thunk(assignment)
                 }
-                ConstTagAsyncKind::Deferred { blockers } => {
+                FragmentDeclarationAsyncKind::Deferred { blockers } => {
                     build_blocker_thunks(self.ctx, blockers, &mut thunks);
                     self.ctx.b.thunk(assignment)
                 }
-                ConstTagAsyncKind::Sync => self.ctx.b.thunk(assignment),
+                FragmentDeclarationAsyncKind::Sync => self.ctx.b.thunk(assignment),
             };
             thunks.push(body);
             let thunk_idx = thunks.len() - 1;
@@ -100,7 +100,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 }
 
-fn build_blocker_thunks<'a>(ctx: &mut Ctx<'a>, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
+pub(super) fn build_blocker_thunks<'a>(
+    ctx: &mut Ctx<'a>,
+    blockers: &[u32],
+    thunks: &mut Vec<Expression<'a>>,
+) {
     if blockers.is_empty() {
         return;
     }

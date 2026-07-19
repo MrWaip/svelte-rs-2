@@ -1,0 +1,8 @@
+[
+  {
+    "code": "declaration_duplicate",
+    "end": 79,
+    "severity": "error",
+    "start": 75
+  }
+]

@@ -109,8 +109,8 @@ pub(in crate::codegen) fn build_reactive_dep_expr_legacy<'a>(
     ctx: &Ctx<'a>,
     sym: SymbolId,
 ) -> Option<Expression<'a>> {
-    use svelte_analyze::{BindingSemantics, ConstBindingSemantics, LegacyDependency};
-    if let BindingSemantics::Const(ConstBindingSemantics::ConstTag {
+    use svelte_analyze::{BindingSemantics, ConstTagSemantics, LegacyDependency};
+    if let BindingSemantics::Const(ConstTagSemantics {
         destructured: true,
         owner_node,
         ..
@@ -160,7 +160,7 @@ fn build_each_item_indexed_dep_legacy<'a>(
                 .each_collection_internal_names_legacy
                 .get(block_id)
         })
-        .map(String::as_str);
+        .map(|s| ctx.b.alloc_str(s.as_str()));
     let collection = each_item_collection_read_legacy(&ctx.b, analysis, source_sym, hoisted);
     let block_id = ctx.transform_data.each_index_block_by_item.get(&item_sym)?;
     let index_name = ctx.transform_data.each_index_internal_names.get(block_id)?;

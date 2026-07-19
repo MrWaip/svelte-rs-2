@@ -1,0 +1,8 @@
+[
+  {
+    "code": "rune_invalid_spread",
+    "end": 62,
+    "severity": "error",
+    "start": 43
+  }
+]

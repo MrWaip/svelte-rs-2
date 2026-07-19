@@ -101,6 +101,15 @@ impl<'a> ServerCodegen<'a> {
                 {
                     self.emit_group_value_attribute(attr)?;
                 }
+                AttributeSemantics::SpecialValueAttr(sem)
+                    if matches!(sem.kind, SpecialValueKind::InputBindChecked)
+                        && matches!(
+                            attr,
+                            Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
+                        ) =>
+                {
+                    self.emit_plain_attribute(owner_id, attr)?;
+                }
                 AttributeSemantics::Event(_)
                 | AttributeSemantics::RuntimeBehavior
                 | AttributeSemantics::SpecialValueAttr(_)
@@ -617,6 +626,9 @@ impl<'a> ServerCodegen<'a> {
                 let value = a.value(self.component.source.as_str());
                 self.push_text(&format!(" value=\"{}\"", escape_attribute(value)));
             }
+            Attribute::BooleanAttribute(_) => {
+                self.push_text(" value=\"\"");
+            }
             Attribute::ExpressionAttribute(a) => {
                 let value = self.attr_value_single(a.id, &a.expression)?;
                 self.push_named_value("value", value);
@@ -945,6 +957,17 @@ impl<'a> ServerCodegen<'a> {
     }
 
     fn attr_value_concat(&mut self, parts: &[ConcatPart], trim: bool) -> Result<AttrValue<'a>> {
+        if let [single] = parts {
+            return match single {
+                ConcatPart::Static(text) => Ok(AttrValue::Static(if trim {
+                    collapse_attribute_whitespace(text).trim().to_string()
+                } else {
+                    text.clone()
+                })),
+                ConcatPart::Dynamic { id, expr } => self.attr_value_single(*id, expr),
+            };
+        }
+
         let mut segments: Vec<TemplatePart<'a>> = Vec::new();
         let mut has_dynamic = false;
 

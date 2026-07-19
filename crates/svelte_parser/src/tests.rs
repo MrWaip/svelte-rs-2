@@ -704,9 +704,11 @@ fn recovery_unclosed_if_block() {
 fn recovery_multiple_errors() {
     let (c, diags) = parse_with_diagnostics("<div><span>");
     assert!(
-        diags.len() >= 2,
-        "expected multiple diagnostics, got {}",
-        diags.len()
+        diags.iter().any(|d| d.kind
+            == svelte_diagnostics::DiagnosticKind::ElementUnclosed {
+                name: "span".to_string(),
+            }),
+        "expected ElementUnclosed for the innermost element, got {diags:?}"
     );
     assert_eq!(c.store.fragment(c.root).nodes.len(), 1);
 }
@@ -994,56 +996,6 @@ fn no_svelte_options() {
 }
 
 #[test]
-fn svelte_head_duplicate_reports_diagnostic() {
-    let diags = parse_with_diags("<svelte:head></svelte:head><svelte:head></svelte:head>");
-    assert!(
-        diags
-            .iter()
-            .any(|d| d.kind.code() == "svelte_meta_duplicate"),
-        "expected svelte_meta_duplicate, got {diags:?}"
-    );
-}
-
-#[test]
-fn svelte_head_invalid_placement_inside_block_reports_diagnostic() {
-    let diags = parse_with_diags("{#if ok}<svelte:head></svelte:head>{/if}");
-    assert!(
-        diags
-            .iter()
-            .any(|d| d.kind.code() == "svelte_meta_invalid_placement"),
-        "expected svelte_meta_invalid_placement, got {diags:?}"
-    );
-}
-
-#[test]
-fn svelte_special_elements_duplicate_report_diagnostic() {
-    for name in ["window", "document", "body"] {
-        let source = format!("<svelte:{name}></svelte:{name}><svelte:{name}></svelte:{name}>");
-        let diags = parse_with_diags(&source);
-        assert!(
-            diags
-                .iter()
-                .any(|d| d.kind.code() == "svelte_meta_duplicate"),
-            "expected svelte_meta_duplicate for <svelte:{name}>, got {diags:?}"
-        );
-    }
-}
-
-#[test]
-fn svelte_special_elements_invalid_placement_inside_block_report_diagnostic() {
-    for name in ["window", "document", "body"] {
-        let source = format!("{{#if ok}}<svelte:{name}></svelte:{name}>{{/if}}");
-        let diags = parse_with_diags(&source);
-        assert!(
-            diags
-                .iter()
-                .any(|d| d.kind.code() == "svelte_meta_invalid_placement"),
-            "expected svelte_meta_invalid_placement for <svelte:{name}>, got {diags:?}"
-        );
-    }
-}
-
-#[test]
 fn svelte_options_unknown_attribute_diagnostic() {
     let (_, diags) = parse_with_diagnostics(r#"<svelte:options foo="bar" />"#);
     assert!(!diags.is_empty());
@@ -1076,7 +1028,7 @@ fn svelte_options_no_children_diagnostic() {
     assert!(!diags.is_empty());
     assert!(diags.iter().any(|d| matches!(
         &d.kind,
-        svelte_diagnostics::DiagnosticKind::SvelteOptionsNoChildren
+        svelte_diagnostics::DiagnosticKind::SvelteMetaInvalidContent { .. }
     )));
 }
 
@@ -1253,26 +1205,6 @@ fn await_catch_before_then_no_panic() {
 }
 
 #[test]
-fn special_elements_invalid_placement_inside_await_branches_report_diagnostic() {
-    let source = "{#await promise}<svelte:window></svelte:window>{:then value}<svelte:document></svelte:document>{:catch error}<svelte:body></svelte:body>{/await}";
-    let (_, diags) = parse_with_diagnostics(source);
-
-    for name in ["svelte:window", "svelte:document", "svelte:body"] {
-        assert!(
-            diags.iter().any(|d| {
-                matches!(
-                    &d.kind,
-                    svelte_diagnostics::DiagnosticKind::SvelteMetaInvalidPlacement {
-                        name: actual_name
-                    } if actual_name == name
-                )
-            }),
-            "expected svelte_meta_invalid_placement for {name}, got {diags:?}"
-        );
-    }
-}
-
-#[test]
 fn await_branches_convert_svelte_element_and_boundary() {
     let c = parse(
         "{#await promise}<svelte:element this={tag} />{:then value}<svelte:boundary><p /></svelte:boundary>{:catch error}<div />{/await}",
@@ -1385,46 +1317,6 @@ mod js_parse_tests {
             parse_script_with_alloc(&alloc, arena_source, 0, false).expect("test invariant");
         assert!(!program.body.is_empty());
     }
-}
-
-fn parse_with_diags(source: &str) -> Vec<svelte_diagnostics::Diagnostic> {
-    Parser::new(source).parse().1
-}
-
-#[test]
-fn attribute_duplicate_same_name() {
-    let diags = parse_with_diags(r#"<div foo="a" foo="b"></div>"#);
-    assert!(
-        diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
-        "expected attribute_duplicate, got {diags:?}"
-    );
-}
-
-#[test]
-fn attribute_duplicate_bind_and_attr() {
-    let diags = parse_with_diags(r#"<input bind:value={x} value="y" />"#);
-    assert!(
-        diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
-        "expected attribute_duplicate, got {diags:?}"
-    );
-}
-
-#[test]
-fn attribute_duplicate_this_excluded() {
-    let diags = parse_with_diags(r#"<svelte:element this="div" this="span"></svelte:element>"#);
-    assert!(
-        !diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
-        "unexpected attribute_duplicate"
-    );
-}
-
-#[test]
-fn attribute_duplicate_style_directive() {
-    let diags = parse_with_diags(r#"<div style:color="red" style:color="blue"></div>"#);
-    assert!(
-        diags.iter().any(|d| d.kind.code() == "attribute_duplicate"),
-        "expected attribute_duplicate, got {diags:?}"
-    );
 }
 
 fn component_at(c: &Component, index: usize) -> &svelte_ast::ComponentNode {
@@ -1856,5 +1748,24 @@ const q = v!;
         det.found.is_none(),
         "TS leaked through parser: {:?}",
         det.found
+    );
+}
+
+#[track_caller]
+fn assert_reports_error_without_panic(source: &str) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, _js, diags) = crate::parse_with_js(&alloc, source);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.severity == svelte_diagnostics::Severity::Error),
+        "expected an error diagnostic for malformed empty blocks, got {diags:?}"
+    );
+}
+
+#[test]
+fn all_whitespace_block_condition_reports_error_without_panicking_js_walker() {
+    assert_reports_error_without_panic(
+        "{#if }\n{:else if }\n{:else }\n{/if}\n{#each }\n{/each}\n{#snippet }\n{/snippet}",
     );
 }

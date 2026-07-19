@@ -280,6 +280,9 @@ fn symbol_is_store(binding: BindingSemantics) -> bool {
         | BindingSemantics::Contextual(_)
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::MaybeReactive
@@ -342,6 +345,9 @@ fn derive_collection_source<'a>(
         | BindingSemantics::Store(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive

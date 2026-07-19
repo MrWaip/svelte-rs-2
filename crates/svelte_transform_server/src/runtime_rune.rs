@@ -2,7 +2,7 @@ use std::iter::empty;
 use std::mem;
 
 use oxc_ast::ast::{Argument, CallExpression, Expression};
-use svelte_analyze::{DeclaratorSemantics, RuntimeRuneKind};
+use svelte_analyze::{DeclaratorSemantics, RuntimeRuneKind, WarningCode};
 use svelte_ast_builder::Arg;
 
 use crate::model::ServerTransform;
@@ -52,7 +52,7 @@ impl<'a> ServerTransform<'_, 'a> {
             RuntimeRuneKind::StateEager => Some(self.take_rune_arg(call)),
             RuntimeRuneKind::StateSnapshot => {
                 let suppress_warning =
-                    self.dev && self.is_in_ignored_stmt("state_snapshot_uncloneable");
+                    self.dev && self.is_in_ignored_stmt(WarningCode::StateSnapshotUncloneable);
                 let arg = self.take_rune_arg(call);
                 let args = if suppress_warning {
                     vec![Arg::Expr(arg), Arg::Expr(self.b.bool_expr(true))]

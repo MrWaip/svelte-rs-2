@@ -21,13 +21,32 @@
     "url": "https://github.com/MrWaip/svelte-rs-2"
   },
   "scripts": {
-    "smoke": "node ./scripts/smoke.mjs",
-    "prepare-platform-package": "node ./scripts/prepare-platform-package.mjs"
+    "build": "napi build --manifest-path ../../crates/napi_compiler/Cargo.toml -p napi_compiler --platform --output-dir compiler/native --js binding.cjs --dts binding.d.ts",
+    "build:release": "napi build --manifest-path ../../crates/napi_compiler/Cargo.toml -p napi_compiler --platform --output-dir compiler/native --js binding.cjs --dts binding.d.ts --release --strip",
+    "smoke": "node ./scripts/smoke.mjs"
+  },
+  "napi": {
+    "binaryName": "svelte-rs2",
+    "packageName": "@mrwaip/svelte-rs2",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-musl",
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc"
+    ]
   },
   "optionalDependencies": {
     "@mrwaip/svelte-rs2-darwin-arm64": "0.0.0-canary.0",
     "@mrwaip/svelte-rs2-darwin-x64": "0.0.0-canary.0",
     "@mrwaip/svelte-rs2-linux-x64-gnu": "0.0.0-canary.0",
-    "@mrwaip/svelte-rs2-linux-arm64-gnu": "0.0.0-canary.0"
+    "@mrwaip/svelte-rs2-linux-arm64-gnu": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs2-linux-x64-musl": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs2-linux-arm64-musl": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs2-win32-x64-msvc": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs2-win32-arm64-msvc": "0.0.0-canary.0"
   }
 }

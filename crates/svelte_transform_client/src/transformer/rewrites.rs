@@ -37,6 +37,9 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::Unresolved
@@ -1484,10 +1487,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         {
             return false;
         }
-        member.object = self
-            .b
-            .ast
-            .expression_identifier(SPAN, self.b.ast.atom("$$props"));
+        member.object = self.b.ast.expression_identifier(SPAN, "$$props");
         true
     }
 }

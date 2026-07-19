@@ -1,7 +1,7 @@
 # PRD: BlockSemantics (корневой)
 
 label: block-semantics
-topics: block, if-block, each-block/keyed each, await-block, key-block, snippet, each-item/index, key expression, fragment topology, then/else branches
+topics: block, if-block, each-block/keyed each, await-block, key-block, snippet, each-item/index, key expression, fragment topology, then/else branches, const tag, declaration tag, async-kind
 
 Корневой PRD для модуля `svelte_analyze::block_semantics` (3.A.5).
 Дочерний по слою: `analyze.md`. Зависит от `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, плюс AST.
@@ -26,6 +26,7 @@ topics: block, if-block, each-block/keyed each, await-block, key-block, snippet,
 - `Snippet(SnippetBlockSemantics)` — `{#snippet name(...)}`.
 - `Render(RenderTagBlockSemantics)` — `{@render name(...)}`.
 - `ConstTag(ConstTagBlockSemantics)` — `{@const ... = ...}`.
+- `DeclarationTag(DeclarationTagBlockSemantics)` — **declaration-тег** `{const}`/`{let}`: несёт `async_kind` инициализатора (`FragmentDeclarationAsyncKind`, общий с `ConstTag`).
 - `NonSpecial` — default.
 
 ## Архитектурные инварианты

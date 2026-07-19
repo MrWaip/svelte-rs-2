@@ -4,8 +4,26 @@ use compiler_tests::harness::{
 };
 use compiler_tests::{compiler_case, compiler_module_case};
 
+#[path = "clusters/comments.rs"]
+mod comments;
+
+#[path = "clusters/empty_statement.rs"]
+mod empty_statement;
+
 #[path = "clusters/events.rs"]
 mod events;
+
+#[path = "clusters/state_snapshot.rs"]
+mod state_snapshot;
+
+#[path = "clusters/inspect_trace.rs"]
+mod inspect_trace;
+
+#[path = "clusters/void_element.rs"]
+mod void_element;
+
+#[path = "clusters/element_name_casing.rs"]
+mod element_name_casing;
 
 #[path = "clusters/dev_element_locations.rs"]
 mod dev_element_locations;
@@ -21,6 +39,9 @@ mod css_global_combinator;
 
 #[path = "clusters/hmr.rs"]
 mod hmr;
+
+#[path = "clusters/disclose_version.rs"]
+mod disclose_version;
 
 #[path = "clusters/spread_class.rs"]
 mod spread_class;
@@ -59,6 +80,48 @@ mod snippet_placement;
 
 #[path = "clusters/css_scope_svelte_fragment.rs"]
 mod css_scope_svelte_fragment;
+
+#[path = "clusters/css_sibling_slot.rs"]
+mod css_sibling_slot;
+
+#[path = "clusters/css_global_nesting.rs"]
+mod css_global_nesting;
+
+#[path = "clusters/css_is_has_prune.rs"]
+mod css_is_has_prune;
+
+#[path = "clusters/css_scope_placement_global.rs"]
+mod css_scope_placement_global;
+
+#[path = "clusters/css_root.rs"]
+mod css_root;
+
+#[path = "clusters/css_scope_position_global.rs"]
+mod css_scope_position_global;
+
+#[path = "clusters/css_global_local_compound.rs"]
+mod css_global_local_compound;
+
+#[path = "clusters/css_global_pseudo_args.rs"]
+mod css_global_pseudo_args;
+
+#[path = "clusters/css_global_block_animation.rs"]
+mod css_global_block_animation;
+
+#[path = "clusters/css_has_global_parent.rs"]
+mod css_has_global_parent;
+
+#[path = "clusters/css_host.rs"]
+mod css_host;
+
+#[path = "clusters/css_escaped_identifier.rs"]
+mod css_escaped_identifier;
+
+#[path = "clusters/css_brace_whitespace.rs"]
+mod css_brace_whitespace;
+
+#[path = "clusters/css_injected.rs"]
+mod css_injected;
 
 #[path = "clusters/text_reactivity.rs"]
 mod text_reactivity;
@@ -239,3 +302,6 @@ mod css_prune;
 
 #[path = "clusters/declaration_tag.rs"]
 mod declaration_tag;
+
+#[path = "clusters/element_block_scope.rs"]
+mod element_block_scope;

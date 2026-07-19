@@ -42,7 +42,8 @@ pub fn gen_custom_element<'a>(
         Arg::StrRef(name)
     }));
 
-    let is_shadow_none = parsed.is_some_and(|o| o.shadow == CeDomMode::None);
+    let shadow_mode = parsed.map_or(CeDomMode::Open, |o| o.shadow);
+    let is_shadow_none = shadow_mode == CeDomMode::None;
     let delegates_focus = parsed.is_some_and(|o| o.delegates_focus);
 
     let extend_arg = take_extend_expr(ctx, ce_config);
@@ -57,8 +58,11 @@ pub fn gen_custom_element<'a>(
     ];
 
     if !is_shadow_none {
-        let mut shadow_props: Vec<ObjProp<'_>> =
-            vec![ObjProp::KeyValue("mode", b.str_expr("open"))];
+        let mode = match shadow_mode {
+            CeDomMode::Closed => "closed",
+            CeDomMode::Open | CeDomMode::None => "open",
+        };
+        let mut shadow_props: Vec<ObjProp<'_>> = vec![ObjProp::KeyValue("mode", b.str_expr(mode))];
         if delegates_focus {
             shadow_props.push(ObjProp::KeyValue("delegatesFocus", b.bool_expr(true)));
         }

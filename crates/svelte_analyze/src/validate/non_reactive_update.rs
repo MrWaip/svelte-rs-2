@@ -61,6 +61,9 @@ impl<'a> TemplateValidator<'a, '_> {
                 Node::ConstTag(tag) => {
                     self.visit_stmt_ref(&tag.decl.clone(), false, in_dynamic_block);
                 }
+                Node::DeclarationTag(tag) => {
+                    self.visit_stmt_ref(&tag.declaration.clone(), false, in_dynamic_block);
+                }
                 Node::Element(el) => {
                     let f = el.fragment;
                     let attrs = &el.attributes;
@@ -386,6 +389,9 @@ fn is_reactive_binding(data: &AnalysisData<'_>, sym: ComponentSymbolId) -> bool 
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Const(_)
+        | BindingSemantics::OptimizedConst(_)
+        | BindingSemantics::DeclarationTag
+        | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::LegacyApiExport => true,

@@ -1,0 +1,6 @@
+
+	
+		.x { animation: svelte-q89rtk-test 1s; }
+		.y { animation: svelte-q89rtk-test 2s; }
+	
+	@keyframes svelte-q89rtk-test { to { opacity: 1; } }

@@ -1,0 +1,6 @@
+
+	.x {
+		.y.svelte-178le0y {
+			.z:where(.svelte-178le0y) { color: green; }
+		}
+	}

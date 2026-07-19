@@ -1,0 +1,8 @@
+[
+  {
+    "code": "render_tag_invalid_call_expression",
+    "end": 40,
+    "severity": "error",
+    "start": 0
+  }
+]

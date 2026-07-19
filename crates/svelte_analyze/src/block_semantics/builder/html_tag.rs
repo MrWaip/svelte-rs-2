@@ -10,8 +10,10 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &HtmlTag) {
         Some(Namespace::Mathml) => HtmlTagNamespace::MathMl,
         _ => HtmlTagNamespace::Html,
     };
-    let hydration_html_changed_ignored =
-        ctx.dev && ctx.ignore_data.is_ignored(tag.id, "hydration_html_changed");
+    let hydration_html_changed_ignored = ctx.dev
+        && ctx
+            .ignore_data
+            .is_ignored_warning(tag.id, crate::WarningCode::HydrationHtmlChanged);
 
     let expression_data = match ctx.expressions.get(tag.id) {
         ExpressionSemantics::Expression(d) => Some(d),

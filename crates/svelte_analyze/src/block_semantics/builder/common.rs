@@ -1,6 +1,28 @@
 use oxc_ast::ast::{BindingIdentifier, BindingPattern, Statement, VariableDeclarator};
 use svelte_component_semantics::OxcNodeId;
 
+use super::super::FragmentDeclarationAsyncKind;
+use crate::expression_semantics::{ExpressionSemantics, Volatility};
+
+pub(super) fn async_kind_from_expression(
+    sem: &ExpressionSemantics,
+) -> FragmentDeclarationAsyncKind {
+    let ExpressionSemantics::Expression(data) = sem else {
+        return FragmentDeclarationAsyncKind::Sync;
+    };
+    let blockers = data.blockers.clone();
+    match data.volatility {
+        Volatility::Asynchronous => FragmentDeclarationAsyncKind::Awaited { blockers },
+        Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
+            if blockers.is_empty() {
+                FragmentDeclarationAsyncKind::Sync
+            } else {
+                FragmentDeclarationAsyncKind::Deferred { blockers }
+            }
+        }
+    }
+}
+
 pub(super) fn declarator_from_stmt<'a>(
     stmt: &'a Statement<'a>,
 ) -> Option<&'a VariableDeclarator<'a>> {

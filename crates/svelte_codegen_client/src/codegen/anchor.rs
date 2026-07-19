@@ -1,3 +1,4 @@
+use compact_str::CompactString;
 use oxc_ast::ast::Expression;
 use svelte_ast_builder::Arg;
 
@@ -17,13 +18,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 ..
             } => {
                 let (frag_name, node_name) = match state.pending_anchor_idents.take() {
-                    Some((f, n)) if !n.is_empty() => (f, n),
-                    Some((f, _)) => (f, self.ctx.state.gen_ident("node")),
-                    None => {
-                        let f = self.ctx.state.gen_ident("fragment");
-                        let n = self.ctx.state.gen_ident("node");
-                        (f, n)
-                    }
+                    Some((f, n)) if !n.is_empty() => (
+                        CompactString::from(f.as_str()),
+                        CompactString::from(n.as_str()),
+                    ),
+                    Some((f, _)) => (
+                        CompactString::from(f.as_str()),
+                        self.ctx.state.gen_ident_compact("node"),
+                    ),
+                    None => (
+                        self.ctx.state.gen_ident_compact("fragment"),
+                        self.ctx.state.gen_ident_compact("node"),
+                    ),
                 };
                 PreAnchor {
                     node_name,
@@ -39,7 +45,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 name,
                 append_inside: true,
             } => {
-                let node_name = self.ctx.state.gen_ident("node");
+                let node_name = self.ctx.state.gen_ident_compact("node");
                 PreAnchor {
                     node_name,
                     frag_name: None,
@@ -52,7 +58,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             FragmentAnchor::Child { parent_var }
             | FragmentAnchor::ElementContentChild { parent_var } => {
-                let node_name = self.ctx.state.gen_ident("node");
+                let node_name = self.ctx.state.gen_ident_compact("node");
                 PreAnchor {
                     node_name,
                     frag_name: None,
@@ -82,7 +88,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         pre: PreAnchor,
     ) -> Result<String> {
         if pre.sibling_var.is_some() {
-            return Ok(pre.node_name);
+            return Ok(pre.node_name.into());
         }
         if let Some(frag_name) = pre.frag_name {
             let b = &self.ctx.state.b;
@@ -97,8 +103,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 &pre.node_name,
                 b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
             ));
+            let node_name: String = pre.node_name.into();
             state.root_var = Some(frag_name);
-            return Ok(pre.node_name);
+            return Ok(node_name);
         }
         if pre.needs_template_comment {
             state.template.push_comment(None);
@@ -116,7 +123,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             b.call_expr("$.child", [Arg::Ident(&parent)]),
         ));
         let _ = pre.is_child;
-        Ok(pre.node_name)
+        Ok(pre.node_name.into())
     }
 
     pub(in crate::codegen) fn comment_anchor_node_name(
@@ -137,12 +144,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 );
                 let (frag_name, node_name) = match state.pending_anchor_idents.take() {
                     Some((f, n)) if !n.is_empty() => (f, n),
-                    Some((f, _)) => (f, self.ctx.state.gen_ident("node")),
-                    None => {
-                        let f = self.ctx.state.gen_ident("fragment");
-                        let n = self.ctx.state.gen_ident("node");
-                        (f, n)
-                    }
+                    Some((f, _)) => (f, self.ctx.state.gen_ident_compact("node")),
+                    None => (
+                        self.ctx.state.gen_ident_compact("fragment"),
+                        self.ctx.state.gen_ident_compact("node"),
+                    ),
                 };
                 let b = &self.ctx.state.b;
                 if state.anchor_comment_pre_emitted {
@@ -157,7 +163,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
                 ));
                 state.root_var = Some(frag_name);
-                Ok(node_name)
+                Ok(node_name.into())
             }
             FragmentAnchor::CallbackParam {
                 name,
@@ -183,7 +189,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .push(b.var_stmt(&node_name, b.call_expr("$.child", [Arg::Ident(&parent)])));
                 Ok(node_name)
             }
-            FragmentAnchor::SiblingVar { var } => Ok(var.clone()),
+            FragmentAnchor::SiblingVar { var } => Ok(var.to_string()),
         }
     }
 
@@ -204,12 +210,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             } => {
                 let (frag_name, node_name) = match state.pending_anchor_idents.take() {
                     Some((f, n)) if !n.is_empty() => (f, n),
-                    Some((f, _)) => (f, self.ctx.state.gen_ident("node")),
-                    None => {
-                        let f = self.ctx.state.gen_ident("fragment");
-                        let n = self.ctx.state.gen_ident("node");
-                        (f, n)
-                    }
+                    Some((f, _)) => (f, self.ctx.state.gen_ident_compact("node")),
+                    None => (
+                        self.ctx.state.gen_ident_compact("fragment"),
+                        self.ctx.state.gen_ident_compact("node"),
+                    ),
                 };
                 let b = &self.ctx.state.b;
                 if state.anchor_comment_pre_emitted {
@@ -223,7 +228,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     &node_name,
                     b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
                 ));
-                state.root_var = Some(frag_name.clone());
+                state.root_var = Some(frag_name);
                 Ok(b.rid_expr(&node_name))
             }
             FragmentAnchor::Child { parent_var }

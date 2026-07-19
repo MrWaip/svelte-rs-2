@@ -1,10 +1,14 @@
 import { compile, compileModule } from "svelte/compiler";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { stripTypeScriptTypes } from "node:module";
 import { transformSync as oxcTransformSync } from "oxc-transform";
 
 function stripTsToJs(source) {
-  return oxcTransformSync("input.ts", source).code;
+  stripTypeScriptTypes(source, { mode: "strip" });
+  return oxcTransformSync("input.ts", source, {
+    typescript: { onlyRemoveTypeImports: true },
+  }).code;
 }
 
 const inputPath = process.env.INPUT_FILE || "/dev/stdin";
@@ -30,7 +34,7 @@ for (const file of files) {
 
   if (isDiagnosticCase) {
     results[file] = {
-      diagnostics: generateDiagnostics(text, caseConfig),
+      diagnostics: generateDiagnostics(text, caseConfig, isModule),
     };
     continue;
   }
@@ -98,7 +102,7 @@ function stripVersionComment(code) {
 }
 console.log(JSON.stringify(results));
 
-function generateDiagnostics(source, caseConfig) {
+function generateDiagnostics(source, caseConfig, isModule = false) {
   const compileConfig = {
     discloseVersion: false,
     dev: false,
@@ -114,6 +118,13 @@ function generateDiagnostics(source, caseConfig) {
     delete compileConfig.name;
   }
   try {
+    if (isModule) {
+      const result = compileModule(source, {
+        dev: compileConfig.dev,
+        filename: "case.svelte.js",
+      });
+      return result.warnings.map((warning) => normalizeDiagnostic(warning, "warning"));
+    }
     const result = compile(source, compileConfig);
     return result.warnings.map((warning) => normalizeDiagnostic(warning, "warning"));
   } catch (error) {

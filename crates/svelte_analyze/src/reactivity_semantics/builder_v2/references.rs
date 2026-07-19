@@ -1,5 +1,5 @@
 use super::super::data::{
-    BindingFacts, ConstBindingSemantics, ContextualBindingSemantics, ContextualReadSemantics,
+    BindingFacts, ConstTagSemantics, ContextualBindingSemantics, ContextualReadSemantics,
     DerivedKind, EachItemStrategy, PropBindingKind, PropDefaultKind, PropEmitMode,
     PropReferenceSemantics, ReferenceFacts, SignalReferenceKind, StateKind,
 };
@@ -312,7 +312,12 @@ fn classify_reference_semantics(
                 None
             }
         }
-        BindingFacts::Const(ConstBindingSemantics::ConstTag {
+        BindingFacts::Const(ConstTagSemantics {
+            destructured,
+            owner_node,
+            ..
+        })
+        | BindingFacts::OptimizedConst(ConstTagSemantics {
             destructured,
             owner_node,
             ..
@@ -334,6 +339,7 @@ fn classify_reference_semantics(
                 None
             }
         }
+        BindingFacts::DeclarationTag | BindingFacts::OptimizedDeclarationTag => None,
         BindingFacts::Contextual(kind) => {
             if matches!(
                 kind,

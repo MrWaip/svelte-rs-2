@@ -3,6 +3,7 @@ mod await_block;
 mod component;
 mod const_tag;
 mod debug_tag;
+mod declaration_tag;
 mod each_block;
 mod element;
 mod error;

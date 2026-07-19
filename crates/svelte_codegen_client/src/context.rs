@@ -1,5 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
+use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
@@ -79,6 +80,7 @@ pub struct CodegenState<'a> {
     pub line_index: &'a svelte_span::LineIndex,
     pub filename: &'a str,
     pub experimental_async: bool,
+    pub disclose_version: bool,
     pub dev: bool,
     pub hmr: bool,
 
@@ -112,6 +114,7 @@ impl<'a> CodegenState<'a> {
         line_index: &'a svelte_span::LineIndex,
         filename: &'a str,
         experimental_async: bool,
+        disclose_version: bool,
         dev: bool,
         hmr: bool,
         parsed: &'a mut JsAst<'a>,
@@ -126,6 +129,7 @@ impl<'a> CodegenState<'a> {
             line_index,
             filename,
             experimental_async,
+            disclose_version,
             dev,
             hmr,
             transform_data,
@@ -144,6 +148,10 @@ impl<'a> CodegenState<'a> {
 
     pub fn gen_ident(&mut self, prefix: &str) -> String {
         self.ident_gen.generate(prefix)
+    }
+
+    pub fn gen_ident_compact(&mut self, prefix: &str) -> CompactString {
+        self.ident_gen.generate_compact(prefix)
     }
 
     pub fn add_delegated_event(&mut self, event_name: String) {
@@ -201,6 +209,7 @@ impl<'a> Ctx<'a> {
                 line_index,
                 filename,
                 options.experimental_async,
+                options.disclose_version,
                 options.dev,
                 options.hmr,
                 parsed,
@@ -344,7 +353,7 @@ impl<'a> Ctx<'a> {
     pub fn binding_property_non_reactive_ignored(&self, id: NodeId) -> bool {
         self.query
             .view
-            .is_ignored(id, "binding_property_non_reactive")
+            .is_ignored(id, svelte_analyze::WarningCode::BindingPropertyNonReactive)
     }
     pub fn needs_textarea_value_lowering(&self, id: NodeId) -> bool {
         self.query.view.needs_textarea_value_lowering(id)
@@ -364,6 +373,17 @@ impl<'a> Ctx<'a> {
             | ElementSemantics::SvelteElement(_)
             | ElementSemantics::LegacySlot(_)
             | ElementSemantics::LegacyComponentSlots(_) => false,
+        }
+    }
+    pub fn element_name(&self, id: NodeId) -> Option<&str> {
+        match self.query.analysis.element_semantics.query(id) {
+            ElementSemantics::RegularElement(sem) => Some(sem.name.as_str()),
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_)
+            | ElementSemantics::SvelteElement(_)
+            | ElementSemantics::LegacySlot(_)
+            | ElementSemantics::LegacyComponentSlots(_) => None,
         }
     }
     pub fn needs_var(&self, id: NodeId) -> bool {
@@ -405,9 +425,6 @@ impl<'a> Ctx<'a> {
     }
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
-    }
-    pub fn has_bind_group(&self, id: NodeId) -> bool {
-        self.query.view.has_bind_group(id)
     }
     pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
         self.query.view.symbol_blocker(sym)

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "style_directive_invalid_modifier",
+    "end": 29,
+    "severity": "error",
+    "start": 8
+  }
+]

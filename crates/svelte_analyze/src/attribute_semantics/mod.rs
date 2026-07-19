@@ -23,9 +23,10 @@ pub struct AttributeSemanticsStore {
 }
 
 impl AttributeSemanticsStore {
-    pub(crate) fn new(_node_count: u32) -> Self {
+    pub(crate) fn new(node_count: u32) -> Self {
+        let cap = node_count as usize / 4;
         Self {
-            entries: FxHashMap::default(),
+            entries: FxHashMap::with_capacity_and_hasher(cap, Default::default()),
         }
     }
 

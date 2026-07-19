@@ -57,6 +57,10 @@ fn escape_template_raw(value: &str) -> Cow<'_, str> {
 }
 
 impl<'a> Builder<'a> {
+    fn alloc_template_raw(&self, value: &str) -> Str<'a> {
+        Str::from_str_in(value, &self.ast.allocator)
+    }
+
     pub fn template_str_expr(&self, value: &str) -> Expression<'a> {
         Expression::TemplateLiteral(self.alloc(self.template_str(value)))
     }
@@ -64,14 +68,11 @@ impl<'a> Builder<'a> {
     pub fn template_str(&self, value: &str) -> TemplateLiteral<'a> {
         let mut quasis = self.ast.vec();
         let escaped = escape_template_raw(value);
+        let raw = self.alloc_template_raw(&escaped);
         quasis.push(self.ast.template_element(
             SPAN,
-            TemplateElementValue {
-                cooked: None,
-                raw: self.ast.atom(&escaped),
-            },
+            TemplateElementValue { cooked: None, raw },
             true,
-            false,
         ));
         self.ast.template_literal(SPAN, quasis, self.ast.vec())
     }
@@ -90,10 +91,9 @@ impl<'a> Builder<'a> {
                 SPAN,
                 TemplateElementValue {
                     cooked: None,
-                    raw: Atom::from(""),
+                    raw: Str::from(""),
                 },
                 true,
-                false,
             ));
             return self.ast.template_literal(SPAN, quasis, expressions);
         }
@@ -107,26 +107,20 @@ impl<'a> Builder<'a> {
                     pending.push_str(&s);
                     if is_last {
                         let escaped = escape_template_raw(&pending);
+                        let raw = self.alloc_template_raw(&escaped);
                         quasis.push(self.ast.template_element(
                             SPAN,
-                            TemplateElementValue {
-                                cooked: None,
-                                raw: self.ast.atom(&escaped),
-                            },
+                            TemplateElementValue { cooked: None, raw },
                             true,
-                            false,
                         ));
                     }
                 }
                 TemplatePart::Expr(expr, defined) => {
                     let escaped = escape_template_raw(&pending);
+                    let raw = self.alloc_template_raw(&escaped);
                     quasis.push(self.ast.template_element(
                         SPAN,
-                        TemplateElementValue {
-                            cooked: None,
-                            raw: self.ast.atom(&escaped),
-                        },
-                        false,
+                        TemplateElementValue { cooked: None, raw },
                         false,
                     ));
                     pending.clear();
@@ -134,12 +128,11 @@ impl<'a> Builder<'a> {
                     let value = if defined {
                         expr
                     } else {
-                        let empty_str = self.ast.atom("");
                         self.ast.expression_logical(
                             SPAN,
                             expr,
                             ast::LogicalOperator::Coalesce,
-                            self.ast.expression_string_literal(SPAN, empty_str, None),
+                            self.ast.expression_string_literal(SPAN, "", None),
                         )
                     };
                     expressions.push(value);
@@ -149,10 +142,9 @@ impl<'a> Builder<'a> {
                             SPAN,
                             TemplateElementValue {
                                 cooked: None,
-                                raw: Atom::from(""),
+                                raw: Str::from(""),
                             },
                             true,
-                            false,
                         ));
                     }
                 }

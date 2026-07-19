@@ -1,0 +1,80 @@
+use super::*;
+
+compiler_case!(
+    adjacent_component_named_slots,
+    "css_sibling_slot/adjacent_component_named_slots"
+);
+compiler_case!(
+    general_component_named_slots,
+    "css_sibling_slot/general_component_named_slots"
+);
+compiler_case!(
+    general_slot_element_global,
+    "css_sibling_slot/general_slot_element_global"
+);
+compiler_case!(
+    adjacent_slots_between,
+    "css_sibling_slot/adjacent_slots_between"
+);
+compiler_case!(
+    general_slots_between,
+    "css_sibling_slot/general_slots_between"
+);
+compiler_case!(
+    adjacent_former_element_in_slot,
+    "css_sibling_slot/adjacent_former_element_in_slot"
+);
+compiler_case!(
+    general_former_element_in_slot,
+    "css_sibling_slot/general_former_element_in_slot"
+);
+compiler_case!(
+    adjacent_selects_slot_fallback,
+    "css_sibling_slot/adjacent_selects_slot_fallback"
+);
+compiler_case!(
+    general_selects_slot_fallback,
+    "css_sibling_slot/general_selects_slot_fallback"
+);
+compiler_case!(
+    adjacent_missing_fallback,
+    "css_sibling_slot/adjacent_missing_fallback"
+);
+compiler_case!(
+    adjacent_nested_slots,
+    "css_sibling_slot/adjacent_nested_slots"
+);
+compiler_case!(
+    general_nested_slots,
+    "css_sibling_slot/general_nested_slots"
+);
+compiler_case!(
+    adjacent_nested_slots_flattened,
+    "css_sibling_slot/adjacent_nested_slots_flattened"
+);
+compiler_case!(
+    general_nested_slots_flattened,
+    "css_sibling_slot/general_nested_slots_flattened"
+);
+
+compiler_case!(
+    adjacent_component_two_named_slots,
+    "css_sibling_slot/adjacent_component_two_named_slots"
+);
+
+compiler_case!(
+    adjacent_slot_named_between_default_guard,
+    "css_sibling_slot/adjacent_slot_named_between_default_guard"
+);
+compiler_case!(
+    adjacent_global_slot_in_block_guard,
+    "css_sibling_slot/adjacent_global_slot_in_block_guard"
+);
+compiler_case!(
+    adjacent_component_snippet_guard,
+    "css_sibling_slot/adjacent_component_snippet_guard"
+);
+compiler_case!(
+    general_render_tag_global_guard,
+    "css_sibling_slot/general_render_tag_global_guard"
+);

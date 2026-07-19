@@ -75,7 +75,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 decl_kind,
                 self.b
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(tmp_name_str)),
+                    .binding_pattern_binding_identifier(SPAN, tmp_name_str),
                 NONE,
                 Some(value),
                 false,
@@ -284,9 +284,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.b.ast.variable_declarator(
             SPAN,
             decl_kind,
-            self.b
-                .ast
-                .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
+            self.b.ast.binding_pattern_binding_identifier(SPAN, name),
             NONE,
             Some(final_value),
             false,

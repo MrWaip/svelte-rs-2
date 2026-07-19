@@ -1,0 +1,8 @@
+[
+  {
+    "code": "import_svelte_internal_forbidden",
+    "end": 51,
+    "severity": "error",
+    "start": 0
+  }
+]

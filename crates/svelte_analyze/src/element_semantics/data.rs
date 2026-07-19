@@ -1,3 +1,4 @@
+use compact_str::CompactString;
 use smallvec::SmallVec;
 use svelte_ast::{NodeId, OxcNodeId};
 
@@ -44,6 +45,7 @@ pub enum LegacyDefaultSlot {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RegularElementSemantics {
+    pub name: CompactString,
     pub async_kind: ElementAsyncKind,
     pub value_role: ElementValueRole,
     pub replay_events: SmallVec<[ElementReplayEvent; 2]>,
@@ -152,9 +154,10 @@ pub struct ElementSemanticsStore {
 }
 
 impl ElementSemanticsStore {
-    pub(crate) fn new(_node_count: u32) -> Self {
+    pub(crate) fn new(node_count: u32) -> Self {
+        let cap = node_count as usize / 4;
         Self {
-            entries: rustc_hash::FxHashMap::default(),
+            entries: rustc_hash::FxHashMap::with_capacity_and_hasher(cap, Default::default()),
         }
     }
 

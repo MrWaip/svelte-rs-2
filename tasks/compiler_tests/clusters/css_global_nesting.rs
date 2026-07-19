@@ -1,0 +1,59 @@
+use super::*;
+
+compiler_case!(
+    combinator_global_block_child,
+    "css_global_nesting/combinator_global_block_child"
+);
+compiler_case!(
+    combinator_global_block_type_after,
+    "css_global_nesting/combinator_global_block_type_after"
+);
+compiler_case!(
+    global_first_with_tail,
+    "css_global_nesting/global_first_with_tail"
+);
+compiler_case!(
+    descendant_global_block_child,
+    "css_global_nesting/descendant_global_block_child"
+);
+compiler_case!(
+    combinator_global_block_list,
+    "css_global_nesting/combinator_global_block_list"
+);
+
+compiler_case!(
+    global_selector_nested_class,
+    "css_global_nesting/global_selector_nested_class"
+);
+compiler_case!(
+    global_selector_nested_universal,
+    "css_global_nesting/global_selector_nested_universal"
+);
+compiler_case!(
+    global_selector_nested_deep,
+    "css_global_nesting/global_selector_nested_deep"
+);
+compiler_case!(
+    global_selector_decl_and_nested,
+    "css_global_nesting/global_selector_decl_and_nested"
+);
+compiler_case!(
+    global_selector_flat_decl_guard,
+    "css_global_nesting/global_selector_flat_decl_guard"
+);
+compiler_case!(
+    bare_global_block_child_guard,
+    "css_global_nesting/bare_global_block_child_guard"
+);
+compiler_case!(
+    bare_global_block_multi_child_guard,
+    "css_global_nesting/bare_global_block_multi_child_guard"
+);
+compiler_case!(
+    global_block_under_unused_guard,
+    "css_global_nesting/global_block_under_unused_guard"
+);
+compiler_case!(
+    global_block_nesting_child_guard,
+    "css_global_nesting/global_block_nesting_child_guard"
+);

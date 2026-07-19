@@ -75,3 +75,11 @@ compiler_case!(
 );
 compiler_case!(select_value_call, "text_reactivity/select_value_call");
 compiler_case!(call_literal_chain, "text_reactivity/call_literal_chain");
+compiler_case!(
+    element_static_empty_text_no_content,
+    "text_reactivity/element_static_empty_text_no_content"
+);
+compiler_case!(
+    element_static_text_content_guard,
+    "text_reactivity/element_static_text_content_guard"
+);

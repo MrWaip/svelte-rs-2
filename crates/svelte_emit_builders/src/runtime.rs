@@ -30,24 +30,24 @@ pub fn is_simple_expression(expr: &Expression<'_>) -> bool {
     }
 }
 
-pub fn dollar_member<'a>(b: &Builder<'a>, method: &str) -> Expression<'a> {
+pub fn dollar_member<'a>(b: &Builder<'a>, method: &'a str) -> Expression<'a> {
     let ast = b.ast;
-    let object = ast.expression_identifier(SPAN, ast.atom("$"));
-    let property = ast.identifier_name(SPAN, ast.atom(method));
+    let object = ast.expression_identifier(SPAN, "$");
+    let property = ast.identifier_name(SPAN, method);
     Expression::StaticMemberExpression(
         ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
     )
 }
 
-pub fn thunk_call<'a>(b: &Builder<'a>, name: &str) -> Expression<'a> {
+pub fn thunk_call<'a>(b: &Builder<'a>, name: &'a str) -> Expression<'a> {
     let ast = b.ast;
-    let callee = ast.expression_identifier(SPAN, ast.atom(name));
+    let callee = ast.expression_identifier(SPAN, name);
     ast.expression_call(SPAN, callee, NONE, ast.vec(), false)
 }
 
-pub fn untrack_ident<'a>(b: &Builder<'a>, name: &str) -> Expression<'a> {
+pub fn untrack_ident<'a>(b: &Builder<'a>, name: &'a str) -> Expression<'a> {
     let ast = b.ast;
     let callee = dollar_member(b, "untrack");
-    let arg = Argument::from(ast.expression_identifier(SPAN, ast.atom(name)));
+    let arg = Argument::from(ast.expression_identifier(SPAN, name));
     ast.expression_call(SPAN, callee, NONE, ast.vec1(arg), false)
 }

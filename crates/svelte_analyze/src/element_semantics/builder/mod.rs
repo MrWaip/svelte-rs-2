@@ -10,10 +10,12 @@ use svelte_ast::{
 use smallvec::SmallVec;
 
 use super::{
-    ElementReplayEvent, ElementSemantics, ElementSemanticsStore, ElementValueRole,
-    RegularElementSemantics, SvelteElementSemantics,
+    ElementReplayEvent, ElementSemantics, ElementSemanticsStore, RegularElementSemantics,
+    SvelteElementSemantics,
 };
-use crate::types::data::{AnalysisData, JsAst};
+use compact_str::CompactString;
+
+use crate::types::data::{AnalysisData, JsAst, NamespaceKind};
 
 pub(crate) fn build(
     component: &Component,
@@ -38,26 +40,28 @@ pub(crate) fn build(
                     store.set(el.id, ElementSemantics::HeadTitle);
                 }
                 Node::Element(el) => {
+                    let name = match data.namespace(el.id).unwrap_or(NamespaceKind::Html) {
+                        NamespaceKind::Html => CompactString::new(el.name.to_ascii_lowercase()),
+                        NamespaceKind::Svg
+                        | NamespaceKind::MathMl
+                        | NamespaceKind::ForeignObject
+                        | NamespaceKind::AnnotationXml => CompactString::new(el.name.as_str()),
+                    };
                     let async_kind = async_kind::from_attributes(expressions, &el.attributes);
                     let value_role = value_role::classify(component, data, el);
                     let replay_events = replay_events(data, el);
                     let opaque_content =
-                        data.elements.flags.is_customizable_select(el.id) || el.name == "noscript";
-                    if !async_kind.is_sync()
-                        || value_role != ElementValueRole::Plain
-                        || !replay_events.is_empty()
-                        || opaque_content
-                    {
-                        store.set(
-                            el.id,
-                            ElementSemantics::RegularElement(RegularElementSemantics {
-                                async_kind,
-                                value_role,
-                                replay_events,
-                                opaque_content,
-                            }),
-                        );
-                    }
+                        data.elements.flags.is_customizable_select(el.id) || name == "noscript";
+                    store.set(
+                        el.id,
+                        ElementSemantics::RegularElement(RegularElementSemantics {
+                            name,
+                            async_kind,
+                            value_role,
+                            replay_events,
+                            opaque_content,
+                        }),
+                    );
                 }
                 Node::SvelteElement(el) => {
                     let async_kind = async_kind::from_tag(expressions, el.id);

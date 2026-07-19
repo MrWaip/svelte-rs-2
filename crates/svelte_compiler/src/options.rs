@@ -54,6 +54,8 @@ pub struct CompileOptions {
 
     #[serde(rename = "sourcemap")]
     pub preprocessor_map: Option<String>,
+
+    pub suppress: Vec<String>,
 }
 
 impl Default for CompileOptions {
@@ -81,6 +83,7 @@ impl Default for CompileOptions {
             enable_sourcemap: None,
             sourcemap_kind: svelte_sourcemap::SourcemapKind::default(),
             preprocessor_map: None,
+            suppress: Vec::new(),
         }
     }
 }
@@ -163,6 +166,8 @@ pub struct ModuleCompileOptions {
 
     #[serde(rename = "sourcemap")]
     pub preprocessor_map: Option<String>,
+
+    pub suppress: Vec<String>,
 }
 
 impl Default for ModuleCompileOptions {
@@ -175,6 +180,7 @@ impl Default for ModuleCompileOptions {
             enable_sourcemap: None,
             sourcemap_kind: svelte_sourcemap::SourcemapKind::default(),
             preprocessor_map: None,
+            suppress: Vec::new(),
         }
     }
 }

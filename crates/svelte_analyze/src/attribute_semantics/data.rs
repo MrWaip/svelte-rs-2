@@ -45,6 +45,32 @@ pub enum SkipCause {
 }
 
 impl AttributeSemantics {
+    pub fn is_event_or_binding(&self) -> bool {
+        match self {
+            AttributeSemantics::ElementBind(_)
+            | AttributeSemantics::WindowBind(_)
+            | AttributeSemantics::DocumentBind(_)
+            | AttributeSemantics::ComponentBind(_)
+            | AttributeSemantics::Event(_) => true,
+            AttributeSemantics::NonSpecial
+            | AttributeSemantics::StaticAttr
+            | AttributeSemantics::Skip(_)
+            | AttributeSemantics::RuntimeBehavior
+            | AttributeSemantics::Class(_)
+            | AttributeSemantics::Style(_)
+            | AttributeSemantics::ComponentProp(_)
+            | AttributeSemantics::ComponentCssProp(_)
+            | AttributeSemantics::SvelteComponentThis(_)
+            | AttributeSemantics::ComponentSpread(_)
+            | AttributeSemantics::ComponentAttach(_)
+            | AttributeSemantics::BoundaryProp(_)
+            | AttributeSemantics::HtmlConcat(_)
+            | AttributeSemantics::CannotBeStatic(_)
+            | AttributeSemantics::SpecialValueAttr(_)
+            | AttributeSemantics::Autofocus => false,
+        }
+    }
+
     pub fn forces_runtime_reference(&self) -> bool {
         match self {
             AttributeSemantics::NonSpecial
@@ -291,7 +317,10 @@ impl EventHandler {
 pub enum HandlerEffect {
     Pure,
     Mutation,
-    Call,
+    Call {
+        top_level_side_effect: bool,
+        bare_named_call: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

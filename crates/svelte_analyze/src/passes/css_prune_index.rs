@@ -12,6 +12,7 @@ pub(crate) enum NodeExistsValue {
 pub(crate) enum CandidateKind {
     Element,
     SvelteElement,
+    SlotElement,
     RenderTag,
     ComponentNode,
 }

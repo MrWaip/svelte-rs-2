@@ -1,0 +1,8 @@
+[
+  {
+    "code": "block_invalid_continuation_placement",
+    "end": 21,
+    "severity": "error",
+    "start": 21
+  }
+]

@@ -211,6 +211,7 @@ impl<'a> Ctx<'_, 'a> {
             Node::IfBlock(block) => super::if_::populate(self, block),
             Node::SnippetBlock(block) => super::snippet::populate(self, block),
             Node::ConstTag(tag) => super::const_tag::populate(self, tag),
+            Node::DeclarationTag(tag) => super::declaration_tag::populate(self, tag),
             Node::RenderTag(tag) => super::render::populate(self, tag),
             Node::KeyBlock(block) => super::key::populate(self, block),
             Node::HtmlTag(tag) => super::html_tag::populate(self, tag),

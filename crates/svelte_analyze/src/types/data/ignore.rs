@@ -1,5 +1,6 @@
 use super::*;
 use oxc_ast::ast::Program;
+use svelte_diagnostics::codes::WarningCode;
 use svelte_diagnostics::extract_svelte_ignore::extract_svelte_ignore;
 
 #[derive(Debug, Default)]
@@ -34,6 +35,12 @@ impl IgnoreData {
             .get(&span_start)
             .and_then(|&idx| self.snapshots.get(idx as usize))
             .is_some_and(|set| set.contains(code))
+    }
+    pub fn is_ignored_warning(&self, node_id: NodeId, code: WarningCode) -> bool {
+        self.is_ignored(node_id, code.as_str())
+    }
+    pub fn is_ignored_warning_at_span(&self, span_start: u32, code: WarningCode) -> bool {
+        self.is_ignored_at_span(span_start, code.as_str())
     }
     pub fn scan_program_comments(&mut self, program: &Program<'_>, source: &str, runes: bool) {
         let src = source;
@@ -110,14 +117,14 @@ mod tests {
     #[test]
     fn scan_line_comment() {
         let ignore = parse_and_scan("// svelte-ignore state_snapshot_uncloneable\nlet x = 1;");
-        assert!(ignore.is_ignored_at_span(44, "state_snapshot_uncloneable"));
-        assert!(!ignore.is_ignored_at_span(44, "await_waterfall"));
+        assert!(ignore.is_ignored_warning_at_span(44, WarningCode::StateSnapshotUncloneable));
+        assert!(!ignore.is_ignored_warning_at_span(44, WarningCode::AwaitWaterfall));
     }
 
     #[test]
     fn scan_block_comment() {
         let ignore = parse_and_scan("/* svelte-ignore await_waterfall */\nlet x = 1;");
-        assert!(ignore.is_ignored_at_span(36, "await_waterfall"));
+        assert!(ignore.is_ignored_warning_at_span(36, WarningCode::AwaitWaterfall));
     }
 
     #[test]
@@ -125,13 +132,13 @@ mod tests {
         let ignore = parse_and_scan(
             "// svelte-ignore await_waterfall, state_snapshot_uncloneable\nlet x = 1;",
         );
-        assert!(ignore.is_ignored_at_span(61, "await_waterfall"));
-        assert!(ignore.is_ignored_at_span(61, "state_snapshot_uncloneable"));
+        assert!(ignore.is_ignored_warning_at_span(61, WarningCode::AwaitWaterfall));
+        assert!(ignore.is_ignored_warning_at_span(61, WarningCode::StateSnapshotUncloneable));
     }
 
     #[test]
     fn no_match_for_unrelated_span() {
         let ignore = parse_and_scan("let y = 2;\n// svelte-ignore await_waterfall\nlet x = 1;");
-        assert!(!ignore.is_ignored_at_span(0, "await_waterfall"));
+        assert!(!ignore.is_ignored_warning_at_span(0, WarningCode::AwaitWaterfall));
     }
 }

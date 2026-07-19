@@ -44,6 +44,8 @@ Original Svelte compiler source is in `original/compiler/`.
 
 100% parity of the JS output in every case — within our own architecture.
 
+Exception: the injected CSS string `$$css.code` (`css: injected` / custom element) is intentionally NOT byte-matched — we emit cleaner (minified) CSS while the Original preserves source formatting in dev. Parity there is held semantically via lightningcss re-minification at every comparison point (harness, quick-check, sweep). Do not "fix" it by aligning to the Original. See `docs/adr/0003-injected-css-semantic-compare.md`.
+
 Use the Original to understand WHAT, not HOW. Architecture is ours.
 
 Port-trigger: a name/shape check (`node.name === …`, `is_X(node)`) inside an Original transform/codegen visitor is not code to port — it marks a domain fact the Original re-derives because it has no middle-end. In our topology that fact is born in analysis and consumed as a verdict; the backend stays syntax-directed. See `# Principles`.

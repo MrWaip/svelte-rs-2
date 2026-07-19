@@ -1,0 +1,8 @@
+[
+  {
+    "code": "declaration_duplicate_module_import",
+    "end": 83,
+    "severity": "error",
+    "start": 80
+  }
+]

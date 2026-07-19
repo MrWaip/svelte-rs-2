@@ -1,0 +1,8 @@
+[
+  {
+    "code": "dollar_binding_invalid",
+    "end": 20,
+    "severity": "error",
+    "start": 19
+  }
+]

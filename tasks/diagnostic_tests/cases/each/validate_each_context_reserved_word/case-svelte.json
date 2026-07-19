@@ -1,0 +1,8 @@
+[
+  {
+    "code": "unexpected_reserved_word",
+    "end": 16,
+    "severity": "error",
+    "start": 16
+  }
+]

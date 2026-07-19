@@ -2,7 +2,7 @@ use super::*;
 
 impl<'a> Builder<'a> {
     pub fn private_identifier(&self, name: &str) -> ast::PrivateIdentifier<'a> {
-        self.ast.private_identifier(SPAN, self.ast.atom(name))
+        self.ast.private_identifier(SPAN, self.alloc_str(name))
     }
 
     pub fn class_private_field(
@@ -71,10 +71,9 @@ impl<'a> Builder<'a> {
         param_name: &str,
         body_stmts: Vec<Statement<'a>>,
     ) -> ast::ClassElement<'a> {
-        let param_atom = self.ast.atom(param_name);
         let pattern = self
             .ast
-            .binding_pattern_binding_identifier(SPAN, param_atom);
+            .binding_pattern_binding_identifier(SPAN, self.alloc_str(param_name));
         let param = self.ast.formal_parameter(
             SPAN,
             self.ast.vec(),
@@ -125,7 +124,7 @@ impl<'a> Builder<'a> {
 
     pub fn public_key(&self, name: &str) -> ast::PropertyKey<'a> {
         ast::PropertyKey::StaticIdentifier(
-            self.alloc(self.ast.identifier_name(SPAN, self.ast.atom(name))),
+            self.alloc(self.ast.identifier_name(SPAN, self.alloc_str(name))),
         )
     }
 

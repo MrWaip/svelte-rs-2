@@ -2,25 +2,28 @@ use compact_str::CompactString;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::str::from_utf8_unchecked;
 
-fn push_u32(out: &mut String, mut n: u32) {
+fn format_name(buf: &mut [u8; 32], prefix: &str, n: u32) -> usize {
+    let plen = prefix.len().min(24);
+    buf[..plen].copy_from_slice(&prefix.as_bytes()[..plen]);
+    buf[plen] = b'_';
+    let mut pos = plen + 1;
     if n == 0 {
-        out.push('0');
-        return;
+        buf[pos] = b'0';
+        pos += 1;
+    } else {
+        let mut digits = [0u8; 10];
+        let mut i = digits.len();
+        let mut v = n;
+        while v > 0 {
+            i -= 1;
+            digits[i] = b'0' + (v % 10) as u8;
+            v /= 10;
+        }
+        let len = digits.len() - i;
+        buf[pos..pos + len].copy_from_slice(&digits[i..]);
+        pos += len;
     }
-    let mut buf = [0u8; 10];
-    let mut i = buf.len();
-    while n > 0 {
-        i -= 1;
-        buf[i] = b'0' + (n % 10) as u8;
-        n /= 10;
-    }
-    out.push_str(unsafe { from_utf8_unchecked(&buf[i..]) });
-}
-
-fn build_name_into(out: &mut String, prefix: &str, n: u32) {
-    out.push_str(prefix);
-    out.push('_');
-    push_u32(out, n);
+    pos
 }
 
 pub struct IdentGen {
@@ -67,6 +70,11 @@ impl IdentGen {
     }
 
     pub fn generate(&mut self, prefix: &str) -> String {
+        let cs = self.generate_compact(prefix);
+        cs.into()
+    }
+
+    pub fn generate_compact(&mut self, prefix: &str) -> CompactString {
         let count = if let Some(c) = self.counters.get_mut(prefix) {
             let v = *c;
             *c += 1;
@@ -76,25 +84,33 @@ impl IdentGen {
             0
         };
 
-        let mut name = String::with_capacity(prefix.len() + 6);
-        if count == 0 {
-            name.push_str(prefix);
+        let name = if count == 0 {
+            CompactString::from(prefix)
         } else {
-            build_name_into(&mut name, prefix, count);
+            let mut buf = [0u8; 32];
+            let len = format_name(&mut buf, prefix, count);
+            CompactString::from(unsafe { from_utf8_unchecked(&buf[..len]) })
+        };
+
+        if !self.conflicts.contains(&name) {
+            self.conflicts.insert(name.clone());
+            return name;
         }
 
-        while self.conflicts.contains(name.as_str()) {
+        loop {
             let c = self
                 .counters
                 .get_mut(prefix)
                 .expect("counter was inserted for this prefix above");
             let n = *c;
             *c += 1;
-            name.clear();
-            build_name_into(&mut name, prefix, n);
+            let mut buf = [0u8; 32];
+            let len = format_name(&mut buf, prefix, n);
+            let candidate = CompactString::from(unsafe { from_utf8_unchecked(&buf[..len]) });
+            if !self.conflicts.contains(&candidate) {
+                self.conflicts.insert(candidate.clone());
+                return candidate;
+            }
         }
-
-        self.conflicts.insert(CompactString::from(name.as_str()));
-        name
     }
 }

@@ -100,6 +100,7 @@ fn load_case(base: &str, case: &str) -> (String, CompileOptions) {
     let mut opts = CompileOptions {
         name: Some("App".into()),
         runes: RunesOption::Runes,
+        disclose_version: false,
         ..Default::default()
     };
     if let Some(config) = read_config(&dir) {
@@ -147,6 +148,9 @@ fn load_case(base: &str, case: &str) -> (String, CompileOptions) {
         }
         if let Some(hmr) = config.get("hmr").and_then(|v| v.as_bool()) {
             opts.hmr = hmr;
+        }
+        if let Some(dv) = config.get("discloseVersion").and_then(|v| v.as_bool()) {
+            opts.disclose_version = dv;
         }
     }
 

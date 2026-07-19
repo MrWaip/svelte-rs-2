@@ -4,12 +4,12 @@ pub mod data;
 pub use builder::build;
 pub use data::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
-    BlockSemantics, ConstTagAsyncKind, ConstTagBlockSemantics, EachAsyncKind, EachBlockSemantics,
-    EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind, EachItemKind,
-    EachKeyKind, HtmlTagAsyncKind, HtmlTagNamespace, HtmlTagSemantics, IfAlternate, IfAsyncKind,
-    IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind, KeyBlockSemantics, RenderArgKind,
-    RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam,
-    SnippetPlacement, SnippetSlotKey,
+    BlockSemantics, ConstTagBlockSemantics, DeclarationTagBlockSemantics, EachAsyncKind,
+    EachBlockSemantics, EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
+    EachItemKind, EachKeyKind, FragmentDeclarationAsyncKind, HtmlTagAsyncKind, HtmlTagNamespace,
+    HtmlTagSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
+    KeyAsyncKind, KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind,
+    RenderTagBlockSemantics, SnippetBlockSemantics, SnippetParam, SnippetPlacement, SnippetSlotKey,
 };
 
 use crate::scope::SymbolId;
@@ -23,9 +23,10 @@ pub struct BlockSemanticsStore {
 }
 
 impl BlockSemanticsStore {
-    pub(crate) fn new(_node_count: u32) -> Self {
+    pub(crate) fn new(node_count: u32) -> Self {
+        let cap = node_count as usize / 8;
         Self {
-            entries: FxHashMap::default(),
+            entries: FxHashMap::with_capacity_and_hasher(cap, Default::default()),
             each_index_sym_to_block: FxHashMap::default(),
         }
     }

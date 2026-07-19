@@ -1,0 +1,8 @@
+[
+  {
+    "code": "constant_binding",
+    "end": 83,
+    "severity": "error",
+    "start": 73
+  }
+]

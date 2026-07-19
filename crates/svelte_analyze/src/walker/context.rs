@@ -37,7 +37,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
             data,
             parsed: Some(parsed),
             store,
-            parents: Vec::new(),
+            parents: Vec::with_capacity(32),
             element_name_id: None,
             source,
             runes,

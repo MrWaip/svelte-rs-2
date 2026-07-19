@@ -189,10 +189,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let inner_ctx = parent_ctx.child_of_block(
             self.ctx,
             el_fragment,
-            FragmentAnchor::CallbackParam {
-                name: "$$anchor".to_string(),
-                append_inside: false,
-            },
+            FragmentAnchor::callback_param("$$anchor", false),
         );
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, el_fragment)?;
