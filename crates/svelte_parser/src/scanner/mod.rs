@@ -2257,10 +2257,8 @@ impl<'a> Scanner<'a> {
                         return true;
                     }
                 }
-                '\'' | '"' | '`' => {
-                    if !self.consume_quoted(ch) {
-                        return false;
-                    }
+                '\'' | '"' | '`' if !self.consume_quoted(ch) => {
+                    return false;
                 }
                 _ => {}
             }

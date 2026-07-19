@@ -46,7 +46,7 @@ use oxc_syntax::scope::ScopeFlags;
 use std::mem;
 
 use oxc_span::GetSpan as _;
-use oxc_span::Ident;
+use oxc_str::Ident;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use svelte_ast::Component;

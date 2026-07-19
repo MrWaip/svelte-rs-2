@@ -631,10 +631,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn refine_strategy(&self, strategy: ContentStrategy, ctx: &FragmentCtx<'a>) -> ContentStrategy {
         match &strategy {
-            ContentStrategy::SingleElement(id) | ContentStrategy::SingleBlock(id) => {
-                if self.is_css_wrapped_component(*id) {
-                    return ContentStrategy::CssWrappedComponent(*id);
-                }
+            ContentStrategy::SingleElement(id) | ContentStrategy::SingleBlock(id)
+                if self.is_css_wrapped_component(*id) =>
+            {
+                return ContentStrategy::CssWrappedComponent(*id);
             }
             _ => {}
         }

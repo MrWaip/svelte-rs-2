@@ -69,18 +69,14 @@ impl<'a> ComponentTransformer<'_, 'a> {
             } else {
                 expr
             };
-            leaf_declarators.push(
-                self.b.ast.variable_declarator(
-                    SPAN,
-                    decl_kind,
-                    self.b
-                        .ast
-                        .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
-                    NONE,
-                    Some(value),
-                    false,
-                ),
-            );
+            leaf_declarators.push(self.b.ast.variable_declarator(
+                SPAN,
+                decl_kind,
+                self.b.ast.binding_pattern_binding_identifier(SPAN, name),
+                NONE,
+                Some(value),
+                false,
+            ));
         });
 
         out.push(self.build_tmp_declarator(decl_kind, tmp_name_str, init));
@@ -140,9 +136,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         self.b.ast.variable_declarator(
             SPAN,
             decl_kind,
-            self.b
-                .ast
-                .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
+            self.b.ast.binding_pattern_binding_identifier(SPAN, name),
             NONE,
             Some(value),
             false,

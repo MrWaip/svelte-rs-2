@@ -16,7 +16,7 @@ pub fn build_store_base_read<'a>(
     base_sym: SymbolId,
 ) -> Expression<'a> {
     let ast = b.ast;
-    let base_name = analysis.scoping.symbol_name(base_sym);
+    let base_name: &'a str = b.alloc_str(analysis.scoping.symbol_name(base_sym));
     if analysis
         .reactivity
         .legacy_reactive()
@@ -30,7 +30,7 @@ pub fn build_store_base_read<'a>(
         | BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedDerived(_) => {
-            let ident = ast.expression_identifier(SPAN, ast.atom(base_name));
+            let ident = ast.expression_identifier(SPAN, base_name);
             let callee = dollar_member(b, "get");
             ast.expression_call(SPAN, callee, NONE, ast.vec1(Argument::from(ident)), false)
         }
@@ -39,8 +39,8 @@ pub fn build_store_base_read<'a>(
             emit_mode: PropEmitMode::Standard,
             ..
         }) => {
-            let object = ast.expression_identifier(SPAN, ast.atom("$$props"));
-            let property = ast.identifier_name(SPAN, ast.atom(base_name));
+            let object = ast.expression_identifier(SPAN, "$$props");
+            let property = ast.identifier_name(SPAN, base_name);
             Expression::StaticMemberExpression(
                 ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
             )
@@ -51,10 +51,10 @@ pub fn build_store_base_read<'a>(
             ..
         })
         | BindingSemantics::LegacyBindableProp(_) => {
-            let callee = ast.expression_identifier(SPAN, ast.atom(base_name));
+            let callee = ast.expression_identifier(SPAN, base_name);
             ast.expression_call(SPAN, callee, NONE, ast.vec(), false)
         }
-        _ => ast.expression_identifier(SPAN, ast.atom(base_name)),
+        _ => ast.expression_identifier(SPAN, base_name),
     }
 }
 
@@ -98,7 +98,7 @@ pub fn make_store_mutate<'a>(
 pub fn make_store_update<'a>(
     b: &Builder<'a>,
     base: Expression<'a>,
-    dollar_name: &str,
+    dollar_name: &'a str,
     is_prefix: bool,
     is_increment: bool,
 ) -> Expression<'a> {
@@ -110,7 +110,7 @@ pub fn make_store_update<'a>(
     };
     let callee = dollar_member(b, fn_name);
     let name_arg = Argument::from(base);
-    let thunk_callee = ast.expression_identifier(SPAN, ast.atom(dollar_name));
+    let thunk_callee = ast.expression_identifier(SPAN, dollar_name);
     let thunk_call = ast.expression_call(SPAN, thunk_callee, NONE, ast.vec(), false);
     let thunk_arg = Argument::from(thunk_call);
 

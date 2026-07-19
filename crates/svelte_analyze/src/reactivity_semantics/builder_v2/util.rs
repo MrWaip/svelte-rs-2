@@ -1,5 +1,5 @@
 use oxc_ast::ast::{Expression, PropertyKey, SimpleAssignmentTarget};
-use oxc_span::Ident;
+use oxc_str::Ident;
 use svelte_component_semantics::ReferenceId;
 
 pub(super) fn simple_assignment_target_member_root_reference_id(

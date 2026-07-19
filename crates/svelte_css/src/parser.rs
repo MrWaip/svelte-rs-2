@@ -459,10 +459,8 @@ impl<'src> Parser<'src> {
                 return None;
             }
 
-            match self.parse_complex_selector(inside_pseudo) {
-                Some(sel) => children.push(sel),
-                None => return None,
-            }
+            let sel = self.parse_complex_selector(inside_pseudo)?;
+            children.push(sel);
             let end = self.scanner.prev_end;
 
             self.scanner.skip_whitespace_and_comments();
@@ -638,10 +636,8 @@ impl<'src> Parser<'src> {
 
                 TokenKind::LBracket => {
                     self.scanner.advance();
-                    match self.parse_attribute_selector_inner(start) {
-                        Some(attr) => rel.selectors.push(SimpleSelector::Attribute(attr)),
-                        None => return None,
-                    }
+                    let attr = self.parse_attribute_selector_inner(start)?;
+                    rel.selectors.push(SimpleSelector::Attribute(attr));
                 }
 
                 _ => {

@@ -267,7 +267,7 @@ impl<'a> ServerTransform<'_, 'a> {
             VariableDeclarationKind::Let,
             self.b
                 .ast
-                .binding_pattern_binding_identifier(SPAN, self.b.ast.atom(name)),
+                .binding_pattern_binding_identifier(SPAN, self.b.alloc_str(name)),
             NONE,
             Some(init),
             false,

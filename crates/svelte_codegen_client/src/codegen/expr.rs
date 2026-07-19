@@ -160,7 +160,7 @@ fn build_each_item_indexed_dep_legacy<'a>(
                 .each_collection_internal_names_legacy
                 .get(block_id)
         })
-        .map(String::as_str);
+        .map(|s| ctx.b.alloc_str(s.as_str()));
     let collection = each_item_collection_read_legacy(&ctx.b, analysis, source_sym, hoisted);
     let block_id = ctx.transform_data.each_index_block_by_item.get(&item_sym)?;
     let index_name = ctx.transform_data.each_index_internal_names.get(block_id)?;

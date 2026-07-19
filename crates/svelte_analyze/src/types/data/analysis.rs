@@ -716,10 +716,8 @@ impl<'a> AnalysisData<'a> {
                         return true;
                     }
                 }
-                svelte_ast::Node::AwaitBlock(_) => {
-                    if self.node_expr_references_syms(id, syms) {
-                        return true;
-                    }
+                svelte_ast::Node::AwaitBlock(_) if self.node_expr_references_syms(id, syms) => {
+                    return true;
                 }
                 _ => {}
             }

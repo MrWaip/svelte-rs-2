@@ -192,7 +192,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         });
 
         for (i, branch) in sem.branches.iter().enumerate().rev() {
-            let test = self.branch_condition_expr(branch, branch_names[i].derived.as_deref())?;
+            let derived = branch_names[i]
+                .derived
+                .as_deref()
+                .map(|s| self.ctx.b.alloc_str(s));
+            let test = self.branch_condition_expr(branch, derived)?;
             let render_args: Vec<Arg<'a, '_>> = if i == 0 {
                 vec![Arg::Ident(&branch_names[i].consequent)]
             } else {
@@ -212,7 +216,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     fn branch_condition_expr(
         &mut self,
         branch: &IfBranch,
-        derived_name: Option<&str>,
+        derived_name: Option<&'a str>,
     ) -> Result<Expression<'a>> {
         match branch.condition {
             IfConditionKind::AsyncParam => Ok(rune_get(&self.ctx.b, "$$condition")),

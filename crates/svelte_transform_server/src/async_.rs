@@ -20,10 +20,10 @@ impl<'a> ServerTransform<'_, 'a> {
         let ast = self.b.ast;
         let arg = mem::replace(
             &mut await_expr.argument,
-            ast.expression_identifier(SPAN, ast.atom("")),
+            ast.expression_identifier(SPAN, ""),
         );
         await_expr.argument = self.b.call_expr("$.save", [Arg::Expr(arg)]);
-        let awaited = mem::replace(it, ast.expression_identifier(SPAN, ast.atom("")));
+        let awaited = mem::replace(it, ast.expression_identifier(SPAN, ""));
         *it = self.b.call_expr_callee(awaited, []);
     }
 

@@ -152,7 +152,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .ast
-            .binding_pattern_binding_identifier(SPAN, self.ctx.b.ast.atom(name));
+            .binding_pattern_binding_identifier(SPAN, self.ctx.b.alloc_str(name));
         let pattern = if with_noop_default {
             let default_expr = self
                 .ctx
@@ -208,7 +208,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .ctx
                     .b
                     .ast
-                    .binding_pattern_binding_identifier(SPAN, self.ctx.b.ast.atom("$$snip"));
+                    .binding_pattern_binding_identifier(SPAN, "$$snip");
                 Some(mem::replace(&mut param.pattern, dummy))
             };
             out.push(SnippetParamParsed { pattern, default });

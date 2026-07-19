@@ -3,11 +3,11 @@ use svelte_sourcemap::{
     merge_with_preprocessor, parse_input_map,
 };
 
-fn empty_map() -> SourceMap {
+fn empty_map() -> SourceMap<'static> {
     SourceMapBuilder::default().into_sourcemap()
 }
 
-fn base_map(tokens: &[(u32, u32, u32, u32)]) -> SourceMap {
+fn base_map(tokens: &[(u32, u32, u32, u32)]) -> SourceMap<'static> {
     let mut builder = SourceMapBuilder::default();
     let source_id = builder.add_source_and_content("App.svelte", "");
     builder.set_file("App.svelte");
@@ -17,18 +17,18 @@ fn base_map(tokens: &[(u32, u32, u32, u32)]) -> SourceMap {
     builder.into_sourcemap()
 }
 
-fn preprocessor_map(source: &str, tokens: &[(u32, u32, u32, u32)]) -> SourceMap {
+fn preprocessor_map(source: &str, tokens: &[(u32, u32, u32, u32)]) -> SourceMap<'static> {
     let mut builder = SourceMapBuilder::default();
     let source_id = builder.add_source_and_content(source, "original contents");
     for &(dst_line, dst_col, src_line, src_col) in tokens {
         builder.add_token(dst_line, dst_col, src_line, src_col, Some(source_id), None);
     }
-    builder.into_sourcemap()
+    builder.into_sourcemap().into_owned()
 }
 
 #[track_caller]
-fn assert_sources(map: &SourceMap, expected: &[&str]) {
-    let sources: Vec<&str> = map.get_sources().map(|s| s.as_ref()).collect();
+fn assert_sources(map: &SourceMap<'_>, expected: &[&str]) {
+    let sources: Vec<&str> = map.get_sources().collect();
     assert_eq!(
         sources, expected,
         "merged sources: expected {expected:?}, got {sources:?}"
@@ -36,7 +36,7 @@ fn assert_sources(map: &SourceMap, expected: &[&str]) {
 }
 
 #[track_caller]
-fn assert_first_token_src(map: &SourceMap, expected: (u32, u32)) {
+fn assert_first_token_src(map: &SourceMap<'_>, expected: (u32, u32)) {
     let token = map.get_tokens().next().expect("merged map has a token");
     let got = (token.get_src_line(), token.get_src_col());
     assert_eq!(
@@ -55,7 +55,7 @@ fn attach_sources_content_writes_first_entry() {
         .next()
         .flatten()
         .expect("source content present");
-    assert_eq!(first.as_ref(), "<svelte>contents</svelte>");
+    assert_eq!(first, "<svelte>contents</svelte>");
 }
 
 #[test]
@@ -63,11 +63,8 @@ fn set_source_name_writes_file_and_sources() {
     let mut sm = Sourcemap::new(empty_map(), "src");
     sm.set_source_name("../src/Foo.svelte");
     let map = sm.into_inner();
-    assert_eq!(
-        map.get_file().map(|s| s.as_ref()),
-        Some("../src/Foo.svelte"),
-    );
-    let sources: Vec<&str> = map.get_sources().map(|s| s.as_ref()).collect();
+    assert_eq!(map.get_file(), Some("../src/Foo.svelte"),);
+    let sources: Vec<&str> = map.get_sources().collect();
     assert_eq!(sources, vec!["../src/Foo.svelte"]);
 }
 
@@ -99,7 +96,7 @@ fn merge_applies_base_offset_for_css_block() {
 fn parse_input_map_tolerates_null_sources() {
     let json = r#"{"version":3,"file":"App.svelte","sources":[null,"foo.scss"],"sourcesContent":[null,"orig"],"names":[],"mappings":"AAAA"}"#;
     let map = parse_input_map(json).expect("null source must not fail parsing");
-    let sources: Vec<&str> = map.get_sources().map(|s| s.as_ref()).collect();
+    let sources: Vec<&str> = map.get_sources().collect();
     assert_eq!(
         sources,
         vec!["", "foo.scss"],

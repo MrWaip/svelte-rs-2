@@ -14,11 +14,11 @@ impl<'a> Builder<'a> {
     }
 
     pub fn bare_import(&self, source: &str) -> Statement<'a> {
-        let source_atom = self.ast.atom(source);
+        let source_str = self.alloc_str(source);
         Statement::from(self.ast.module_declaration_import_declaration(
             SPAN,
             None,
-            self.ast.string_literal(SPAN, source_atom, None),
+            self.ast.string_literal(SPAN, source_str, None),
             None,
             NONE,
             ImportOrExportKind::Value,
@@ -26,18 +26,18 @@ impl<'a> Builder<'a> {
     }
 
     pub fn import_all(&self, specifier: &str, source: &str) -> Statement<'a> {
-        let spec_atom = self.ast.atom(specifier);
-        let source_atom = self.ast.atom(source);
+        let spec_str = self.alloc_str(specifier);
+        let source_str = self.alloc_str(source);
         let spec = ImportDeclarationSpecifier::ImportNamespaceSpecifier(
             self.ast.alloc_import_namespace_specifier(
                 SPAN,
-                self.ast.binding_identifier(SPAN, spec_atom),
+                self.ast.binding_identifier(SPAN, spec_str),
             ),
         );
         Statement::from(self.ast.module_declaration_import_declaration(
             SPAN,
             Some(self.ast.vec_from_array([spec])),
-            self.ast.string_literal(SPAN, source_atom, None),
+            self.ast.string_literal(SPAN, source_str, None),
             None,
             NONE,
             ImportOrExportKind::Value,
@@ -56,16 +56,14 @@ impl<'a> Builder<'a> {
         source_text: &'a str,
         span_end: u32,
     ) -> Program<'a> {
-        Program {
-            node_id: Cell::new(OxcNodeId::DUMMY),
-            body: self.ast.vec_from_iter(body),
-            span: Span::new(0, span_end),
-            comments: self.ast.vec_from_iter(comments),
-            directives: self.ast.vec(),
-            hashbang: None,
+        self.ast.program(
+            Span::new(0, span_end),
+            SourceType::mjs(),
             source_text,
-            source_type: SourceType::mjs(),
-            scope_id: Cell::from(None),
-        }
+            self.ast.vec_from_iter(comments),
+            None,
+            self.ast.vec(),
+            self.ast.vec_from_iter(body),
+        )
     }
 }

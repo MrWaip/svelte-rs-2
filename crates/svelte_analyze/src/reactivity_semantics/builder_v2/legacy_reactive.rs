@@ -636,13 +636,11 @@ impl<'a> Visit<'a> for LegacyBodyAnalyzer<'_, 'a> {
                         self.structural_reads.push(LegacyReactiveDep::PropsObject);
                     }
                 }
-                "$$restProps" => {
-                    if !self.seen_rest_props_dep {
-                        self.seen_rest_props_dep = true;
-                        self.dependencies.push(LegacyReactiveDep::RestPropsObject);
-                        self.structural_reads
-                            .push(LegacyReactiveDep::RestPropsObject);
-                    }
+                "$$restProps" if !self.seen_rest_props_dep => {
+                    self.seen_rest_props_dep = true;
+                    self.dependencies.push(LegacyReactiveDep::RestPropsObject);
+                    self.structural_reads
+                        .push(LegacyReactiveDep::RestPropsObject);
                 }
                 _ => {}
             }

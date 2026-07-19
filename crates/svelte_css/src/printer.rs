@@ -4,8 +4,8 @@ use rustc_hash::FxHashSet;
 use svelte_sourcemap::{SourceMap, SourceMapBuilder};
 use svelte_span::LineIndex;
 
-struct MapState {
-    builder: SourceMapBuilder,
+struct MapState<'b> {
+    builder: SourceMapBuilder<'b>,
     line: u32,
     column: u32,
     source_id: u32,
@@ -18,7 +18,7 @@ pub struct Printer<'a> {
     minify: bool,
     used_selectors: Option<&'a FxHashSet<CssNodeId>>,
     remove_unused: bool,
-    map: Option<MapState>,
+    map: Option<MapState<'a>>,
 }
 const INDENTS: [&str; 8] = [
     "",
@@ -92,7 +92,7 @@ impl<'a> Printer<'a> {
         filename: &str,
         used_selectors: Option<&'a FxHashSet<CssNodeId>>,
         remove_unused: bool,
-    ) -> (String, SourceMap) {
+    ) -> (String, SourceMap<'static>) {
         let mut builder = SourceMapBuilder::default();
         let source_id = builder.add_source_and_content(filename, source);
         let line_index = LineIndex::new(source);
@@ -112,7 +112,7 @@ impl<'a> Printer<'a> {
         };
         p.print_stylesheet(stylesheet, source);
         let map_state = p.map.take().expect("map state set above");
-        (p.output, map_state.builder.into_sourcemap())
+        (p.output, map_state.builder.into_sourcemap().into_owned())
     }
 }
 

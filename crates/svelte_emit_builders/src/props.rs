@@ -4,18 +4,18 @@ use oxc_syntax::scope::ScopeId;
 use svelte_analyze::{LegacyBindablePropSemantics, PropDefaultKind, PropsFlags};
 use svelte_ast_builder::{Arg, Builder};
 
-pub fn props_member<'a>(b: &Builder<'a>, prop_name: &str) -> Expression<'a> {
+pub fn props_member<'a>(b: &Builder<'a>, prop_name: &'a str) -> Expression<'a> {
     let ast = b.ast;
-    let object = ast.expression_identifier(SPAN, ast.atom("$$props"));
-    let property = ast.identifier_name(SPAN, ast.atom(prop_name));
+    let object = ast.expression_identifier(SPAN, "$$props");
+    let property = ast.identifier_name(SPAN, prop_name);
     Expression::StaticMemberExpression(
         ast.alloc(ast.static_member_expression(SPAN, object, property, false)),
     )
 }
 
-pub fn props_computed_access<'a>(b: &Builder<'a>, prop_name: &str) -> Expression<'a> {
+pub fn props_computed_access<'a>(b: &Builder<'a>, prop_name: &'a str) -> Expression<'a> {
     let ast = b.ast;
-    let object = ast.expression_identifier(SPAN, ast.atom("$$props"));
+    let object = ast.expression_identifier(SPAN, "$$props");
     let property = b.str_expr(prop_name);
     Expression::ComputedMemberExpression(
         ast.alloc(ast.computed_member_expression(SPAN, object, property, false)),

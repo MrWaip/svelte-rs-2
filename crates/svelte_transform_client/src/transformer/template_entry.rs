@@ -72,10 +72,10 @@ pub(crate) fn run_template<'a, 'b>(
         SPAN,
         SourceType::mjs(),
         "",
-        OxcVec::new_in(alloc),
+        OxcVec::new_in(&alloc),
         None,
-        OxcVec::new_in(alloc),
-        OxcVec::new_in(alloc),
+        OxcVec::new_in(&alloc),
+        OxcVec::new_in(&alloc),
     );
     program
         .scope_id

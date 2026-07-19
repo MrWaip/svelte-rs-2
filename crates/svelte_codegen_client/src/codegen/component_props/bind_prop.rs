@@ -330,7 +330,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .each_collection_internal_names_legacy
                     .get(block_id)
             })
-            .map(String::as_str);
+            .map(|s| self.ctx.b.alloc_str(s.as_str()));
         each_item::each_item_collection_read_legacy(
             &self.ctx.b,
             self.ctx.query.analysis,

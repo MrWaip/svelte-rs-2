@@ -9,8 +9,9 @@ impl<'a> Builder<'a> {
         let params: Vec<_> = items
             .into_iter()
             .map(|v| {
-                let atom = self.ast.atom(v.as_ref());
-                let pattern = self.ast.binding_pattern_binding_identifier(SPAN, atom);
+                let pattern = self
+                    .ast
+                    .binding_pattern_binding_identifier(SPAN, self.alloc_str(v.as_ref()));
                 self.ast.formal_parameter(
                     SPAN,
                     self.ast.vec(),
@@ -62,8 +63,9 @@ impl<'a> Builder<'a> {
     }
 
     pub fn formal_parameter_from_str(&self, name: &str) -> ast::FormalParameter<'a> {
-        let atom = self.ast.atom(name);
-        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, atom);
+        let pattern = self
+            .ast
+            .binding_pattern_binding_identifier(SPAN, self.alloc_str(name));
         self.ast.formal_parameter(
             SPAN,
             self.ast.vec(),
@@ -342,7 +344,7 @@ impl<'a> Builder<'a> {
         let body = self
             .ast
             .alloc_function_body(SPAN, self.ast.vec(), self.ast.vec_from_iter(body));
-        let id = self.ast.binding_identifier(SPAN, self.ast.atom(name));
+        let id = self.ast.binding_identifier(SPAN, self.alloc_str(name));
         Expression::FunctionExpression(self.alloc(self.ast.function(
             SPAN,
             FunctionType::FunctionExpression,
@@ -359,8 +361,9 @@ impl<'a> Builder<'a> {
     }
 
     pub fn rest_params(&self, name: &str) -> FormalParameters<'a> {
-        let atom = self.ast.atom(name);
-        let pattern = self.ast.binding_pattern_binding_identifier(SPAN, atom);
+        let pattern = self
+            .ast
+            .binding_pattern_binding_identifier(SPAN, self.alloc_str(name));
         let rest_element = self.ast.binding_rest_element(SPAN, pattern);
         let rest = self
             .ast

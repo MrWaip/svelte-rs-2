@@ -70,9 +70,9 @@ pub(crate) fn parse_expression_tag_body<'a>(
                 };
                 let label_offset = e
                     .labels
-                    .as_ref()
-                    .and_then(|labels| labels.first())
-                    .map_or(0u32, |label| label.offset() as u32);
+                    .as_slice()
+                    .first()
+                    .map_or(0u32, |label| label.offset());
                 let pos = offset + label_offset;
                 Some(Diagnostic::js_parse_error(
                     Span::new(pos, pos),
@@ -122,9 +122,9 @@ pub fn parse_script_with_alloc<'a>(
 
     let result = OxcParser::new(alloc, source, source_type).parse();
 
-    if !result.errors.is_empty() {
+    if !result.diagnostics.is_empty() {
         return Err(result
-            .errors
+            .diagnostics
             .iter()
             .map(|_| {
                 Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
@@ -186,12 +186,12 @@ pub fn parse_declaration_body<'a>(
     };
     let result = OxcParser::new(alloc, source, src_type).parse();
 
-    if let Some(error) = result.errors.first() {
+    if let Some(error) = result.diagnostics.first() {
         let label_offset = error
             .labels
-            .as_ref()
-            .and_then(|labels| labels.first())
-            .map_or(0usize, |label| label.offset());
+            .as_slice()
+            .first()
+            .map_or(0usize, |label| label.offset() as usize);
         let bytes = source.as_bytes();
         let mut position = label_offset;
         while position < bytes.len() && bytes[position].is_ascii_whitespace() {
@@ -246,7 +246,7 @@ pub fn parse_const_declaration_with_alloc<'a>(
     };
     let result = OxcParser::new(alloc, wrapped_str, src_type).parse();
 
-    if !result.errors.is_empty() {
+    if !result.diagnostics.is_empty() {
         return Err(Diagnostic::invalid_expression(Span::new(
             offset,
             offset + source.len() as u32,
@@ -286,7 +286,7 @@ pub(crate) fn parse_each_context_with_alloc<'a>(
     };
     let result = OxcParser::new(alloc, wrapped_str, src_type).parse();
 
-    if !result.errors.is_empty() {
+    if !result.diagnostics.is_empty() {
         return None;
     }
 
@@ -313,7 +313,7 @@ pub(crate) fn parse_each_index_with_alloc<'a>(
 
     let result = OxcParser::new(alloc, wrapped_str, SourceType::default()).parse();
 
-    if !result.errors.is_empty() {
+    if !result.diagnostics.is_empty() {
         return None;
     }
 
@@ -352,7 +352,7 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
         SourceType::default()
     };
     let result = OxcParser::new(alloc, wrapped_str, src_type).parse();
-    if !result.errors.is_empty() && (!typescript || result.panicked) {
+    if !result.diagnostics.is_empty() && (!typescript || result.panicked) {
         return None;
     }
     let mut stmt = result.program.body.into_iter().next()?;

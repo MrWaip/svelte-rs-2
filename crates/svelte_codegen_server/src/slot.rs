@@ -206,10 +206,8 @@ impl<'a> ServerCodegen<'a> {
             &pattern,
             BindingPattern::BindingIdentifier(id) if id.name.as_str() == key_name
         );
-        let key = PropertyKey::StaticIdentifier(
-            self.b
-                .alloc(self.b.ast.identifier_name(SPAN, self.b.ast.atom(key_name))),
-        );
+        let key =
+            PropertyKey::StaticIdentifier(self.b.alloc(self.b.ast.identifier_name(SPAN, key_name)));
         Ok(Some(
             self.b
                 .ast
