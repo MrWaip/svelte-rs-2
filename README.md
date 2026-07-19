@@ -131,7 +131,15 @@ Whole-corpus throughput: **~2,950 real `.svelte` files**, each compiled in every
 | ssr | 1254.1 ms | 1137.2 ms | 88.8 ms | **14.1×** | **12.8×** |
 | ssr-dev | 1334.7 ms | 1225.5 ms | 93.7 ms | **14.2×** | **13.1×** |
 
-Reproduce with `just bench-compare`. Per-run instruction-count benchmarks (64 total) also run on every commit via [CodSpeed](https://codspeed.io/MrWaip/svelte-rs-2). The [rsvelte](#alternatives) column appears when its native binding is installed. These are rsvelte's serial `compile` numbers, matching our single-file harness; its parallel `compileBatch` (rayon) reaches ~3× over `svelte/compiler` on this machine, yet our single-threaded compiler is still faster than rsvelte's 12-core batch. rsvelte's serial path is also markedly slower on arm64 than on x64 — on x64 it lands closer to ~2× over `svelte/compiler`. Speedup climbs further on large single components, where fixed per-file overhead amortizes.
+Reproduce with `just bench-compare`. Per-run instruction-count benchmarks (64 total) also run on every commit via [CodSpeed](https://codspeed.io/MrWaip/svelte-rs-2). The [rsvelte](#alternatives) column appears when its native binding is installed. These are rsvelte's serial `compile` numbers, matching our single-file harness; its parallel `compileBatch` (rayon) reaches ~3× over `svelte/compiler` on this machine, yet our single-threaded compiler is still faster than rsvelte's 12-core batch. rsvelte's serial path is also markedly slower on arm64 than on x64 — on x64 it lands closer to ~2× over `svelte/compiler`.
+
+Our lead widens as components grow; rsvelte's serial edge over `svelte/compiler` is ~2× only on sub-1 KB fixtures and collapses on real components — which dominate the byte weight:
+
+| component size | share of bytes | ours vs svelte | rsvelte vs svelte |
+| --- | ---: | ---: | ---: |
+| < 1 KB | 26% | 8.6× | 2.3× |
+| 1–10 KB | 17% | 14.2× | 0.7× |
+| > 10 KB | 57% | 22.0× | 1.2× |
 
 ## Alternatives
 
