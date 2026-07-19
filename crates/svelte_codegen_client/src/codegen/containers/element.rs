@@ -235,9 +235,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     el.name.as_str(),
                     el.fragment,
                     el_ns,
-                    FragmentAnchor::ElementContentChild {
-                        parent_var: el_name.clone(),
-                    },
+                    FragmentAnchor::element_content_child(el_name.clone()),
                 );
                 self.emit_fragment(state, &child_ctx, el.fragment)?;
                 state
@@ -269,9 +267,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     el.name.as_str(),
                     el.fragment,
                     el_ns,
-                    FragmentAnchor::Child {
-                        parent_var: el_name.clone(),
-                    },
+                    FragmentAnchor::child(el_name.clone()),
                 );
                 let prev_bound_ce = state.bound_contenteditable;
                 if self.ctx.is_bound_contenteditable(el_id) {
@@ -437,10 +433,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             el_tag,
             el_fragment,
             el_ns,
-            FragmentAnchor::CallbackParam {
-                name: anchor_name.clone(),
-                append_inside: false,
-            },
+            FragmentAnchor::callback_param(anchor_name.clone(), false),
         );
         let mut inner_state = EmitState::new();
         inner_state.suppress_root_finalize = true;

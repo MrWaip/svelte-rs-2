@@ -113,10 +113,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             "",
             svelte_el_fragment,
             child_ns,
-            FragmentAnchor::CallbackParam {
-                name: "$$anchor".to_string(),
-                append_inside: false,
-            },
+            FragmentAnchor::callback_param("$$anchor", false),
         );
         let mut inner_state = EmitState::new();
 

@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use compact_str::CompactString;
 use smallvec::SmallVec;
 use svelte_ast::NodeId;
 
@@ -119,8 +120,8 @@ pub(super) enum HoistedKind {
 }
 
 pub(super) enum ChildAnchor {
-    ElementChild { parent_var: String },
-    ElementContentChild { parent_var: String },
-    FragmentFirstChild { frag_var: String },
-    RawIdent(String),
+    ElementChild { parent_var: CompactString },
+    ElementContentChild { parent_var: CompactString },
+    FragmentFirstChild { frag_var: CompactString },
+    RawIdent(CompactString),
 }

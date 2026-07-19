@@ -1898,6 +1898,7 @@ name = "svelte_codegen_client"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "compact_str",
  "oxc_allocator",
  "oxc_ast",
  "oxc_codegen",

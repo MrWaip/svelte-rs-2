@@ -110,10 +110,7 @@ impl<'a> FragmentCtx<'a> {
         next.inside_head = true;
         next.namespace = Namespace::Html;
         next.role = role;
-        next.anchor = FragmentAnchor::CallbackParam {
-            name: "$$anchor".to_string(),
-            append_inside: false,
-        };
+        next.anchor = FragmentAnchor::callback_param("$$anchor", false);
         next
     }
 
@@ -159,7 +156,7 @@ impl<'a> FragmentCtx<'a> {
     pub fn child_of_sibling(&self, sibling_var: String) -> Self {
         let mut next = self.clone();
         next.parent_element_name = None;
-        next.anchor = FragmentAnchor::SiblingVar { var: sibling_var };
+        next.anchor = FragmentAnchor::sibling_var(sibling_var);
         next
     }
 

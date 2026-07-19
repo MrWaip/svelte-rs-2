@@ -35,10 +35,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let inner_ctx = parent_ctx.child_of_named_slot(
             self.ctx,
             slot_fragment_id,
-            FragmentAnchor::CallbackParam {
-                name: "$$anchor".to_string(),
-                append_inside,
-            },
+            FragmentAnchor::callback_param("$$anchor", append_inside),
         );
         let mut inner_state = EmitState::new();
 

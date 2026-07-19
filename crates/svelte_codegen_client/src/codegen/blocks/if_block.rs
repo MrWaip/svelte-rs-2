@@ -104,10 +104,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let mut inner_ctx = parent_ctx.child_of_block(
                 self.ctx,
                 consequent,
-                FragmentAnchor::CallbackParam {
-                    name: "$$anchor".to_string(),
-                    append_inside: false,
-                },
+                FragmentAnchor::callback_param("$$anchor", false),
             );
             inner_ctx.in_block_callback = true;
             let mut inner_state = EmitState::new();
@@ -167,10 +164,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut inner_ctx = parent_ctx.child_of_block(
             self.ctx,
             alternate,
-            FragmentAnchor::CallbackParam {
-                name: "$$anchor".to_string(),
-                append_inside: false,
-            },
+            FragmentAnchor::callback_param("$$anchor", false),
         );
         inner_ctx.in_block_callback = true;
         let mut inner_state = EmitState::new();

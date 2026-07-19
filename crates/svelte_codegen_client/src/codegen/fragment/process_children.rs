@@ -1,5 +1,6 @@
 use std::iter;
 
+use compact_str::CompactString;
 use oxc_ast::ast::Expression;
 use smallvec::SmallVec;
 use svelte_ast::{Node, NodeId};
@@ -44,7 +45,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 };
                 state.root_var = Some(frag_name.clone());
                 ChildAnchor::FragmentFirstChild {
-                    frag_var: frag_name,
+                    frag_var: CompactString::from(frag_name),
                 }
             }
             FragmentAnchor::SiblingVar { var } => ChildAnchor::RawIdent(var.clone()),

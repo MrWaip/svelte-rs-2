@@ -80,10 +80,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             _ => return CodegenError::unexpected_node(block_id, "SnippetBlock"),
         };
         let mut inner_ctx = FragmentCtx::root(self.ctx, body);
-        inner_ctx.anchor = FragmentAnchor::CallbackParam {
-            name: "$$anchor".to_string(),
-            append_inside: false,
-        };
+        inner_ctx.anchor = FragmentAnchor::callback_param("$$anchor", false);
         let mut inner_state = EmitState::new();
         self.emit_fragment(&mut inner_state, &inner_ctx, body)?;
         let body_stmts = self.pack_callback_body(inner_state, "$$anchor")?;

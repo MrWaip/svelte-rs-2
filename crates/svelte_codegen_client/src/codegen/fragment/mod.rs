@@ -46,7 +46,7 @@ fn single_fragment_anchor<'a>(ctx: &FragmentCtx<'a>) -> Result<ConcatenationAnch
             })
         }
         FragmentAnchor::Child { parent_var } => Ok(ConcatenationAnchor::SingleFragmentChild {
-            parent_var: parent_var.clone(),
+            parent_var: parent_var.to_string(),
         }),
         FragmentAnchor::ElementContentChild { .. } => {
             CodegenError::unexpected_child("Single", "ElementContentChild anchor")
@@ -382,7 +382,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         "non-Child anchor for controlled each",
                     );
                 };
-                let parent_name = parent_var.clone();
+                let parent_name = parent_var.to_string();
                 let sem = match self.ctx.query.analysis.block_semantics(id) {
                     svelte_analyze::BlockSemantics::Each(s) => s.clone(),
                     _ => {
@@ -734,10 +734,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let anchor_ident = match &ctx.anchor {
             FragmentAnchor::Root => "$$anchor".to_string(),
-            FragmentAnchor::CallbackParam { name, .. } => name.clone(),
+            FragmentAnchor::CallbackParam { name, .. } => name.to_string(),
             FragmentAnchor::Child { parent_var }
-            | FragmentAnchor::ElementContentChild { parent_var } => parent_var.clone(),
-            FragmentAnchor::SiblingVar { var } => var.clone(),
+            | FragmentAnchor::ElementContentChild { parent_var } => parent_var.to_string(),
+            FragmentAnchor::SiblingVar { var } => var.to_string(),
         };
         state.init.push(
             self.ctx
@@ -850,9 +850,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let prev_init_len = state.init.len();
         let mut wrapper_ctx = ctx.clone();
-        wrapper_ctx.anchor = FragmentAnchor::SiblingVar {
-            var: format!("{}.lastChild", node_ident),
-        };
+        wrapper_ctx.anchor = FragmentAnchor::sibling_var(format!("{}.lastChild", node_ident));
         wrapper_ctx.namespace = namespace;
         self.emit_component_inline_memo(state, &wrapper_ctx, component_id, memo_counter)?;
         let mut component_stmts: Vec<_> = state.init.drain(prev_init_len..).collect();
