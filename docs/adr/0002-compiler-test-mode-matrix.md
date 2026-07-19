@@ -71,7 +71,7 @@
   поэтому ячейки по умолчанию `#[ignore]` (`ssr_todo` / `ssr_dev_todo`), снимаются по мере порта
   конструкции (флип на `[prod, dev, ssr, ssr_dev]`). Это ratchet-fallback из Альтернатив,
   применённый к SSR: `just test-compiler` их пропускает, `just generate` льёт server-эталоны для
-  всех кейсов, sweep — флаг `--ssr`.
+  всех кейсов, sweep гоняет client и server сразу (каждое расхождение помечено `[mode]`).
 
 ## Альтернативы
 

@@ -120,10 +120,10 @@ npm-build:
     node_modules/.bin/napi artifacts --package-json-path packages/svelte-rs2/package.json --output-dir packages/svelte-rs2/compiler/native --npm-dir packages/svelte-rs2/npm
     npm pack ./packages/svelte-rs2 --silent
 
-# Build the native addon and stage it into the local dev path of the main package (shared by sweep)
+# Build the native addon and stage it into the local dev path of the main package
 build-native:
     npm run --prefix packages/svelte-rs2 build:release
 
-# Build the native addon, install the workspace from root, and run the sweep against a pathname (extra flags: --dry-run --dev --ssr --print-diffs)
-sweep-run pathname *flags: build-native
-    node packages/svelte-rs2-sweep/cli.mjs {{pathname}} {{flags}}
+# Parity-sweep a directory: our compiler vs svelte/compiler across client+server × dev+prod, always dry-run. Flags: --mode=auto|runes|legacy --chunk=N --print-diffs --out=<file>
+sweep-run pathname *flags:
+    cargo run -q --release -p sweep -- {{pathname}} {{flags}}

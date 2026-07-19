@@ -6,7 +6,7 @@ description: Create a new diagnostic parity test case. Use when the user asks to
 # Add Diagnostic Test
 
 > **Capture utility — not part of the PARITY chain.**
-> Creates a persistent diagnostic case for feature-first work. Do NOT use when you already have a `dig` finding — that work lives under `tasks/diagnostic_tests/cases/` and is scoped by `/dig`. Use this skill only when registering a fresh, standalone diagnostic case before implementation.
+> Creates a persistent diagnostic case for feature-first work. Do NOT use when you already have a `dig-better` finding — that work lives under `tasks/diagnostic_tests/cases/` and is scoped by `/dig-better`. Use this skill only when registering a fresh, standalone diagnostic case before implementation.
 
 ## 1) Validate the name
 

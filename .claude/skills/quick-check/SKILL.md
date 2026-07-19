@@ -9,7 +9,7 @@ allowed-tools: Bash, Write
 
 One-shot compile of one component (compares JS + whitespace-normalized CSS) or `.svelte.js`/`.svelte.ts` module (JS only) against the reference compiler. Dispatch is by extension: `.svelte.js`/`.svelte.ts` → `compile_module`, else `compile`. Does NOT register tests or touch compiler code.
 
-**Not for:** persisted finding → `/dig`; directory survey → `just sweep-run <dir> --dry-run`; permanent case → `/add-test` or `/add-diagnostic-test`; about to fix a crate → `/dig` first.
+**Not for:** persisted finding → `/dig-better`; directory survey → `/sweep`; permanent case → `/add-test` or `/add-diagnostic-test`; about to fix a crate → `/dig-better` first.
 
 ## Run
 
