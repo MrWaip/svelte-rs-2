@@ -7,6 +7,11 @@ bench-compare dir='.':
     npm run --prefix packages/svelte-rs2 build:release
     node tasks/compiler_bench/compare.mjs {{dir}}
 
+# Per-file breakdown: slowest .svelte files for our compiler in dir + weakest lead vs svelte. Feed hot paths into bench-flame. Args: dir [mode=client|client-dev|ssr|ssr-dev] [top=15]
+bench-breakdown dir mode='client' top='15':
+    npm run --prefix packages/svelte-rs2 build:release
+    node tasks/compiler_bench/breakdown.mjs {{dir}} {{mode}} {{top}}
+
 # Run all diagnostic integration tests (aggregated summary via nextest)
 test-diagnostics:
     cargo nextest run -p diagnostic_tests --status-level fail

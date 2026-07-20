@@ -41,3 +41,35 @@ compiler_case!(
     "custom_element/legacy_rest_props_excludes_host"
 );
 compiler_case!(shadow_mode_closed, "custom_element/shadow_mode_closed");
+
+compiler_case!(shadow_none_guard, "custom_element/shadow_none_guard");
+compiler_case!(
+    shadow_open_string_guard,
+    "custom_element/shadow_open_string_guard"
+);
+compiler_case!(
+    prop_type_explicit_guard,
+    "custom_element/prop_type_explicit_guard"
+);
+compiler_case!(
+    prop_type_numeric_init_guard,
+    "custom_element/prop_type_numeric_init_guard"
+);
+compiler_case!(prop_attribute_guard, "custom_element/prop_attribute_guard");
+compiler_case!(
+    prop_extra_export_empty_guard,
+    "custom_element/prop_extra_export_empty_guard"
+);
+compiler_case!(extend_option_guard, "custom_element/extend_option_guard");
+compiler_case!(no_tag_bare_guard, "custom_element/no_tag_bare_guard");
+
+compiler_case!(
+    shadow_init_options,
+    "custom_element/shadow_init_options",
+    ignore = "custom element shadow object is collapsed to mode + delegatesFocus; clonable/serializable/slotAssignment dropped"
+);
+compiler_case!(
+    prop_type_boolean_inference,
+    "custom_element/prop_type_boolean_inference",
+    ignore = "custom element prop `type: \"Boolean\"` is not inferred from a boolean-literal prop default"
+);
