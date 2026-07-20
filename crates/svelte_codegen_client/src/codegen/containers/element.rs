@@ -424,8 +424,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 _ => return CodegenError::unexpected_node(el_id, "Element"),
             };
 
-        let tpl_name = self.ctx.state.gen_ident(&format!("{el_tag}_content"));
-
         let fragment_name = self.ctx.state.gen_ident("fragment");
         let anchor_name = self.ctx.state.gen_ident("anchor");
 
@@ -471,12 +469,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let html_str = inner_state.template.as_html();
         let needs_import = inner_state.template.needs_import_node;
         let from_fn = from_namespace(el_ns);
+        let flags: u32 = if needs_import { 3 } else { 1 };
+        let dedup_key =
+            (!self.ctx.state.dev).then(|| format!("{from_fn}\u{0}{flags}\u{0}{html_str}"));
         let tpl_expr = self.ctx.b.template_str_expr(&html_str);
-        let flags = if needs_import { 3.0 } else { 1.0 };
         let from_call = self
             .ctx
             .b
-            .call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags)]);
+            .call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags as f64)]);
         let from_call = if self.ctx.state.dev
             && let Some(locs) = self.build_template_locations(&child_ctx, el_fragment)
         {
@@ -484,7 +484,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             from_call
         };
-        self.hoist(self.ctx.b.var_stmt(&tpl_name, from_call));
+        let tpl_name =
+            self.hoist_template_dedup(dedup_key, &format!("{el_tag}_content"), from_call);
 
         let EmitState {
             init: inner_init,

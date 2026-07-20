@@ -40,3 +40,18 @@ compiler_case!(
     multi_static_first_guard,
     "customizable_select/multi_static_first_guard"
 );
+compiler_case!(
+    multi_distinct_guard,
+    "customizable_select/multi_distinct_guard"
+);
+
+compiler_case!(multi_dup_render, "customizable_select/multi_dup_render");
+compiler_case!(multi_dup_option, "customizable_select/multi_dup_option");
+compiler_case!(
+    multi_dup_cross_parent,
+    "customizable_select/multi_dup_cross_parent"
+);
+compiler_case!(
+    static_then_dynamic_ident,
+    "customizable_select/static_then_dynamic_ident"
+);

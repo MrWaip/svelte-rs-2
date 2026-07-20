@@ -725,7 +725,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             from_call
         };
-        let tpl_name = self.hoist_template_dedup(dedup_key, from_call);
+        let tpl_name = self.hoist_template_dedup(dedup_key, "root", from_call);
         state.init.insert(
             frag_stmt_idx,
             self.ctx
@@ -997,7 +997,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 from_html = self.wrap_add_locations(from_html, locs);
             }
         }
-        let tpl_name = self.hoist_template_dedup(dedup_key, from_html);
+        let tpl_name = self.hoist_template_dedup(dedup_key, "root", from_html);
 
         let var_name = match state.root_var.take() {
             Some(name) => name,
@@ -1020,9 +1020,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
-    fn hoist_template_dedup(
+    pub(in crate::codegen) fn hoist_template_dedup(
         &mut self,
         dedup_key: Option<String>,
+        base_name: &str,
         from_html: Expression<'a>,
     ) -> String {
         if let Some(name) = dedup_key
@@ -1031,7 +1032,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         {
             return name;
         }
-        let name = self.ctx.state.gen_ident("root");
+        let name = self.ctx.state.gen_ident(base_name);
         let tpl_stmt = self.ctx.state.b.var_stmt(&name, from_html);
         self.hoist(tpl_stmt);
         if let Some(key) = dedup_key {
@@ -1117,8 +1118,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         match &ctx.anchor {
             FragmentAnchor::Root | FragmentAnchor::CallbackParam { .. } => {
                 if is_html_element {
-                    let el_name = self.emit_element(state, ctx, el_id, None)?;
-                    state.root_var = Some(CompactString::from(el_name.as_str()));
+                    if state.suppress_root_finalize && !self.ctx.needs_var(el_id) {
+                        self.emit_element(state, ctx, el_id, Some(""))?;
+                    } else {
+                        let el_name = self.emit_element(state, ctx, el_id, None)?;
+                        state.root_var = Some(CompactString::from(el_name.as_str()));
+                    }
                 } else {
                     self.emit_element(state, ctx, el_id, None)?;
                 }
