@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::mem;
 
 use svelte_span::GetSpan;
@@ -994,10 +995,10 @@ impl StringAttribute {
             .unwrap_or_else(|| self.raw_value(source))
     }
 
-    pub fn value_cow<'s>(&self, source: &'s str) -> std::borrow::Cow<'s, str> {
+    pub fn value_cow<'s>(&self, source: &'s str) -> Cow<'s, str> {
         match &self.decoded {
-            Some(decoded) => std::borrow::Cow::Owned(decoded.clone()),
-            None => std::borrow::Cow::Borrowed(self.raw_value(source)),
+            Some(decoded) => Cow::Owned(decoded.clone()),
+            None => Cow::Borrowed(self.raw_value(source)),
         }
     }
 }
