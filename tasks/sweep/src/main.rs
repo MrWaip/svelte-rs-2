@@ -696,8 +696,7 @@ fn canonical_js(source: &str) -> String {
 }
 
 fn normalize_css(css: &str) -> String {
-    let stripped = test_support::strip_reference_only_css_markers(css);
-    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
+    test_support::canonicalize_injected_css(css)
 }
 
 fn diff_size(before: &str, after: &str) -> usize {

@@ -66,12 +66,16 @@ pub fn canonicalize_injected_css_in_js(js: &str) -> String {
     }
     let mut out = js.to_string();
     for (start, end, css) in spans.into_iter().rev() {
-        let stripped = strip_css_sourcemap_comment(&css);
-        let canon = minify_css(stripped).unwrap_or_else(|| fallback_normalize_css(stripped));
+        let canon = canonicalize_injected_css(&css);
         let literal = serde_json::to_string(&canon).expect("string serializes");
         out.replace_range(start..end, &literal);
     }
     out
+}
+
+pub fn canonicalize_injected_css(css: &str) -> String {
+    let stripped = strip_css_sourcemap_comment(css);
+    minify_css(stripped).unwrap_or_else(|| fallback_normalize_css(stripped))
 }
 
 fn find_injected_css_spans(js: &str) -> Vec<(usize, usize, String)> {

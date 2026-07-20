@@ -16,7 +16,6 @@ use pretty_assertions::StrComparison;
 use svelte_compiler::{
     CompileOptions, GenerateMode, ModuleCompileOptions, RunesOption, compile, compile_module,
 };
-use svelte_transform_css::compact_css_for_injection;
 
 const USAGE: &str = "usage: quick_check <path-to-.svelte-file|-> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>] [--print=diff|ours|ref|both]\n  pass `-` to read source from stdin (extension inferred from --filename, default .svelte)";
 
@@ -187,10 +186,10 @@ fn main() -> ExitCode {
     let applied = describe_applied_options(&cli_opts);
     let our_css_norm = our_css
         .as_deref()
-        .map(|s| compact_css_for_injection(s).trim().to_string());
+        .map(test_support::canonicalize_injected_css);
     let ref_css_norm = ref_css
         .as_deref()
-        .map(|s| compact_css_for_injection(s).trim().to_string());
+        .map(test_support::canonicalize_injected_css);
     let js_match = our_js == ref_js;
     let css_match = our_css_norm == ref_css_norm;
 

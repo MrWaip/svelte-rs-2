@@ -120,6 +120,9 @@ mod css_escaped_identifier;
 #[path = "clusters/css_brace_whitespace.rs"]
 mod css_brace_whitespace;
 
+#[path = "clusters/css_declaration_no_colon.rs"]
+mod css_declaration_no_colon;
+
 #[path = "clusters/css_injected.rs"]
 mod css_injected;
 

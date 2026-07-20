@@ -1,6 +1,10 @@
 use super::*;
 
 compiler_case!(
+    legacy_module_script_reactive,
+    "bind_group/legacy/module_script_reactive"
+);
+compiler_case!(
     legacy_each_unrelated_prop,
     "bind_group/legacy/each_unrelated_prop"
 );
