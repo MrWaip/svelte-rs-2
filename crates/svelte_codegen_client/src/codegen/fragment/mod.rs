@@ -969,9 +969,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             (StrategyKind::SingleElement, false) => 0,
         };
 
-        let dedup_key =
-            (!self.ctx.state.dev).then(|| format!("{from_fn}\u{0}{flags}\u{0}{html_str}"));
-
         let mut from_html = {
             let b = &self.ctx.state.b;
             let tpl_expr = b.template_str_expr(&html_str);
@@ -980,6 +977,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             } else {
                 b.call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags as f64)])
             }
+        };
+
+        let dedup_key = if self.ctx.state.dev {
+            None
+        } else {
+            let mut key = html_str;
+            key.push('\u{0}');
+            key.push_str(from_fn);
+            key.push('\u{0}');
+            key.push_str(&flags.to_string());
+            Some(key)
         };
         if self
             .ctx
