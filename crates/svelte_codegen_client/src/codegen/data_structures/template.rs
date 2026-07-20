@@ -13,7 +13,6 @@ pub(crate) struct Template {
     nodes: Vec<TemplateNode>,
     stack: Vec<Vec<TemplateNode>>,
     pub needs_import_node: bool,
-    pub contains_script_tag: bool,
 }
 
 impl Template {
@@ -22,7 +21,6 @@ impl Template {
             nodes: Vec::new(),
             stack: Vec::new(),
             needs_import_node: false,
-            contains_script_tag: false,
         }
     }
 

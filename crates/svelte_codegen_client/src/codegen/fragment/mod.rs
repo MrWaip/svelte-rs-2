@@ -981,7 +981,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 b.call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags as f64)])
             }
         };
-        if state.template.contains_script_tag {
+        if self
+            .ctx
+            .query
+            .analysis
+            .fragment_semantics
+            .query(fragment_id)
+            .script
+            .has_script()
+        {
             from_html = self
                 .ctx
                 .state

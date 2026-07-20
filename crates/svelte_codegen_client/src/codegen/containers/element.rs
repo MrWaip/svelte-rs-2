@@ -115,7 +115,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let has_is_attr = self.ctx.has_attribute(el_id, "is");
         state.template.needs_import_node |=
             el_name_hint == "video" || self.ctx.query.view.is_custom_element(el_id) || has_is_attr;
-        state.template.contains_script_tag |= el_name_hint == "script";
 
         let el_name = match existing_var {
             Some("") => String::new(),
@@ -477,6 +476,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .ctx
             .b
             .call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags as f64)]);
+        let from_call = if self
+            .ctx
+            .query
+            .analysis
+            .fragment_semantics
+            .query(el_fragment)
+            .script
+            .has_script()
+        {
+            self.ctx
+                .b
+                .call_expr("$.with_script", [Arg::Expr(from_call)])
+        } else {
+            from_call
+        };
         let from_call = if self.ctx.state.dev
             && let Some(locs) = self.build_template_locations(&child_ctx, el_fragment)
         {
