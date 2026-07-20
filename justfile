@@ -2,10 +2,10 @@
 generate:
     cargo run -p generate_test_cases
 
-# Rebuild napi in release and benchmark our compiler vs svelte/compiler across all .svelte files
-bench-compare:
+# Rebuild napi in release and benchmark our compiler vs svelte/compiler across .svelte files in dir (default: whole repo)
+bench-compare dir='.':
     npm run --prefix packages/svelte-rs2 build:release
-    node tasks/compiler_bench/compare.mjs
+    node tasks/compiler_bench/compare.mjs {{dir}}
 
 # Run all diagnostic integration tests (aggregated summary via nextest)
 test-diagnostics:

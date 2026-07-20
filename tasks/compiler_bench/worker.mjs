@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
@@ -9,6 +10,8 @@ const repoRoot = resolve(here, '..', '..');
 
 const compiler = process.argv[2];
 const mode = process.argv[3];
+const explicitDir = Boolean(process.argv[4]);
+const searchDir = explicitDir ? resolve(process.cwd(), process.argv[4]) : repoRoot;
 const repeats = Number(process.env.BENCH_REPEATS ?? 5);
 const warmups = Number(process.env.BENCH_WARMUPS ?? 1);
 
@@ -21,6 +24,23 @@ const MODES = {
 
 if (!MODES[mode]) throw new Error(`unknown mode: ${mode}`);
 const baseOptions = MODES[mode];
+
+const require = createRequire(import.meta.url);
+
+if (compiler === 'rsvelte-wasm' && baseOptions.dev) {
+    process.stdout.write(
+        JSON.stringify({
+            compiler,
+            mode,
+            files: 0,
+            skipped: 0,
+            median_ms: null,
+            timings_ms: [],
+            unsupported: true,
+        }),
+    );
+    process.exit(0);
+}
 
 async function loadCompile() {
     if (compiler === 'svelte') {
@@ -43,6 +63,17 @@ async function loadCompile() {
             return result;
         };
     }
+    if (compiler === 'rsvelte-wasm') {
+        const mod = await import('@rsvelte/compiler');
+        const wasmPath = require.resolve('@rsvelte/compiler/rsvelte_lint_bg.wasm');
+        await mod.default({ module_or_path: readFileSync(wasmPath) });
+        const compileFn = baseOptions.generate === 'server' ? mod.compile_server : mod.compile_client;
+        return (src, options) => {
+            const result = compileFn(src, options.filename ?? '');
+            if (!result || !result.success) throw new Error(result?.error ?? 'no js output');
+            return { js: result.js, css: result.css };
+        };
+    }
     throw new Error(`unknown compiler: ${compiler}`);
 }
 
@@ -50,15 +81,29 @@ const compile = await loadCompile();
 
 const relFiles = (
     await glob('**/*.svelte', {
-        cwd: repoRoot,
-        ignore: ['**/node_modules/**', 'original/**', 'target/**'],
+        cwd: searchDir,
+        ignore: explicitDir ? [] : ['**/node_modules/**', 'original/**', 'target/**'],
     })
 ).sort();
 
 const sources = relFiles.map((rel) => ({
     filename: rel,
-    src: readFileSync(resolve(repoRoot, rel), 'utf8'),
+    src: readFileSync(resolve(searchDir, rel), 'utf8'),
 }));
+
+if (sources.length === 0) {
+    process.stdout.write(
+        JSON.stringify({
+            compiler,
+            mode,
+            files: 0,
+            skipped: 0,
+            median_ms: null,
+            timings_ms: [],
+        }),
+    );
+    process.exit(0);
+}
 
 const survivors = [];
 let skipped = 0;
