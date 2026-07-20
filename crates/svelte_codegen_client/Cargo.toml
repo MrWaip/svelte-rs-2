@@ -31,3 +31,4 @@ compact_str = { workspace = true }
 rustc-hash = { workspace = true }
 smallvec = { workspace = true }
 bitflags = { workspace = true }
+memchr = { workspace = true }

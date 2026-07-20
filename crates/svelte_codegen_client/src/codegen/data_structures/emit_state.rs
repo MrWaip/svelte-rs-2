@@ -7,7 +7,7 @@ use super::template::Template;
 
 #[derive(Default)]
 pub(crate) struct EmitState<'a> {
-    pub template: Template,
+    pub template: Template<'a>,
     pub init: Vec<Statement<'a>>,
     pub update: Vec<Statement<'a>>,
     pub after_update: Vec<Statement<'a>>,

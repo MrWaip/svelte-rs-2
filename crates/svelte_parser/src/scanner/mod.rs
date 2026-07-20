@@ -1025,33 +1025,33 @@ impl<'a> Scanner<'a> {
         self.advance();
         let mut current_pos: usize = self.current;
 
-        while let Some(char) = self.peek() {
-            if char == quote {
+        let quote_byte = quote as u8;
+        loop {
+            let Some(off) = memchr2(quote_byte, b'{', &self.bytes[self.current..]) else {
+                self.current = self.bytes.len();
+                break;
+            };
+            self.current += off;
+            if self.bytes[self.current] == quote_byte {
                 break;
             }
 
-            if char == '{' {
-                has_expression = true;
+            has_expression = true;
 
-                if current_pos < self.current {
-                    parts.push(ConcatenationPart::String(
-                        self.span(current_pos, self.current),
-                    ));
-                }
-
-                if let Some(diagnostic) = self.interpolation_placement_error("in attribute value") {
-                    return Err(diagnostic);
-                }
-
-                let expression_tag = self.expression_tag()?;
-
-                parts.push(ConcatenationPart::Expression(expression_tag));
-                current_pos = self.current;
-
-                continue;
+            if current_pos < self.current {
+                parts.push(ConcatenationPart::String(
+                    self.span(current_pos, self.current),
+                ));
             }
 
-            self.advance();
+            if let Some(diagnostic) = self.interpolation_placement_error("in attribute value") {
+                return Err(diagnostic);
+            }
+
+            let expression_tag = self.expression_tag()?;
+
+            parts.push(ConcatenationPart::Expression(expression_tag));
+            current_pos = self.current;
         }
 
         let last_span = self.span(current_pos, self.current);

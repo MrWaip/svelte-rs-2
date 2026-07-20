@@ -97,7 +97,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     );
                     state.init.push(self.ctx.b.expr_stmt(style_call));
                 } else {
-                    state.template.set_attribute("style", Some(static_style));
+                    state
+                        .template
+                        .set_attribute("style", Some(static_style.into()));
                 }
             }
             return Ok(());

@@ -993,6 +993,13 @@ impl StringAttribute {
             .as_deref()
             .unwrap_or_else(|| self.raw_value(source))
     }
+
+    pub fn value_cow<'s>(&self, source: &'s str) -> std::borrow::Cow<'s, str> {
+        match &self.decoded {
+            Some(decoded) => std::borrow::Cow::Owned(decoded.clone()),
+            None => std::borrow::Cow::Borrowed(self.raw_value(source)),
+        }
+    }
 }
 
 #[derive(Clone)]

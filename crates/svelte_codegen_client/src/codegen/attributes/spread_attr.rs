@@ -75,7 +75,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         self.ctx.query.analysis.attributes.get(a.id),
                         AttributeSemantics::StaticAttr
                     ) {
-                        state.template.set_attribute(&a.name, Some(val));
+                        state
+                            .template
+                            .set_attribute(a.name.to_string(), Some(val.into()));
                         continue;
                     }
                     let name_alloc = self.ctx.b.alloc_str(&a.name);

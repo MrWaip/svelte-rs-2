@@ -108,7 +108,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let el_ns = self.element_namespace(el_id, ctx.namespace);
 
         let is_html = matches!(el_ns, Namespace::Html) && el_name_hint != "svg";
-        state.template.push_element(&el_name_hint, is_html);
+        state.template.push_element(el_name_hint.clone(), is_html);
 
         let is_noscript = is_html && el_name_hint == "noscript";
 

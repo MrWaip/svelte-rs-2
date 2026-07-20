@@ -219,7 +219,7 @@ fn emit_child_node<'a, 'ctx>(
                     state.template.push_element("svelte-css-wrapper", true);
                     state
                         .template
-                        .set_attribute("style", Some("display: contents".to_string()));
+                        .set_attribute("style", Some("display: contents".into()));
                 }
                 state.template.push_comment(None);
                 state.template.pop_element();
