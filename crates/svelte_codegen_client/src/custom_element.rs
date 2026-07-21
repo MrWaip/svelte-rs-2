@@ -42,11 +42,10 @@ pub fn gen_custom_element<'a>(
         Arg::StrRef(name)
     }));
 
-    let shadow_mode = parsed.map_or(CeDomMode::Open, |o| o.shadow);
-    let is_shadow_none = shadow_mode == CeDomMode::None;
-    let delegates_focus = parsed.is_some_and(|o| o.delegates_focus);
+    let shadow = parsed.map_or(CeDomMode::Open, |o| o.shadow);
 
-    let extend_arg = take_extend_expr(ctx, ce_config);
+    let (shadow_expr, extend_arg) =
+        take_ce_source_exprs(ctx, ce_config, shadow == CeDomMode::Custom);
     let hmr = ctx.state.hmr;
     let b = &ctx.b;
 
@@ -57,16 +56,16 @@ pub fn gen_custom_element<'a>(
         Arg::Expr(accessors),
     ];
 
-    if !is_shadow_none {
-        let mode = match shadow_mode {
-            CeDomMode::Closed => "closed",
-            CeDomMode::Open | CeDomMode::None => "open",
-        };
-        let mut shadow_props: Vec<ObjProp<'_>> = vec![ObjProp::KeyValue("mode", b.str_expr(mode))];
-        if delegates_focus {
-            shadow_props.push(ObjProp::KeyValue("delegatesFocus", b.bool_expr(true)));
-        }
-        args.push(Arg::Expr(b.object_expr(shadow_props)));
+    let shadow_arg = match shadow {
+        CeDomMode::None => None,
+        CeDomMode::Open => Some(b.object_expr(vec![ObjProp::KeyValue("mode", b.str_expr("open"))])),
+        CeDomMode::Custom => shadow_expr,
+    };
+
+    match shadow_arg {
+        Some(arg) => args.push(Arg::Expr(arg)),
+        None if extend_arg.is_some() => args.push(Arg::Expr(b.void_zero_expr())),
+        None => {}
     }
 
     if let Some(extend_expr) = extend_arg {
@@ -95,40 +94,46 @@ pub fn gen_custom_element<'a>(
     stmts
 }
 
-fn take_extend_expr<'a>(
+fn take_ce_source_exprs<'a>(
     ctx: &mut Ctx<'a>,
     ce_config: Option<&CustomElementConfig>,
-) -> Option<Expression<'a>> {
+    want_shadow: bool,
+) -> (Option<Expression<'a>>, Option<Expression<'a>>) {
     let Some(CustomElementConfig::Expression(span)) = ce_config else {
-        return None;
+        return (None, None);
     };
-    let config = ctx.ce_config()?;
-    config.extend_span?;
+    let need_extend = ctx.ce_config().is_some_and(|c| c.extend_span.is_some());
+    if !want_shadow && !need_extend {
+        return (None, None);
+    }
 
-    let _ = config;
-    let Some(Expression::ObjectExpression(object)) = ctx
+    let Some(Expression::ObjectExpression(mut object)) = ctx
         .state
         .parsed
         .take_pending_expr(span.start)
         .map(|e| e.into_inner_expression())
     else {
-        return None;
+        return (None, None);
     };
-    let mut object = object;
 
+    let mut shadow = None;
+    let mut extend = None;
     for prop_kind in object.properties.drain(..) {
         let ObjectPropertyKind::ObjectProperty(prop) = prop_kind else {
             continue;
         };
         let prop = prop.unbox();
-        if let PropertyKey::StaticIdentifier(id) = &prop.key
-            && id.name.as_str() == "extend"
-        {
-            return Some(prop.value);
+        let PropertyKey::StaticIdentifier(id) = &prop.key else {
+            continue;
+        };
+        match id.name.as_str() {
+            "shadow" if want_shadow => shadow = Some(prop.value),
+            "extend" if need_extend => extend = Some(prop.value),
+            _ => {}
         }
     }
 
-    None
+    (shadow, extend)
 }
 
 fn build_props_metadata<'a>(ctx: &Ctx<'a>, parsed_opts: Option<&ParsedCeConfig>) -> Expression<'a> {

@@ -167,8 +167,8 @@ impl<'a> JsAst<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CeDomMode {
     Open,
-    Closed,
     None,
+    Custom,
 }
 
 #[derive(Debug, Clone)]
@@ -183,7 +183,6 @@ pub struct CePropConfig {
 pub struct ParsedCeConfig {
     pub tag: Option<String>,
     pub shadow: CeDomMode,
-    pub delegates_focus: bool,
 
     pub props: Vec<CePropConfig>,
 

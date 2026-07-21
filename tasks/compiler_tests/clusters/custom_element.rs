@@ -62,14 +62,13 @@ compiler_case!(
 );
 compiler_case!(extend_option_guard, "custom_element/extend_option_guard");
 compiler_case!(no_tag_bare_guard, "custom_element/no_tag_bare_guard");
-
 compiler_case!(
-    shadow_init_options,
-    "custom_element/shadow_init_options",
-    ignore = "custom element shadow object is collapsed to mode + delegatesFocus; clonable/serializable/slotAssignment dropped"
+    shadow_none_extend_guard,
+    "custom_element/shadow_none_extend_guard"
 );
+
+compiler_case!(shadow_init_options, "custom_element/shadow_init_options");
 compiler_case!(
     prop_type_boolean_inference,
-    "custom_element/prop_type_boolean_inference",
-    ignore = "custom element prop `type: \"Boolean\"` is not inferred from a boolean-literal prop default"
+    "custom_element/prop_type_boolean_inference"
 );

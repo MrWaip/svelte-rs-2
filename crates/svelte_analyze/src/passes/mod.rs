@@ -1,3 +1,4 @@
+pub(crate) mod build_ce_config;
 pub(crate) mod build_component_semantics;
 pub(crate) mod bundles;
 pub(crate) mod collect_symbols;

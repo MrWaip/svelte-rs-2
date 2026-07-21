@@ -1,14 +1,62 @@
+use oxc_ast::AstKind;
 use oxc_ast::ast::{Expression, ObjectPropertyKind, PropertyKey};
+use oxc_span::GetSpan as _;
+use svelte_ast::{Component, CustomElementConfig};
+use svelte_component_semantics::{ComponentSemantics, SymbolId};
+use svelte_parser::{CeDomMode, CePropConfig, ParsedCeConfig};
 use svelte_span::Span;
 
-pub(crate) fn extract_ce_config_from_expr(
-    expr: &Expression<'_>,
-    offset: u32,
-) -> svelte_parser::ParsedCeConfig {
-    let mut config = svelte_parser::ParsedCeConfig {
+use crate::JsAst;
+
+pub(crate) fn build(
+    component: &Component,
+    parsed: &JsAst<'_>,
+    semantics: &ComponentSemantics<'_>,
+) -> Option<ParsedCeConfig> {
+    let CustomElementConfig::Expression(span) =
+        component.options.as_ref()?.custom_element.as_ref()?
+    else {
+        return None;
+    };
+    let expr = parsed.pending_expr(span.start)?;
+
+    let mut config = extract(expr, span.start);
+    infer_prop_types(&mut config, semantics);
+    Some(config)
+}
+
+fn infer_prop_types(config: &mut ParsedCeConfig, semantics: &ComponentSemantics<'_>) {
+    let Some(instance_scope) = semantics.instance_scope_id() else {
+        return;
+    };
+    for prop in &mut config.props {
+        if prop.prop_type.is_some() {
+            continue;
+        }
+        if let Some(sym) = semantics.find_binding(instance_scope, &prop.name)
+            && declared_default_is_boolean(semantics, sym)
+        {
+            prop.prop_type = Some("Boolean".to_string());
+        }
+    }
+}
+
+fn declared_default_is_boolean(semantics: &ComponentSemantics<'_>, sym: SymbolId) -> bool {
+    let default = match semantics
+        .js_parent_id(semantics.symbol_declaration(sym))
+        .and_then(|parent| semantics.js_kind(parent))
+    {
+        Some(AstKind::VariableDeclarator(decl)) => decl.init.as_ref(),
+        Some(AstKind::AssignmentPattern(pat)) => Some(&pat.right),
+        _ => None,
+    };
+    matches!(default, Some(Expression::BooleanLiteral(_)))
+}
+
+fn extract(expr: &Expression<'_>, offset: u32) -> ParsedCeConfig {
+    let mut config = ParsedCeConfig {
         tag: None,
-        shadow: svelte_parser::CeDomMode::Open,
-        delegates_focus: false,
+        shadow: CeDomMode::Open,
         props: Vec::new(),
         extend_span: None,
     };
@@ -34,40 +82,17 @@ pub(crate) fn extract_ce_config_from_expr(
             }
             "shadow" => match &prop.value {
                 Expression::StringLiteral(lit) if lit.value.as_str() == "none" => {
-                    config.shadow = svelte_parser::CeDomMode::None;
+                    config.shadow = CeDomMode::None;
                 }
-                Expression::ObjectExpression(obj) => {
-                    for shadow_prop in &obj.properties {
-                        let ObjectPropertyKind::ObjectProperty(sp) = shadow_prop else {
-                            continue;
-                        };
-                        let PropertyKey::StaticIdentifier(id) = &sp.key else {
-                            continue;
-                        };
-                        match id.name.as_str() {
-                            "delegatesFocus" => {
-                                if let Expression::BooleanLiteral(lit) = &sp.value {
-                                    config.delegates_focus = lit.value;
-                                }
-                            }
-                            "mode" => {
-                                if let Expression::StringLiteral(lit) = &sp.value
-                                    && lit.value.as_str() == "closed"
-                                {
-                                    config.shadow = svelte_parser::CeDomMode::Closed;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+                Expression::ObjectExpression(_) => {
+                    config.shadow = CeDomMode::Custom;
                 }
                 _ => {}
             },
             "props" => {
-                extract_ce_props(&prop.value, &mut config);
+                extract_props(&prop.value, &mut config);
             }
             "extend" => {
-                use oxc_span::GetSpan as _;
                 let ext_span = prop.value.span();
                 config.extend_span =
                     Some(Span::new(ext_span.start + offset, ext_span.end + offset));
@@ -79,7 +104,7 @@ pub(crate) fn extract_ce_config_from_expr(
     config
 }
 
-fn extract_ce_props(value: &Expression<'_>, config: &mut svelte_parser::ParsedCeConfig) {
+fn extract_props(value: &Expression<'_>, config: &mut ParsedCeConfig) {
     let Expression::ObjectExpression(props_obj) = value else {
         return;
     };
@@ -91,7 +116,7 @@ fn extract_ce_props(value: &Expression<'_>, config: &mut svelte_parser::ParsedCe
             PropertyKey::StaticIdentifier(id) => id.name.to_string(),
             _ => continue,
         };
-        let mut prop_cfg = svelte_parser::CePropConfig {
+        let mut prop_cfg = CePropConfig {
             name: prop_name,
             attribute: None,
             reflect: false,

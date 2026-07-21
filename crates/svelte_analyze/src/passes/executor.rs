@@ -3,7 +3,6 @@ use svelte_diagnostics::Diagnostic;
 
 use crate::reactivity_semantics::{ReactivityInputs, build_v2, finalize_reactivity};
 use crate::types::markers::ScopingBuilt;
-use crate::utils::ce_config;
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
 use crate::{
     attribute_semantics, block_semantics, element_semantics, expression_semantics,
@@ -82,15 +81,8 @@ pub(crate) fn execute_pass<'a>(
             }
         }
         super::PassKey::ExtractCeConfig => {
-            if let Some(svelte_ast::CustomElementConfig::Expression(span)) = component
-                .options
-                .as_ref()
-                .and_then(|o| o.custom_element.as_ref())
-                && let Some(expr) = parsed.pending_expr(span.start)
-            {
-                let config = ce_config::extract_ce_config_from_expr(expr, span.start);
-                data.script.ce_config = Some(config);
-            }
+            data.script.ce_config =
+                super::build_ce_config::build(component, parsed, data.scoping.semantics());
         }
         super::PassKey::TemplateSideTables => {
             super::template_side_tables::collect_fragment_facts(component, data);
