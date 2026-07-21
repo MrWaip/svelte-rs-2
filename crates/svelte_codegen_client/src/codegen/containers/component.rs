@@ -120,7 +120,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         if let Some(arrow) = children_body {
             match self.ctx.query.legacy_default_slot(el_id) {
-                LegacyDefaultSlot::ChildrenProp => {
+                LegacyDefaultSlot::ChildrenProp | LegacyDefaultSlot::SlotDefaultSlottedLet => {
                     slot_entries.push(ObjProp::KeyValue("default", self.ctx.b.bool_expr(true)));
                     let arrow = self.maybe_wrap_slot_snippet_dev(arrow);
                     props

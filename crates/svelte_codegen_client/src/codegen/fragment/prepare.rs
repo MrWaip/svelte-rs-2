@@ -15,13 +15,9 @@ pub(super) fn prepare<'a>(
     ctx: &FragmentCtx<'a>,
     bucket: &mut HoistedBucket,
 ) -> (Vec<Child>, ContentStrategy) {
-    let exclude_slotted = ctx.role == svelte_ast::FragmentRole::ComponentChildren;
     let mut filtered: SmallVec<[&Node; 8]> = SmallVec::with_capacity(raw.len());
     for &id in raw {
         let node = store.get(id);
-        if exclude_slotted && node_has_slot_attribute(node) {
-            continue;
-        }
         if matches!(node, Node::Comment(_)) && !ctx.preserve_comments {
             continue;
         }
@@ -258,21 +254,6 @@ fn classify(flags: ChildrenFlags, children: &[Child], store: &AstStore) -> Conte
             }
         }
     }
-}
-
-fn node_has_slot_attribute(node: &Node) -> bool {
-    use svelte_ast::Attribute;
-    let attrs: &[Attribute] = match node {
-        Node::Element(el) => &el.attributes,
-        Node::SvelteFragmentLegacy(el) => &el.attributes,
-        _ => match node.as_component_like() {
-            Some(view) => view.attributes,
-            None => return false,
-        },
-    };
-    attrs
-        .iter()
-        .any(|attr| matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot"))
 }
 
 fn hoisted_kind(node: &Node, inside_head: bool) -> HoistedKind {

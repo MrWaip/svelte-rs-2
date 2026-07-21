@@ -47,3 +47,19 @@ compiler_case!(
     svelte_fragment_slot_let_guard,
     "legacy_slots/svelte_fragment_slot_let_guard"
 );
+compiler_case!(
+    parent_default_element_plain_guard,
+    "legacy_slots/parent_default_element_plain_guard"
+);
+compiler_case!(
+    parent_default_slot_attribute,
+    "legacy_slots/parent_default_slot_attribute"
+);
+compiler_case!(
+    parent_default_slot_attribute_let,
+    "legacy_slots/parent_default_slot_attribute_let"
+);
+compiler_case!(
+    parent_default_element_let,
+    "legacy_slots/parent_default_element_let"
+);

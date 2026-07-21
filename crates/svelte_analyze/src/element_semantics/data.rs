@@ -32,6 +32,8 @@ pub struct LegacySlotSemantics {
 pub struct LegacyComponentSlotsSemantics {
     pub default_slot: LegacyDefaultSlot,
     pub default_wrapper: Option<NodeId>,
+    pub default_let_owner: Option<NodeId>,
+    pub default_let_scope_owners: SmallVec<[NodeId; 2]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -41,6 +43,7 @@ pub enum LegacyDefaultSlot {
     SlotDefaultInvalid,
     SlotDefault,
     OwnLetDisplaced,
+    SlotDefaultSlottedLet,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -407,17 +407,23 @@ impl<'a> ServerCodegen<'a> {
         items: &mut Vec<PropOrSpread<'a>>,
         slot_entries: &mut Vec<ObjProp<'a>>,
     ) -> Result<()> {
-        let (default_slot, default_wrapper) = match self.analysis.element_semantics.query(id) {
-            ElementSemantics::LegacyComponentSlots(sem) => (sem.default_slot, sem.default_wrapper),
-            _ => (LegacyDefaultSlot::ChildrenProp, None),
-        };
+        let (default_slot, default_wrapper, default_let_owner) =
+            match self.analysis.element_semantics.query(id) {
+                ElementSemantics::LegacyComponentSlots(sem) => {
+                    (sem.default_slot, sem.default_wrapper, sem.default_let_owner)
+                }
+                _ => (LegacyDefaultSlot::ChildrenProp, None, None),
+            };
 
-        let (owner_id, fragment, wrap_block) = match default_wrapper {
-            Some(wrapper_id) => match self.component.store.get(wrapper_id) {
-                Node::SvelteFragmentLegacy(el) => (wrapper_id, el.fragment, true),
-                _ => (id, node_fragment, false),
+        let (owner_id, fragment, wrap_block) = match default_let_owner {
+            Some(let_owner) => (let_owner, node_fragment, false),
+            None => match default_wrapper {
+                Some(wrapper_id) => match self.component.store.get(wrapper_id) {
+                    Node::SvelteFragmentLegacy(el) => (wrapper_id, el.fragment, true),
+                    _ => (id, node_fragment, false),
+                },
+                None => (id, node_fragment, false),
             },
-            None => (id, node_fragment, false),
         };
 
         let apply_let_scope = !matches!(
@@ -441,7 +447,7 @@ impl<'a> ServerCodegen<'a> {
                 items.push(PropOrSpread::Prop(ObjProp::KeyValue("children", arrow)));
                 slot_entries.push(ObjProp::KeyValue("default", self.b.bool_expr(true)));
             }
-            LegacyDefaultSlot::SlotDefaultInvalid => {
+            LegacyDefaultSlot::SlotDefaultInvalid | LegacyDefaultSlot::SlotDefaultSlottedLet => {
                 items.push(PropOrSpread::Prop(ObjProp::KeyValue(
                     "children",
                     self.b
