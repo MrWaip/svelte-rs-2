@@ -4,6 +4,7 @@ use std::panic;
 use napi_derive::napi;
 use svelte_compiler::{
     CompileOptions, CompileResult, CssMode, GenerateMode, ModuleCompileOptions, Namespace,
+    SourceMap,
 };
 use svelte_diagnostics::{Diagnostic, LineIndex};
 
@@ -80,8 +81,9 @@ pub struct NativeModuleCompileOptions {
 #[napi]
 pub fn compile(source: String, options: Option<NativeCompileOptions>) -> NativeCompileResult {
     let options = to_compile_options(options.unwrap_or_default());
+    let strip_single_source = options.preprocessor_map.is_none();
     let result = catch_compile(|| svelte_compiler::compile(&source, &options));
-    to_node_result(result, &source)
+    to_node_result(result, &source, strip_single_source)
 }
 
 #[napi(js_name = "compileModule")]
@@ -90,8 +92,9 @@ pub fn compile_module(
     options: Option<NativeModuleCompileOptions>,
 ) -> NativeCompileResult {
     let options = to_module_compile_options(options.unwrap_or_default());
+    let strip_single_source = options.preprocessor_map.is_none();
     let result = catch_compile(|| svelte_compiler::compile_module(&source, &options));
-    to_node_result(result, &source)
+    to_node_result(result, &source, strip_single_source)
 }
 
 fn catch_compile(f: impl FnOnce() -> CompileResult) -> CompileResult {
@@ -230,7 +233,11 @@ fn parse_css_mode(raw: &str) -> CssMode {
     }
 }
 
-fn to_node_result(result: CompileResult, source: &str) -> NativeCompileResult {
+fn to_node_result(
+    result: CompileResult,
+    source: &str,
+    strip_single_source: bool,
+) -> NativeCompileResult {
     let line_index = LineIndex::new(source);
 
     let diagnostics = result
@@ -261,13 +268,20 @@ fn to_node_result(result: CompileResult, source: &str) -> NativeCompileResult {
     NativeCompileResult {
         js: result.js.map(|out| NativeJsOutput {
             code: out.code,
-            map: out.map.map(|m| m.to_json_string()),
+            map: out.map.map(|m| map_to_json(m, strip_single_source)),
         }),
         css: result.css.map(|out| NativeCssOutput {
             code: out.code,
-            map: out.map.map(|m| m.to_json_string()),
+            map: out.map.map(|m| map_to_json(m, strip_single_source)),
             has_global: out.has_global,
         }),
         diagnostics,
     }
+}
+
+fn map_to_json(mut map: SourceMap, strip_single_source: bool) -> String {
+    if strip_single_source && map.get_sources().count() == 1 {
+        map.set_source_contents(vec![None]);
+    }
+    map.to_json_string()
 }

@@ -136,21 +136,33 @@ function normalizeDiagnostic(diagnostic, filenameFallback) {
   };
 }
 
-function buildOutputs(nativeResult) {
+function attachSourceContent(map, source) {
+  if (
+    map != null &&
+    Array.isArray(map.sources) &&
+    map.sources.length === 1 &&
+    (!Array.isArray(map.sourcesContent) || map.sourcesContent[0] == null)
+  ) {
+    map.sourcesContent = [source];
+  }
+  return map;
+}
+
+function buildOutputs(nativeResult, source) {
   return {
     js:
       nativeResult.js == null
         ? null
         : {
             code: nativeResult.js.code,
-            map: toSourceMap(nativeResult.js.map)
+            map: attachSourceContent(toSourceMap(nativeResult.js.map), source)
           },
     css:
       nativeResult.css == null
         ? null
         : {
             code: nativeResult.css.code,
-            map: toSourceMap(nativeResult.css.map),
+            map: attachSourceContent(toSourceMap(nativeResult.css.map), source),
             hasGlobal: nativeResult.css.hasGlobal ?? null
           },
     metadata: {
@@ -165,10 +177,10 @@ function buildOutputs(nativeResult) {
 }
 
 function normalizeCompileResponse(nativeResult, filename, optionWarnings = [], extra = {}) {
-  const { withDiagnostics = false, warningFilter } = extra;
+  const { withDiagnostics = false, warningFilter, source } = extra;
   const keepWarning = (warning) =>
     typeof warningFilter !== 'function' || Boolean(warningFilter(warning));
-  const { js, css, metadata } = buildOutputs(nativeResult);
+  const { js, css, metadata } = buildOutputs(nativeResult, source);
 
   if (withDiagnostics) {
     const diagnostics = [];
@@ -218,7 +230,8 @@ export function compile(source, options = {}) {
   const nativeResult = native.compile(source, normalizedOptions);
   return normalizeCompileResponse(nativeResult, normalizedOptions.filename, optionWarnings, {
     withDiagnostics: Boolean(options.withDiagnostics),
-    warningFilter: options.warningFilter
+    warningFilter: options.warningFilter,
+    source
   });
 }
 
@@ -232,6 +245,7 @@ export function compileModule(source, options = {}) {
   const nativeResult = native.compileModule(source, normalizedOptions);
   return normalizeCompileResponse(nativeResult, normalizedOptions.filename, optionWarnings, {
     withDiagnostics: Boolean(options.withDiagnostics),
-    warningFilter: options.warningFilter
+    warningFilter: options.warningFilter,
+    source
   });
 }

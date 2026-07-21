@@ -6,7 +6,7 @@ pub use options::{
     RunesOption,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
-pub use svelte_sourcemap::{CssOutput, JsOutput, SourcemapKind};
+pub use svelte_sourcemap::{CssOutput, JsOutput, SourceMap, SourcemapKind};
 
 pub struct CompileResult {
     pub js: Option<JsOutput>,
