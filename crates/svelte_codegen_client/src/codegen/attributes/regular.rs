@@ -1,6 +1,6 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{Evaluation, KnownValue, NamespaceKind};
+use svelte_analyze::NamespaceKind;
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
@@ -171,9 +171,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
 
                     let data = self.ctx.expression_data(*part_id).cloned();
-                    if let Some(d) = data.as_ref()
-                        && let Some(s) = known_evaluation_as_chunk_string(&d.evaluation)
-                    {
+                    if let Some(s) = data.as_ref().and_then(|d| d.evaluation.known_str()) {
                         push_template_str(&mut tpl_parts, s);
                         continue;
                     }
@@ -198,35 +196,6 @@ fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {
         prev.push_str(&value);
     } else {
         tpl_parts.push(TemplatePart::Str(value));
-    }
-}
-
-fn known_evaluation_as_chunk_string(eval: &Evaluation) -> Option<String> {
-    let Evaluation::Known(v) = eval else {
-        return None;
-    };
-    Some(match v {
-        KnownValue::Null | KnownValue::Undefined => String::new(),
-        KnownValue::Str(s) => s.to_string(),
-        KnownValue::Bool(b) => b.to_string(),
-        KnownValue::Num(n) => format_js_number(*n),
-        KnownValue::BigInt => return None,
-    })
-}
-
-fn format_js_number(n: f64) -> String {
-    if n.is_nan() {
-        "NaN".to_string()
-    } else if n.is_infinite() {
-        if n > 0.0 {
-            "Infinity".to_string()
-        } else {
-            "-Infinity".to_string()
-        }
-    } else if n == n.trunc() && n.abs() < 1e21 {
-        format!("{}", n as i64)
-    } else {
-        format!("{n}")
     }
 }
 

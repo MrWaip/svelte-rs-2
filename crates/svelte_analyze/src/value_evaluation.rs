@@ -14,6 +14,7 @@ use oxc_ast::ast::{
     UnaryExpression, VariableDeclaration,
 };
 use oxc_ast_visit::{Visit, walk};
+use oxc_ecmascript::StringToNumber;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -36,6 +37,7 @@ pub enum KnownValue {
     Bool(bool),
     Num(f64),
     Str(CompactString),
+    Regex(CompactString),
     BigInt,
 }
 
@@ -76,8 +78,10 @@ impl Evaluation {
     }
 
     pub fn known_str(&self) -> Option<String> {
-        let v = self.known_value()?;
-        Some(known_value_to_concat_str(v))
+        match self.known_value()? {
+            KnownValue::BigInt => None,
+            v => Some(known_value_to_concat_str(v)),
+        }
     }
 
     pub(crate) fn is_defined(&self) -> bool {
@@ -137,6 +141,7 @@ fn known_value_to_concat_str(v: &KnownValue) -> String {
         KnownValue::Null | KnownValue::Undefined => String::new(),
         KnownValue::Bool(b) => b.to_string(),
         KnownValue::Str(s) => s.to_string(),
+        KnownValue::Regex(s) => s.to_string(),
         KnownValue::Num(n) => format_js_number(*n),
         KnownValue::BigInt => String::new(),
     }
@@ -144,7 +149,7 @@ fn known_value_to_concat_str(v: &KnownValue) -> String {
 
 fn known_value_class(v: &KnownValue) -> ValueClass {
     match v {
-        KnownValue::Null | KnownValue::Undefined => ValueClass::Object,
+        KnownValue::Null | KnownValue::Undefined | KnownValue::Regex(_) => ValueClass::Object,
         KnownValue::Bool(_) => ValueClass::Boolean,
         KnownValue::Num(_) => ValueClass::Number,
         KnownValue::Str(_) => ValueClass::String,
@@ -667,6 +672,12 @@ fn eval_set(
         Expression::BinaryExpression(bin) => eval_binary(bin, ctx, guard),
         Expression::LogicalExpression(le) => eval_logical(le, ctx, guard),
         Expression::ConditionalExpression(c) => eval_conditional(c, ctx, guard),
+        Expression::RegExpLiteral(re) => match re.raw.as_ref() {
+            Some(raw) => smallvec![EvalAtom::Known(KnownValue::Regex(CompactString::from(
+                raw.as_str()
+            )))],
+            None => smallvec![EvalAtom::Unknown],
+        },
         Expression::UnaryExpression(u) => eval_unary(u, ctx, guard),
         Expression::FunctionExpression(_)
         | Expression::ArrowFunctionExpression(_)
@@ -1022,6 +1033,7 @@ fn eval_template_literal(
 fn known_to_string(v: &KnownValue) -> Option<String> {
     match v {
         KnownValue::Str(s) => Some(s.to_string()),
+        KnownValue::Regex(s) => Some(s.to_string()),
         KnownValue::Num(n) => Some(format_js_number(*n)),
         KnownValue::Bool(b) => Some(b.to_string()),
         KnownValue::Null => Some("null".to_string()),
@@ -1079,7 +1091,7 @@ fn fold_unary_known(op: UnaryOperator, v: &KnownValue) -> Option<KnownValue> {
 
 fn known_typeof(v: &KnownValue) -> &'static str {
     match v {
-        KnownValue::Null => "object",
+        KnownValue::Null | KnownValue::Regex(_) => "object",
         KnownValue::Undefined => "undefined",
         KnownValue::Bool(_) => "boolean",
         KnownValue::Num(_) => "number",
@@ -1107,12 +1119,8 @@ fn known_to_number(v: &KnownValue) -> Option<f64> {
         KnownValue::Bool(false) => Some(0.0),
         KnownValue::Null => Some(0.0),
         KnownValue::Undefined => Some(f64::NAN),
-        KnownValue::Str(s) => {
-            s.trim()
-                .parse::<f64>()
-                .ok()
-                .or(if s.trim().is_empty() { Some(0.0) } else { None })
-        }
+        KnownValue::Str(s) => Some(s.as_str().string_to_number()),
+        KnownValue::Regex(_) => Some(f64::NAN),
         KnownValue::BigInt => None,
     }
 }
@@ -1467,7 +1475,7 @@ fn is_falsy(v: &KnownValue) -> bool {
         KnownValue::Bool(false) => true,
         KnownValue::Num(n) => *n == 0.0 || n.is_nan(),
         KnownValue::Str(s) => s.is_empty(),
-        KnownValue::Bool(true) | KnownValue::BigInt => false,
+        KnownValue::Bool(true) | KnownValue::BigInt | KnownValue::Regex(_) => false,
     }
 }
 
@@ -1501,6 +1509,7 @@ fn set_to_evaluation(set: EvalSet) -> Evaluation {
                     KnownValue::Bool(_) => ValueClass::Boolean,
                     KnownValue::Num(_) => ValueClass::Number,
                     KnownValue::Str(_) => ValueClass::String,
+                    KnownValue::Regex(_) => ValueClass::Object,
                     KnownValue::BigInt => ValueClass::BigInt,
                     KnownValue::Null | KnownValue::Undefined => unreachable!(),
                 };

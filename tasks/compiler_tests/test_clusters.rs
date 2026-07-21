@@ -4,6 +4,9 @@ use compiler_tests::harness::{
 };
 use compiler_tests::{compiler_case, compiler_module_case};
 
+#[path = "clusters/value_evaluation.rs"]
+mod value_evaluation;
+
 #[path = "clusters/comments.rs"]
 mod comments;
 
