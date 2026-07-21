@@ -131,16 +131,12 @@ impl<'d, 'a> VisitContext<'d, 'a> {
         let idx = match self.ignore_current_idx {
             Some(idx) => idx,
             None => {
-                let idx = self
-                    .data
-                    .output
-                    .ignore_data
-                    .intern_snapshot(&self.ignore_current);
+                let idx = self.data.ignore.intern_snapshot(&self.ignore_current);
                 self.ignore_current_idx = Some(idx);
                 idx
             }
         };
-        self.data.output.ignore_data.set_snapshot(node_id, idx);
+        self.data.ignore.set_snapshot(node_id, idx);
     }
 
     pub fn take_warnings(&mut self) -> Vec<Diagnostic> {
@@ -153,12 +149,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
         kind: DiagnosticKind,
         span: Span,
     ) {
-        if self
-            .data
-            .output
-            .ignore_data
-            .is_ignored(node_id, kind.code())
-        {
+        if self.data.ignore.is_ignored(node_id, kind.code()) {
             return;
         }
 

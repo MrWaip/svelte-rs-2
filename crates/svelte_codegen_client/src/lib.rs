@@ -16,8 +16,9 @@ use std::path::PathBuf;
 
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
-    AnalysisData, BindingSemantics, ReferenceSemantics, SignalReferenceKind,
-    StateDeclarationSemantics, StateKind,
+    AnalysisData, BindingSemantics, ComponentBindOwnership, ComponentFrame, PropAccessors,
+    PropsInput, ReferenceSemantics, SignalReferenceKind, StateDeclarationSemantics, StateKind,
+    StoreBindings,
 };
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::{JsOutput, SourcemapKind};
@@ -121,7 +122,8 @@ pub fn generate<'a>(
     let script_body = script_output.body;
     let has_tracing = script_output.has_tracing;
     let needs_ownership_validator = script_output.needs_ownership_validator
-        || analysis.output.needs_component_bind_ownership
+        || analysis.runtime_semantics.query().component_bind_ownership
+            == ComponentBindOwnership::Tracked
         || ctx.transform_data.needs_ownership_validator;
     let mut script_comments = script_output.comments;
     let script_rest_excludes = script_output.rest_excludes;
@@ -173,7 +175,8 @@ pub fn generate<'a>(
     all_hoisted.append(&mut ctx.state.module_hoisted);
     all_hoisted.extend(hoisted);
 
-    let runtime = ctx.runtime_plan();
+    let runtime = ctx.runtime_semantics();
+    let has_stores = runtime.stores == StoreBindings::Present;
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
 
@@ -229,7 +232,7 @@ pub fn generate<'a>(
         ));
     }
 
-    if runtime.needs_push {
+    if runtime.frame != ComponentFrame::Frameless {
         let mut push_args: Vec<Arg<'_, '_>> = vec![
             Arg::Ident("$$props"),
             Arg::Expr(ctx.b.bool_expr(ctx.query.runes())),
@@ -257,7 +260,7 @@ pub fn generate<'a>(
         );
     }
 
-    if runtime.has_stores {
+    if has_stores {
         let scoping = ctx.query.scoping();
         let stores: Vec<(&str, &str, svelte_component_semantics::SymbolId)> = ctx
             .query
@@ -338,14 +341,11 @@ pub fn generate<'a>(
         fn_body.extend(script_body);
     }
 
-    let has_explicit_exports =
-        runtime.has_exports || runtime.has_ce_props || runtime.has_legacy_accessor_props;
-    let dev_legacy_only = ctx.state.dev && runtime.needs_push;
     let mut bind_prop_stmts: Vec<Statement<'_>> = Vec::new();
-    if has_explicit_exports || dev_legacy_only {
+    if runtime.frame == ComponentFrame::Exposed {
         let mut export_props: Vec<ObjProp<'_>> = Vec::new();
 
-        if has_explicit_exports {
+        {
             for e in ctx.query.exports() {
                 let local_sym = e.local;
                 let name: &str = ctx.b.alloc_str(ctx.query.symbol_name(local_sym));
@@ -419,7 +419,7 @@ pub fn generate<'a>(
                 }
             }
 
-            if ctx.query.accessors() || runtime.has_ce_props {
+            if runtime.prop_accessors == PropAccessors::Exposed {
                 for prop in ctx.query.component_prop_accessors() {
                     let key: &str = ctx.b.alloc_str(&prop.key);
                     let local: &str = ctx.b.alloc_str(prop.local);
@@ -493,29 +493,33 @@ pub fn generate<'a>(
 
     fn_body.extend(bind_prop_stmts);
 
-    if runtime.needs_push {
-        if runtime.needs_pop_with_return && runtime.has_stores {
+    match runtime.frame {
+        ComponentFrame::Exposed if has_stores => {
             let pop_call = ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")]);
             fn_body.push(ctx.b.var_stmt("$$pop", pop_call));
             fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
             fn_body.push(ctx.b.return_stmt(ctx.b.rid_expr("$$pop")));
-        } else if runtime.needs_pop_with_return {
+        }
+        ComponentFrame::Exposed => {
             fn_body.push(
                 ctx.b
                     .return_stmt(ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")])),
             );
-        } else {
+        }
+        ComponentFrame::Scoped => {
             fn_body.push(
                 ctx.b
                     .expr_stmt(ctx.b.call_expr("$.pop", empty::<Arg<'_, '_>>())),
             );
 
-            if runtime.has_stores {
+            if has_stores {
                 fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
             }
         }
-    } else if runtime.has_stores {
-        fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
+        ComponentFrame::Frameless if has_stores => {
+            fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
+        }
+        ComponentFrame::Frameless => {}
     }
 
     let mut delegate_stmts: Vec<Statement<'_>> = Vec::new();
@@ -536,7 +540,7 @@ pub fn generate<'a>(
 
     let import_svelte = b.import_all("$", "svelte/internal/client");
 
-    let fn_params = if runtime.needs_props_param {
+    let fn_params = if runtime.props_input == PropsInput::Consumed {
         b.params(["$$anchor", "$$props"])
     } else {
         b.params(["$$anchor"])

@@ -7,6 +7,7 @@ use super::*;
 use crate::element_semantics::{ElementSemantics, LegacyDefaultSlot};
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics};
 use crate::passes::fragment_topology::fragment_items;
+use crate::runtime_semantics::{LegacySlotSanitization, RuntimeSemantics};
 use crate::types::data::{ComponentPropKind, DeclaratorSemantics};
 
 #[derive(Clone, Copy)]
@@ -26,7 +27,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
 
     pub fn is_custom_element_target(&self) -> bool {
-        self.data.output.is_custom_element_target
+        self.data.custom_element.is_target
     }
     pub fn runes(&self) -> bool {
         self.data.uses_runes()
@@ -50,8 +51,8 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn preserve_comments(&self) -> bool {
         self.data.script.preserve_comments
     }
-    pub fn runtime_plan(&self) -> RuntimeInfo {
-        self.data.output.runtime_plan
+    pub fn runtime_semantics(&self) -> RuntimeSemantics {
+        self.data.runtime_semantics.query()
     }
     pub fn component_name(&self) -> &str {
         self.data.component_name()
@@ -72,13 +73,10 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         self.data.expression_data_for(expr)
     }
     pub fn exports(&self) -> &[ApiExport] {
-        &self.data.output.api_exports
-    }
-    pub fn needs_context(&self) -> bool {
-        self.data.output.needs_context
+        &self.data.api_exports
     }
     pub fn needs_sanitized_legacy_slots(&self) -> bool {
-        self.data.output.needs_sanitized_legacy_slots
+        self.data.runtime_semantics.query().sanitized_legacy_slots == LegacySlotSanitization::Needed
     }
 
     pub fn needs_sanitized_legacy_props(&self) -> bool {
@@ -112,7 +110,6 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         };
         let mut keys: Vec<String> = self
             .data
-            .output
             .api_exports
             .iter()
             .map(|exp| {
@@ -210,10 +207,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         self.data.blocker_data().symbol_blocker(sym)
     }
     pub fn is_ignored(&self, node_id: NodeId, code: WarningCode) -> bool {
-        self.data
-            .output
-            .ignore_data
-            .is_ignored_warning(node_id, code)
+        self.data.ignore.is_ignored_warning(node_id, code)
     }
     pub fn hydration_attribute_changed_ignored(&self, node_id: NodeId) -> bool {
         self.data
@@ -223,8 +217,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn is_ignored_at_span(&self, span_start: u32, code: WarningCode) -> bool {
         self.data
-            .output
-            .ignore_data
+            .ignore
             .is_ignored_warning_at_span(span_start, code)
     }
     pub fn expr_has_blockers(&self, id: NodeId) -> bool {

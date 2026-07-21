@@ -49,6 +49,13 @@ macro_rules! compiler_case {
             assert_compiler_prod($case);
         }
     };
+    (@variant prod_todo, $case:expr) => {
+        #[test]
+        #[ignore = "prod parity not yet reached"]
+        fn prod() {
+            assert_compiler_prod($case);
+        }
+    };
     (@variant dev, $case:expr) => {
         #[test]
         fn dev() {

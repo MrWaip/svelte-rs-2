@@ -809,7 +809,7 @@ impl TemplateValidationVisitor {
     }
 
     fn note_legacy_slot_element(&mut self, span: Span, ctx: &mut VisitContext<'_, '_>) {
-        if ctx.data.output.is_custom_element_target {
+        if ctx.data.custom_element.is_target {
             return;
         }
 
@@ -824,7 +824,7 @@ impl TemplateValidationVisitor {
     fn note_render_tag(&mut self, ctx: &mut VisitContext<'_, '_>) {
         self.saw_render_tag = true;
 
-        if ctx.data.output.is_custom_element_target {
+        if ctx.data.custom_element.is_target {
             return;
         }
 
@@ -1147,7 +1147,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         self.element_event_state.push(ElementEventState::default());
         self.note_legacy_slot_element(el.span, ctx);
 
-        if ctx.runes && !ctx.data.output.is_custom_element_target {
+        if ctx.runes && !ctx.data.custom_element.is_target {
             ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::SlotElementDeprecated,
                 el.span,
@@ -1694,8 +1694,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         if ctx
             .data
-            .output
-            .ignore_data
+            .ignore
             .is_ignored_warning(text.id, crate::WarningCode::BidirectionalControlCharacters)
         {
             return;

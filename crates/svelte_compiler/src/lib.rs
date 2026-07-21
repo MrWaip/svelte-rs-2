@@ -172,7 +172,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 diag
             }));
             let inject_styles = resolved_css_mode(&component, options) == CssMode::Injected
-                || analysis.output.is_custom_element_target;
+                || analysis.custom_element.is_target;
             svelte_analyze::analyze_css_pass(
                 &component,
                 &ss,
@@ -191,9 +191,9 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             let needs_map = options.sourcemap_kind.is_enabled() && (!inject_styles || options.dev);
             if needs_map {
                 let (raw_css, mut raw_map) = svelte_transform_css::transform_css_with_sourcemap(
-                    &analysis.output.css.hash,
-                    &analysis.output.css.keyframes,
-                    Some(&analysis.output.css.used_selectors),
+                    &analysis.css.hash,
+                    &analysis.css.keyframes,
+                    Some(&analysis.css.used_selectors),
                     true,
                     ss,
                     css_source,
@@ -232,9 +232,9 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 }
             } else {
                 let raw_css = svelte_transform_css::transform_css_with_usage(
-                    &analysis.output.css.hash,
-                    &analysis.output.css.keyframes,
-                    Some(&analysis.output.css.used_selectors),
+                    &analysis.css.hash,
+                    &analysis.css.keyframes,
+                    Some(&analysis.css.used_selectors),
                     true,
                     ss,
                     css_source,
@@ -247,14 +247,14 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             }
         }
 
-        let (css, injected_css_text) = if analysis.output.css.inject_styles {
+        let (css, injected_css_text) = if analysis.css.inject_styles {
             (None, css_text)
         } else {
             (
                 css_text.map(|code| svelte_sourcemap::CssOutput {
                     code,
                     map: css_map,
-                    has_global: analysis.output.css.has_global,
+                    has_global: analysis.css.has_global,
                 }),
                 None,
             )

@@ -60,8 +60,7 @@ pub(crate) fn rewrite_template_exit<'a>(
     if let Expression::AwaitExpression(await_expr) = it {
         let ignored = t.template_owner_node.is_some_and(|id| {
             analysis
-                .output
-                .ignore_data
+                .ignore
                 .is_ignored_warning(id, svelte_analyze::WarningCode::AwaitReactivityLoss)
         });
         let is_pickled = analysis.pickled_awaits.contains(await_expr.node_id());

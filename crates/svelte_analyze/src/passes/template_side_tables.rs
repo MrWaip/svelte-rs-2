@@ -763,21 +763,19 @@ fn record_legacy_slot_wrappers(
 }
 
 fn record_custom_element_slot_name(data: &mut AnalysisData, attrs: &[Attribute], source: &str) {
-    if !data.output.is_custom_element_target {
+    if !data.custom_element.is_target {
         return;
     }
     let slot_name = legacy_slot_name(attrs, source);
     if data
-        .output
-        .custom_element_slot_names
+        .custom_element
+        .slot_names
         .iter()
         .any(|existing| existing == slot_name)
     {
         return;
     }
-    data.output
-        .custom_element_slot_names
-        .push(slot_name.to_string());
+    data.custom_element.slot_names.push(slot_name.to_string());
 }
 
 fn legacy_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> &'a str {

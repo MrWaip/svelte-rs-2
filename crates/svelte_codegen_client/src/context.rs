@@ -5,7 +5,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
-use svelte_analyze::{AnalysisData, CodegenView, ElementSemantics, IdentGen, JsAst, RuntimeInfo};
+use svelte_analyze::{
+    AnalysisData, CodegenView, ElementSemantics, IdentGen, JsAst, RuntimeSemantics,
+};
 use svelte_ast::{
     Attribute, AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
     RenderTag, SvelteBoundary, SvelteElement,
@@ -60,8 +62,8 @@ impl<'a> CodegenQuery<'a> {
         self.component.store.debug_tag(id)
     }
 
-    pub fn runtime_plan(&self) -> RuntimeInfo {
-        self.view.runtime_plan()
+    pub fn runtime_semantics(&self) -> RuntimeSemantics {
+        self.view.runtime_semantics()
     }
 }
 
@@ -247,8 +249,8 @@ impl<'a> Ctx<'a> {
                 .computed_member_expr(self.b.rid_expr(name), self.b.num_expr(*idx as f64)),
         )
     }
-    pub fn runtime_plan(&self) -> RuntimeInfo {
-        self.query.runtime_plan()
+    pub fn runtime_semantics(&self) -> RuntimeSemantics {
+        self.query.runtime_semantics()
     }
 
     pub fn const_tag_blocker_exprs(&mut self, id: NodeId) -> Vec<Expression<'a>> {

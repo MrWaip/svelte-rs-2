@@ -32,10 +32,7 @@ impl<'a> ServerTransform<'_, 'a> {
         let Some(&start) = self.enclosing_stmt_start.last() else {
             return false;
         };
-        self.analysis
-            .output
-            .ignore_data
-            .is_ignored_warning_at_span(start, code)
+        self.analysis.ignore.is_ignored_warning_at_span(start, code)
     }
 }
 

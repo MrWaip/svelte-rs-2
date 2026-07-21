@@ -168,8 +168,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         if ctx.data.script.dev
             && ctx
                 .data
-                .output
-                .ignore_data
+                .ignore
                 .is_ignored_warning(el.id, crate::WarningCode::HydrationAttributeChanged)
         {
             ctx.data
@@ -196,8 +195,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         if ctx.data.script.dev
             && ctx
                 .data
-                .output
-                .ignore_data
+                .ignore
                 .is_ignored_warning(el.id, crate::WarningCode::HydrationAttributeChanged)
         {
             ctx.data
@@ -209,6 +207,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
+        if matches!(attr, Attribute::OnDirectiveLegacy(od) if od.expression.is_none()) {
+            ctx.data.elements.has_legacy_event_forward = true;
+        }
         let Some(el_id) = ctx.data.nearest_element(attr.id()) else {
             return;
         };
@@ -324,7 +325,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         _el: &SlotElementLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        ctx.data.output.renders_legacy_slot = true;
+        ctx.data.elements.renders_legacy_slot = true;
     }
 
     fn visit_js_expression(
@@ -390,6 +391,12 @@ impl<'src> ElementFlagsVisitor<'src> {
     ) {
         let data = &mut *ctx.data;
         for attr in attributes {
+            if matches!(attr, Attribute::OnDirectiveLegacy(od) if od.expression.is_none()) {
+                data.elements.has_legacy_event_forward = true;
+            }
+            if matches!(attr, Attribute::BindDirective(b) if b.name != "this") {
+                data.elements.has_child_component_bind = true;
+            }
             if is_component_css_property(attr) {
                 data.elements.flags.components_with_css_props.insert(cn_id);
                 continue;
@@ -503,12 +510,12 @@ impl<'src> ElementFlagsVisitor<'src> {
                             let requires_ownership_emit = data.script.dev
                                 && is_identifier_bind
                                 && matches!(mode, ComponentBindMode::PropSource)
-                                && !data.output.ignore_data.is_ignored_warning(
+                                && !data.ignore.is_ignored_warning(
                                     bind_id,
                                     crate::WarningCode::OwnershipInvalidBinding,
                                 );
                             if requires_ownership_emit {
-                                data.output.needs_component_bind_ownership = true;
+                                data.elements.needs_component_bind_ownership = true;
                             }
                             let source_ident = match &expr_text {
                                 Some(text) if is_simple_identifier(text.trim()) => {

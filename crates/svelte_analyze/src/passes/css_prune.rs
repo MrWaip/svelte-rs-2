@@ -141,7 +141,7 @@ pub(crate) fn prune_and_warn(
     let index = build_css_prune_index(component, parsed, data);
     let template = &data.template;
     let mut used = FxHashSet::default();
-    let scoped = &mut data.output.css.scoped_elements;
+    let scoped = &mut data.css.scoped_elements;
     let mut rule_lookup = FxHashMap::default();
     collect_style_rules(stylesheet, &mut rule_lookup);
     let mut pruner = PruneVisitor {
@@ -162,11 +162,10 @@ pub(crate) fn prune_and_warn(
     };
     pruner.visit_stylesheet(stylesheet);
     let has_global = pruner.has_global;
-    data.output.css.used_selectors = used;
-    data.output.css.has_global = has_global;
+    data.css.used_selectors = used;
+    data.css.has_global = has_global;
 
     let scoped_custom: Vec<NodeId> = data
-        .output
         .css
         .scoped_elements
         .iter()
@@ -192,7 +191,7 @@ pub(crate) fn prune_and_warn(
             stylesheet,
             css_source,
             css_offset,
-            &data.output.css.used_selectors,
+            &data.css.used_selectors,
             diagnostics,
         );
     }

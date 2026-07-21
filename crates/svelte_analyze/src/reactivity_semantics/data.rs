@@ -695,6 +695,10 @@ pub struct PropsSummary {
 pub struct ReactivitySummary {
     pub props: PropsSummary,
     pub has_store_bindings: bool,
+    pub has_runes_bindable: bool,
+    pub has_legacy_reactive_statements: bool,
+    pub has_named_runes_prop: bool,
+    pub has_named_legacy_prop: bool,
     pub legacy: LegacySummary,
 }
 
@@ -704,6 +708,7 @@ pub struct LegacySummary {
     pub reads_props_object: bool,
     pub reads_rest_props_object: bool,
     pub has_member_mutated: bool,
+    pub reads_slots_object: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1857,6 +1862,12 @@ pub struct ReactivitySemantics {
 
     legacy_has_member_mutated: bool,
 
+    legacy_reads_slots: bool,
+
+    has_named_runes_prop: bool,
+
+    has_named_legacy_prop: bool,
+
     each_item_indirect_sources: FxHashMap<SymbolId, SmallVec<[SymbolId; 2]>>,
 
     legacy_indirect_bindings: FxHashMap<SymbolId, SmallVec<[SymbolId; 4]>>,
@@ -1914,6 +1925,9 @@ impl ReactivitySemantics {
             legacy_uses_props: false,
             legacy_uses_rest_props: false,
             legacy_has_member_mutated: false,
+            legacy_reads_slots: false,
+            has_named_runes_prop: false,
+            has_named_legacy_prop: false,
             uses_runes: false,
             runes_mode: RunesMode::Runes,
             svelte_store_rune_import: None,
@@ -2094,11 +2108,22 @@ impl ReactivitySemantics {
         ReactivitySummary {
             props: self.props_summary(),
             has_store_bindings: !self.store_declaration_symbols.is_empty(),
+            has_runes_bindable: self
+                .iter_runes_prop_symbols()
+                .any(|sym| self.binding_semantics(sym).is_bindable()),
+            has_legacy_reactive_statements: self
+                .legacy_reactive
+                .iter_statements_topo()
+                .next()
+                .is_some(),
+            has_named_runes_prop: self.has_named_runes_prop,
+            has_named_legacy_prop: self.has_named_legacy_prop,
             legacy: LegacySummary {
                 has_bindable_prop: self.iter_legacy_bindable_prop_symbols().next().is_some(),
                 reads_props_object: self.legacy_uses_props,
                 reads_rest_props_object: self.legacy_uses_rest_props,
                 has_member_mutated: self.legacy_has_member_mutated,
+                reads_slots_object: self.legacy_reads_slots,
             },
         }
     }
@@ -2196,6 +2221,15 @@ impl ReactivitySemantics {
 
     pub(crate) fn set_legacy_has_member_mutated(&mut self, value: bool) {
         self.legacy_has_member_mutated = value;
+    }
+
+    pub(crate) fn mark_legacy_reads_slots(&mut self) {
+        self.legacy_reads_slots = true;
+    }
+
+    pub(crate) fn set_named_prop_flags(&mut self, runes: bool, legacy: bool) {
+        self.has_named_runes_prop = runes;
+        self.has_named_legacy_prop = legacy;
     }
 
     pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {

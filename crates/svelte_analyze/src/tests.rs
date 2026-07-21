@@ -2,9 +2,10 @@ use crate::passes::fragment_topology::fragment_items as fragment_items_fn;
 use crate::reactivity_semantics::data::PropDefaultKind;
 use crate::types::data::{BindTargetSemantics, BindingSemantics, ConstTagSemantics, ParentKind};
 use crate::{
-    AttributeSemantics, BlockSemantics, ClassSemantics, EachIndexStrategy, EachItemStrategy,
-    GroupBindValue, OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
-    SnippetParamStrategy,
+    AttributeSemantics, BlockSemantics, ClassSemantics, ComponentFrame, ContextScope,
+    EachIndexStrategy, EachItemStrategy, GroupBindValue, LegacySlotSanitization,
+    OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, PropAccessors, PropsInput,
+    RenderCallKind, SnippetParamStrategy, StoreBindings,
 };
 use oxc_ast::ast::{
     BindingPattern, Expression, IdentifierReference, PrivateFieldExpression, Program, Statement,
@@ -3045,7 +3046,10 @@ fn legacy_slots_template_reads_require_sanitized_slots_binding() {
         },
     );
 
-    assert!(data.output.needs_sanitized_legacy_slots);
+    assert_eq!(
+        data.runtime_semantics.query().sanitized_legacy_slots,
+        LegacySlotSanitization::Needed
+    );
 }
 
 #[test]
@@ -3058,7 +3062,10 @@ fn legacy_slot_elements_do_not_require_sanitized_slots_binding() {
         },
     );
 
-    assert!(!data.output.needs_sanitized_legacy_slots);
+    assert_eq!(
+        data.runtime_semantics.query().sanitized_legacy_slots,
+        LegacySlotSanitization::Unneeded
+    );
 }
 
 #[test]
@@ -3071,7 +3078,10 @@ fn legacy_slots_script_reads_require_sanitized_slots_binding() {
         },
     );
 
-    assert!(data.output.needs_sanitized_legacy_slots);
+    assert_eq!(
+        data.runtime_semantics.query().sanitized_legacy_slots,
+        LegacySlotSanitization::Needed
+    );
 }
 
 #[test]
@@ -4200,16 +4210,12 @@ let data = await fetch('/api');
 #[test]
 fn runtime_plan_basic_component_is_minimal() {
     let (_c, data) = analyze_source("<script>let count = 1;</script><p>{count}</p>");
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(!plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(!plan.has_exports);
-    assert!(!plan.has_bindable);
-    assert!(!plan.has_stores);
-    assert!(!plan.has_ce_props);
-    assert!(!plan.needs_props_param);
-    assert!(!plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Frameless);
+    assert_eq!(plan.stores, StoreBindings::Absent);
+    assert_eq!(plan.prop_accessors, PropAccessors::Hidden);
+    assert_eq!(plan.props_input, PropsInput::Ignored);
 }
 
 #[test]
@@ -4239,47 +4245,35 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
             warning_filter: None,
         },
     );
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(plan.has_component_exports);
-    assert!(plan.has_exports);
-    assert!(!plan.has_bindable);
-    assert!(plan.has_ce_props);
-    assert!(plan.needs_props_param);
-    assert!(plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Exposed);
+    assert_eq!(plan.prop_accessors, PropAccessors::Exposed);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
 }
 
 #[test]
 fn runtime_plan_bindable_props_require_push_without_component_exports() {
     let (_c, data) =
         analyze_source("<script>let { value = $bindable() } = $props();</script><p>{value}</p>");
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(!plan.has_exports);
-    assert!(plan.has_bindable);
-    assert!(!plan.has_stores);
-    assert!(!plan.has_ce_props);
-    assert!(plan.needs_props_param);
-    assert!(!plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Scoped);
+    assert_eq!(plan.stores, StoreBindings::Absent);
+    assert_eq!(plan.prop_accessors, PropAccessors::Hidden);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
 }
 
 #[test]
 fn runtime_plan_store_subscriptions_do_not_force_push() {
     let (_c, data) =
         analyze_source("<script>import { count } from './stores';</script><p>{$count}</p>");
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(!plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(!plan.has_exports);
-    assert!(!plan.has_bindable);
-    assert!(plan.has_stores);
-    assert!(!plan.has_ce_props);
-    assert!(!plan.needs_props_param);
-    assert!(!plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Frameless);
+    assert_eq!(plan.stores, StoreBindings::Present);
+    assert_eq!(plan.prop_accessors, PropAccessors::Hidden);
+    assert_eq!(plan.props_input, PropsInput::Ignored);
 }
 
 #[test]
@@ -4315,22 +4309,24 @@ fn runtime_plan_synthetic_store_subscriptions_do_not_force_push() {
             ..AnalyzeOptions::default()
         },
     );
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.has_stores, "synthetic store bindings expected");
-    assert!(
-        !data.script.has_store_member_mutations,
-        "no real store member mutations in source"
+    assert_eq!(
+        plan.stores,
+        StoreBindings::Present,
+        "synthetic store bindings expected"
     );
-    assert!(
-        !data.output.needs_context,
-        "needs_context must stay false: synthetic store callees should not be classified as unsafe by NeedsContextVisitor"
+    assert_eq!(
+        plan.context_ssr,
+        ContextScope::Direct,
+        "context must stay unobserved: synthetic store callees should not be classified as unsafe"
     );
-    assert!(
-        !plan.needs_push,
+    assert_eq!(
+        plan.frame,
+        ComponentFrame::Frameless,
         "synthetic store subscriptions in non-runes must not force push"
     );
-    assert!(!plan.needs_props_param);
+    assert_eq!(plan.props_input, PropsInput::Ignored);
 }
 
 #[test]
@@ -4342,9 +4338,10 @@ fn needs_context_set_by_member_access_on_legacy_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.needs_context,
-        "$$props.member must drive needs_context = true via NeedsContextVisitor"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Wrapped,
+        "$$props.member must drive context observation"
     );
 }
 
@@ -4357,9 +4354,10 @@ fn needs_context_set_by_member_access_on_legacy_rest_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.needs_context,
-        "$$restProps.member must drive needs_context = true via NeedsContextVisitor"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Wrapped,
+        "$$restProps.member must drive context observation"
     );
 }
 
@@ -4372,9 +4370,10 @@ fn needs_context_set_by_template_member_access_on_legacy_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.needs_context,
-        "template-side $$props.member must drive needs_context = true via ExpressionSemantics::REST_PROP_MEMBER"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Wrapped,
+        "template-side $$props.member must drive context observation via ExpressionSemantics::REST_PROP_MEMBER"
     );
 }
 
@@ -4387,9 +4386,10 @@ fn needs_context_set_by_template_member_access_on_legacy_rest_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.needs_context,
-        "template-side $$restProps.member must drive needs_context = true via ExpressionSemantics::REST_PROP_MEMBER"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Wrapped,
+        "template-side $$restProps.member must drive context observation via ExpressionSemantics::REST_PROP_MEMBER"
     );
 }
 
@@ -4402,8 +4402,9 @@ fn needs_props_param_set_by_template_only_legacy_rest_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.runtime_plan.needs_props_param,
+    assert_eq!(
+        data.runtime_semantics.query().props_input,
+        PropsInput::Consumed,
         "template-only $$restProps must force $$props parameter on the component function"
     );
 }
@@ -4417,7 +4418,7 @@ fn assert_needs_props_param(source: &str, expected: bool) {
             ..AnalyzeOptions::default()
         },
     );
-    let got = data.output.runtime_plan.needs_props_param;
+    let got = data.runtime_semantics.query().props_input == PropsInput::Consumed;
     assert_eq!(
         got, expected,
         "needs_props_param for {source:?}: expected {expected}, got {got}"
@@ -4474,9 +4475,10 @@ fn needs_context_stays_false_for_bare_legacy_props_identifier_read() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        !data.output.needs_context,
-        "bare $$props identifier read (no member access) must keep needs_context = false"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Direct,
+        "bare $$props identifier read (no member access) must keep context unobserved"
     );
 }
 
@@ -4491,14 +4493,13 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
     );
 
     assert!(
-        data.output.api_exports.is_empty(),
+        data.api_exports.is_empty(),
         "legacy export let should not remain a component export"
     );
 
-    let plan = data.output.runtime_plan;
-    assert!(!plan.needs_push);
-    assert!(plan.needs_props_param);
-    assert!(!plan.has_exports);
+    let plan = data.runtime_semantics.query();
+    assert_eq!(plan.frame, ComponentFrame::Frameless);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
 }
 
 fn assert_legacy_bindable_prop(
@@ -5178,10 +5179,11 @@ fn legacy_two_export_let_props_both_promote_with_legacy_reactive_block() {
         .collect();
     assert!(syms.contains(&items_sym), "items in symbols set");
     assert!(syms.contains(&extra_sym), "extra in symbols set");
-    let runtime = &data.output.runtime_plan;
-    assert!(
-        !runtime.has_exports,
-        "two pure bindable props should not produce $$exports object (got has_exports=true)"
+    let runtime = data.runtime_semantics.query();
+    assert_ne!(
+        runtime.frame,
+        ComponentFrame::Exposed,
+        "two pure bindable props should not produce $$exports object"
     );
 }
 
@@ -5230,11 +5232,10 @@ fn runtime_plan_accessors_require_push_and_exports() {
             ..AnalyzeOptions::default()
         },
     );
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(plan.has_component_exports);
-    assert!(plan.needs_props_param);
+    assert_eq!(plan.frame, ComponentFrame::Exposed);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
     assert!(data.script.accessors);
 }
 
@@ -5248,27 +5249,22 @@ fn runtime_plan_immutable_legacy_requires_push() {
             ..AnalyzeOptions::default()
         },
     );
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(plan.needs_props_param);
+    assert_eq!(plan.frame, ComponentFrame::Scoped);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
     assert!(data.script.immutable);
 }
 
 #[test]
 fn runtime_plan_needs_context_without_exports_skips_pop_return() {
     let (_c, data) = analyze_source("<script>$effect(() => {});</script><p>ok</p>");
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(!plan.has_exports);
-    assert!(!plan.has_bindable);
-    assert!(!plan.has_stores);
-    assert!(!plan.has_ce_props);
-    assert!(plan.needs_props_param);
-    assert!(!plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Scoped);
+    assert_eq!(plan.stores, StoreBindings::Absent);
+    assert_eq!(plan.prop_accessors, PropAccessors::Hidden);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
 }
 
 #[test]
@@ -7878,6 +7874,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -7914,6 +7911,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -8257,6 +8255,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -8311,6 +8310,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -8378,6 +8378,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -8421,6 +8422,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -8459,6 +8461,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -8516,6 +8519,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -8547,6 +8551,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -8583,6 +8588,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),
@@ -8624,6 +8630,7 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
             data.script.runes_mode,
             component.node_count(),

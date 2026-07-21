@@ -3,7 +3,7 @@ use oxc_syntax::keyword::is_reserved_keyword;
 use crate::AnalysisData;
 
 pub(crate) fn run(data: &mut AnalysisData) {
-    let preferred_name = data.output.component_name.clone();
+    let preferred_name = data.component_name.clone();
     let mut conflicts = data.scoping.collect_component_top_level_symbol_names();
     conflicts.extend(data.scoping.root_unresolved_references().keys().cloned());
     for sym in data.scoping.symbol_ids() {
@@ -21,5 +21,5 @@ pub(crate) fn run(data: &mut AnalysisData) {
         suffix += 1;
     }
 
-    data.output.component_name = name;
+    data.component_name = name;
 }

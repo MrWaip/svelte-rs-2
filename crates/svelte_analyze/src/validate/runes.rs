@@ -208,7 +208,7 @@ impl RuneValidator<'_> {
             in_props_default_position: false,
             in_props_destructure: false,
             is_instance_script,
-            custom_element: data.output.is_custom_element_target,
+            custom_element: data.custom_element.is_target,
             ce_config_has_props: data
                 .script
                 .ce_config

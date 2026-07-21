@@ -216,7 +216,7 @@ pub(crate) fn build_v2<'a>(
     data.script.runes_mode = runes_mode;
     let runes = runes_mode.is_runes();
     data.script.immutable = runes || inputs.immutable;
-    data.script.accessors = data.output.is_custom_element_target || (!runes && inputs.accessors);
+    data.script.accessors = data.custom_element.is_target || (!runes && inputs.accessors);
 
     data.reactivity.set_uses_runes(runes);
     data.reactivity.set_runes_mode(runes_mode);
@@ -227,7 +227,7 @@ pub(crate) fn build_v2<'a>(
         component,
         parsed,
         data,
-        component_prop_emit_mode(data.output.is_custom_element_target),
+        component_prop_emit_mode(data.custom_element.is_target),
     );
     contextual::collect_template_declarations(component, parsed, data);
     contextual::promote_each_sources_to_legacy_state(component, parsed, data);

@@ -28,7 +28,7 @@ impl TemplateVisitor for CollectSymbolsVisitor {
         ctx: &mut VisitContext<'_, '_>,
     ) {
         if expression_uses_legacy_slots(expr) {
-            ctx.data.output.needs_sanitized_legacy_slots = true;
+            ctx.data.reactivity.mark_legacy_reads_slots();
         }
         classify_shorthand(node_id, expr, &mut self.pending_shorthand, ctx.data);
     }

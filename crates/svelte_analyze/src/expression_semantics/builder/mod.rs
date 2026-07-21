@@ -20,6 +20,7 @@ pub fn build<'a>(
     snippets: &SnippetData,
     value_evaluation: &ValueEvaluation,
     has_class_state_fields: bool,
+    observes_context: bool,
     blockers: &BlockerData,
     runes_mode: svelte_ast::RunesMode,
     node_count: u32,
@@ -40,5 +41,8 @@ pub fn build<'a>(
         &mut store,
         dev,
     );
+    if observes_context {
+        store.note_context(super::ContextSignal::SCRIPT_CONTEXT);
+    }
     store
 }

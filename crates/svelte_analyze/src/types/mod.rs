@@ -7,8 +7,7 @@ pub use data::{
     BindTargetSemantics, BlockAnalysis, BlockerData, ClassDirectiveInfo, CodegenView,
     ComponentBindMode, ComponentPropInfo, ComponentPropKind, ContentEditableKind, DocumentBindKind,
     ElementAnalysis, ElementFlags, ElementSizeKind, EventHandlerMode, FragmentFacts,
-    FragmentFactsEntry, IgnoreData, ImageNaturalSizeKind, MediaBindKind, OutputData,
-    ResizeObserverKind, RuntimeInfo, ScriptAnalysis, SnippetData, TemplateAnalysis,
-    TemplateSemanticsData, WindowBindKind,
+    FragmentFactsEntry, IgnoreData, ImageNaturalSizeKind, MediaBindKind, ResizeObserverKind,
+    ScriptAnalysis, SnippetData, TemplateAnalysis, TemplateSemanticsData, WindowBindKind,
 };
 pub use node_table::{NodeBitSet, NodeTable};

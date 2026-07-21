@@ -21,7 +21,6 @@ mod fragment_namespaces;
 mod ignore;
 mod pickled_awaits;
 mod rich_content_facts;
-mod runtime;
 mod template_data;
 mod template_element_index;
 pub(crate) mod template_topology;
@@ -38,8 +37,7 @@ pub use crate::reactivity_semantics::data::{
     StoreBindingSemantics,
 };
 pub use analysis::{
-    AnalysisData, ApiExport, BlockAnalysis, ElementAnalysis, OutputData, ScriptAnalysis,
-    TemplateAnalysis,
+    AnalysisData, ApiExport, BlockAnalysis, ElementAnalysis, ScriptAnalysis, TemplateAnalysis,
 };
 pub use async_data::{AsyncStmtMeta, BlockerData};
 pub use attr_index::AttrIndex;
@@ -56,8 +54,6 @@ pub use fragment_namespaces::FragmentNamespaces;
 pub use ignore::IgnoreData;
 pub use pickled_awaits::PickledAwaits;
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
-pub use runtime::LegacyInit;
-pub use runtime::RuntimeInfo;
 pub use template_data::{
     BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,
     ContentEditableKind, DocumentBindKind, ElementSizeKind, ImageNaturalSizeKind, MediaBindKind,

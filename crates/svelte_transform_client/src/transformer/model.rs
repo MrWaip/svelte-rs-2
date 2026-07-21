@@ -61,11 +61,8 @@ impl<'d, 'a> IgnoreQuery<'d, 'a> {
     }
 
     pub(crate) fn is_ignored_at_span(&self, span_start: u32, code: WarningCode) -> bool {
-        self.analysis.is_some_and(|a| {
-            a.output
-                .ignore_data
-                .is_ignored_warning_at_span(span_start, code)
-        })
+        self.analysis
+            .is_some_and(|a| a.ignore.is_ignored_warning_at_span(span_start, code))
     }
 }
 
@@ -135,7 +132,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        analysis.output.ignore_data.is_ignored_warning(owner, code)
+        analysis.ignore.is_ignored_warning(owner, code)
     }
 
     pub(crate) fn binding_semantics_for_symbol(

@@ -587,7 +587,7 @@ fn validate_svelte_options_warnings(
         let kind = match attr.html_name() {
             "accessors" if runes => Some(DiagnosticKind::OptionsDeprecatedAccessors),
             "immutable" if runes => Some(DiagnosticKind::OptionsDeprecatedImmutable),
-            "customElement" if !data.output.custom_element_compile_flag => {
+            "customElement" if !data.custom_element.compile_flag => {
                 Some(DiagnosticKind::OptionsMissingCustomElement)
             }
             _ => None,

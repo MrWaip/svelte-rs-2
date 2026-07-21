@@ -55,7 +55,7 @@ pub(super) fn classify_export_named_declaration<'a>(
         classify_runes_export(data, export);
         return;
     }
-    data.output.legacy_has_export_declaration = true;
+    data.legacy_has_export_declaration = true;
     if let Some(decl) = &export.declaration {
         match decl {
             Declaration::VariableDeclaration(var_decl) if is_let_or_var(var_decl.kind) => {
@@ -94,7 +94,7 @@ fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDe
         } else {
             None
         };
-        data.output.api_exports.push(ApiExport {
+        data.api_exports.push(ApiExport {
             local: symbol,
             reference_id: Some(ref_id),
             alias,
@@ -109,7 +109,7 @@ fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDe
         {
             for declarator in &var_decl.declarations {
                 walk_bindings(&declarator.id, |visit| {
-                    data.output.api_exports.push(ApiExport {
+                    data.api_exports.push(ApiExport {
                         local: visit.symbol,
                         reference_id: None,
                         alias: None,
@@ -122,7 +122,7 @@ fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDe
             if let Some(ident) = &func.id
                 && let Some(symbol) = ident.symbol_id.get()
             {
-                data.output.api_exports.push(ApiExport {
+                data.api_exports.push(ApiExport {
                     local: symbol,
                     reference_id: None,
                     alias: None,
@@ -133,7 +133,7 @@ fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDe
             if let Some(ident) = &cls.id
                 && let Some(symbol) = ident.symbol_id.get()
             {
-                data.output.api_exports.push(ApiExport {
+                data.api_exports.push(ApiExport {
                     local: symbol,
                     reference_id: None,
                     alias: None,
@@ -182,7 +182,7 @@ fn record_api_export(
     alias: Option<CompactString>,
 ) {
     data.reactivity.record_legacy_api_export_binding(symbol);
-    data.output.api_exports.push(ApiExport {
+    data.api_exports.push(ApiExport {
         local: symbol,
         reference_id,
         alias,
@@ -345,7 +345,7 @@ pub(super) fn register_legacy_synthetic_objects(data: &mut AnalysisData<'_>) {
             }
         }
         if is_slots {
-            data.output.needs_sanitized_legacy_slots = true;
+            data.reactivity.mark_legacy_reads_slots();
         }
     }
 

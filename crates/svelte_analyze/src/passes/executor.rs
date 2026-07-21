@@ -1,7 +1,9 @@
 use svelte_ast::Component;
 use svelte_diagnostics::Diagnostic;
 
-use crate::reactivity_semantics::{ReactivityInputs, build_v2, finalize_reactivity};
+use crate::reactivity_semantics::{
+    ReactivityInputs, build_v2, finalize_component_prop_facts, finalize_reactivity,
+};
 use crate::types::markers::ScopingBuilt;
 use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
 use crate::{
@@ -22,7 +24,7 @@ fn run_parsed_template_bundle<'d, 'a, const N: usize>(
     visitors: &mut [&mut dyn walker::TemplateVisitor; N],
 ) {
     let root = data.scoping.root_scope_id();
-    let component_name = data.output.component_name.clone();
+    let component_name = data.component_name.clone();
     let mut ctx = walker::VisitContext::with_parsed(
         root,
         data,
@@ -50,20 +52,7 @@ pub(crate) fn execute_pass<'a>(
 
     match key {
         super::PassKey::AnalyzeScript => {
-            if let Some(program) = parsed.program.as_ref()
-                && parsed.script_content_span.is_some()
-            {
-                js_analyze::analyze_script(data, program);
-            }
-            if let Some(module_program) = parsed.module_program.as_ref()
-                && parsed.module_script_content_span.is_some()
-            {
-                data.output.needs_context |= js_analyze::needs_context_for_program(
-                    module_program,
-                    &data.scoping,
-                    &data.reactivity,
-                );
-            }
+            js_analyze::analyze_script(data, parsed);
         }
         super::PassKey::BuildComponentSemantics => {
             super::build_component_semantics::build(component, parsed, data);
@@ -75,8 +64,7 @@ pub(crate) fn execute_pass<'a>(
             if let Some(program) = &parsed.program
                 && options.dev
             {
-                data.output
-                    .ignore_data
+                data.ignore
                     .scan_program_comments(program, &component.source, runes);
             }
         }
@@ -111,7 +99,16 @@ pub(crate) fn execute_pass<'a>(
             data.fragment_semantics = fragment_semantics::build(component, data);
         }
         super::PassKey::BuildRuntimeSemantics => {
-            data.runtime_semantics = runtime_semantics::build(component);
+            let semantics = runtime_semantics::build(
+                &data.script,
+                &data.reactivity,
+                &data.elements,
+                &data.expressions_v2,
+                &data.api_exports,
+                data.legacy_has_export_declaration,
+                options.dev,
+            );
+            data.runtime_semantics.record(semantics);
         }
         super::PassKey::JsAnalyzePostTemplate => {
             js_analyze::calculate_instance_blockers(parsed, data);
@@ -149,6 +146,7 @@ pub(crate) fn execute_pass<'a>(
                 data.scoping.semantics(),
                 data.script.dev,
             );
+            finalize_component_prop_facts(&mut data.reactivity, &data.scoping);
         }
         super::PassKey::BuildExpressionSemantics => {
             let expressions_v2 = expression_semantics::build(
@@ -160,14 +158,12 @@ pub(crate) fn execute_pass<'a>(
                 &data.template.snippets,
                 &data.value_evaluation,
                 data.script.has_class_state_fields,
+                data.script.observes_context,
                 &data.script.blocker_data,
                 data.script.runes_mode,
                 component.node_count(),
                 data.script.dev,
             );
-            if !data.output.needs_context && expressions_v2.is_context_required() {
-                data.output.needs_context = true;
-            }
             data.expressions_v2 = expressions_v2;
         }
         super::PassKey::BuildAttributeSemantics => {
@@ -181,7 +177,7 @@ pub(crate) fn execute_pass<'a>(
                 &data.template.snippets,
                 &data.value_evaluation,
                 &data.script.blocker_data,
-                &data.output.ignore_data,
+                &data.ignore,
                 &data.elements.facts,
                 options.dev,
                 component.node_count(),
@@ -198,7 +194,7 @@ pub(crate) fn execute_pass<'a>(
                 &data.reactivity,
                 &data.expressions_v2,
                 &data.template.fragment_namespaces,
-                &data.output.ignore_data,
+                &data.ignore,
                 data.script.dev,
                 component.node_count(),
             );

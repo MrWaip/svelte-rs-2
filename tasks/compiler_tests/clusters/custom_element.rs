@@ -72,3 +72,27 @@ compiler_case!(
     prop_type_boolean_inference,
     "custom_element/prop_type_boolean_inference"
 );
+
+compiler_case!(
+    context_props_identifier,
+    "custom_element/context_props_identifier"
+);
+compiler_case!(context_rest_props, "custom_element/context_rest_props");
+compiler_case!(context_string_tag, "custom_element/context_string_tag");
+compiler_case!(
+    context_props_used_exports,
+    "custom_element/context_props_used_exports"
+);
+
+compiler_case!(
+    context_plain_unused_guard,
+    "custom_element/context_plain_unused_guard"
+);
+compiler_case!(
+    context_plain_effect_guard,
+    "custom_element/context_plain_effect_guard"
+);
+compiler_case!(
+    context_legacy_reactive_guard,
+    "custom_element/context_legacy_reactive_guard"
+);
