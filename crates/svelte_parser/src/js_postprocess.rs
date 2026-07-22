@@ -387,6 +387,7 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
         if self.strip_ts {
             it.type_arguments = None;
         }
+        mark_iife_callee(&mut it.callee);
         walk_mut::walk_call_expression(self, it);
     }
 
@@ -394,6 +395,7 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
         if self.strip_ts {
             it.type_arguments = None;
         }
+        mark_iife_callee(&mut it.callee);
         walk_mut::walk_new_expression(self, it);
     }
 
@@ -603,6 +605,12 @@ pub(crate) fn process_formal_parameters<'a>(
 
 pub(crate) fn wrapper_delta(absolute_start: u32, leading_ws: usize, prefix_len: i64) -> i64 {
     absolute_start as i64 + leading_ws as i64 - prefix_len
+}
+
+fn mark_iife_callee(callee: &mut Expression<'_>) {
+    if let Expression::FunctionExpression(func) = callee {
+        func.pife = true;
+    }
 }
 
 fn relocate_orphaned_comments(program: &mut Program<'_>) {
