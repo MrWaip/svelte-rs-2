@@ -54,6 +54,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut prev: Option<String> = None;
         let mut skipped: u32 = 0;
         let mut initial_opt = Some(initial);
+        let mut prev_static_text = false;
 
         for (idx, child) in children.iter().enumerate() {
             match child {
@@ -61,7 +62,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     if let Some(text) = ctx.static_html_of(part) {
                         state.template.push_text(text);
                     }
-                    skipped += 1;
+                    if !prev_static_text {
+                        skipped += 1;
+                    }
                 }
                 Child::Expr(id) => {
                     state.template.push_text(" ");
@@ -137,6 +140,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
                 }
             }
+            prev_static_text = matches!(child, Child::Text(_));
         }
 
         if prev.is_none() && matches!(ctx.anchor, FragmentAnchor::Child { .. }) {

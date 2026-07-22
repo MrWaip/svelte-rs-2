@@ -88,6 +88,9 @@ mod hmr;
 #[path = "clusters/disclose_version.rs"]
 mod disclose_version;
 
+#[path = "clusters/fragment_static_text.rs"]
+mod fragment_static_text;
+
 #[path = "clusters/spread_class.rs"]
 mod spread_class;
 #[path = "clusters/spread_default_value.rs"]
