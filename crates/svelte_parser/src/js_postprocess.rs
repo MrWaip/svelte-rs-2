@@ -353,6 +353,7 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
     }
 
     fn visit_arrow_function_expression(&mut self, it: &mut ArrowFunctionExpression<'a>) {
+        it.pife = false;
         if self.strip_ts {
             it.type_parameters = None;
             it.return_type = None;
@@ -536,9 +537,6 @@ pub(crate) fn process_program<'a>(
     strip_ts: bool,
 ) {
     normalize_empty_import_specifiers(program);
-    if delta == 0 && !strip_ts {
-        return;
-    }
     let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
     v.visit_program(program);
     if delta != 0 {
@@ -569,9 +567,6 @@ pub(crate) fn process_expression<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    if delta == 0 && !strip_ts {
-        return;
-    }
     let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
     v.visit_expression(expr);
 }
@@ -582,9 +577,6 @@ pub(crate) fn process_statement<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    if delta == 0 && !strip_ts {
-        return;
-    }
     let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
     v.visit_statement(stmt);
 }
@@ -595,9 +587,6 @@ pub(crate) fn process_binding_pattern<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    if delta == 0 && !strip_ts {
-        return;
-    }
     let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
     v.visit_binding_pattern(pat);
 }
@@ -608,9 +597,6 @@ pub(crate) fn process_formal_parameters<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    if delta == 0 && !strip_ts {
-        return;
-    }
     let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
     v.visit_formal_parameters(params);
 }

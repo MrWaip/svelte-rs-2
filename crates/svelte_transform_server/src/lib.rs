@@ -18,6 +18,10 @@ use svelte_ast_builder::Builder;
 
 use model::ServerTransform;
 
+fn is_dollar_labeled_statement(stmt: &Statement<'_>) -> bool {
+    matches!(stmt, Statement::LabeledStatement(labeled) if labeled.label.name == "$")
+}
+
 pub fn transform_component<'a>(
     ctx: &mut svelte_types::CompileContext<'a, '_>,
     options: &svelte_types::TransformOptions,
@@ -36,6 +40,11 @@ pub fn transform_component<'a>(
     if let Some(module_program) = ctx.js_arena.module_program.as_mut() {
         transform.strip_exports = false;
         transform.visit_program(module_program);
+        if !ctx.analysis.reactivity.uses_runes() {
+            module_program
+                .body
+                .retain(|stmt| !is_dollar_labeled_statement(stmt));
+        }
     }
     transform.strip_exports = true;
     if let Some(program) = ctx.js_arena.program.as_mut() {

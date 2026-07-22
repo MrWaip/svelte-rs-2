@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use smallvec::SmallVec;
+use svelte_analyze::ElementSemanticsStore;
 use svelte_ast::{AstStore, Node, NodeId};
 use svelte_span::Span;
 
@@ -12,6 +13,7 @@ use crate::codegen::{
 pub(super) fn prepare<'a>(
     raw: &[NodeId],
     store: &'a AstStore,
+    elements: &ElementSemanticsStore,
     ctx: &FragmentCtx<'a>,
     bucket: &mut HoistedBucket,
 ) -> (Vec<Child>, ContentStrategy) {
@@ -205,8 +207,7 @@ pub(super) fn prepare<'a>(
 
     if children.len() == 1
         && let Child::Node(nid) = children[0]
-        && let Node::Element(el) = store.get(nid)
-        && el.name == "script"
+        && elements.query(nid).is_script()
     {
         children.push(Child::Comment(String::new()));
         flags.insert(ChildrenFlags::HAS_COMMENT);

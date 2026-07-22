@@ -373,14 +373,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         let scope = ctx.current_scope_id();
         let value_expr = if needs_lazy_getter {
-            if needs_async {
-                self.b.async_arrow_body_in_scope(assign.right, scope)
-            } else {
-                self.b.arrow_in_scope_expr(
-                    self.b.no_params(),
-                    [self.b.expr_stmt(assign.right)],
-                    scope,
-                )
+            match (needs_async, assign.right) {
+                (true, Expression::AwaitExpression(await_expr)) => {
+                    let inner = await_expr.unbox().argument;
+                    self.b
+                        .arrow_in_scope_expr(self.b.no_params(), [self.b.expr_stmt(inner)], scope)
+                }
+                (true, right) => self.b.async_arrow_body_in_scope(right, scope),
+                (false, right) => {
+                    self.b
+                        .arrow_in_scope_expr(self.b.no_params(), [self.b.expr_stmt(right)], scope)
+                }
             }
         } else {
             assign.right
@@ -710,14 +713,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         let scope = ctx.current_scope_id();
         let value_expr = if needs_lazy_getter {
-            if needs_async {
-                self.b.async_arrow_body_in_scope(assign.right, scope)
-            } else {
-                self.b.arrow_in_scope_expr(
-                    self.b.no_params(),
-                    [self.b.expr_stmt(assign.right)],
-                    scope,
-                )
+            match (needs_async, assign.right) {
+                (true, Expression::AwaitExpression(await_expr)) => {
+                    let inner = await_expr.unbox().argument;
+                    self.b
+                        .arrow_in_scope_expr(self.b.no_params(), [self.b.expr_stmt(inner)], scope)
+                }
+                (true, right) => self.b.async_arrow_body_in_scope(right, scope),
+                (false, right) => {
+                    self.b
+                        .arrow_in_scope_expr(self.b.no_params(), [self.b.expr_stmt(right)], scope)
+                }
             }
         } else {
             assign.right

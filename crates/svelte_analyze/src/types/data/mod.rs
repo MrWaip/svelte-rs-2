@@ -33,8 +33,8 @@ pub use crate::reactivity_semantics::data::{
     LegacyBindablePropSemantics, LegacyDependency, LegacySummary, OptimizedRuneSemantics,
     PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics,
     PropsSummary, ReactivitySemantics, ReactivitySummary, ReferenceSemantics, RuntimeRuneKind,
-    SignalReferenceKind, SnippetParamStrategy, StateDeclarationSemantics, StateKind,
-    StoreBindingSemantics,
+    SignalReadLocality, SignalReferenceKind, SnippetParamStrategy, StateDeclarationSemantics,
+    StateKind, StoreBindingSemantics,
 };
 pub use analysis::{
     AnalysisData, ApiExport, BlockAnalysis, ElementAnalysis, ScriptAnalysis, TemplateAnalysis,

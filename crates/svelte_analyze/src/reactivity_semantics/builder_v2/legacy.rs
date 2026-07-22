@@ -13,7 +13,8 @@ use crate::types::data::{AnalysisData, ApiExport};
 use crate::utils::{is_let_or_var, is_simple_expression};
 
 use super::super::data::{
-    BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropDefaultKind, ReferenceFacts,
+    BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropBindingKind,
+    PropDefaultKind, ReferenceFacts,
 };
 use crate::PropsFlags;
 
@@ -402,6 +403,62 @@ pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
                 legacy.default_kind = kind;
             }
         }
+    }
+}
+
+pub(super) fn finalize_runes_store_prop_defaults(data: &mut AnalysisData<'_>) {
+    if !data.script.runes() {
+        return;
+    }
+    let symbols: Vec<SymbolId> = data.reactivity.iter_runes_prop_symbols().collect();
+    for sym in symbols {
+        let Some(kind) = runes_store_default_kind(data, sym) else {
+            continue;
+        };
+        let Some(BindingFacts::Prop(prop)) = data.reactivity.binding_facts_mut(sym) else {
+            continue;
+        };
+        if let PropBindingKind::Source {
+            default_lowering, ..
+        } = &mut prop.kind
+        {
+            *default_lowering = kind;
+        }
+    }
+}
+
+fn runes_store_default_kind(data: &AnalysisData<'_>, sym: SymbolId) -> Option<PropDefaultKind> {
+    let Some(BindingFacts::Prop(prop)) = data.reactivity.binding_facts(sym) else {
+        return None;
+    };
+    let PropBindingKind::Source {
+        default_lowering, ..
+    } = &prop.kind
+    else {
+        return None;
+    };
+    if *default_lowering != PropDefaultKind::Eager {
+        return None;
+    }
+    let default = runes_prop_default_expr(data, sym)?;
+    if is_store_subscription_identifier(data, default) {
+        Some(PropDefaultKind::LazyAccessor)
+    } else if references_store_subscription(data, default) {
+        Some(PropDefaultKind::Lazy)
+    } else {
+        None
+    }
+}
+
+fn runes_prop_default_expr<'a>(
+    data: &AnalysisData<'a>,
+    sym: SymbolId,
+) -> Option<&'a Expression<'a>> {
+    let decl = data.scoping.symbol_declaration(sym);
+    let parent = data.scoping.js_parent_id(decl)?;
+    match data.scoping.js_kind(parent)? {
+        AstKind::AssignmentPattern(pat) => Some(&pat.right),
+        _ => None,
     }
 }
 

@@ -34,6 +34,12 @@ impl<'a> ServerTransform<'_, 'a> {
         };
         self.analysis.ignore.is_ignored_warning_at_span(start, code)
     }
+
+    pub(crate) fn is_ignored_at_span(&self, span_start: u32, code: WarningCode) -> bool {
+        self.analysis
+            .ignore
+            .is_ignored_warning_at_span(span_start, code)
+    }
 }
 
 impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {

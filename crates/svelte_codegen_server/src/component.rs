@@ -32,13 +32,16 @@ impl<'a> ServerCodegen<'a> {
         let callee = self.take_expression(cn.id, &cn.name)?;
 
         if self.analysis.has_component_css_props(cn.id) {
+            let dynamic_test = self
+                .expression_is_volatile(cn.id)
+                .then(|| self.b.clone_expr(&callee));
             return self.emit_component_css_props(
                 cn.id,
                 cn.fragment,
                 &cn.attributes,
                 &cn.legacy_slots,
                 callee,
-                None,
+                dynamic_test,
             );
         }
 

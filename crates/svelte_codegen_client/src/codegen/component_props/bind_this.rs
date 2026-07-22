@@ -48,10 +48,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 "bind:this transformed sequence must carry getter and setter",
             );
         };
-        let validate = if self.ctx.state.dev
-            && self.ctx.query.runes()
-            && !self.ctx.binding_property_non_reactive_ignored(bind_id)
-        {
+        let needs_binding_validation = match self.ctx.query.analysis.attributes.get(bind_id) {
+            svelte_analyze::AttributeSemantics::ComponentBind(b) => b.needs_binding_validation,
+            _ => false,
+        };
+        let validate = if self.ctx.state.dev && needs_binding_validation {
             getter_return_member(&get_expr)
                 .and_then(|m| self.build_validate_binding_from_member(bind, m))
         } else {

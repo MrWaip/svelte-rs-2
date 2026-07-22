@@ -51,8 +51,12 @@ impl<'a> ServerTransform<'_, 'a> {
             RuntimeRuneKind::EffectRoot => Some(self.b.arrow_expr(self.b.no_params(), empty())),
             RuntimeRuneKind::StateEager => Some(self.take_rune_arg(call)),
             RuntimeRuneKind::StateSnapshot => {
-                let suppress_warning =
-                    self.dev && self.is_in_ignored_stmt(WarningCode::StateSnapshotUncloneable);
+                let suppress_warning = self.dev
+                    && (self.is_in_ignored_stmt(WarningCode::StateSnapshotUncloneable)
+                        || self.is_ignored_at_span(
+                            call.span.start,
+                            WarningCode::StateSnapshotUncloneable,
+                        ));
                 let arg = self.take_rune_arg(call);
                 let args = if suppress_warning {
                     vec![Arg::Expr(arg), Arg::Expr(self.b.bool_expr(true))]

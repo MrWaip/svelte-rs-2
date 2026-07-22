@@ -43,6 +43,9 @@ impl<'a> ServerCodegen<'a> {
     }
 
     pub(crate) fn svelte_element(&mut self, el: &'a SvelteElement) -> Result<()> {
+        if self.dev {
+            self.svelte_element_dev_init(el)?;
+        }
         let attrs_stmts =
             self.child_statements(|cg| cg.emit_element_attributes(el.id, &el.attributes))?;
         let children_stmts =

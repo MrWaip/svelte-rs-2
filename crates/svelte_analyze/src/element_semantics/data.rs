@@ -22,6 +22,32 @@ pub enum ElementSemantics {
     LegacyComponentSlots(LegacyComponentSlotsSemantics),
 }
 
+impl ElementSemantics {
+    pub fn property_reset(&self) -> ElementPropertyReset {
+        match self {
+            ElementSemantics::RegularElement(sem) => sem.property_reset,
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_)
+            | ElementSemantics::SvelteElement(_)
+            | ElementSemantics::LegacySlot(_)
+            | ElementSemantics::LegacyComponentSlots(_) => ElementPropertyReset::None,
+        }
+    }
+
+    pub fn is_script(&self) -> bool {
+        match self {
+            ElementSemantics::RegularElement(sem) => sem.is_script,
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_)
+            | ElementSemantics::SvelteElement(_)
+            | ElementSemantics::LegacySlot(_)
+            | ElementSemantics::LegacyComponentSlots(_) => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LegacySlotSemantics {
     pub name: String,
@@ -53,6 +79,15 @@ pub struct RegularElementSemantics {
     pub value_role: ElementValueRole,
     pub replay_events: SmallVec<[ElementReplayEvent; 2]>,
     pub opaque_content: bool,
+    pub property_reset: ElementPropertyReset,
+    pub is_script: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ElementPropertyReset {
+    None,
+    Dir,
+    LazyLoadingImg,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

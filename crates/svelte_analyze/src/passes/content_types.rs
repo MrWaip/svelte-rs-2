@@ -33,11 +33,7 @@ fn element_needs_var(el: &Element, data: &AnalysisData, store: &AstStore) -> boo
         return true;
     }
 
-    if data.is_custom_element(id) && !el.attributes.is_empty() {
-        return true;
-    }
-
-    if el.name == "img" && el.attributes.iter().any(|a| a.name() == Some("loading")) {
+    if data.is_custom_element(id) {
         return true;
     }
 

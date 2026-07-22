@@ -53,10 +53,6 @@ impl<'a> ServerCodegen<'a> {
             self.emit_fragment_hoisted(id)?;
         }
 
-        if self.dev {
-            self.emit_svelte_element_dev_inits(id)?;
-        }
-
         let fragment = component.store.fragment(id);
         let mut kept: Vec<&'a Node> = Vec::with_capacity(fragment.nodes.len());
         for &node_id in &fragment.nodes {
@@ -260,16 +256,6 @@ impl<'a> ServerCodegen<'a> {
             }
         }
 
-        Ok(())
-    }
-
-    fn emit_svelte_element_dev_inits(&mut self, id: FragmentId) -> Result<()> {
-        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
-        for &nid in &node_ids {
-            if let Node::SvelteElement(el) = self.component.store.get(nid) {
-                self.svelte_element_dev_init(el)?;
-            }
-        }
         Ok(())
     }
 

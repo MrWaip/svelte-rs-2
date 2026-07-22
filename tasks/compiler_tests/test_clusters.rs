@@ -13,6 +13,48 @@ mod comments;
 #[path = "clusters/empty_statement.rs"]
 mod empty_statement;
 
+#[path = "clusters/paren_strip.rs"]
+mod paren_strip;
+
+#[path = "clusters/prop_default_store.rs"]
+mod prop_default_store;
+
+#[path = "clusters/attribute_template_literal.rs"]
+mod attribute_template_literal;
+
+#[path = "clusters/bind_store_each.rs"]
+mod bind_store_each;
+
+#[path = "clusters/destructure_fallback.rs"]
+mod destructure_fallback;
+
+#[path = "clusters/store_module.rs"]
+mod store_module;
+
+#[path = "clusters/module_reactive.rs"]
+mod module_reactive;
+
+#[path = "clusters/dynamic_component_ssr.rs"]
+mod dynamic_component_ssr;
+
+#[path = "clusters/ident_gen.rs"]
+mod ident_gen;
+
+#[path = "clusters/bind_this_function_pair.rs"]
+mod bind_this_function_pair;
+
+#[path = "clusters/custom_element_var.rs"]
+mod custom_element_var;
+
+#[path = "clusters/assign_async.rs"]
+mod assign_async;
+
+#[path = "clusters/destructure_async.rs"]
+mod destructure_async;
+
+#[path = "clusters/snapshot_ignore_ssr.rs"]
+mod snapshot_ignore_ssr;
+
 #[path = "clusters/events.rs"]
 mod events;
 
@@ -311,3 +353,6 @@ mod declaration_tag;
 
 #[path = "clusters/element_block_scope.rs"]
 mod element_block_scope;
+
+#[path = "clusters/script_element.rs"]
+mod script_element;

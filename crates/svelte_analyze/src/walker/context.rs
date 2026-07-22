@@ -125,8 +125,22 @@ impl<'d, 'a> VisitContext<'d, 'a> {
     }
 
     pub fn record_ignore_for_node(&mut self, node_id: NodeId) {
-        if self.ignore_current.is_empty() {
+        let Some(idx) = self.current_ignore_idx() else {
             return;
+        };
+        self.data.ignore.set_snapshot(node_id, idx);
+    }
+
+    pub fn record_ignore_for_span(&mut self, span_start: u32) {
+        let Some(idx) = self.current_ignore_idx() else {
+            return;
+        };
+        self.data.ignore.set_span_snapshot(span_start, idx);
+    }
+
+    fn current_ignore_idx(&mut self) -> Option<u32> {
+        if self.ignore_current.is_empty() {
+            return None;
         }
         let idx = match self.ignore_current_idx {
             Some(idx) => idx,
@@ -136,7 +150,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
                 idx
             }
         };
-        self.data.ignore.set_snapshot(node_id, idx);
+        Some(idx)
     }
 
     pub fn take_warnings(&mut self) -> Vec<Diagnostic> {

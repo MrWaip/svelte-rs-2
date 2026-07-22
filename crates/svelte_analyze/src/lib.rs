@@ -43,10 +43,10 @@ pub use block_semantics::{
     SnippetParam, SnippetPlacement, SnippetSlotKey,
 };
 pub use element_semantics::{
-    BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementReplayEvent, ElementSemantics,
-    ElementSemanticsStore, ElementValueRole, LegacyComponentSlotsSemantics, LegacyDefaultSlot,
-    LegacySlotSemantics, RegularElementSemantics, SvelteElementSemantics, TextareaBody,
-    TextareaSegment,
+    BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementPropertyReset, ElementReplayEvent,
+    ElementSemantics, ElementSemanticsStore, ElementValueRole, LegacyComponentSlotsSemantics,
+    LegacyDefaultSlot, LegacySlotSemantics, RegularElementSemantics, SvelteElementSemantics,
+    TextareaBody, TextareaSegment,
 };
 pub use fragment_semantics::{FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace};
 pub use runtime_semantics::{
@@ -70,10 +70,10 @@ pub use types::data::{
     PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
     PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
     ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
-    RichContentParentKind, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind, SnippetData,
-    SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
-    SvelteElementTag, TemplateAnalysis, TemplateElementEntry, TemplateElementIndex,
-    TemplateTopology, WindowBindKind,
+    RichContentParentKind, RuntimeRuneKind, ScriptAnalysis, SignalReadLocality,
+    SignalReferenceKind, SnippetData, SnippetParamStrategy, StateDeclarationSemantics, StateKind,
+    StoreBindingSemantics, SvelteElementTag, TemplateAnalysis, TemplateElementEntry,
+    TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 
 bitflags::bitflags! {
@@ -217,6 +217,7 @@ pub fn analyze_module<'a>(
 
             data.scoping = scoping;
             data.script.runes_mode = svelte_ast::RunesMode::Runes;
+            data.script.is_standalone_module = true;
 
             parsed.program = Some(program);
             let stub_component =
@@ -248,11 +249,16 @@ pub fn analyze_module<'a>(
                 if let Some(program) = parsed.program.as_ref() {
                     data.ignore.scan_program_comments(program, source, true);
                 }
-                data.value_evaluation = value_evaluation::build_module_console_calls(
+                let value_evaluation = value_evaluation::build(
                     &parsed,
+                    &stub_component,
                     &data.scoping,
                     data.scoping.semantics(),
+                    &data.template.snippets,
+                    &data.reactivity,
+                    dev,
                 );
+                data.value_evaluation = value_evaluation;
             }
 
             if let Some(program) = parsed.program.as_ref() {

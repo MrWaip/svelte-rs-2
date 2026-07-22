@@ -97,6 +97,12 @@ impl IgnoreData {
             self.node_snapshot.insert(node_id, idx);
         }
     }
+
+    pub(crate) fn set_span_snapshot(&mut self, span_start: u32, idx: u32) {
+        if idx != 0 {
+            self.span_snapshot.entry(span_start).or_insert(idx);
+        }
+    }
 }
 
 #[cfg(test)]

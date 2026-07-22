@@ -775,6 +775,12 @@ impl<'a> Visit<'a> for ExprRefCollector {
     }
 }
 
+pub(super) fn expression_reference_ids<'a>(expr: &Expression<'a>) -> Vec<ReferenceId> {
+    let mut collector = ExprRefCollector { refs: Vec::new() };
+    collector.visit_expression(expr);
+    collector.refs
+}
+
 pub(super) fn classify_contextual_read_kind(
     data: &AnalysisData,
     sym: SymbolId,

@@ -59,6 +59,20 @@ fn base_rest_excluded(emit_mode: PropEmitMode) -> Vec<String> {
     excluded
 }
 
+fn lazy_accessor_name(expr: &Expression<'_>) -> Option<String> {
+    let inner = expr.get_inner_expression();
+    let identifier = match inner {
+        Expression::CallExpression(call) if call.arguments.is_empty() => {
+            call.callee.get_inner_expression()
+        }
+        _ => inner,
+    };
+    match identifier {
+        Expression::Identifier(id) => Some(id.name.to_string()),
+        _ => None,
+    }
+}
+
 fn prop_assignment_default_expr<'a>(
     expr: Expression<'a>,
     bindable: bool,
@@ -269,13 +283,18 @@ impl<'a> ComponentTransformer<'_, 'a> {
                             } else {
                                 default_expr
                             };
-                            let default_expr = if matches!(default_lowering, PropDefaultKind::Eager)
-                            {
-                                default_expr
-                            } else {
-                                let lazy = super::derived::wrap_lazy(self.b, default_expr);
-                                self.b.seed_arrow_scope(&lazy, self.gen_arrow_scope);
-                                lazy
+                            let accessor =
+                                matches!(default_lowering, PropDefaultKind::LazyAccessor)
+                                    .then(|| lazy_accessor_name(&default_expr))
+                                    .flatten();
+                            let default_expr = match (default_lowering, accessor) {
+                                (PropDefaultKind::Eager | PropDefaultKind::None, _) => default_expr,
+                                (_, Some(name)) => self.b.rid_expr(&name),
+                                (PropDefaultKind::Lazy | PropDefaultKind::LazyAccessor, None) => {
+                                    let lazy = super::derived::wrap_lazy(self.b, default_expr);
+                                    self.b.seed_arrow_scope(&lazy, self.gen_arrow_scope);
+                                    lazy
+                                }
                             };
                             args.push(Arg::Expr(default_expr));
                         }

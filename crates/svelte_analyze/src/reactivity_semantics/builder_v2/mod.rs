@@ -256,6 +256,7 @@ pub(crate) fn build_v2<'a>(
     let reference_count = data.scoping.references_len();
     data.reactivity.reserve_references(reference_count);
     let bind_this_proxy_targets = references::collect_raw_param_reads(component, parsed, data);
+    references::collect_element_local_derived_reads(component, parsed, data);
     references::collect_symbol_semantics(data);
     references::apply_bind_this_proxy_targets(data, &bind_this_proxy_targets);
     data.reactivity.classify_derived_sources();
@@ -265,6 +266,7 @@ pub(crate) fn build_v2<'a>(
 
     legacy::register_legacy_synthetic_objects(data);
     legacy::finalize_legacy_aggregates(data);
+    legacy::finalize_runes_store_prop_defaults(data);
     legacy_reactive::classify_mutated_import_references(data);
     import_subscribed::classify_import_subscribed_reads(data);
 }

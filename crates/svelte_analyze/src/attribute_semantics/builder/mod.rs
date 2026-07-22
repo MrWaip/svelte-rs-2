@@ -606,6 +606,10 @@ fn classify_element_attrs(
                         groups.assign(d.id, derive_group_key(ctx, state, d));
                     }
                     let reflects_as_attribute = bind_reflects_as_attribute(ctx, el, property);
+                    let each_item_store_backed = needs_binding_validation
+                        && state.each_stack.last().is_some_and(|&each_id| {
+                            ctx.reactivity.each_block_iterates_store(each_id)
+                        });
                     store.set(
                         d.id,
                         AttributeSemantics::ElementBind(ElementBindSemantics {
@@ -618,6 +622,7 @@ fn classify_element_attrs(
                             group_reflection,
                             group_id: None,
                             needs_binding_validation,
+                            each_item_store_backed,
                             reflects_as_attribute,
                         }),
                     );
@@ -1571,6 +1576,12 @@ fn classify_component_attrs(
                 }
                 let ownership_root = derive_component_bind_ownership_root(ctx, d);
                 let each_item_store_backed = each_item_store_backed(ctx, &each_context_vars);
+                let needs_binding_validation = d.name == "this"
+                    && ctx.reactivity.uses_runes()
+                    && bind_expr_is_member(ctx, d)
+                    && !ctx
+                        .ignore_data
+                        .is_ignored_warning(d.id, crate::WarningCode::BindingPropertyNonReactive);
                 store.set(
                     d.id,
                     AttributeSemantics::ComponentBind(ComponentBindSemantics {
@@ -1578,6 +1589,7 @@ fn classify_component_attrs(
                         each_context_vars,
                         ownership_root,
                         each_item_store_backed,
+                        needs_binding_validation,
                     }),
                 );
             }

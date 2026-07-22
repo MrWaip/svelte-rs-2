@@ -3780,6 +3780,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(StateKind::State),
             safe: true,
+            locality: SignalReadLocality::Cell,
         }
     );
     assert_eq!(
@@ -3804,6 +3805,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::Derived(DerivedKind::Derived),
             safe: false,
+            locality: SignalReadLocality::Cell,
         }
     );
     assert_eq!(
@@ -3942,6 +3944,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(StateKind::State),
             safe: false,
+            locality: SignalReadLocality::Cell,
         }
     );
     assert_eq!(
@@ -3958,6 +3961,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(StateKind::State),
             safe: true,
+            locality: SignalReadLocality::Cell,
         }
     );
 }
@@ -4012,6 +4016,7 @@ fn reactivity_semantics_v2_state_raw_distinguishes_plain_and_mutated_bindings() 
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(StateKind::StateRaw),
             safe: true,
+            locality: SignalReadLocality::Cell,
         }
     );
     assert_eq!(

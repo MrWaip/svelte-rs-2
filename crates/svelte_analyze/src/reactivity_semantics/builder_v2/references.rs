@@ -1,7 +1,7 @@
 use super::super::data::{
     BindingFacts, ConstTagSemantics, ContextualBindingSemantics, ContextualReadSemantics,
     DerivedKind, EachItemStrategy, PropBindingKind, PropDefaultKind, PropEmitMode,
-    PropReferenceSemantics, ReferenceFacts, SignalReferenceKind, StateKind,
+    PropReferenceSemantics, ReferenceFacts, SignalReadLocality, SignalReferenceKind, StateKind,
 };
 use crate::scope::SymbolId;
 use crate::types::data::{AnalysisData, JsAst};
@@ -34,10 +34,12 @@ fn is_valid_js_identifier(s: &str) -> bool {
     }
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
 }
-use oxc_ast::ast::IdentifierReference;
+use oxc_ast::ast::{IdentifierReference, Statement};
 use oxc_ast_visit::Visit;
-use svelte_ast::{Component, Node};
-use svelte_component_semantics::ReferenceId;
+use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
+use svelte_ast::{Component, FragmentId, FragmentRole, Node};
+use svelte_component_semantics::{ReferenceId, walk_bindings};
 
 use super::contextual;
 
@@ -149,6 +151,77 @@ impl<'a> Visit<'a> for BindThisRawParamCollector<'_, 'a> {
     }
 }
 
+fn derived_read_locality(data: &AnalysisData, ref_id: ReferenceId) -> SignalReadLocality {
+    if data.reactivity.is_element_local_derived_read(ref_id) {
+        SignalReadLocality::ElementFragmentLocal
+    } else {
+        SignalReadLocality::Cell
+    }
+}
+
+pub(super) fn collect_element_local_derived_reads<'a>(
+    component: &Component,
+    parsed: &JsAst<'a>,
+    data: &mut AnalysisData<'a>,
+) {
+    let mut owning: FxHashMap<FragmentId, SmallVec<[SymbolId; 2]>> = FxHashMap::default();
+    for node in component.store.iter_nodes() {
+        let Node::DeclarationTag(tag) = node else {
+            continue;
+        };
+        let Some(fragment) = component.store.node_fragment(tag.id) else {
+            continue;
+        };
+        if component.store.fragment(fragment).role != FragmentRole::Element {
+            continue;
+        }
+        let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(tag.declaration.id()) else {
+            continue;
+        };
+        for declarator in &decl.declarations {
+            walk_bindings(&declarator.id, |visit| {
+                if matches!(
+                    data.reactivity.binding_facts(visit.symbol),
+                    Some(BindingFacts::Derived(_) | BindingFacts::OptimizedDerived(_))
+                ) {
+                    owning.entry(fragment).or_default().push(visit.symbol);
+                }
+            });
+        }
+    }
+
+    if owning.is_empty() {
+        return;
+    }
+
+    for node in component.store.iter_nodes() {
+        let Node::ExpressionTag(tag) = node else {
+            continue;
+        };
+        let Some(fragment) = component.store.node_fragment(tag.id) else {
+            continue;
+        };
+        let Some(owning_syms) = owning.get(&fragment) else {
+            continue;
+        };
+        let Some(expr) = parsed.expr(tag.expression.id()) else {
+            continue;
+        };
+        for ref_id in contextual::expression_reference_ids(expr) {
+            let Some(sym) = data.scoping.symbol_for_reference(ref_id) else {
+                continue;
+            };
+            if !owning_syms.contains(&sym) {
+                continue;
+            }
+            let declaration_scope = data.scoping.semantics().symbol_scope_id(sym);
+            if data.scoping.get_reference(ref_id).scope_id() == declaration_scope {
+                data.reactivity.record_element_local_derived_read(ref_id);
+            }
+        }
+    }
+}
+
 pub(super) fn collect_symbol_semantics(data: &mut AnalysisData) {
     let symbols: Vec<SymbolId> = data.scoping.symbol_ids().collect();
 
@@ -238,6 +311,7 @@ fn classify_reference_semantics(
                 Some(ReferenceFacts::SignalRead {
                     kind: SignalReferenceKind::State(state.kind),
                     safe: state.var_declared,
+                    locality: SignalReadLocality::Cell,
                 })
             } else {
                 None
@@ -252,6 +326,7 @@ fn classify_reference_semantics(
                 Some(ReferenceFacts::SignalRead {
                     kind: SignalReferenceKind::Derived(derived.decl.kind),
                     safe: derived.decl.var_declared,
+                    locality: derived_read_locality(data, ref_id),
                 })
             } else {
                 None
@@ -333,6 +408,7 @@ fn classify_reference_semantics(
                     Some(ReferenceFacts::SignalRead {
                         kind: SignalReferenceKind::Derived(DerivedKind::Derived),
                         safe: false,
+                        locality: SignalReadLocality::Cell,
                     })
                 }
             } else {

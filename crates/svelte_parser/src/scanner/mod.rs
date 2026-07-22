@@ -522,6 +522,26 @@ impl<'a> Scanner<'a> {
         }
 
         let attributes = self.attributes()?;
+
+        if matches!(name, "script" | "style") && self.fragment_depth == 0 {
+            if !self.match_char('>') {
+                if self.is_at_end() {
+                    let len = self.bytes.len() as u32;
+                    return Err(Diagnostic::unexpected_end_of_file(Span::new(len, len)));
+                }
+                let pos = self.current as u32;
+                return Err(Diagnostic::error(
+                    svelte_diagnostics::DiagnosticKind::ExpectedToken { token: ">".into() },
+                    Span::new(pos, pos),
+                ));
+            }
+            return if name == "script" {
+                self.script_tag(&attributes, name_span)
+            } else {
+                self.style_tag(name_span)
+            };
+        }
+
         let self_closing = self.match_char('/') || is_void(name);
 
         if !self.match_char('>') {
@@ -543,15 +563,7 @@ impl<'a> Scanner<'a> {
         }
 
         if matches!(name, "script" | "style") && !self_closing {
-            return if self.fragment_depth == 0 {
-                if name == "script" {
-                    self.script_tag(&attributes, name_span)
-                } else {
-                    self.style_tag(name_span)
-                }
-            } else {
-                self.raw_text_element(name, name_span, attributes)
-            };
+            return self.raw_text_element(name, name_span, attributes);
         }
 
         if name == "textarea" && !self_closing {

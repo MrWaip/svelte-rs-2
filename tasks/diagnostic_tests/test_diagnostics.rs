@@ -2162,6 +2162,10 @@ mod each {
         "each/validate_each_animation_invalid_placement"
     );
     diagnostic_case!(
+        animate_nontrivial_sibling_invalid,
+        "each/animate_nontrivial_sibling_invalid"
+    );
+    diagnostic_case!(
         validate_each_animation_duplicate,
         "each/validate_each_animation_duplicate"
     );
@@ -2206,6 +2210,14 @@ mod snippets {
     diagnostic_case!(
         snippet_name_duplicate_instance_binding,
         "snippets/snippet_name_duplicate_instance_binding"
+    );
+    diagnostic_case!(
+        snippet_duplicate_same_element,
+        "snippets/snippet_duplicate_same_element"
+    );
+    diagnostic_case!(
+        snippet_duplicate_top_level,
+        "snippets/snippet_duplicate_top_level"
     );
     diagnostic_case!(
         validate_snippet_parameter_assignment,
@@ -2716,6 +2728,14 @@ mod compiler_errors {
     diagnostic_case!(each_key_without_as, "compiler_errors/each-key-without-as");
     diagnostic_case!(effect_active_rune, "compiler_errors/effect-active-rune");
     diagnostic_case!(element_invalid_name, "compiler_errors/element-invalid-name");
+    diagnostic_case!(
+        script_self_closing_expected_token,
+        "parser/script_self_closing_expected_token"
+    );
+    diagnostic_case!(
+        style_self_closing_expected_token,
+        "parser/style_self_closing_expected_token"
+    );
     diagnostic_case!(else_before_closing, "compiler_errors/else-before-closing");
     diagnostic_case!(
         else_before_closing_2,

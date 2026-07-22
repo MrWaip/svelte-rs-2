@@ -2,7 +2,7 @@ use std::mem;
 
 use compact_str::CompactString;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::Volatility;
+use svelte_analyze::{ElementPropertyReset, Volatility};
 use svelte_ast::{Attribute, Namespace, Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
@@ -197,6 +197,25 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .b
                     .call_stmt("$.replay_events", [Arg::Ident(&el_name)]),
             );
+        }
+        let needs_dir_reassert = match self
+            .ctx
+            .query
+            .analysis
+            .element_semantics
+            .query(el_id)
+            .property_reset()
+        {
+            ElementPropertyReset::Dir => true,
+            ElementPropertyReset::None | ElementPropertyReset::LazyLoadingImg => false,
+        };
+        if !is_ghost && needs_dir_reassert {
+            let b = &self.ctx.b;
+            let dir_assign = b.assign_stmt(
+                AssignLeft::StaticMember(b.static_member(b.rid_expr(&el_name), "dir")),
+                b.static_member_expr(b.rid_expr(&el_name), "dir"),
+            );
+            state.update.push(dir_assign);
         }
         if let Some(expr_id) = self.ctx.query.view.option_synthetic_value_expr(el_id) {
             self.emit_option_synthetic_value(state, &el_name, expr_id)?;

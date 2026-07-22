@@ -1062,6 +1062,7 @@ pub enum ReferenceSemantics {
     SignalRead {
         kind: SignalReferenceKind,
         safe: bool,
+        locality: SignalReadLocality,
     },
 
     SignalWrite {
@@ -1581,6 +1582,12 @@ pub enum SignalReferenceKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignalReadLocality {
+    Cell,
+    ElementFragmentLocal,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ContextualReadSemantics {
     pub kind: ContextualReadKind,
     pub owner_node: NodeId,
@@ -1671,6 +1678,7 @@ pub(crate) enum ReferenceFacts {
     SignalRead {
         kind: SignalReferenceKind,
         safe: bool,
+        locality: SignalReadLocality,
     },
     SignalWrite {
         kind: StateKind,
@@ -1844,6 +1852,8 @@ pub struct ReactivitySemantics {
 
     raw_param_reads: FxHashSet<ReferenceId>,
 
+    element_local_derived_reads: FxHashSet<ReferenceId>,
+
     each_rest_symbols: FxHashSet<SymbolId>,
 
     maybe_reactive_symbols: FxHashSet<SymbolId>,
@@ -1911,6 +1921,7 @@ impl ReactivitySemantics {
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
             contextual_owner: FxHashMap::default(),
             raw_param_reads: rustc_hash::FxHashSet::default(),
+            element_local_derived_reads: rustc_hash::FxHashSet::default(),
             each_item_indirect_sources: FxHashMap::default(),
             legacy_indirect_bindings: FxHashMap::default(),
             each_item_collection_store: FxHashMap::default(),
@@ -2234,9 +2245,14 @@ impl ReactivitySemantics {
 
     pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
         match self.lookup_reference_facts(ref_id) {
-            Some(ReferenceFacts::SignalRead { kind, safe }) => ReferenceSemantics::SignalRead {
+            Some(ReferenceFacts::SignalRead {
+                kind,
+                safe,
+                locality,
+            }) => ReferenceSemantics::SignalRead {
                 kind: *kind,
                 safe: *safe,
+                locality: *locality,
             },
             Some(ReferenceFacts::SignalWrite {
                 kind,
@@ -2644,6 +2660,14 @@ impl ReactivitySemantics {
         self.raw_param_reads.contains(&ref_id)
     }
 
+    pub(crate) fn record_element_local_derived_read(&mut self, ref_id: ReferenceId) {
+        self.element_local_derived_reads.insert(ref_id);
+    }
+
+    pub(crate) fn is_element_local_derived_read(&self, ref_id: ReferenceId) -> bool {
+        self.element_local_derived_reads.contains(&ref_id)
+    }
+
     pub(crate) fn add_each_item_indirect_source(
         &mut self,
         item_sym: SymbolId,
@@ -2696,6 +2720,12 @@ impl ReactivitySemantics {
 
     pub(crate) fn each_item_collection_store(&self, item_sym: SymbolId) -> Option<SymbolId> {
         self.each_item_collection_store.get(&item_sym).copied()
+    }
+
+    pub(crate) fn each_block_iterates_store(&self, each_id: NodeId) -> bool {
+        self.contextual_owner.iter().any(|(item_sym, owner)| {
+            *owner == each_id && self.each_item_collection_store.contains_key(item_sym)
+        })
     }
 
     pub(crate) fn set_each_item_index_legacy(&mut self, item_sym: SymbolId, index_sym: SymbolId) {

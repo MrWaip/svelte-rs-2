@@ -24,3 +24,8 @@ compiler_case!(
     "svelte_element/this_tag/expr_quoted_with_content"
 );
 compiler_case!(concat_text_expr, "svelte_element/this_tag/concat_text_expr");
+compiler_case!(
+    dev_tag_source_order_nested,
+    "svelte_element_this_tag/dev_tag_source_order_nested",
+    [prod, dev, ssr, ssr_dev]
+);

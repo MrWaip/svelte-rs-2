@@ -2,6 +2,7 @@ use std::iter;
 
 use oxc_ast::ast::Expression;
 use smallvec::SmallVec;
+use svelte_analyze::ElementPropertyReset;
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, Builder};
 
@@ -129,6 +130,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         state.template.push_comment(Some(data.clone()));
                     } else {
                         state.template.push_comment(Some(data.clone()));
+                        if is_sole_script_anchor(self, children, idx) {
+                            let _ = self.ctx.state.gen_ident("node");
+                        }
                         skipped += 1;
                     }
                 }
@@ -159,6 +163,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 }
 
+fn is_sole_script_anchor<'a, 'ctx>(cg: &Codegen<'a, 'ctx>, children: &[Child], idx: usize) -> bool {
+    if idx != 1 || children.len() != 2 {
+        return false;
+    }
+    let Child::Node(first) = children[0] else {
+        return false;
+    };
+    cg.ctx
+        .query
+        .analysis
+        .element_semantics
+        .query(first)
+        .is_script()
+}
+
 fn emit_child_node<'a, 'ctx>(
     cg: &mut Codegen<'a, 'ctx>,
     state: &mut EmitState<'a>,
@@ -175,7 +194,18 @@ fn emit_child_node<'a, 'ctx>(
                 &ctx.anchor,
                 FragmentAnchor::Child { parent_var } if parent_var.is_empty()
             );
-            let force_var = input_value_forces_var(el) && !parent_is_ghost;
+            let forces_reset_var = match cg
+                .ctx
+                .query
+                .analysis
+                .element_semantics
+                .query(id)
+                .property_reset()
+            {
+                ElementPropertyReset::Dir | ElementPropertyReset::LazyLoadingImg => true,
+                ElementPropertyReset::None => false,
+            };
+            let force_var = (input_value_forces_var(el) || forces_reset_var) && !parent_is_ghost;
             if !cg.ctx.needs_var(id) && !force_var {
                 cg.emit_element_ghost(state, ctx, id)?;
                 *skipped += 1;

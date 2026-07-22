@@ -7,6 +7,9 @@ use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 
 pub(super) fn collect_store_declarations(data: &mut AnalysisData) {
+    if data.script.is_standalone_module {
+        return;
+    }
     let root = data.scoping.root_scope_id();
 
     let mut candidates: Vec<(u32, String, Vec<ReferenceId>)> = Vec::new();

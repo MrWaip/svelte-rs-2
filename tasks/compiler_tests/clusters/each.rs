@@ -268,3 +268,8 @@ compiler_case!(
     keyed_key_is_item_prop_collection_immutable_guard,
     "each/keyed_key_is_item_prop_collection_immutable_guard"
 );
+compiler_case!(
+    animate_declaration_tag_sibling,
+    "each/animate_declaration_tag_sibling",
+    [prod, dev, ssr, ssr_dev]
+);

@@ -10,8 +10,8 @@ use svelte_ast::{
 use smallvec::SmallVec;
 
 use super::{
-    ElementReplayEvent, ElementSemantics, ElementSemanticsStore, RegularElementSemantics,
-    SvelteElementSemantics,
+    ElementPropertyReset, ElementReplayEvent, ElementSemantics, ElementSemanticsStore,
+    RegularElementSemantics, SvelteElementSemantics,
 };
 use compact_str::CompactString;
 
@@ -52,6 +52,8 @@ pub(crate) fn build(
                     let replay_events = replay_events(data, el);
                     let opaque_content =
                         data.elements.flags.is_customizable_select(el.id) || name == "noscript";
+                    let property_reset = element_property_reset(el);
+                    let is_script = name == "script";
                     store.set(
                         el.id,
                         ElementSemantics::RegularElement(RegularElementSemantics {
@@ -60,6 +62,8 @@ pub(crate) fn build(
                             value_role,
                             replay_events,
                             opaque_content,
+                            property_reset,
+                            is_script,
                         }),
                     );
                 }
@@ -94,6 +98,17 @@ pub(crate) fn build(
         }
     }
     store
+}
+
+fn element_property_reset(el: &Element) -> ElementPropertyReset {
+    let has_attribute = |name: &str| el.attributes.iter().any(|a| a.name() == Some(name));
+    if has_attribute("dir") {
+        return ElementPropertyReset::Dir;
+    }
+    if el.name == "img" && has_attribute("loading") {
+        return ElementPropertyReset::LazyLoadingImg;
+    }
+    ElementPropertyReset::None
 }
 
 fn title_inside_head(store: &AstStore, fragment_id: FragmentId) -> bool {

@@ -80,7 +80,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut bucket = HoistedBucket::default();
         let component = self.ctx.query.component;
         let fragment_nodes: &'a [NodeId] = &component.store.fragment(fragment_id).nodes;
-        let (children, raw_strategy) = prepare(fragment_nodes, &component.store, ctx, &mut bucket);
+        let (children, raw_strategy) = prepare(
+            fragment_nodes,
+            &component.store,
+            &self.ctx.query.analysis.element_semantics,
+            ctx,
+            &mut bucket,
+        );
         let strategy = self.refine_strategy(raw_strategy, ctx);
 
         let bucket_effectively_empty = if state.skip_snippets {
@@ -366,6 +372,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     self.process_children_with_prefix(state, ctx, &children, emitted_prefix_next)?;
                     needs_reset = state.last_fragment_needs_reset;
                 } else {
+                    if self.render_tag_uses_direct_anchor(id)
+                        && matches!(ctx.anchor, FragmentAnchor::CallbackParam { .. })
+                    {
+                        let _ = self.ctx.state.gen_ident_compact("fragment");
+                    }
                     let standalone = self.standalone_ctx_for_single(ctx, id);
                     let use_ctx = standalone.as_ref().unwrap_or(ctx);
                     self.emit_fragment_child(state, use_ctx, id)?;
@@ -898,12 +909,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 
     fn render_tag_uses_direct_anchor(&self, id: NodeId) -> bool {
-        if !matches!(
-            self.ctx.query.component.store.get(id),
-            svelte_ast::Node::RenderTag(_)
-        ) {
-            return false;
-        }
         match self.ctx.query.analysis.block_semantics(id) {
             svelte_analyze::BlockSemantics::Render(sem) => !sem.callee_volatility.is_volatile(),
             _ => false,

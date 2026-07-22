@@ -111,6 +111,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let (_children, strategy) = prepare(
             self.ctx.query.component.fragment_nodes(fragment_id),
             &self.ctx.query.component.store,
+            &self.ctx.query.analysis.element_semantics,
             ctx,
             &mut bucket,
         );

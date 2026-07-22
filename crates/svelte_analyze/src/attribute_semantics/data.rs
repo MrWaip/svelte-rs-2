@@ -329,6 +329,7 @@ pub struct ComponentBindSemantics {
     pub each_context_vars: SmallVec<[SymbolId; 4]>,
     pub ownership_root: Option<SymbolId>,
     pub each_item_store_backed: bool,
+    pub needs_binding_validation: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -386,6 +387,7 @@ pub struct ElementBindSemantics {
     pub group_reflection: Option<GroupReflection>,
     pub group_id: Option<u32>,
     pub needs_binding_validation: bool,
+    pub each_item_store_backed: bool,
     pub reflects_as_attribute: bool,
 }
 

@@ -1,7 +1,9 @@
 use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, Expression};
 use oxc_span::SPAN;
 use oxc_syntax::reference::ReferenceId;
-use svelte_analyze::{AnalysisData, BindingSemantics, ReferenceSemantics, SignalReferenceKind};
+use svelte_analyze::{
+    AnalysisData, BindingSemantics, ReferenceSemantics, SignalReadLocality, SignalReferenceKind,
+};
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::SymbolId;
 
@@ -28,9 +30,20 @@ fn reads_via_derived_getter(semantics: BindingSemantics) -> bool {
 }
 
 fn reads_runtime_derived(analysis: &AnalysisData<'_>, ref_id: ReferenceId) -> bool {
-    analysis
+    let reads_getter = analysis
         .symbol_for_reference(ref_id)
-        .is_some_and(|sym| reads_via_derived_getter(analysis.binding_semantics(sym)))
+        .is_some_and(|sym| reads_via_derived_getter(analysis.binding_semantics(sym)));
+    reads_getter && !reads_element_fragment_local(analysis, ref_id)
+}
+
+fn reads_element_fragment_local(analysis: &AnalysisData<'_>, ref_id: ReferenceId) -> bool {
+    matches!(
+        analysis.reference_semantics(ref_id),
+        ReferenceSemantics::SignalRead {
+            locality: SignalReadLocality::ElementFragmentLocal,
+            ..
+        }
+    )
 }
 
 pub fn store_base_symbol(analysis: &AnalysisData<'_>, store_symbol: SymbolId) -> Option<SymbolId> {
@@ -164,6 +177,7 @@ pub fn rewrite_identifier_read<'a>(
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::Derived(_),
             safe,
+            ..
         } if reads_runtime_derived(analysis, ref_id) => {
             let callee = b.rid_expr(id.name.as_str());
             *expr = if safe {

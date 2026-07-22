@@ -122,6 +122,7 @@ impl ScriptBodyAnalyzer<'_> {
             match node {
                 Expression::StaticMemberExpression(m) => node = m.object.get_inner_expression(),
                 Expression::ComputedMemberExpression(m) => node = m.object.get_inner_expression(),
+                Expression::PrivateFieldExpression(m) => node = m.object.get_inner_expression(),
                 _ => break,
             }
         }
@@ -204,10 +205,7 @@ impl<'a> Visit<'a> for ScriptBodyAnalyzer<'_> {
         let obj = match it {
             MemberExpression::StaticMemberExpression(m) => &m.object,
             MemberExpression::ComputedMemberExpression(m) => &m.object,
-            _ => {
-                walk_member_expression(self, it);
-                return;
-            }
+            MemberExpression::PrivateFieldExpression(m) => &m.object,
         };
         if !self.is_safe_expression_root(obj) {
             self.needs_context = true;

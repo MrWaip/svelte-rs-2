@@ -33,6 +33,7 @@ pub struct ScriptAnalysis {
     pub preserve_comments: bool,
     pub experimental_async: bool,
     pub dev: bool,
+    pub is_standalone_module: bool,
     pub ce_config: Option<svelte_parser::ParsedCeConfig>,
     pub blocker_data: BlockerData,
 }
@@ -50,6 +51,7 @@ impl ScriptAnalysis {
             preserve_comments: false,
             experimental_async: false,
             dev: false,
+            is_standalone_module: false,
             ce_config: None,
             blocker_data: BlockerData::default(),
         }

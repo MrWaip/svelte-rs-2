@@ -180,26 +180,6 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn take_class_template_literal(
-        &mut self,
-        class_attr_id: Option<NodeId>,
-        attributes: &'a [Attribute],
-    ) -> Option<Expression<'a>> {
-        let attr = class_attr_id.and_then(|id| self.find_attribute(attributes, id))?;
-        let Attribute::ExpressionAttribute(a) = attr else {
-            return None;
-        };
-        if !matches!(
-            self.js_arena.expr(a.expression.id()),
-            Some(Expression::TemplateLiteral(_))
-        ) {
-            return None;
-        }
-        let node_id = a.id;
-        let oxc_id = a.expression.id();
-        self.take_expr_by_oxc_id(node_id, oxc_id).ok()
-    }
-
     fn push_named_value(&mut self, name: &str, value: AttrValue<'a>) {
         match value {
             AttrValue::Static(s) => {
@@ -249,13 +229,9 @@ impl<'a> ServerCodegen<'a> {
             return Ok(());
         }
 
-        let template_expr = self.take_class_template_literal(class.attr, attributes);
-        let mut value_expr = match template_expr {
-            Some(expr) => expr,
-            None => match value {
-                AttrValue::Static(s) => self.b.str_expr(&s),
-                AttrValue::Dynamic(expr) => expr,
-            },
+        let mut value_expr = match value {
+            AttrValue::Static(s) => self.b.str_expr(&s),
+            AttrValue::Dynamic(expr) => expr,
         };
         if class.needs_clsx {
             value_expr = self.b.call_expr("$.clsx", [Arg::Expr(value_expr)]);
@@ -937,11 +913,16 @@ impl<'a> ServerCodegen<'a> {
     }
 
     fn attr_value_single(&mut self, attr_id: NodeId, expr_ref: &ExprRef) -> Result<AttrValue<'a>> {
-        if let Some(value) = self.analysis.expression_data(attr_id).and_then(|data| {
-            (data.references.is_empty() && data.declared_evaluation.is_defined_string())
-                .then(|| data.declared_evaluation.known_str())
-                .flatten()
-        }) {
+        let is_string_literal = self.js_arena.expr(expr_ref.id()).is_some_and(|expr| {
+            matches!(expr.get_inner_expression(), Expression::StringLiteral(_))
+        });
+        if is_string_literal
+            && let Some(value) = self.analysis.expression_data(attr_id).and_then(|data| {
+                (data.references.is_empty() && data.declared_evaluation.is_defined_string())
+                    .then(|| data.declared_evaluation.known_str())
+                    .flatten()
+            })
+        {
             return Ok(AttrValue::Static(value));
         }
         let expr = self.take_expression(attr_id, expr_ref)?;

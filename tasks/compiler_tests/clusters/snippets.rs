@@ -157,3 +157,8 @@ compiler_case!(
     declaration_runes_string_key,
     "snippets/declaration/runes/string_key"
 );
+compiler_case!(
+    deconflict_sibling_elements,
+    "snippets/deconflict_sibling_elements",
+    [prod, dev, ssr, ssr_dev]
+);

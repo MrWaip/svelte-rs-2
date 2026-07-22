@@ -17,8 +17,8 @@ use std::path::PathBuf;
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
     AnalysisData, BindingSemantics, ComponentBindOwnership, ComponentFrame, PropAccessors,
-    PropsInput, ReferenceSemantics, SignalReferenceKind, StateDeclarationSemantics, StateKind,
-    StoreBindings,
+    PropsInput, ReferenceSemantics, SignalReadLocality, SignalReferenceKind,
+    StateDeclarationSemantics, StateKind, StoreBindings,
 };
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::{JsOutput, SourcemapKind};
@@ -91,11 +91,13 @@ fn declaration_export_semantics(binding: BindingSemantics) -> ReferenceSemantics
         }) => ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(kind),
             safe: false,
+            locality: SignalReadLocality::Cell,
         },
         BindingSemantics::Derived(d) | BindingSemantics::OptimizedDerived(d) => {
             ReferenceSemantics::SignalRead {
                 kind: SignalReferenceKind::Derived(d.kind),
                 safe: false,
+                locality: SignalReadLocality::Cell,
             }
         }
         BindingSemantics::LegacyState(state) => ReferenceSemantics::LegacyStateRead {

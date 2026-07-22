@@ -498,26 +498,11 @@ pub(crate) fn build<'a>(
     }
 
     let (console_state_calls, non_primitive_assignment_values) = if dev {
-        collect_value_eval_facts(parsed, scoping, semantics, &by_symbol, Some(&evaluator))
+        collect_value_eval_facts(parsed, &evaluator)
     } else {
         (FxHashSet::default(), FxHashSet::default())
     };
 
-    ValueEvaluation {
-        by_symbol,
-        console_state_calls,
-        non_primitive_assignment_values,
-    }
-}
-
-pub(crate) fn build_module_console_calls<'a>(
-    parsed: &JsAst<'a>,
-    scoping: &ComponentScoping<'a>,
-    semantics: &ComponentSemantics<'a>,
-) -> ValueEvaluation {
-    let by_symbol = FxHashMap::default();
-    let (console_state_calls, non_primitive_assignment_values) =
-        collect_value_eval_facts(parsed, scoping, semantics, &by_symbol, None);
     ValueEvaluation {
         by_symbol,
         console_state_calls,
@@ -538,10 +523,7 @@ const CONSOLE_STATE_METHODS: [&str; 9] = [
 ];
 
 struct ConsoleStateWalk<'e, 'a> {
-    scoping: &'e ComponentScoping<'a>,
-    semantics: &'e ComponentSemantics<'a>,
-    by_symbol: &'e FxHashMap<SymbolId, Evaluation>,
-    evaluator: Option<&'e ValueEvaluator<'e, 'a>>,
+    evaluator: &'e ValueEvaluator<'e, 'a>,
     calls: FxHashSet<OxcNodeId>,
     non_primitive_assignments: FxHashSet<OxcNodeId>,
 }
@@ -556,8 +538,7 @@ impl<'e, 'a> Visit<'a> for ConsoleStateWalk<'e, 'a> {
 
     fn visit_assignment_expression(&mut self, assign: &AssignmentExpression<'a>) {
         if assign.left.as_member_expression().is_some()
-            && let Some(evaluator) = self.evaluator
-            && evaluator.evaluate(&assign.right).has_unknown()
+            && self.evaluator.evaluate(&assign.right).has_unknown()
         {
             self.non_primitive_assignments.insert(assign.node_id());
         }
@@ -586,46 +567,15 @@ impl<'e, 'a> ConsoleStateWalk<'e, 'a> {
     }
 
     fn arg_has_unknown(&self, expr: &Expression<'a>) -> bool {
-        if let Some(evaluator) = self.evaluator {
-            return evaluator.evaluate(expr).has_unknown();
-        }
-        match expr.get_inner_expression() {
-            Expression::StringLiteral(_)
-            | Expression::NumericLiteral(_)
-            | Expression::BooleanLiteral(_)
-            | Expression::NullLiteral(_)
-            | Expression::BigIntLiteral(_)
-            | Expression::TemplateLiteral(_) => false,
-            Expression::Identifier(id) => id
-                .reference_id
-                .get()
-                .and_then(|ref_id| self.scoping.symbol_for_reference(ref_id))
-                .map(|sym| self.evaluation(sym).has_unknown() || self.semantics.is_mutated(sym))
-                .unwrap_or(true),
-            Expression::UnaryExpression(_) | Expression::BinaryExpression(_) => false,
-            _ => true,
-        }
-    }
-
-    fn evaluation(&self, symbol: SymbolId) -> Evaluation {
-        match self.by_symbol.get(&symbol) {
-            Some(evaluation) => evaluation.clone(),
-            None => Evaluation::unknown(),
-        }
+        self.evaluator.evaluate(expr).has_unknown()
     }
 }
 
 fn collect_value_eval_facts<'e, 'a>(
     parsed: &JsAst<'a>,
-    scoping: &'e ComponentScoping<'a>,
-    semantics: &'e ComponentSemantics<'a>,
-    by_symbol: &'e FxHashMap<SymbolId, Evaluation>,
-    evaluator: Option<&'e ValueEvaluator<'e, 'a>>,
+    evaluator: &'e ValueEvaluator<'e, 'a>,
 ) -> (FxHashSet<OxcNodeId>, FxHashSet<OxcNodeId>) {
     let mut walker = ConsoleStateWalk {
-        scoping,
-        semantics,
-        by_symbol,
         evaluator,
         calls: FxHashSet::default(),
         non_primitive_assignments: FxHashSet::default(),
