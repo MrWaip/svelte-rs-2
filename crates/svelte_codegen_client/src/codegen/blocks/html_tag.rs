@@ -41,7 +41,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         sem: HtmlTagSemantics,
     ) -> Result<()> {
         let (anchor_name, is_controlled) = match &ctx.anchor {
-            FragmentAnchor::Child { parent_var } => (parent_var.to_string(), true),
+            FragmentAnchor::Child { parent_var }
+            | FragmentAnchor::ElementContentChild { parent_var } => (parent_var.to_string(), true),
             _ => (self.comment_anchor_node_name(state, ctx)?, false),
         };
 

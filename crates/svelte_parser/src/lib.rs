@@ -644,7 +644,7 @@ impl<'a> Parser<'a> {
 
         let root_nodes = component.fragment_nodes(component.root).to_vec();
 
-        Self::convert_slot_element_legacy(&mut component.store, &root_nodes);
+        Self::convert_slot_element_legacy(&mut component.store, &root_nodes, false);
         Self::convert_svelte_fragment_legacy(&mut component.store, &root_nodes);
         Self::convert_svelte_element(&mut component.store, &mut self.diagnostics, &root_nodes);
         Self::convert_svelte_boundary(&mut component.store, &root_nodes);

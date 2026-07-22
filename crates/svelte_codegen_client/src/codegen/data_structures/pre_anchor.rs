@@ -6,6 +6,7 @@ pub(crate) struct PreAnchor {
     pub needs_template_comment: bool,
     pub is_child: bool,
     pub parent_var: Option<CompactString>,
+    pub parent_is_content: bool,
     pub callback_param: Option<CompactString>,
     pub sibling_var: Option<CompactString>,
 }

@@ -29,6 +29,7 @@ use crate::codegen::CodegenError;
 
 pub(in crate::codegen) use legacy_slot_fragment::SlotFragmentOutcome;
 
+use super::anchor::child_anchor_arg;
 use super::data_structures::EmitState;
 use super::data_structures::{ConcatPart, FragmentAnchor, FragmentCtx};
 use super::{Codegen, Result};
@@ -1159,9 +1160,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         let el_name_hint = el.name.clone();
                         let prefix = self.element_ident_prefix(&el_name_hint);
                         let el_name = self.ctx.state.gen_ident(&prefix);
+                        let parent_is_content =
+                            matches!(ctx.anchor, FragmentAnchor::ElementContentChild { .. });
                         let b = &self.ctx.state.b;
+                        let parent_arg = child_anchor_arg(b, parent_var, parent_is_content);
                         state.init.push(
-                            b.var_stmt(&el_name, b.call_expr("$.child", [Arg::Ident(parent_var)])),
+                            b.var_stmt(&el_name, b.call_expr("$.child", [Arg::Expr(parent_arg)])),
                         );
                         self.emit_element(state, ctx, el_id, Some(&el_name))?;
                         state.last_fragment_needs_reset = true;
