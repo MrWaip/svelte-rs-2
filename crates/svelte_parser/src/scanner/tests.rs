@@ -209,6 +209,130 @@ fn unquoted_attribute_value_keeps_bare_slash_not_before_gt() {
 }
 
 #[test]
+fn tag_line_comment_between_attributes() {
+    let source = "<div\n\ta=\"1\"\n\t// a line comment\n\tb=\"2\"\n>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(
+        source,
+        &tokens[0],
+        "div",
+        vec![("a", "1"), ("b", "2")],
+        false,
+    );
+}
+
+#[test]
+fn tag_block_comment_between_attributes() {
+    let source = "<div a=\"1\" /* a block comment */ b=\"2\">";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(
+        source,
+        &tokens[0],
+        "div",
+        vec![("a", "1"), ("b", "2")],
+        false,
+    );
+}
+
+#[test]
+fn tag_block_comment_spanning_multiple_lines() {
+    let source = "<div a=\"1\" /* one\n\ttwo\n\tthree */ b=\"2\">";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(
+        source,
+        &tokens[0],
+        "div",
+        vec![("a", "1"), ("b", "2")],
+        false,
+    );
+}
+
+#[test]
+fn tag_comment_right_after_name() {
+    let source = "<div /* c */ a=\"1\">";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("a", "1")], false);
+}
+
+#[test]
+fn tag_comment_right_before_close() {
+    let source = "<div a=\"1\" /* trailing */>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("a", "1")], false);
+}
+
+#[test]
+fn tag_comment_before_self_close() {
+    let source = "<input /* c */ value=\"a\" />";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "input", vec![("value", "a")], true);
+}
+
+#[test]
+fn tag_multiple_consecutive_comments() {
+    let source = "<span /* one */ // two\n x=\"1\">";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "span", vec![("x", "1")], false);
+}
+
+#[test]
+fn tag_comment_on_component() {
+    let source = "<Comp /* c */ prop=\"a\" />";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "Comp", vec![("prop", "a")], true);
+}
+
+#[test]
+fn tag_unclosed_block_comment_reaches_end_of_file() {
+    let (_, diagnostics) = Scanner::new("<div /* unclosed").scan_tokens();
+
+    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+}
+
+#[test]
+fn tag_line_comment_eats_close_to_end_of_file() {
+    let (_, diagnostics) = Scanner::new("<div a=\"1\" // no newline before gt>").scan_tokens();
+
+    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+}
+
+#[test]
+fn top_level_script_tag_does_not_treat_comment_as_whitespace() {
+    let (_, diagnostics) = Scanner::new("<script /* c */>const x = 1;</script>").scan_tokens();
+
+    assert_has_diagnostic(
+        &diagnostics,
+        DiagnosticKind::ExpectedToken { token: ">".into() },
+    );
+}
+
+#[test]
+fn top_level_style_tag_does_not_treat_comment_as_whitespace() {
+    let (_, diagnostics) = Scanner::new("<style /* c */>a{}</style>").scan_tokens();
+
+    assert_has_diagnostic(
+        &diagnostics,
+        DiagnosticKind::ExpectedToken { token: ">".into() },
+    );
+}
+
+#[test]
+fn nested_script_tag_allows_comment_between_attributes() {
+    let source = "<div><script /* c */ src=\"a\"></script></div>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[1], "script", vec![("src", "a")], false);
+}
+
+#[test]
 fn attribute_tokens_capture_full_source_spans() {
     let source = "<div class='x' {...props} let:item={slotProps} on:click|once={handler} style:color|important {@attach attach} />";
     let mut scanner = Scanner::new(source);
@@ -532,6 +656,7 @@ fn each_block_no_as_with_index_and_key() {
     assert!(tokens[1].token_type == TokenType::EOF);
 }
 
+#[track_caller]
 fn assert_has_diagnostic(diagnostics: &[Diagnostic], err_kind: DiagnosticKind) {
     assert!(
         diagnostics.iter().any(|d| d.kind == err_kind),

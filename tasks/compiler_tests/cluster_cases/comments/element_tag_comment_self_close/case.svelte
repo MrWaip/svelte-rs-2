@@ -1,0 +1,1 @@
+<input /* comment */ value="a" />

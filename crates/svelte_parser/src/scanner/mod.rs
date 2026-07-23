@@ -13,6 +13,7 @@ use token::{
     StartTag, StyleDirective, Token, TokenType, TransitionDirective, UseDirective,
 };
 
+use memchr::memmem;
 use memchr::{memchr, memchr2};
 use svelte_diagnostics::Diagnostic;
 use svelte_span::{SPAN, Span};
@@ -528,9 +529,11 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        let attributes = self.attributes()?;
+        let is_top_level_script_or_style =
+            matches!(name, "script" | "style") && self.fragment_depth == 0;
+        let attributes = self.attributes(!is_top_level_script_or_style)?;
 
-        if matches!(name, "script" | "style") && self.fragment_depth == 0 {
+        if is_top_level_script_or_style {
             if !self.match_char('>') {
                 if self.is_at_end() {
                     let len = self.bytes.len() as u32;
@@ -590,7 +593,7 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn attributes(&mut self) -> Result<Vec<Attribute>, Diagnostic> {
+    fn attributes(&mut self, allow_comments: bool) -> Result<Vec<Attribute>, Diagnostic> {
         let mut attributes: Vec<Attribute> = Vec::with_capacity(4);
 
         loop {
@@ -601,7 +604,26 @@ impl<'a> Scanner<'a> {
                 break;
             };
 
-            if ch == '/' || ch == '>' {
+            if ch == '>' {
+                break;
+            }
+
+            if ch == '/' {
+                if allow_comments {
+                    match self.bytes.get(self.current + 1) {
+                        Some(b'/') => {
+                            self.current += 2;
+                            self.skip_line_comment_body();
+                            continue;
+                        }
+                        Some(b'*') => {
+                            self.current += 2;
+                            self.skip_block_comment_body();
+                            continue;
+                        }
+                        _ => break,
+                    }
+                }
                 break;
             }
 
@@ -1488,31 +1510,38 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn skip_js_line_comment(&mut self) {
-        while let Some(ch) = self.peek() {
-            if ch == '\n' || ch == '\r' {
-                break;
-            }
-            self.advance();
+    fn skip_line_comment_body(&mut self) {
+        match memchr2(b'\n', b'\r', &self.bytes[self.current..]) {
+            Some(off) => self.current += off,
+            None => self.current = self.bytes.len(),
         }
+    }
+
+    fn skip_block_comment_body(&mut self) -> bool {
+        match memmem::find(&self.bytes[self.current..], b"*/") {
+            Some(off) => {
+                self.current += off + 2;
+                true
+            }
+            None => {
+                self.current = self.bytes.len();
+                false
+            }
+        }
+    }
+
+    fn skip_js_line_comment(&mut self) {
+        self.skip_line_comment_body();
     }
 
     fn skip_js_block_comment(&mut self) {
         let start = self.current.saturating_sub(2);
-
-        while !self.is_at_end() {
-            if self.peek() == Some('*') && self.peek_next() == Some('/') {
-                self.advance();
-                self.advance();
-                return;
-            }
-            self.advance();
+        if !self.skip_block_comment_body() {
+            self.recover(Diagnostic::unexpected_end_of_file(Span::new(
+                start as u32,
+                self.current as u32,
+            )));
         }
-
-        self.recover(Diagnostic::unexpected_end_of_file(Span::new(
-            start as u32,
-            self.current as u32,
-        )));
     }
 
     fn skip_js_template(&mut self) -> Result<(), Diagnostic> {
