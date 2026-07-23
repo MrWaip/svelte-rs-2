@@ -1585,6 +1585,7 @@ pub enum SignalReferenceKind {
 pub enum SignalReadLocality {
     Cell,
     ElementFragmentLocal,
+    Detached,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1854,6 +1855,8 @@ pub struct ReactivitySemantics {
 
     element_local_derived_reads: FxHashSet<ReferenceId>,
 
+    detached_const_reads: FxHashSet<ReferenceId>,
+
     each_rest_symbols: FxHashSet<SymbolId>,
 
     maybe_reactive_symbols: FxHashSet<SymbolId>,
@@ -1922,6 +1925,7 @@ impl ReactivitySemantics {
             contextual_owner: FxHashMap::default(),
             raw_param_reads: rustc_hash::FxHashSet::default(),
             element_local_derived_reads: rustc_hash::FxHashSet::default(),
+            detached_const_reads: rustc_hash::FxHashSet::default(),
             each_item_indirect_sources: FxHashMap::default(),
             legacy_indirect_bindings: FxHashMap::default(),
             each_item_collection_store: FxHashMap::default(),
@@ -2666,6 +2670,14 @@ impl ReactivitySemantics {
 
     pub(crate) fn is_element_local_derived_read(&self, ref_id: ReferenceId) -> bool {
         self.element_local_derived_reads.contains(&ref_id)
+    }
+
+    pub(crate) fn record_detached_const_read(&mut self, ref_id: ReferenceId) {
+        self.detached_const_reads.insert(ref_id);
+    }
+
+    pub(crate) fn is_detached_const_read(&self, ref_id: ReferenceId) -> bool {
+        self.detached_const_reads.contains(&ref_id)
     }
 
     pub(crate) fn add_each_item_indirect_source(

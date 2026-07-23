@@ -222,6 +222,71 @@ pub(super) fn collect_element_local_derived_reads<'a>(
     }
 }
 
+fn emit_parent_fragment(component: &Component, fragment: FragmentId) -> Option<FragmentId> {
+    let frag = component.store.fragment(fragment);
+    let owner = frag.owner?;
+    if frag.role == FragmentRole::SnippetBody {
+        let containing = component.store.node_fragment(owner)?;
+        if component.store.fragment(containing).role == FragmentRole::ComponentChildren {
+            let component_node = component.store.fragment(containing).owner?;
+            return component.store.node_fragment(component_node);
+        }
+    }
+    component.store.node_fragment(owner)
+}
+
+fn const_read_is_detached(
+    component: &Component,
+    declaration_fragment: FragmentId,
+    read_fragment: FragmentId,
+) -> bool {
+    let mut cursor = Some(read_fragment);
+    while let Some(fragment) = cursor {
+        if fragment == declaration_fragment {
+            return false;
+        }
+        cursor = emit_parent_fragment(component, fragment);
+    }
+    true
+}
+
+pub(super) fn collect_detached_const_reads<'a>(
+    component: &Component,
+    parsed: &JsAst<'a>,
+    data: &mut AnalysisData<'a>,
+) {
+    for node in component.store.iter_nodes() {
+        let Node::ExpressionTag(tag) = node else {
+            continue;
+        };
+        let Some(read_fragment) = component.store.node_fragment(tag.id) else {
+            continue;
+        };
+        let Some(expr) = parsed.expr(tag.expression.id()) else {
+            continue;
+        };
+        for ref_id in contextual::expression_reference_ids(expr) {
+            let Some(sym) = data.scoping.symbol_for_reference(ref_id) else {
+                continue;
+            };
+            let owner_node = match data.reactivity.binding_facts(sym) {
+                Some(BindingFacts::Const(c) | BindingFacts::OptimizedConst(c))
+                    if !c.destructured =>
+                {
+                    c.owner_node
+                }
+                _ => continue,
+            };
+            let Some(declaration_fragment) = component.store.node_fragment(owner_node) else {
+                continue;
+            };
+            if const_read_is_detached(component, declaration_fragment, read_fragment) {
+                data.reactivity.record_detached_const_read(ref_id);
+            }
+        }
+    }
+}
+
 pub(super) fn collect_symbol_semantics(data: &mut AnalysisData) {
     let symbols: Vec<SymbolId> = data.scoping.symbol_ids().collect();
 
@@ -405,10 +470,15 @@ fn classify_reference_semantics(
                         owner_node: *owner_node,
                     })
                 } else {
+                    let locality = if data.reactivity.is_detached_const_read(ref_id) {
+                        SignalReadLocality::Detached
+                    } else {
+                        SignalReadLocality::Cell
+                    };
                     Some(ReferenceFacts::SignalRead {
                         kind: SignalReferenceKind::Derived(DerivedKind::Derived),
                         safe: false,
-                        locality: SignalReadLocality::Cell,
+                        locality,
                     })
                 }
             } else {

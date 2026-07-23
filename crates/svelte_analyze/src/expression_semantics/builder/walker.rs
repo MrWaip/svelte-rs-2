@@ -508,6 +508,16 @@ fn empty_data() -> ExpressionData {
     }
 }
 
+fn is_detached_const_read(expr: &Expression<'_>, ctx: &Ctx<'_, '_>) -> bool {
+    let Expression::Identifier(id) = expr else {
+        return false;
+    };
+    let Some(ref_id) = id.reference_id.get() else {
+        return false;
+    };
+    ctx.reactivity.is_detached_const_read(ref_id)
+}
+
 fn compute<'a>(
     expr: &Expression<'a>,
     ctx: &Ctx<'_, 'a>,
@@ -569,6 +579,11 @@ fn compute<'a>(
         }
     };
     let declared_evaluation = ctx.declared_evaluator.evaluate(expr);
+    let evaluation = if is_detached_const_read(expr, ctx) {
+        declared_evaluation.clone()
+    } else {
+        evaluation
+    };
     let data = ExpressionData {
         volatility,
         evaluation,

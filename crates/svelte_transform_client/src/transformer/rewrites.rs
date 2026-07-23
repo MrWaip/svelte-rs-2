@@ -13,7 +13,7 @@ use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_impor
 use svelte_analyze::{
     AnalysisData, BindingSemantics, CarrierMemberReadSemantics, ContextualReadKind,
     ContextualReadSemantics, DeclaratorSemantics, EachIndexStrategy, PropReferenceSemantics,
-    ReferenceSemantics, RuntimeRuneKind, StateKind,
+    ReferenceSemantics, RuntimeRuneKind, SignalReadLocality, StateKind,
 };
 use svelte_component_semantics::{ReferenceId, SymbolId};
 
@@ -86,6 +86,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 *expr = self.make_thunk_call(name.as_str());
                 true
             }
+            ReferenceSemantics::SignalRead {
+                locality: SignalReadLocality::Detached,
+                ..
+            } => true,
             ReferenceSemantics::SignalRead { safe: false, .. }
             | ReferenceSemantics::SignalWrite { .. }
             | ReferenceSemantics::SignalUpdate { safe: false, .. }

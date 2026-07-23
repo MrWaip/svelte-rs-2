@@ -257,6 +257,7 @@ pub(crate) fn build_v2<'a>(
     data.reactivity.reserve_references(reference_count);
     let bind_this_proxy_targets = references::collect_raw_param_reads(component, parsed, data);
     references::collect_element_local_derived_reads(component, parsed, data);
+    references::collect_detached_const_reads(component, parsed, data);
     references::collect_symbol_semantics(data);
     references::apply_bind_this_proxy_targets(data, &bind_this_proxy_targets);
     data.reactivity.classify_derived_sources();
