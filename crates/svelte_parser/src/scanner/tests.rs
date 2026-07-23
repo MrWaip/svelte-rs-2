@@ -1450,7 +1450,7 @@ fn assert_recovers(tokens: &[Token], diagnostics: &[Diagnostic], err_kind: Diagn
 fn scan_js_comment_starts(source: &str) -> Vec<u32> {
     let mut scanner = Scanner::new(source);
     let _ = scanner.scan_tokens();
-    let mut starts = scanner.take_js_comment_starts();
+    let mut starts = scanner.take_js_comment_expr_starts();
     starts.sort_unstable();
     starts
 }

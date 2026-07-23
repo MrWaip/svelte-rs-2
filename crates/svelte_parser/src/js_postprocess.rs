@@ -524,7 +524,7 @@ fn shift(value: u32, delta: i64) -> u32 {
     shifted as u32
 }
 
-fn shift_comments(comments: &mut [oxc_ast::Comment], delta: i64) {
+pub(crate) fn shift_comments(comments: &mut [oxc_ast::Comment], delta: i64) {
     for comment in comments {
         comment.span.start = shift(comment.span.start, delta);
         comment.span.end = shift(comment.span.end, delta);

@@ -1769,3 +1769,61 @@ fn all_whitespace_block_condition_reports_error_without_panicking_js_walker() {
         "{#if }\n{:else if }\n{:else }\n{/if}\n{#each }\n{/each}\n{#snippet }\n{/snippet}",
     );
 }
+
+#[track_caller]
+fn assert_template_ignore_comment(source: &str, attached_prefix: &str) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, jsast, _diags) = crate::parse_with_js(&alloc, source);
+    let comments = jsast.template_comments();
+    assert_eq!(
+        comments.len(),
+        1,
+        "expected exactly 1 template comment, got {}: {comments:?}",
+        comments.len(),
+    );
+    let comment = &comments[0];
+    let text = &component.source[comment.span.start as usize..comment.span.end as usize];
+    assert!(
+        text.contains("svelte-ignore"),
+        "template comment text: expected to contain svelte-ignore, got {text:?}",
+    );
+    let attached = &component.source[comment.attached_to as usize..];
+    assert!(
+        attached.starts_with(attached_prefix),
+        "attached_to at {}: expected statement starting with {attached_prefix:?}, got {:?}",
+        comment.attached_to,
+        &attached[..attached_prefix.len().min(attached.len())],
+    );
+}
+
+#[test]
+fn harvests_line_ignore_comment_in_event_handler() {
+    assert_template_ignore_comment(
+        "<button onclick={() => {\n\t// svelte-ignore ownership_invalid_mutation\n\ttest.test = 1;\n}}></button>",
+        "test.test = 1",
+    );
+}
+
+#[test]
+fn harvests_block_ignore_comment_in_event_handler() {
+    assert_template_ignore_comment(
+        "<button onclick={() => {\n\t/* svelte-ignore ownership_invalid_mutation */\n\ttest.test = 1;\n}}></button>",
+        "test.test = 1",
+    );
+}
+
+#[track_caller]
+fn assert_no_template_comment(source: &str) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, jsast, _diags) = crate::parse_with_js(&alloc, source);
+    assert!(
+        jsast.template_comments().is_empty(),
+        "expected no template comments, got {:?}",
+        jsast.template_comments(),
+    );
+}
+
+#[test]
+fn no_template_comment_when_expression_has_none() {
+    assert_no_template_comment("<button onclick={() => test.test = 1}></button>");
+}

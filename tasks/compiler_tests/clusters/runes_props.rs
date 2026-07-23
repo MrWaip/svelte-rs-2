@@ -93,22 +93,22 @@ compiler_case!(
 compiler_case!(
     ownership_ignore_mutation_handler,
     "runes/props/ownership_ignore_mutation_handler",
-    [prod, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     ownership_ignore_update_handler,
     "runes/props/ownership_ignore_update_handler",
-    [prod, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     ownership_ignore_mutation_handler_block_comment,
     "runes/props/ownership_ignore_mutation_handler_block_comment",
-    [prod, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     ownership_ignore_mutation_handler_mixed,
     "runes/props/ownership_ignore_mutation_handler_mixed",
-    [prod, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     ownership_ignore_mutation_script_guard,

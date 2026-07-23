@@ -275,7 +275,7 @@ impl<'a> Parser<'a> {
         let mut scanner = Scanner::new(self.source);
         let (tokens, scan_diagnostics) = scanner.scan_tokens();
         self.diagnostics.extend(scan_diagnostics);
-        let mut js_comment_expr_starts = scanner.take_js_comment_starts();
+        let mut js_comment_expr_starts = scanner.take_js_comment_expr_starts();
         js_comment_expr_starts.sort_unstable();
 
         let mut children_stack: Vec<Vec<NodeId>> = vec![vec![]];

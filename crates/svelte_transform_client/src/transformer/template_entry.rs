@@ -56,7 +56,7 @@ pub(crate) fn run_template<'a, 'b>(
         ident_gen,
         class_name_stack: Vec::new(),
         experimental_async: false,
-        ignore_query: IgnoreQuery::empty(),
+        ignore_query: IgnoreQuery::new(analysis),
         enclosing_stmt_start: Vec::new(),
         template_owner_node: None,
         rewrite_top_level_declarations: false,

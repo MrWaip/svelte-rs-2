@@ -156,6 +156,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
 
     fn enter_statement(&mut self, node: &mut Statement<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
+            self.enclosing_stmt_start.push(node.span().start);
             return;
         }
         if !self.runes
@@ -168,9 +169,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     }
 
     fn exit_statement(&mut self, _node: &mut Statement<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
         self.enclosing_stmt_start.pop();
     }
 

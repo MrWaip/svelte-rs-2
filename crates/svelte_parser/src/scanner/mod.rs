@@ -27,7 +27,7 @@ pub struct Scanner<'a> {
     current: usize,
     fragment_depth: usize,
     open_elements: Vec<&'a str>,
-    js_comment_starts: Vec<u32>,
+    js_comment_expr_starts: Vec<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,7 +64,7 @@ impl<'a> Scanner<'a> {
             start: 0,
             fragment_depth: 0,
             open_elements: Vec::with_capacity(32),
-            js_comment_starts: Vec::new(),
+            js_comment_expr_starts: Vec::new(),
         }
     }
 
@@ -87,8 +87,8 @@ impl<'a> Scanner<'a> {
         (tokens, diagnostics)
     }
 
-    pub(crate) fn take_js_comment_starts(&mut self) -> Vec<u32> {
-        mem::take(&mut self.js_comment_starts)
+    pub(crate) fn take_js_comment_expr_starts(&mut self) -> Vec<u32> {
+        mem::take(&mut self.js_comment_expr_starts)
     }
 
     fn recover(&mut self, diagnostic: Diagnostic) {
@@ -1416,7 +1416,7 @@ impl<'a> Scanner<'a> {
             Some(end) => {
                 let span = self.trimmed_span(start, end);
                 if scan.has_comment {
-                    self.js_comment_starts.push(span.start);
+                    self.js_comment_expr_starts.push(span.start);
                 }
                 Ok(span)
             }

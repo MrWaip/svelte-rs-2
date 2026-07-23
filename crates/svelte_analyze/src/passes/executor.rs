@@ -61,11 +61,13 @@ pub(crate) fn execute_pass<'a>(
             finalize_component_name::run(data);
         }
         super::PassKey::ScanIgnoreComments => {
-            if let Some(program) = &parsed.program
-                && options.dev
-            {
+            if options.dev {
+                if let Some(program) = &parsed.program {
+                    data.ignore
+                        .scan_program_comments(program, &component.source, runes);
+                }
                 data.ignore
-                    .scan_program_comments(program, &component.source, runes);
+                    .scan_comments(parsed.template_comments(), &component.source, runes);
             }
         }
         super::PassKey::ExtractCeConfig => {

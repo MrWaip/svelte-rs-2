@@ -9,7 +9,7 @@ use svelte_span::Span;
 
 use crate::js_postprocess::{
     process_binding_pattern, process_expression, process_formal_parameters, process_program,
-    process_statement, wrapper_delta,
+    process_statement, shift_comments, wrapper_delta,
 };
 
 fn parse_expression_as_program<'a>(
@@ -18,17 +18,20 @@ fn parse_expression_as_program<'a>(
     offset: u32,
     src_type: SourceType,
     typescript: bool,
-) -> Option<Expression<'a>> {
+) -> Option<(Expression<'a>, Vec<oxc_ast::Comment>)> {
     let result = OxcParser::new(alloc, source, src_type).parse();
     if !result.diagnostics.is_empty() || result.program.body.len() != 1 {
         return None;
     }
+    let delta = wrapper_delta(offset, 0, 0);
+    let mut comments: Vec<oxc_ast::Comment> = result.program.comments.to_vec();
+    shift_comments(&mut comments, delta);
     let Statement::ExpressionStatement(expr_stmt) = result.program.body.into_iter().next()? else {
         return None;
     };
     let mut expr = expr_stmt.unbox().expression;
-    process_expression(alloc, &mut expr, wrapper_delta(offset, 0, 0), typescript);
-    Some(expr)
+    process_expression(alloc, &mut expr, delta, typescript);
+    Some((expr, comments))
 }
 
 pub fn parse_expression_with_alloc<'a>(
@@ -36,18 +39,12 @@ pub fn parse_expression_with_alloc<'a>(
     source: &'a str,
     offset: u32,
     typescript: bool,
-    has_comment: bool,
 ) -> Result<Expression<'a>, Diagnostic> {
     let src_type = if typescript {
         SourceType::default().with_typescript(true)
     } else {
         SourceType::default()
     };
-    if has_comment
-        && let Some(expr) = parse_expression_as_program(alloc, source, offset, src_type, typescript)
-    {
-        return Ok(expr);
-    }
     let parser = OxcParser::new(alloc, source, src_type);
     let mut expr = parser.parse_expression().map_err(|_| {
         Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
@@ -68,6 +65,7 @@ pub(crate) fn parse_expression_tag_body<'a>(
     offset: u32,
     typescript: bool,
     has_comment: bool,
+    comments_sink: &mut Vec<oxc_ast::Comment>,
 ) -> ExpressionTagBody<'a> {
     let src_type = if typescript {
         SourceType::default().with_typescript(true)
@@ -75,8 +73,10 @@ pub(crate) fn parse_expression_tag_body<'a>(
         SourceType::default()
     };
     if has_comment
-        && let Some(expr) = parse_expression_as_program(alloc, source, offset, src_type, typescript)
+        && let Some((expr, comments)) =
+            parse_expression_as_program(alloc, source, offset, src_type, typescript)
     {
+        comments_sink.extend(comments);
         return ExpressionTagBody::Expression(expr);
     }
 

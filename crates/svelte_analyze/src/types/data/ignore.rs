@@ -43,10 +43,14 @@ impl IgnoreData {
         self.is_ignored_at_span(span_start, code.as_str())
     }
     pub fn scan_program_comments(&mut self, program: &Program<'_>, source: &str, runes: bool) {
+        self.scan_comments(&program.comments, source, runes);
+    }
+
+    pub fn scan_comments(&mut self, comments: &[oxc_ast::Comment], source: &str, runes: bool) {
         let src = source;
         let mut by_attached: FxHashMap<u32, FxHashSet<String>> = FxHashMap::default();
 
-        for comment in program.comments.iter() {
+        for comment in comments.iter() {
             let s = comment.span.start as usize;
             let e = comment.span.end as usize;
             if e > src.len() {
