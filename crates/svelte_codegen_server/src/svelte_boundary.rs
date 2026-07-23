@@ -201,7 +201,7 @@ impl<'a> ServerCodegen<'a> {
                 let mut local = Vec::new();
                 self.route_snippet(nid, &mut local)?;
                 for decl in local {
-                    self.push_stmt(decl);
+                    self.hoist_stmt(decl);
                 }
             }
         }

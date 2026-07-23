@@ -69,3 +69,24 @@ compiler_case!(
     boundary_children_text_first_guard,
     "boundary/children_text_first_guard"
 );
+
+compiler_case!(
+    boundary_snippet_order_regular_before_nested_failed,
+    "boundary/snippet_order_regular_before_nested_failed"
+);
+compiler_case!(
+    boundary_snippet_order_regular_after_nested_failed,
+    "boundary/snippet_order_regular_after_nested_failed"
+);
+compiler_case!(
+    boundary_snippet_order_multiple_regular,
+    "boundary/snippet_order_multiple_regular"
+);
+compiler_case!(
+    boundary_snippet_order_plain_boundary_guard,
+    "boundary/snippet_order_plain_boundary_guard"
+);
+compiler_case!(
+    boundary_snippet_order_pending_nested_guard,
+    "boundary/snippet_order_pending_nested_guard"
+);
