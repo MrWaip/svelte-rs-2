@@ -162,3 +162,39 @@ compiler_case!(
     "snippets/deconflict_sibling_elements",
     [prod, dev, ssr, ssr_dev]
 );
+
+compiler_case!(
+    in_element_direct_element_child_guard,
+    "snippets/in_element/direct_element_child_guard",
+    [prod, dev]
+);
+compiler_case!(
+    in_element_component_slot_prop_guard,
+    "snippets/in_element/component_slot_prop_guard",
+    [prod, dev]
+);
+compiler_case!(
+    in_element_dynamic_element_sibling_guard,
+    "snippets/in_element/dynamic_element_sibling_guard",
+    [prod, dev]
+);
+compiler_case!(
+    in_element_nested_element_toplevel,
+    "snippets/in_element/nested_element_toplevel",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    in_element_element_in_component_slot,
+    "snippets/in_element/element_in_component_slot",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    in_element_element_in_component_slot_args,
+    "snippets/in_element/element_in_component_slot_args",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    in_element_declaration_tag_nested,
+    "snippets/in_element/declaration_tag_nested",
+    [prod, dev, ssr, ssr_dev]
+);

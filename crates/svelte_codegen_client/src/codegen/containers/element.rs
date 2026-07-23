@@ -236,6 +236,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Vec<Expression<'a>>,
         );
         let mut block_wrap: Option<BlockWrap<'a>> = None;
+        let saved_skip_snippets = mem::replace(&mut state.skip_snippets, false);
 
         if !is_noscript && !self.ctx.query.view.is_void(el_id) {
             if self.ctx.is_customizable_select(el_id) {
@@ -323,6 +324,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
+        state.skip_snippets = saved_skip_snippets;
         state.init.extend(my_element_init);
         state.init.extend(my_pre_update);
         state.update.extend(my_element_update);
