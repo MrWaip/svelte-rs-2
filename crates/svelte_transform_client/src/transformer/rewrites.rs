@@ -433,32 +433,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 index_read,
             } => self
                 .rewrite_each_item_reassignment_update(node, item_sym, index_sym, index_read, ctx),
-            ReferenceSemantics::SignalUpdate {
-                store_unsub: Some(store_symbol),
-                ..
-            } => {
-                if !self.rewrite_signal_or_store_identifier_update(node) {
-                    return false;
-                }
-                let dollar_name = analysis.scoping.symbol_name(store_symbol).to_string();
-                let inner = self.b.move_expr(node);
-                *node = self.make_store_unsub(inner, &dollar_name);
-                true
-            }
             ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreUpdate { .. }
-            | ReferenceSemantics::LegacyStateUpdate { .. } => {
+            | ReferenceSemantics::LegacyStateUpdate { .. }
+            | ReferenceSemantics::LegacyStateSubscribedUpdate { .. } => {
                 self.rewrite_signal_or_store_identifier_update(node)
-            }
-            ReferenceSemantics::LegacyStateSubscribedUpdate { store_symbol, .. } => {
-                if !self.rewrite_signal_or_store_identifier_update(node) {
-                    return false;
-                }
-                let dollar_name = analysis.scoping.symbol_name(store_symbol).to_string();
-                let inner = self.b.move_expr(node);
-                *node = self.make_store_unsub(inner, &dollar_name);
-                true
             }
             ReferenceSemantics::PropMutation { .. } => self.rewrite_prop_identifier_update(node),
             ReferenceSemantics::NonReactive
