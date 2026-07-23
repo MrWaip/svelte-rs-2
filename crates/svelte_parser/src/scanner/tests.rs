@@ -1446,3 +1446,62 @@ fn assert_recovers(tokens: &[Token], diagnostics: &[Diagnostic], err_kind: Diagn
         tokens.last().map(|t| &t.token_type)
     );
 }
+
+fn scan_js_comment_starts(source: &str) -> Vec<u32> {
+    let mut scanner = Scanner::new(source);
+    let _ = scanner.scan_tokens();
+    let mut starts = scanner.take_js_comment_starts();
+    starts.sort_unstable();
+    starts
+}
+
+#[track_caller]
+fn assert_comment_expr_starts(source: &str, expected_prefixes: &[&str]) {
+    let starts = scan_js_comment_starts(source);
+    assert_eq!(
+        starts.len(),
+        expected_prefixes.len(),
+        "comment-bearing expr count: expected {} ({expected_prefixes:?}), got {} ({starts:?})",
+        expected_prefixes.len(),
+        starts.len(),
+    );
+    for (&start, prefix) in starts.iter().zip(expected_prefixes) {
+        let slice = &source[start as usize..];
+        assert!(
+            slice.starts_with(prefix),
+            "expr recorded at {start}: expected to start with {prefix:?}, got {:?}",
+            &slice[..prefix.len().min(slice.len())],
+        );
+    }
+}
+
+#[test]
+fn records_interpolation_line_comment() {
+    assert_comment_expr_starts("{ a // }\n + b }", &["a // }"]);
+}
+
+#[test]
+fn records_interpolation_block_comment() {
+    assert_comment_expr_starts("{ a /* } */ + b }", &["a /* } */"]);
+}
+
+#[test]
+fn records_event_handler_comment() {
+    let source = "<button onclick={() => {\n\t// svelte-ignore x\n\tfoo.bar = 1;\n}}></button>";
+    assert_comment_expr_starts(source, &["() =>"]);
+}
+
+#[test]
+fn ignores_expression_without_comment() {
+    assert_comment_expr_starts("{ a + b }", &[]);
+}
+
+#[test]
+fn records_only_comment_bearing_expression() {
+    assert_comment_expr_starts("{ x } { y /* c */ }", &["y /* c */"]);
+}
+
+#[test]
+fn ignores_comment_marker_inside_string() {
+    assert_comment_expr_starts(r#"{ "http://x" }"#, &[]);
+}

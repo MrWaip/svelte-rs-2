@@ -77,7 +77,7 @@ fn parse_directive_name_span<'a>(
     let name = component.source_text(name_span);
     let js = directive_name_to_js(name);
     let arena_js: &'a str = alloc.alloc_str(&js);
-    match parse_expression_with_alloc(alloc, arena_js, name_span.start, typescript) {
+    match parse_expression_with_alloc(alloc, arena_js, name_span.start, typescript, false) {
         Ok(expr) => {
             result.alloc_expr(name_span.start, expr);
         }
@@ -130,7 +130,8 @@ fn parse_span<'a>(
 ) {
     let source = component.source_text(span);
     let arena_source: &'a str = alloc.alloc_str(source);
-    match parse_expression_tag_body(alloc, arena_source, span.start, typescript) {
+    let has_comment = component.has_js_comment_at(span.start);
+    match parse_expression_tag_body(alloc, arena_source, span.start, typescript, has_comment) {
         ExpressionTagBody::Expression(expr) => {
             result.alloc_expr(span.start, expr);
         }

@@ -353,6 +353,8 @@ pub struct Component {
     pub options: Option<SvelteOptions>,
 
     pub source: String,
+
+    pub js_comment_expr_starts: Vec<u32>,
 }
 
 impl Component {
@@ -372,6 +374,7 @@ impl Component {
             css,
             options: None,
             source,
+            js_comment_expr_starts: Vec::new(),
         }
     }
 
@@ -386,7 +389,14 @@ impl Component {
             css: None,
             options: None,
             source,
+            js_comment_expr_starts: Vec::new(),
         }
+    }
+
+    pub fn has_js_comment_at(&self, expr_start: u32) -> bool {
+        self.js_comment_expr_starts
+            .binary_search(&expr_start)
+            .is_ok()
     }
 
     pub fn root_fragment(&self) -> &Fragment {

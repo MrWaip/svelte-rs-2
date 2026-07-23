@@ -27,6 +27,7 @@ pub struct Scanner<'a> {
     current: usize,
     fragment_depth: usize,
     open_elements: Vec<&'a str>,
+    js_comment_starts: Vec<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +49,7 @@ enum JsScanTerminator {
 struct JsScanResult {
     end: Option<usize>,
     await_clause: Option<&'static str>,
+    has_comment: bool,
 }
 
 impl<'a> Scanner<'a> {
@@ -62,6 +64,7 @@ impl<'a> Scanner<'a> {
             start: 0,
             fragment_depth: 0,
             open_elements: Vec::with_capacity(32),
+            js_comment_starts: Vec::new(),
         }
     }
 
@@ -82,6 +85,10 @@ impl<'a> Scanner<'a> {
         let tokens = mem::take(&mut self.tokens);
         let diagnostics = mem::take(&mut self.diagnostics);
         (tokens, diagnostics)
+    }
+
+    pub(crate) fn take_js_comment_starts(&mut self) -> Vec<u32> {
+        mem::take(&mut self.js_comment_starts)
     }
 
     fn recover(&mut self, diagnostic: Diagnostic) {
@@ -1404,8 +1411,15 @@ impl<'a> Scanner<'a> {
     fn collect_js_until_brace(&mut self) -> Result<Span, Diagnostic> {
         let start = self.current;
 
-        match self.scan_js_pattern(JsScanTerminator::SvelteBrace)?.end {
-            Some(end) => Ok(self.trimmed_span(start, end)),
+        let scan = self.scan_js_pattern(JsScanTerminator::SvelteBrace)?;
+        match scan.end {
+            Some(end) => {
+                let span = self.trimmed_span(start, end);
+                if scan.has_comment {
+                    self.js_comment_starts.push(span.start);
+                }
+                Ok(span)
+            }
             None => {
                 self.recover(Diagnostic::unexpected_end_of_file(Span::new(
                     self.current as u32,
@@ -1605,6 +1619,7 @@ impl<'a> Scanner<'a> {
         let mut result = JsScanResult {
             end: None,
             await_clause: None,
+            has_comment: false,
         };
 
         while let Some(ch) = self.peek() {
@@ -1633,11 +1648,13 @@ impl<'a> Scanner<'a> {
                     self.advance();
                     self.advance();
                     self.skip_js_line_comment();
+                    result.has_comment = true;
                 }
                 '/' if self.peek_next() == Some('*') => {
                     self.advance();
                     self.advance();
                     self.skip_js_block_comment();
+                    result.has_comment = true;
                 }
                 '/' if Self::regex_allowed(state) => {
                     self.advance();
