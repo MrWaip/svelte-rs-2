@@ -89,3 +89,36 @@ compiler_case!(
     lazy_prop_ref_binary_default,
     "runes/props/lazy_prop_ref_binary_default"
 );
+
+compiler_case!(
+    ownership_ignore_mutation_handler,
+    "runes/props/ownership_ignore_mutation_handler",
+    [prod, dev_todo, ssr, ssr_dev]
+);
+compiler_case!(
+    ownership_ignore_update_handler,
+    "runes/props/ownership_ignore_update_handler",
+    [prod, dev_todo, ssr, ssr_dev]
+);
+compiler_case!(
+    ownership_ignore_mutation_handler_block_comment,
+    "runes/props/ownership_ignore_mutation_handler_block_comment",
+    [prod, dev_todo, ssr, ssr_dev]
+);
+compiler_case!(
+    ownership_ignore_mutation_handler_mixed,
+    "runes/props/ownership_ignore_mutation_handler_mixed",
+    [prod, dev_todo, ssr, ssr_dev]
+);
+compiler_case!(
+    ownership_ignore_mutation_script_guard,
+    "runes/props/ownership_ignore_mutation_script_guard"
+);
+compiler_case!(
+    ownership_mutation_handler_wrapped_guard,
+    "runes/props/ownership_mutation_handler_wrapped_guard"
+);
+compiler_case!(
+    ownership_ignore_state_member_handler_guard,
+    "runes/props/ownership_ignore_state_member_handler_guard"
+);
