@@ -20,6 +20,7 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::block_semantics::data::BlockSemantics;
+use crate::utils::snippet::snippet_name_symbol;
 use crate::{AnalysisData, types::data::JsAst};
 
 pub fn validate(
@@ -392,7 +393,9 @@ fn validate_snippet_exports(
                 data.block_semantics(id),
                 BlockSemantics::Snippet(sem) if sem.placement.is_module_level()
             );
-            Some((snippet.name(&component.source), hoistable))
+            let name = snippet_name_symbol(parsed, snippet)
+                .map(|sym| data.scoping.semantics().symbol_name(sym))?;
+            Some((name, hoistable))
         })
         .collect();
 
@@ -447,7 +450,8 @@ fn validate_undefined_exports(
                 .store
                 .get(svelte_ast::NodeId(i))
                 .as_snippet_block()
-                .map(|s| s.name(&component.source))
+                .and_then(|s| snippet_name_symbol(parsed, s))
+                .map(|sym| data.scoping.semantics().symbol_name(sym))
         })
         .collect();
 

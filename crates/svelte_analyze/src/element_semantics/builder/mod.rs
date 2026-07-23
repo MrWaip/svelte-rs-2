@@ -31,7 +31,7 @@ pub(crate) fn build(
             let node = component.store.get(node_id);
             match node {
                 Node::SvelteBoundary(el) => {
-                    let boundary = boundary::classify(component, parsed, el);
+                    let boundary = boundary::classify(component, parsed, data, el);
                     store.set(el.id, ElementSemantics::Boundary(boundary));
                 }
                 Node::Element(el)

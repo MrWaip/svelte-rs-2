@@ -10,6 +10,7 @@ use crate::types::data::{
     AnalysisData, FragmentFacts, FragmentFactsEntry, NamespaceKind, RichContentFacts,
     RichContentFactsEntry, RichContentParentKind,
 };
+use crate::utils::snippet::snippet_name_symbol;
 use crate::walker::{TemplateVisitor, VisitContext};
 
 pub(crate) type FragmentBuckets = Vec<Option<Vec<NodeId>>>;
@@ -893,8 +894,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
         ctx.data.template.snippets.local_snippets.push(block.id);
-        let name = block.name(&self.component.source);
-        if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
+        if let Some(name_sym) = ctx
+            .parsed()
+            .and_then(|parsed| snippet_name_symbol(parsed, block))
+        {
             ctx.data
                 .template
                 .snippets

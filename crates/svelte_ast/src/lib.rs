@@ -645,16 +645,6 @@ pub struct SnippetBlock {
     pub body: FragmentId,
 }
 
-impl SnippetBlock {
-    pub fn name<'a>(&self, source: &'a str) -> &'a str {
-        let expr = &source[self.decl.span.start as usize..self.decl.span.end as usize];
-        match expr.find('(') {
-            Some(pos) => expr[..pos].trim_end(),
-            None => expr.trim_end(),
-        }
-    }
-}
-
 pub struct RenderTag {
     pub id: NodeId,
     pub span: Span,

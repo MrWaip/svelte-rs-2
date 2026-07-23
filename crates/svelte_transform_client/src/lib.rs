@@ -600,51 +600,63 @@ mod tests {
     use super::*;
     use oxc_allocator::Allocator;
     use oxc_ast::ast::Expression;
-    use svelte_analyze::{IdentGen, analyze};
+    use svelte_analyze::{AnalysisData, BlockSemantics, IdentGen, analyze};
     use svelte_ast::{Component, ExpressionTag, Node, SnippetBlock};
 
     fn find_snippet_block<'a>(
         fragment_id: FragmentId,
         component: &'a Component,
+        analysis: &AnalysisData,
         name: &str,
     ) -> Option<&'a SnippetBlock> {
         for &id in component.fragment_nodes(fragment_id) {
             match component.store.get(id) {
-                Node::SnippetBlock(block) if block.name(component.source.as_str()) == name => {
+                Node::SnippetBlock(block)
+                    if matches!(
+                        analysis.block_semantics(block.id),
+                        BlockSemantics::Snippet(sem)
+                            if analysis.scoping.semantics().symbol_name(sem.name) == name
+                    ) =>
+                {
                     return Some(block);
                 }
                 Node::IfBlock(block) => {
-                    if let Some(found) = find_snippet_block(block.consequent, component, name) {
+                    if let Some(found) =
+                        find_snippet_block(block.consequent, component, analysis, name)
+                    {
                         return Some(found);
                     }
                     if let Some(alt) = block.alternate
-                        && let Some(found) = find_snippet_block(alt, component, name)
+                        && let Some(found) = find_snippet_block(alt, component, analysis, name)
                     {
                         return Some(found);
                     }
                 }
                 Node::EachBlock(block) => {
-                    if let Some(found) = find_snippet_block(block.body, component, name) {
+                    if let Some(found) = find_snippet_block(block.body, component, analysis, name) {
                         return Some(found);
                     }
                     if let Some(fallback) = block.fallback
-                        && let Some(found) = find_snippet_block(fallback, component, name)
+                        && let Some(found) = find_snippet_block(fallback, component, analysis, name)
                     {
                         return Some(found);
                     }
                 }
                 Node::SnippetBlock(block) => {
-                    if let Some(found) = find_snippet_block(block.body, component, name) {
+                    if let Some(found) = find_snippet_block(block.body, component, analysis, name) {
                         return Some(found);
                     }
                 }
                 Node::Element(el) => {
-                    if let Some(found) = find_snippet_block(el.fragment, component, name) {
+                    if let Some(found) = find_snippet_block(el.fragment, component, analysis, name)
+                    {
                         return Some(found);
                     }
                 }
                 Node::ComponentNode(node) => {
-                    if let Some(found) = find_snippet_block(node.fragment, component, name) {
+                    if let Some(found) =
+                        find_snippet_block(node.fragment, component, analysis, name)
+                    {
                         return Some(found);
                     }
                 }
@@ -713,7 +725,7 @@ mod tests {
         };
         transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 
-        let snippet = find_snippet_block(component.root, &component, "withDefault")
+        let snippet = find_snippet_block(component.root, &component, &analysis, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
         let expr_tag = find_expr_tag(snippet.body, &component, "label")
             .unwrap_or_else(|| panic!("missing label expression"));
@@ -763,7 +775,7 @@ mod tests {
         };
         transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 
-        let snippet = find_snippet_block(component.root, &component, "withDefault")
+        let snippet = find_snippet_block(component.root, &component, &analysis, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
         let expr_tag = find_expr_tag(snippet.body, &component, "label")
             .unwrap_or_else(|| panic!("missing label expression"));

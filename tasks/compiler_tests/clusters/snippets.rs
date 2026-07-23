@@ -198,3 +198,7 @@ compiler_case!(
     "snippets/in_element/declaration_tag_nested",
     [prod, dev, ssr, ssr_dev]
 );
+compiler_case!(generic_simple, "snippets/generic/simple");
+compiler_case!(generic_constrained, "snippets/generic/constrained");
+compiler_case!(generic_complex_bracket, "snippets/generic/complex_bracket");
+compiler_case!(generic_absent_ts_guard, "snippets/generic/absent_ts_guard");

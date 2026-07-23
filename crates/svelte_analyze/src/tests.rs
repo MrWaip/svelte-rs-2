@@ -543,35 +543,36 @@ fn find_each_block<'a>(
 fn find_snippet_block<'a>(
     fragment: FragmentId,
     component: &'a Component,
+    data: &AnalysisData<'_>,
     name: &str,
 ) -> Option<&'a svelte_ast::SnippetBlock> {
     for id in frag_nodes(component, fragment) {
         match component.store.get(id) {
-            Node::SnippetBlock(block) if block.name(&component.source) == name => {
+            Node::SnippetBlock(block) if snippet_block_name(data, block.id) == Some(name) => {
                 return Some(block);
             }
             Node::ComponentNode(node) => {
-                if let Some(block) = find_snippet_block(node.fragment, component, name) {
+                if let Some(block) = find_snippet_block(node.fragment, component, data, name) {
                     return Some(block);
                 }
             }
             Node::Element(el) => {
-                if let Some(block) = find_snippet_block(el.fragment, component, name) {
+                if let Some(block) = find_snippet_block(el.fragment, component, data, name) {
                     return Some(block);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(block) = find_snippet_block(b.consequent, component, name) {
+                if let Some(block) = find_snippet_block(b.consequent, component, data, name) {
                     return Some(block);
                 }
                 if let Some(alt) = b.alternate
-                    && let Some(block) = find_snippet_block(alt, component, name)
+                    && let Some(block) = find_snippet_block(alt, component, data, name)
                 {
                     return Some(block);
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(block) = find_snippet_block(b.body, component, name) {
+                if let Some(block) = find_snippet_block(b.body, component, data, name) {
                     return Some(block);
                 }
             }
@@ -579,6 +580,13 @@ fn find_snippet_block<'a>(
         }
     }
     None
+}
+
+fn snippet_block_name<'a>(data: &'a AnalysisData<'_>, id: svelte_ast::NodeId) -> Option<&'a str> {
+    match data.block_semantics(id) {
+        BlockSemantics::Snippet(sem) => Some(data.scoping.semantics().symbol_name(sem.name)),
+        _ => None,
+    }
 }
 
 fn collect_runtime_behavior_directives(
@@ -1263,7 +1271,7 @@ fn assert_snippet_hoistable(
     expected: bool,
 ) {
     use crate::BlockSemantics;
-    let block = find_snippet_block(component.root, component, name)
+    let block = find_snippet_block(component.root, component, data, name)
         .unwrap_or_else(|| panic!("no SnippetBlock named '{name}'"));
     let actual = match data.block_semantics(block.id) {
         BlockSemantics::Snippet(s) => s.placement.is_module_level(),
@@ -5396,8 +5404,8 @@ fn fragment_facts_track_non_trivial_child_counts() {
         Node::ComponentNode(cn) => cn.fragment,
         _ => unreachable!(),
     };
-    let children_snippet =
-        find_snippet_block(component.root, &component, "children").expect("expected snippet");
+    let children_snippet = find_snippet_block(component.root, &component, &data, "children")
+        .expect("expected snippet");
     let span = find_element(component.root, &component, "span").expect("expected span");
     assert_eq!(data.fragment_child_count_by_id(widget_fragment_id), 7);
     assert!(data.fragment_has_non_trivial_children_by_id(widget_fragment_id));

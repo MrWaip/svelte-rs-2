@@ -2276,43 +2276,6 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn consume_balanced_parens(&mut self) -> bool {
-        let mut depth = 1u32;
-        while let Some(ch) = self.peek() {
-            self.advance();
-            match ch {
-                '(' => depth += 1,
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return true;
-                    }
-                }
-                '\'' | '"' | '`' if !self.consume_quoted(ch) => {
-                    return false;
-                }
-                _ => {}
-            }
-        }
-        false
-    }
-
-    fn consume_quoted(&mut self, quote: char) -> bool {
-        while let Some(ch) = self.peek() {
-            self.advance();
-            if ch == '\\' {
-                if !self.is_at_end() {
-                    self.advance();
-                }
-                continue;
-            }
-            if ch == quote {
-                return true;
-            }
-        }
-        false
-    }
-
     fn start_snippet_tag(&mut self) -> Result<(), Diagnostic> {
         self.skip_whitespace();
 
@@ -2326,28 +2289,8 @@ impl<'a> Scanner<'a> {
             )));
         }
 
-        self.skip_whitespace();
-
-        if self.peek() == Some('(') {
-            self.advance();
-            if !self.consume_balanced_parens() {
-                return Err(Diagnostic::error(
-                    svelte_diagnostics::DiagnosticKind::ExpectedToken { token: ")".into() },
-                    Span::new(self.current as u32, self.current as u32),
-                ));
-            }
-        }
-
-        let expression_span = self.span(expr_start, self.current);
-
-        self.skip_whitespace();
-
-        if !self.match_char('}') {
-            self.recover(Diagnostic::error(
-                svelte_diagnostics::DiagnosticKind::ExpectedToken { token: "}".into() },
-                Span::new(self.current as u32, self.current as u32),
-            ));
-        }
+        let rest = self.collect_js_until_brace()?;
+        let expression_span = self.span(expr_start, rest.end as usize);
 
         self.add_token(TokenType::StartSnippetTag(token::StartSnippetTag {
             expression_span,

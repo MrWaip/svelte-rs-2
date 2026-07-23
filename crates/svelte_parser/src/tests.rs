@@ -295,14 +295,8 @@ fn script_context_module_context_attribute() {
     assert_eq!(script.context, ScriptContext::Module);
 }
 
-fn assert_snippet_block(
-    c: &Component,
-    index: usize,
-    expected_name: &str,
-    expected_expression: &str,
-) {
+fn assert_snippet_block(c: &Component, index: usize, expected_expression: &str) {
     if let Node::SnippetBlock(sb) = node_at(c, index) {
-        assert_eq!(sb.name(&c.source), expected_name);
         assert_eq!(c.source_text(sb.decl.span), expected_expression);
     } else {
         panic!("expected SnippetBlock at index {index}");
@@ -325,19 +319,19 @@ fn snippet_block_basic() {
         0,
         "{#snippet greeting(name)}<p>Hello {name}</p>{/snippet}",
     );
-    assert_snippet_block(&c, 0, "greeting", "greeting(name)");
+    assert_snippet_block(&c, 0, "greeting(name)");
 }
 
 #[test]
 fn snippet_block_no_params() {
     let c = parse("{#snippet footer()}<p>footer</p>{/snippet}");
-    assert_snippet_block(&c, 0, "footer", "footer()");
+    assert_snippet_block(&c, 0, "footer()");
 }
 
 #[test]
 fn snippet_block_multiple_params() {
     let c = parse("{#snippet card(title, body)}<div>{title} {body}</div>{/snippet}");
-    assert_snippet_block(&c, 0, "card", "card(title, body)");
+    assert_snippet_block(&c, 0, "card(title, body)");
 }
 
 #[test]
@@ -361,7 +355,7 @@ fn render_tag_multiple_args() {
 #[test]
 fn snippet_and_render_together() {
     let c = parse("{#snippet greet(name)}<p>{name}</p>{/snippet}{@render greet(x)}");
-    assert_snippet_block(&c, 0, "greet", "greet(name)");
+    assert_snippet_block(&c, 0, "greet(name)");
     assert_render_tag(&c, 1, "greet(x)");
 }
 

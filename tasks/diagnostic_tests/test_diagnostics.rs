@@ -2812,8 +2812,6 @@ mod compiler_errors {
         legacy_no_const_update,
         "compiler_errors/legacy-no-const-update"
     );
-    diagnostic_case!(malformed_snippet, "compiler_errors/malformed-snippet");
-    diagnostic_case!(malformed_snippet_2, "compiler_errors/malformed-snippet-2");
     diagnostic_case!(multiple_styles, "compiler_errors/multiple-styles");
     diagnostic_case!(options_children, "compiler_errors/options-children");
     diagnostic_case!(

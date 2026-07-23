@@ -1,12 +1,14 @@
-use oxc_ast::ast::{BindingIdentifier, BindingPattern, Statement, VariableDeclarator};
-use svelte_ast::{Component, Node, SnippetBlock, SvelteBoundary};
+use svelte_ast::{Component, Node, SvelteBoundary};
 
 use super::super::{BoundaryBranch, BoundarySemantics};
+use crate::AnalysisData;
 use crate::types::data::JsAst;
+use crate::utils::snippet::snippet_name_symbol;
 
 pub(super) fn classify(
     component: &Component,
     parsed: &JsAst<'_>,
+    data: &AnalysisData<'_>,
     boundary: &SvelteBoundary,
 ) -> BoundarySemantics {
     let mut failed_snippet = BoundaryBranch::None;
@@ -18,7 +20,9 @@ pub(super) fn classify(
         let Node::SnippetBlock(block) = component.store.get(nid) else {
             continue;
         };
-        match snippet_name(parsed, block).as_deref() {
+        let name =
+            snippet_name_symbol(parsed, block).map(|sym| data.scoping.semantics().symbol_name(sym));
+        match name {
             Some("failed") => failed_snippet = BoundaryBranch::Snippet(nid),
             Some("pending") => pending_snippet = BoundaryBranch::Snippet(nid),
             _ => {}
@@ -43,26 +47,5 @@ fn pick(primary: BoundaryBranch, fallback: BoundaryBranch) -> BoundaryBranch {
     match primary {
         BoundaryBranch::None => fallback,
         other => other,
-    }
-}
-
-fn snippet_name(parsed: &JsAst<'_>, block: &SnippetBlock) -> Option<String> {
-    let stmt = parsed.stmt(block.decl.id())?;
-    let declarator = declarator_from_stmt(stmt)?;
-    let ident = binding_ident_of(&declarator.id)?;
-    Some(ident.name.to_string())
-}
-
-fn declarator_from_stmt<'a>(stmt: &'a Statement<'a>) -> Option<&'a VariableDeclarator<'a>> {
-    let Statement::VariableDeclaration(decl) = stmt else {
-        return None;
-    };
-    decl.declarations.first()
-}
-
-fn binding_ident_of<'a>(pattern: &'a BindingPattern<'a>) -> Option<&'a BindingIdentifier<'a>> {
-    match pattern {
-        BindingPattern::BindingIdentifier(ident) => Some(ident),
-        _ => None,
     }
 }

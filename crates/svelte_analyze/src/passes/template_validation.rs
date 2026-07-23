@@ -25,6 +25,7 @@ use crate::types::data::{
     BindHostKind, BindPropertyKind, BindTargetSemantics, BindingSemantics, ElementSizeKind,
 };
 use crate::utils::html_tree_validation::{is_tag_valid_with_ancestor, is_tag_valid_with_parent};
+use crate::utils::snippet::snippet_name_symbol;
 use crate::validate::attrs_have_duplicate;
 use crate::validate::const_assignment::constant_kind;
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
@@ -2572,23 +2573,33 @@ fn validate_snippet_shadowing_prop(block: &SnippetBlock, ctx: &mut VisitContext<
     let Node::ComponentNode(component) = ctx.store.get(parent.id) else {
         return;
     };
-    let snippet_name = block.name(ctx.source);
+    let Some(sym) = ctx
+        .parsed()
+        .and_then(|parsed| snippet_name_symbol(parsed, block))
+    else {
+        return;
+    };
+    let snippet_name = ctx.data.scoping.semantics().symbol_name(sym).to_string();
     if component
         .attributes
         .iter()
-        .any(|attr| named_component_attr(attr, snippet_name))
+        .any(|attr| named_component_attr(attr, &snippet_name))
     {
         ctx.warnings_mut().push(Diagnostic::error(
-            DiagnosticKind::SnippetShadowingProp {
-                prop: snippet_name.to_string(),
-            },
+            DiagnosticKind::SnippetShadowingProp { prop: snippet_name },
             block.decl.span,
         ));
     }
 }
 
 fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
-    if block.name(ctx.source) != "children" {
+    let Some(sym) = ctx
+        .parsed()
+        .and_then(|parsed| snippet_name_symbol(parsed, block))
+    else {
+        return;
+    };
+    if ctx.data.scoping.semantics().symbol_name(sym) != "children" {
         return;
     }
 
@@ -3161,7 +3172,10 @@ fn maybe_const_tag_invalid_reference(
             let Node::SnippetBlock(block) = ctx.store.get(parent.id) else {
                 continue;
             };
-            snippet_name = Some(block.name(ctx.source).to_string());
+            snippet_name = ctx
+                .parsed()
+                .and_then(|parsed| snippet_name_symbol(parsed, block))
+                .map(|sym| ctx.data.scoping.semantics().symbol_name(sym).to_string());
             continue;
         }
 

@@ -370,12 +370,13 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     let leading_ws = leading_whitespace_len(source);
     let trimmed = source.trim();
     let paren_pos = trimmed.find('(');
+    let ident_end = trimmed.find(['<', '(']).unwrap_or(trimmed.len());
+    let ident = trimmed[..ident_end].trim_end();
     let wrapped = if let Some(p) = paren_pos {
-        let name = &trimmed[..p];
         let params_with_parens = &trimmed[p..];
-        format!("{PREFIX}{name}{ASSIGN}{params_with_parens} => {{}}")
+        format!("{PREFIX}{ident}{ASSIGN}{params_with_parens} => {{}}")
     } else {
-        format!("{PREFIX}{trimmed}{ASSIGN}() => {{}}")
+        format!("{PREFIX}{ident}{ASSIGN}() => {{}}")
     };
     let wrapped_str: &'a str = alloc.alloc_str(&wrapped);
     let src_type = if typescript {
@@ -390,7 +391,6 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
     let mut stmt = result.program.body.into_iter().next()?;
 
     let name_prefix = PREFIX.len() as i64;
-    let params_prefix = (PREFIX.len() + ASSIGN.len()) as i64;
     if let Statement::VariableDeclaration(var_decl) = &mut stmt
         && let Some(declarator) = var_decl.declarations.first_mut()
     {
@@ -400,9 +400,11 @@ pub(crate) fn parse_snippet_decl_with_alloc<'a>(
             wrapper_delta(offset, leading_ws, name_prefix),
             typescript,
         );
-        if paren_pos.is_some()
+        if let Some(p) = paren_pos
             && let Some(Expression::ArrowFunctionExpression(arrow)) = &mut declarator.init
         {
+            let params_prefix =
+                (PREFIX.len() + ASSIGN.len()) as i64 + ident.len() as i64 - p as i64;
             process_formal_parameters(
                 alloc,
                 &mut arrow.params,
