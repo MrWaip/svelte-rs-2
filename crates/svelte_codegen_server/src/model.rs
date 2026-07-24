@@ -33,6 +33,7 @@ pub(crate) struct ServerCodegen<'a> {
     pub promise_index: u32,
     pub const_tag_blockers: HashMap<SymbolId, (String, u32)>,
     pub injected_css_text: Option<&'a str>,
+    pub emitted_snippet_names: Vec<&'a str>,
 }
 
 pub(crate) enum AsyncInterpolation<'a> {
@@ -72,6 +73,7 @@ impl<'a> ServerCodegen<'a> {
             promise_index: 0,
             const_tag_blockers: HashMap::new(),
             injected_css_text,
+            emitted_snippet_names: Vec::new(),
         }
     }
 

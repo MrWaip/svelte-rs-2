@@ -17,6 +17,17 @@ use crate::model::ServerCodegen;
 
 impl<'a> ServerCodegen<'a> {
     fn wrap_settled_loop(&self, inner_body: Vec<Statement<'a>>) -> Vec<Statement<'a>> {
+        let (snippets, inner_body): (Vec<Statement<'a>>, Vec<Statement<'a>>) =
+            inner_body.into_iter().partition(|stmt| {
+                matches!(
+                    stmt,
+                    Statement::FunctionDeclaration(f)
+                        if f.id.as_ref().is_some_and(|id| {
+                            self.emitted_snippet_names.contains(&id.name.as_str())
+                        })
+                )
+            });
+
         let b = &self.b;
         let render_inner = b.function_decl(
             b.bid("$$render_inner"),
@@ -39,13 +50,15 @@ impl<'a> ServerCodegen<'a> {
             .ast
             .expression_unary(SPAN, UnaryOperator::LogicalNot, b.rid_expr("$$settled"));
         let do_while = b.ast.statement_do_while(SPAN, loop_body, test);
-        vec![
+        let mut out = snippets;
+        out.extend([
             b.let_init_stmt("$$settled", b.bool_expr(true)),
             b.let_stmt("$$inner_renderer"),
             Statement::FunctionDeclaration(b.alloc(render_inner)),
             do_while,
             b.call_stmt("$$renderer.subsume", [Arg::Ident("$$inner_renderer")]),
-        ]
+        ]);
+        out
     }
 
     pub(crate) fn generate(mut self) -> Result<JsOutput> {
