@@ -15,6 +15,7 @@ use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{
     AnalysisData, AttributeSemantics, BlockSemantics, EachItemKind, HtmlBindKind, IdentGen, JsAst,
+    SkipCause,
 };
 use svelte_ast::{
     Attribute, Component, ConcatPart, EachBlock, ExprRef, FragmentId, LegacySlot, Node,
@@ -436,6 +437,13 @@ fn walk_component_like<'a>(
 fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &JsAst<'a>) {
     for attr in attrs {
         let owner = Some(attr.id());
+
+        if matches!(
+            ctx.analysis.attributes.get(attr.id()),
+            AttributeSemantics::Skip(SkipCause::TagCarrier)
+        ) {
+            continue;
+        }
 
         if let Attribute::BindDirective(bind) = attr {
             let bind_id = bind.expression.id();

@@ -1763,12 +1763,12 @@ compiler_case!(audit_svelte_element_modern_event_handler);
 
 compiler_case!(
     audit_svelte_element_async_tag_with_class_directive,
-    [prod, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
     audit_svelte_element_async_tag_with_spread,
-    [prod, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(audit_svelte_element_scoped_with_spread);
@@ -2302,7 +2302,7 @@ compiler_case!(transition_blockers);
 
 compiler_case!(animate_blockers);
 
-compiler_case!(async_svelte_element, [prod, dev_todo, ssr, ssr_dev]);
+compiler_case!(async_svelte_element, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(async_const_tag);
 

@@ -25,6 +25,11 @@ compiler_case!(
 );
 compiler_case!(concat_text_expr, "svelte_element/this_tag/concat_text_expr");
 compiler_case!(
+    async_tag_no_children,
+    "svelte_element/this_tag/async_tag_no_children",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
     dev_tag_source_order_nested,
     "svelte_element_this_tag/dev_tag_source_order_nested",
     [prod, dev, ssr, ssr_dev]
