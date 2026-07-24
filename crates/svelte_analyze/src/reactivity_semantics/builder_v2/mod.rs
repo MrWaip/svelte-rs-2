@@ -1455,6 +1455,9 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             if self.data.scoping.is_member_mutated(sym) {
                 continue;
             }
+            if self.data.scoping.is_reexported_specifier_local(sym) {
+                continue;
+            }
             let refs = self.data.scoping.get_resolved_reference_ids(sym).to_vec();
             if refs.is_empty() {
                 continue;
@@ -2188,7 +2191,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             BindingPattern::BindingIdentifier(ident) => {
                 let sym = ident.symbol_id.get()?;
                 let is_source = matches!(self.prop_lowering_mode, PropEmitMode::CustomElement)
-                    || self.data.scoping.is_mutated_any(sym);
+                    || self.data.scoping.is_mutated_any(sym)
+                    || self.data.scoping.is_reexported_specifier_local(sym);
                 let kind = if is_source {
                     if matches!(self.prop_lowering_mode, PropEmitMode::Standard) {
                         self.standard_prop_source_symbols.push(sym);
