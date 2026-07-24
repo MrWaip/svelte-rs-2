@@ -398,6 +398,7 @@ fn classify_reference_semantics(
             }
         }
         BindingFacts::Store(_) => None,
+        BindingFacts::LegacyPropsObject => None,
         BindingFacts::Prop(prop) => match &prop.kind {
             PropBindingKind::Source {
                 updated,

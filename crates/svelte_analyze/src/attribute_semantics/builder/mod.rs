@@ -269,7 +269,9 @@ fn reference_symbol_needs_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData, sym: Sy
         BindingSemantics::Contextual(ContextualBindingSemantics::EachIndex(
             EachIndexStrategy::Direct,
         )) => false,
-        BindingSemantics::NonReactive | BindingSemantics::LegacyApiExport => {
+        BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyPropsObject => {
             if ctx.snippets.snippet_by_symbol(sym).is_some() {
                 return true;
             }
@@ -349,6 +351,7 @@ fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool 
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -2138,6 +2141,7 @@ fn derive_each_context_vars(ctx: &Ctx<'_, '_>, d: &BindDirective) -> SmallVec<[S
             | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::LegacyApiExport
             | BindingSemantics::Unresolved => false,
         };

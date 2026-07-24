@@ -43,7 +43,8 @@ fn store_base_symbol(analysis: &AnalysisData<'_>, store_sym: SymbolId) -> Symbol
         | BindingSemantics::Contextual(_)
         | BindingSemantics::RuntimeRune { .. }
         | BindingSemantics::Unresolved
-        | BindingSemantics::LegacyApiExport => unreachable!(
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyPropsObject => unreachable!(
             "store_sym from ReferenceSemantics::Store* must classify as BindingSemantics::Store (set together by analyze store builder)"
         ),
     }
@@ -384,6 +385,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             ReferenceSemantics::PropMutation { .. } => {
                 self.rewrite_prop_identifier_assignment(node)
             }
+            ReferenceSemantics::LegacyPropsIdentifierRead => {
+                self.rewrite_legacy_props_identifier_target(node)
+            }
             ReferenceSemantics::NonReactive
             | ReferenceSemantics::Proxy
             | ReferenceSemantics::SignalRead { .. }
@@ -395,7 +399,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::ContextualRead(_)
             | ReferenceSemantics::CarrierMemberRead(_)
             | ReferenceSemantics::RestPropMemberRewrite
-            | ReferenceSemantics::LegacyPropsIdentifierRead
             | ReferenceSemantics::LegacyRestPropsIdentifierRead
             | ReferenceSemantics::LegacyStateRead { .. }
             | ReferenceSemantics::LegacyStateSubscribedRead { .. }
@@ -445,6 +448,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 self.rewrite_signal_or_store_identifier_update(node)
             }
             ReferenceSemantics::PropMutation { .. } => self.rewrite_prop_identifier_update(node),
+            ReferenceSemantics::LegacyPropsIdentifierRead => {
+                self.rewrite_legacy_props_identifier_update_target(node)
+            }
             ReferenceSemantics::NonReactive
             | ReferenceSemantics::Proxy
             | ReferenceSemantics::SignalRead { .. }
@@ -458,7 +464,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::ContextualRead(_)
             | ReferenceSemantics::CarrierMemberRead(_)
             | ReferenceSemantics::RestPropMemberRewrite
-            | ReferenceSemantics::LegacyPropsIdentifierRead
             | ReferenceSemantics::LegacyRestPropsIdentifierRead
             | ReferenceSemantics::LegacyStateRead { .. }
             | ReferenceSemantics::LegacyStateWrite
@@ -914,6 +919,28 @@ impl<'a> ComponentTransformer<'_, 'a> {
             self.build_compound_value(operator, left_read, right)
         };
         *node = self.b.call_expr(name.as_str(), [Arg::Expr(value)]);
+        true
+    }
+
+    fn rewrite_legacy_props_identifier_target(&self, node: &mut Expression<'a>) -> bool {
+        let Expression::AssignmentExpression(assign) = node else {
+            return false;
+        };
+        let AssignmentTarget::AssignmentTargetIdentifier(id) = &mut assign.left else {
+            return false;
+        };
+        id.name = self.b.alloc_str("$$sanitized_props").into();
+        true
+    }
+
+    fn rewrite_legacy_props_identifier_update_target(&self, node: &mut Expression<'a>) -> bool {
+        let Expression::UpdateExpression(upd) = node else {
+            return false;
+        };
+        let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &mut upd.argument else {
+            return false;
+        };
+        id.name = self.b.alloc_str("$$sanitized_props").into();
         true
     }
 

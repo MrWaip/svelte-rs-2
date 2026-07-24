@@ -323,6 +323,7 @@ fn declared_as_rune_or_prop(data: &AnalysisData, sym_id: SymbolId) -> bool {
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }

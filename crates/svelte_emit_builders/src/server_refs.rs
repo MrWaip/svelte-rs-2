@@ -17,6 +17,7 @@ fn reads_via_derived_getter(semantics: BindingSemantics) -> bool {
         | BindingSemantics::Prop(_)
         | BindingSemantics::LegacyBindableProp(_)
         | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyState(_)
         | BindingSemantics::Store(_)
         | BindingSemantics::Const(_)

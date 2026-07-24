@@ -230,7 +230,9 @@ fn build_dep_read<'a>(
         | BindingSemantics::DeclarationTag
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_) => b.rid_expr(name),
-        BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => b.rid_expr(name),
+        BindingSemantics::Unresolved
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyPropsObject => b.rid_expr(name),
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedDerived(_)

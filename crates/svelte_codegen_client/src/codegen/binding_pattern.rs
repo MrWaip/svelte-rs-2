@@ -533,6 +533,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 | BindingSemantics::MaybeReactive
                 | BindingSemantics::NonReactive
                 | BindingSemantics::LegacyApiExport
+                | BindingSemantics::LegacyPropsObject
                 | BindingSemantics::Unresolved => false,
             };
             if carried {

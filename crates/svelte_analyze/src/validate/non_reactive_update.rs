@@ -378,7 +378,9 @@ impl<'a> Visit<'a> for ReferenceVisitor<'_, '_> {
 
 fn is_reactive_binding(data: &AnalysisData<'_>, sym: ComponentSymbolId) -> bool {
     match data.binding_semantics(sym) {
-        BindingSemantics::NonReactive | BindingSemantics::Unresolved => false,
+        BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
+        | BindingSemantics::Unresolved => false,
         BindingSemantics::Prop(_)
         | BindingSemantics::State(_)
         | BindingSemantics::Derived(_)

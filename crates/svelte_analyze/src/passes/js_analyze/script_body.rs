@@ -111,6 +111,7 @@ impl ScriptBodyAnalyzer<'_> {
             | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::Contextual(_)
             | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::LegacyApiExport
             | BindingSemantics::Unresolved => true,
         }

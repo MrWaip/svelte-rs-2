@@ -287,6 +287,7 @@ fn symbol_is_store(binding: BindingSemantics) -> bool {
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::Unresolved => false,
     }
 }
@@ -351,6 +352,7 @@ fn derive_collection_source<'a>(
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     };

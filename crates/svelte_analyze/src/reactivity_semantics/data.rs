@@ -28,6 +28,8 @@ pub enum BindingSemantics {
 
     LegacyApiExport,
 
+    LegacyPropsObject,
+
     LegacyState(LegacyStateSemantics),
 
     Store(StoreBindingSemantics),
@@ -90,6 +92,7 @@ impl BindingSemantics {
             | BindingSemantics::RuntimeRune { .. }
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved
             | BindingSemantics::Contextual(
                 ContextualBindingSemantics::EachItem(_)
@@ -118,6 +121,7 @@ impl BindingSemantics {
             | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -141,6 +145,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -164,6 +169,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -186,6 +192,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -209,6 +216,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -232,6 +240,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -255,6 +264,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -277,6 +287,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -305,6 +316,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -328,6 +340,7 @@ impl BindingSemantics {
             | BindingSemantics::Contextual(_)
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -351,6 +364,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -374,6 +388,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => None,
         }
     }
@@ -381,7 +396,32 @@ impl BindingSemantics {
     pub(crate) fn is_legacy_api_export(&self) -> bool {
         match self {
             BindingSemantics::LegacyApiExport => true,
-            BindingSemantics::LegacyState(_)
+            BindingSemantics::LegacyPropsObject
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_legacy_props_object(&self) -> bool {
+        match self {
+            BindingSemantics::LegacyPropsObject => true,
+            BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyState(_)
             | BindingSemantics::Prop(_)
             | BindingSemantics::State(_)
             | BindingSemantics::Derived(_)
@@ -446,13 +486,14 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
 
     pub fn is_non_reactive(&self) -> bool {
         match self {
-            BindingSemantics::NonReactive => true,
+            BindingSemantics::NonReactive | BindingSemantics::LegacyPropsObject => true,
             BindingSemantics::Prop(_)
             | BindingSemantics::State(_)
             | BindingSemantics::Derived(_)
@@ -492,6 +533,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -515,6 +557,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => None,
         }
     }
@@ -538,6 +581,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => None,
         }
     }
@@ -561,6 +605,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => None,
         }
     }
@@ -1661,6 +1706,7 @@ pub(crate) enum BindingFacts {
 
     LegacyBindableProp(LegacyBindablePropSemantics),
     LegacyApiExport,
+    LegacyPropsObject,
 
     LegacyState(LegacyStateSemantics),
     Store(StoreBindingSemantics),
@@ -2765,6 +2811,10 @@ impl ReactivitySemantics {
         self.each_rest_symbols.contains(&sym)
     }
 
+    pub(crate) fn record_legacy_props_object_binding(&mut self, sym: SymbolId) {
+        self.write_binding(sym, BindingFacts::LegacyPropsObject);
+    }
+
     pub(crate) fn record_reference_semantics(
         &mut self,
         ref_id: ReferenceId,
@@ -2836,6 +2886,7 @@ impl ReactivitySemantics {
                 BindingSemantics::LegacyBindableProp(*legacy)
             }
             BindingFacts::LegacyApiExport => BindingSemantics::LegacyApiExport,
+            BindingFacts::LegacyPropsObject => BindingSemantics::LegacyPropsObject,
             BindingFacts::LegacyState(legacy) => BindingSemantics::LegacyState(*legacy),
             BindingFacts::Store(store) => BindingSemantics::Store(*store),
             BindingFacts::Const(kind) => BindingSemantics::Const(*kind),

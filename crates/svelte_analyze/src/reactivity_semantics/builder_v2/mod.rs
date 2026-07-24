@@ -266,6 +266,7 @@ pub(crate) fn build_v2<'a>(
     optimize_const_and_declaration_tags(component, parsed, data);
 
     legacy::register_legacy_synthetic_objects(data);
+    legacy::register_standalone_module_props_object(data);
     legacy::finalize_legacy_aggregates(data);
     legacy::finalize_runes_store_prop_defaults(data);
     legacy_reactive::classify_mutated_import_references(data);
@@ -484,7 +485,7 @@ fn is_promotable_legacy_let(
 ) -> bool {
     use super::data::BindingSemantics;
     let is_plain = match reactivity.binding_semantics(sym) {
-        BindingSemantics::NonReactive => true,
+        BindingSemantics::NonReactive | BindingSemantics::LegacyPropsObject => true,
         BindingSemantics::MaybeReactive
         | BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
@@ -1020,6 +1021,7 @@ fn reference_is_reactive(
             ReferenceReactivityMode::PropDefault => false,
         },
         BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::Unresolved
         | BindingSemantics::OptimizedRune(_) => match mode {
             ReferenceReactivityMode::General => !scoping.is_component_top_level_symbol(sym),

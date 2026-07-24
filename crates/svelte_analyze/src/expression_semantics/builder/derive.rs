@@ -45,6 +45,7 @@ fn binding_reads_through_props_object(semantics: BindingSemantics) -> bool {
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -117,7 +118,7 @@ pub(super) fn symbol_is_volatile(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
         BindingSemantics::Const(_) | BindingSemantics::DeclarationTag => true,
         BindingSemantics::OptimizedConst(_) | BindingSemantics::OptimizedDeclarationTag => false,
         BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-        BindingSemantics::NonReactive => {
+        BindingSemantics::NonReactive | BindingSemantics::LegacyPropsObject => {
             if !ctx.scoping.is_component_top_level_symbol(sym) {
                 return true;
             }
@@ -138,6 +139,7 @@ fn reads_legacy_props_object(facts: &ExprFacts) -> bool {
 fn is_unified_plain_symbol(reactivity: &ReactivitySemantics, sym_id: SymbolId) -> bool {
     match reactivity.binding_semantics(sym_id) {
         BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::Const(_)
         | BindingSemantics::OptimizedConst(_)
         | BindingSemantics::DeclarationTag
@@ -246,6 +248,7 @@ fn attr_read_is_volatile(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     };
@@ -280,6 +283,7 @@ fn is_reactive_component_binding(reactivity: &ReactivitySemantics, sym: SymbolId
     match reactivity.binding_semantics(sym) {
         BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::Unresolved => false,
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)

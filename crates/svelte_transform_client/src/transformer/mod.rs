@@ -32,8 +32,8 @@ pub(crate) use svelte_analyze::{
 
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, Class, ClassBody, Expression, ForOfStatement, Function, FunctionBody,
-    ObjectProperty, Statement, VariableDeclarator,
+    ArrowFunctionExpression, BindingIdentifier, Class, ClassBody, Expression, ForOfStatement,
+    Function, FunctionBody, ObjectProperty, Statement, VariableDeclarator,
 };
 use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
@@ -41,6 +41,22 @@ use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 use model::{ComponentTransformer, FunctionInfo};
 
 impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
+    fn enter_binding_identifier(
+        &mut self,
+        node: &mut BindingIdentifier<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        let Some(analysis) = self.analysis else {
+            return;
+        };
+        let Some(sym) = node.symbol_id.get() else {
+            return;
+        };
+        if analysis.binding_semantics(sym).is_legacy_props_object() {
+            node.name = self.b.alloc_str("$$sanitized_props").into();
+        }
+    }
+
     fn exit_class_body(&mut self, node: &mut ClassBody<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             return;

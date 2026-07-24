@@ -2998,6 +2998,7 @@ fn decl_is_bindable_target(decl: &BindingSemantics) -> bool {
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -3030,6 +3031,7 @@ fn decl_is_each_item(decl: &BindingSemantics) -> bool {
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -3062,6 +3064,7 @@ fn decl_is_each_contextual(decl: &BindingSemantics) -> bool {
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -3094,6 +3097,7 @@ fn decl_is_snippet_param(decl: &BindingSemantics) -> bool {
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -3158,6 +3162,7 @@ fn maybe_const_tag_invalid_reference(
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     };

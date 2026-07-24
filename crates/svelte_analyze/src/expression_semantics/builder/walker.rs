@@ -646,6 +646,7 @@ fn is_context_member_root(semantics: BindingSemantics) -> bool {
         | BindingSemantics::DeclarationTag
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -671,6 +672,7 @@ fn is_safe_member_root(reactivity: &ReactivitySemantics, sym: SymbolId) -> bool 
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => true,
     }

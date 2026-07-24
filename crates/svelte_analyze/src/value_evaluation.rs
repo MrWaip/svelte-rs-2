@@ -296,6 +296,7 @@ fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
         | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::LegacyState(_) => context == ReadContext::Runtime,
         BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::Const(_)
         | BindingSemantics::OptimizedConst(_)
@@ -1170,6 +1171,7 @@ fn eval_identifier(
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     };

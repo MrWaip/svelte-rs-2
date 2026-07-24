@@ -354,6 +354,37 @@ pub(super) fn register_legacy_synthetic_objects(data: &mut AnalysisData<'_>) {
         .set_legacy_unresolved_usage(uses_props, uses_rest_props);
 }
 
+pub(super) fn register_standalone_module_props_object(data: &mut AnalysisData<'_>) {
+    if !data.script.is_standalone_module {
+        return;
+    }
+
+    let mut rename_refs: Vec<ReferenceId> =
+        match data.scoping.root_unresolved_references().get(PROPS_NAME) {
+            Some(refs) => refs.clone(),
+            None => Vec::new(),
+        };
+
+    let props_symbols: Vec<SymbolId> = data
+        .scoping
+        .semantics()
+        .symbol_ids()
+        .filter(|&sym| data.scoping.semantics().symbol_name(sym) == PROPS_NAME)
+        .collect();
+
+    for &sym in &props_symbols {
+        rename_refs.extend_from_slice(data.scoping.get_resolved_reference_ids(sym));
+    }
+
+    for sym in props_symbols {
+        data.reactivity.record_legacy_props_object_binding(sym);
+    }
+    for ref_id in rename_refs {
+        data.reactivity
+            .record_reference_semantics(ref_id, ReferenceFacts::LegacyPropsIdentifierRead);
+    }
+}
+
 pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
     if data.script.runes() {
         return;

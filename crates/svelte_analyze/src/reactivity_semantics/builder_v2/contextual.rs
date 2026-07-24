@@ -597,6 +597,7 @@ fn collect_each_block_collection_sources_legacy(
                 | BindingFacts::OptimizedRune(_)
                 | BindingFacts::Prop(_)
                 | BindingFacts::LegacyApiExport
+                | BindingFacts::LegacyPropsObject
                 | BindingFacts::Store(_)
                 | BindingFacts::Const(_)
                 | BindingFacts::OptimizedConst(_)
