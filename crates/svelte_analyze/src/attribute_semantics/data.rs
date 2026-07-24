@@ -45,20 +45,25 @@ pub enum SkipCause {
 }
 
 impl AttributeSemantics {
-    pub fn is_event_or_binding(&self) -> bool {
+    pub fn skips_member_write_instrumentation(&self) -> bool {
         match self {
             AttributeSemantics::ElementBind(_)
             | AttributeSemantics::WindowBind(_)
             | AttributeSemantics::DocumentBind(_)
             | AttributeSemantics::ComponentBind(_)
             | AttributeSemantics::Event(_) => true,
+            AttributeSemantics::ComponentProp(prop) => match prop.carrier() {
+                ComponentPropCarrier::Component => true,
+                ComponentPropCarrier::SvelteSelf
+                | ComponentPropCarrier::SvelteComponentLegacy
+                | ComponentPropCarrier::SlotLegacy => false,
+            },
             AttributeSemantics::NonSpecial
             | AttributeSemantics::StaticAttr
             | AttributeSemantics::Skip(_)
             | AttributeSemantics::RuntimeBehavior
             | AttributeSemantics::Class(_)
             | AttributeSemantics::Style(_)
-            | AttributeSemantics::ComponentProp(_)
             | AttributeSemantics::ComponentCssProp(_)
             | AttributeSemantics::SvelteComponentThis(_)
             | AttributeSemantics::ComponentSpread(_)
@@ -258,16 +263,35 @@ pub enum ComponentPropSemantics {
     Concat(ComponentPropConcatSemantics),
 }
 
+impl ComponentPropSemantics {
+    pub fn carrier(&self) -> ComponentPropCarrier {
+        match self {
+            ComponentPropSemantics::Expression(expression) => expression.carrier,
+            ComponentPropSemantics::Concat(concat) => concat.carrier,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComponentPropCarrier {
+    Component,
+    SvelteSelf,
+    SvelteComponentLegacy,
+    SlotLegacy,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ComponentPropExpressionSemantics {
     pub memo: ComponentPropMemo,
     pub shorthand: bool,
+    pub carrier: ComponentPropCarrier,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ComponentPropConcatSemantics {
     pub memo: ComponentPropMemo,
     pub plan: SmallVec<[ConcatPartEmit; 4]>,
+    pub carrier: ComponentPropCarrier,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -83,7 +83,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        if !analysis.attributes.get(owner).is_event_or_binding() {
+        if !analysis
+            .attributes
+            .get(owner)
+            .skips_member_write_instrumentation()
+        {
             return false;
         }
         for ancestor in ctx.ancestors() {

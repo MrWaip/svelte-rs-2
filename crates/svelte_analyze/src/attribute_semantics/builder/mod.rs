@@ -2,13 +2,14 @@ use super::AttributeSemanticsStore;
 use super::data::{
     AttributeSemantics, BoundaryPropSemantics, ClassSemantics, ComponentAttachEmit,
     ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
-    ComponentCssPropValue, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
-    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
-    ConcatPartEmit, DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics,
-    ElementBindPropertyKind, ElementBindSemantics, EventHandler, EventSemantics, GroupBindValue,
-    GroupReflection, HandlerEffect, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SkipCause,
-    SpecialValueKind, SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics,
-    TemplateEffect, WindowBindSemantics, is_component_css_property,
+    ComponentCssPropValue, ComponentPropCarrier, ComponentPropConcatSemantics,
+    ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
+    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
+    DefaultAttrSemantics, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
+    EventHandler, EventSemantics, GroupBindValue, GroupReflection, HandlerEffect, HtmlBindKind,
+    HtmlConcatPart, HtmlConcatSemantics, SkipCause, SpecialValueKind, SpecialValueSemantics,
+    StyleSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
+    is_component_css_property,
 };
 use crate::expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
@@ -465,7 +466,7 @@ fn walk_fragment(
                     &cn.attributes,
                     store,
                     groups,
-                    ComponentPropCarrier::Component,
+                    ComponentPropCarrier::SvelteSelf,
                 );
                 walk_fragment(ctx, state, cn.fragment, store, groups);
                 for slot in &cn.legacy_slots {
@@ -1525,13 +1526,6 @@ fn element_property(name: &str) -> Option<ElementBindPropertyKind> {
     })
 }
 
-#[derive(Copy, Clone)]
-enum ComponentPropCarrier {
-    Component,
-    SvelteComponentLegacy,
-    SlotLegacy,
-}
-
 fn classify_component_attrs(
     ctx: &Ctx<'_, '_>,
     state: &WalkState,
@@ -1614,7 +1608,11 @@ fn classify_component_attrs(
                 store.set(
                     ea.id,
                     AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(
-                        ComponentPropExpressionSemantics { memo, shorthand },
+                        ComponentPropExpressionSemantics {
+                            memo,
+                            shorthand,
+                            carrier,
+                        },
                     )),
                 );
             }
@@ -1635,7 +1633,11 @@ fn classify_component_attrs(
                 store.set(
                     ca.id,
                     AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(
-                        ComponentPropConcatSemantics { memo, plan },
+                        ComponentPropConcatSemantics {
+                            memo,
+                            plan,
+                            carrier,
+                        },
                     )),
                 );
             }
@@ -2037,9 +2039,9 @@ fn derive_component_prop_memo_core(
         ComponentPropMemo::Getter
     } else if needs_wrap {
         match carrier {
-            ComponentPropCarrier::Component | ComponentPropCarrier::SvelteComponentLegacy => {
-                ComponentPropMemo::Derived
-            }
+            ComponentPropCarrier::Component
+            | ComponentPropCarrier::SvelteSelf
+            | ComponentPropCarrier::SvelteComponentLegacy => ComponentPropMemo::Derived,
             ComponentPropCarrier::SlotLegacy => ComponentPropMemo::Getter,
         }
     } else {
