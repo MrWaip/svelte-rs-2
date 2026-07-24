@@ -145,6 +145,7 @@ pub fn parse_script_with_alloc<'a>(
     source: &'a str,
     offset: u32,
     typescript: bool,
+    is_module: bool,
 ) -> Result<Program<'a>, Vec<Diagnostic>> {
     let source_type = if typescript {
         SourceType::mjs().with_typescript(true)
@@ -165,7 +166,13 @@ pub fn parse_script_with_alloc<'a>(
     }
 
     let mut program = result.program;
-    process_program(alloc, &mut program, wrapper_delta(offset, 0, 0), typescript);
+    process_program(
+        alloc,
+        &mut program,
+        wrapper_delta(offset, 0, 0),
+        typescript,
+        is_module,
+    );
     Ok(program)
 }
 

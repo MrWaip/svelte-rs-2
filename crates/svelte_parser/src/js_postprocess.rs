@@ -20,14 +20,16 @@ pub(crate) struct JsPostprocessor<'a> {
     alloc: &'a Allocator,
     delta: i64,
     strip_ts: bool,
+    is_module: bool,
 }
 
 impl<'a> JsPostprocessor<'a> {
-    fn new(alloc: &'a Allocator, delta: i64, strip_ts: bool) -> Self {
+    fn new(alloc: &'a Allocator, delta: i64, strip_ts: bool, is_module: bool) -> Self {
         Self {
             alloc,
             delta,
             strip_ts,
+            is_module,
         }
     }
 
@@ -159,11 +161,14 @@ impl<'a> JsPostprocessor<'a> {
     fn filter_statements(&self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
         for stmt in stmts.iter_mut() {
             match stmt {
-                Statement::ImportDeclaration(import) => {
+                Statement::ImportDeclaration(import) if !import.import_kind.is_type() => {
                     if let Some(specs) = &mut import.specifiers {
                         specs.retain(|spec| {
                             !matches!(spec, ImportDeclarationSpecifier::ImportSpecifier(s) if s.import_kind.is_type())
                         });
+                        if self.is_module && specs.is_empty() {
+                            import.specifiers = None;
+                        }
                     }
                 }
                 Statement::ExportNamedDeclaration(export) if export.declaration.is_none() => {
@@ -537,9 +542,10 @@ pub(crate) fn process_program<'a>(
     program: &mut Program<'a>,
     delta: i64,
     strip_ts: bool,
+    is_module: bool,
 ) {
     normalize_empty_import_specifiers(program);
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, is_module);
     v.visit_program(program);
     if delta != 0 {
         shift_comments(&mut program.comments, delta);
@@ -569,7 +575,7 @@ pub(crate) fn process_expression<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, false);
     v.visit_expression(expr);
 }
 
@@ -579,7 +585,7 @@ pub(crate) fn process_statement<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, false);
     v.visit_statement(stmt);
 }
 
@@ -589,7 +595,7 @@ pub(crate) fn process_binding_pattern<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, false);
     v.visit_binding_pattern(pat);
 }
 
@@ -599,7 +605,7 @@ pub(crate) fn process_formal_parameters<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, false);
     v.visit_formal_parameters(params);
 }
 

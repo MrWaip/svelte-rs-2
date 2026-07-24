@@ -1298,7 +1298,7 @@ mod js_parse_tests {
         let source = "let count = $state(0); const name = 'test';";
         let arena_source = alloc.alloc_str(source);
         let program =
-            parse_script_with_alloc(&alloc, arena_source, 0, false).expect("test invariant");
+            parse_script_with_alloc(&alloc, arena_source, 0, false, false).expect("test invariant");
         assert!(!program.body.is_empty());
     }
 
@@ -1308,7 +1308,7 @@ mod js_parse_tests {
         let source = "export const PI = 3.14; export function greet(name) { return name; }";
         let arena_source = alloc.alloc_str(source);
         let program =
-            parse_script_with_alloc(&alloc, arena_source, 0, false).expect("test invariant");
+            parse_script_with_alloc(&alloc, arena_source, 0, false, false).expect("test invariant");
         assert!(!program.body.is_empty());
     }
 }

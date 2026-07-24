@@ -25,7 +25,8 @@ pub(crate) fn parse_js<'a>(
     if let Some(script) = &component.instance_script {
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts) {
+        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts, false)
+        {
             Ok(program) => {
                 result.program = Some(program);
                 result.script_content_span = Some(script.content_span);
@@ -38,7 +39,8 @@ pub(crate) fn parse_js<'a>(
     if let Some(script) = &component.module_script {
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts) {
+        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts, false)
+        {
             Ok(program) => {
                 result.module_program = Some(program);
                 result.module_script_content_span = Some(script.content_span);

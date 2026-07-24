@@ -81,3 +81,40 @@ compiler_case!(
     module_export_export_type_only,
     "typescript/module_export/export_type_only"
 );
+
+compiler_module_case!(
+    module_import_named_type_only_keeps_side_effect,
+    "typescript/module_import/named_type_only_keeps_side_effect"
+);
+compiler_module_case!(
+    module_import_named_type_alias_keeps_side_effect,
+    "typescript/module_import/named_type_alias_keeps_side_effect"
+);
+compiler_module_case!(
+    module_import_named_all_type_keeps_side_effect,
+    "typescript/module_import/named_all_type_keeps_side_effect"
+);
+compiler_module_case!(
+    module_import_import_type_decl_erased_guard,
+    "typescript/module_import/import_type_decl_erased_guard"
+);
+compiler_module_case!(
+    module_import_named_mixed_keeps_value_guard,
+    "typescript/module_import/named_mixed_keeps_value_guard"
+);
+compiler_module_case!(
+    module_import_bare_side_effect_guard,
+    "typescript/module_import/bare_side_effect_guard"
+);
+compiler_module_case!(
+    module_import_default_with_type_named_guard,
+    "typescript/module_import/default_with_type_named_guard"
+);
+compiler_module_case!(
+    module_import_reexport_type_only_erased_guard,
+    "typescript/module_import/reexport_type_only_erased_guard"
+);
+compiler_module_case!(
+    module_import_reexport_mixed_keeps_value_guard,
+    "typescript/module_import/reexport_mixed_keeps_value_guard"
+);

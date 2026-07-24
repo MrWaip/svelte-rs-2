@@ -34,7 +34,7 @@ pub fn parse_module<'a>(
     is_ts: bool,
 ) -> Result<Program<'a>, Vec<Diagnostic>> {
     let arena_source: &'a str = alloc.alloc_str(source);
-    parse_js::parse_script_with_alloc(alloc, arena_source, 0, is_ts)
+    parse_js::parse_script_with_alloc(alloc, arena_source, 0, is_ts, true)
 }
 
 pub fn parse_with_js<'a>(
