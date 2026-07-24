@@ -70,13 +70,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let expr = coarse_wrap(self.ctx, expr, data.as_ref());
                 items.push(PropOrSpread::Prop(ObjProp::Getter(key, expr)));
             }
-            ComponentPropMemo::Inline if shorthand => {
-                items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
-            }
             ComponentPropMemo::Inline => {
                 let data = self.ctx.expression_data(attr_id).cloned();
                 let expr = coarse_wrap(self.ctx, expr, data.as_ref());
-                items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, expr)));
+                if shorthand && expr_prints_as_ident(&expr, name) {
+                    items.push(PropOrSpread::Prop(ObjProp::Shorthand(key)));
+                } else {
+                    items.push(PropOrSpread::Prop(ObjProp::KeyValue(key, expr)));
+                }
             }
         }
         Ok(())
@@ -169,6 +170,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         Ok(self.ctx.b.template_parts_expr(tpl_parts))
     }
+}
+
+fn expr_prints_as_ident(expr: &Expression<'_>, name: &str) -> bool {
+    matches!(expr, Expression::Identifier(ident) if ident.name == name)
 }
 
 fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {

@@ -1,6 +1,16 @@
 use super::*;
 
 compiler_case!(
+    const_tag_value_known_shorthand,
+    "component_props/const_tag_value_known_shorthand",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    const_tag_shorthand_guard,
+    "component_props/const_tag_shorthand_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
     exported_fn_prop_inline,
     "component_props/exported_fn_prop_inline"
 );
