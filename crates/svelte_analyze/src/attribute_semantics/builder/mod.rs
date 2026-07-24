@@ -1200,6 +1200,7 @@ fn find_group_bind_value(el: &Element) -> Option<GroupBindValue> {
         Attribute::StringAttribute(a) if a.name == "value" => {
             Some(GroupBindValue::Static { node: a.id })
         }
+        Attribute::BooleanAttribute(a) if a.name == "value" => Some(GroupBindValue::Boolean),
         Attribute::ExpressionAttribute(a) if a.name == "value" => {
             Some(GroupBindValue::Expression {
                 expression: a.expression.id(),

@@ -2325,7 +2325,7 @@ fn bind_group_records_expression_value_attr_only() {
         AttributeSemantics::ElementBind(b) => match b.group_value {
             Some(GroupBindValue::Expression { data, .. }) => Some(data),
             Some(GroupBindValue::Static { node }) => Some(node),
-            None => None,
+            Some(GroupBindValue::Boolean) | None => None,
         },
         _ => None,
     };

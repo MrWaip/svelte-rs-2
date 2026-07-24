@@ -643,6 +643,7 @@ impl<'a> ServerCodegen<'a> {
                     self.b.str_expr(text)
                 }))
             }
+            Some(GroupBindValue::Boolean) => Ok(Some(self.b.bool_expr(true))),
             None => Ok(None),
         }
     }

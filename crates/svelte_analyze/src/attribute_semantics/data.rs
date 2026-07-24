@@ -368,6 +368,7 @@ pub enum ComponentBindTarget {
 pub enum GroupBindValue {
     Expression { expression: OxcNodeId, data: NodeId },
     Static { node: NodeId },
+    Boolean,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

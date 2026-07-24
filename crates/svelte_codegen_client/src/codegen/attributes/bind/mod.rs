@@ -381,7 +381,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let has_value_attr = match self.ctx.query.analysis.attributes.get(bind.id) {
                     AttributeSemantics::ElementBind(b) => match b.group_value {
                         Some(GroupBindValue::Expression { .. }) => true,
-                        Some(GroupBindValue::Static { .. }) | None => false,
+                        Some(GroupBindValue::Static { .. } | GroupBindValue::Boolean) | None => {
+                            false
+                        }
                     },
                     _ => false,
                 };
