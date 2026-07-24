@@ -8,7 +8,9 @@ use compiler_tests::sourcemap_invariants::assert_sourcemap_invariants;
 use compiler_tests::{compiler_case, compiler_module_case};
 use pretty_assertions::assert_eq;
 use svelte_compiler::{GenerateMode, compile, compile_module};
-use test_support::{canonicalize_injected_css_in_js, strip_reference_only_css_markers};
+use test_support::{
+    canonicalize_injected_css_in_js, canonicalize_js, strip_reference_only_css_markers,
+};
 
 fn normalize_css(s: &str) -> String {
     let stripped = strip_reference_only_css_markers(s);
@@ -16,7 +18,7 @@ fn normalize_css(s: &str) -> String {
 }
 
 fn normalize_js(js: &str) -> String {
-    canonicalize_injected_css_in_js(js)
+    canonicalize_injected_css_in_js(&canonicalize_js(js))
 }
 
 fn assert_compiler_prod(case: &str) {
@@ -663,7 +665,7 @@ compiler_case!(legacy_before_after_update_alias);
 
 compiler_case!(
     custom_element_css_default_injected,
-    [prod, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(custom_element_shadow_object);
@@ -2470,7 +2472,7 @@ compiler_case!(props_bindable_checkbox_disabled_shorthand_ts);
 
 compiler_case!(diagnose_component_onclick_state);
 
-compiler_case!(diagnose_svg_city_icon, [prod, dev, ssr_todo, ssr_dev_todo]);
+compiler_case!(diagnose_svg_city_icon, [prod, dev, ssr, ssr_dev]);
 
 compiler_case!(clock_svg_derived_onmount);
 
