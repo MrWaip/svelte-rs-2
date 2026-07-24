@@ -1,6 +1,7 @@
 use compiler_tests::harness::{
     assert_compiler_dev, assert_compiler_module_dev, assert_compiler_module_prod,
-    assert_compiler_prod, assert_compiler_ssr, assert_compiler_ssr_dev,
+    assert_compiler_module_ssr, assert_compiler_module_ssr_dev, assert_compiler_prod,
+    assert_compiler_ssr, assert_compiler_ssr_dev,
 };
 use compiler_tests::{compiler_case, compiler_module_case};
 
@@ -359,3 +360,6 @@ mod element_block_scope;
 
 #[path = "clusters/script_element.rs"]
 mod script_element;
+
+#[path = "clusters/module_props.rs"]
+mod module_props;
