@@ -31,6 +31,7 @@ pub(crate) struct EmitState<'a> {
     pub legacy_slot_record_const_tag_end: bool,
     pub legacy_slot_const_tag_end: Option<usize>,
     pub legacy_slot_const_tag_start: Option<usize>,
+    pub legacy_slot_anchor_end: Option<usize>,
 }
 
 impl<'a> EmitState<'a> {

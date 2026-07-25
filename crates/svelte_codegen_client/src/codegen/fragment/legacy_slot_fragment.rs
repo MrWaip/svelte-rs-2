@@ -60,7 +60,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             n if n.as_component_like().is_some() => {
                 let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
-                inner_state.init.extend(let_stmts);
                 match (
                     n,
                     self.ctx.expression_data(slot_el_id).map(|d| d.volatility),
@@ -80,6 +79,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     _ => {
                         self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
                     }
+                }
+                let at = inner_state.legacy_slot_anchor_end.take().unwrap_or(0);
+                for (offset, stmt) in let_stmts.into_iter().enumerate() {
+                    inner_state.init.insert(at + offset, stmt);
                 }
             }
             _ => {}

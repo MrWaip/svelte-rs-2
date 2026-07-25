@@ -122,6 +122,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 &pre.node_name,
                 b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
             ));
+            if state.legacy_slot_anchor_end.is_none() {
+                state.legacy_slot_anchor_end = Some(state.init.len());
+            }
             let node_name: String = pre.node_name.into();
             state.root_var = Some(frag_name);
             return Ok(node_name);
@@ -182,6 +185,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     &node_name,
                     b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
                 ));
+                if state.legacy_slot_anchor_end.is_none() {
+                    state.legacy_slot_anchor_end = Some(state.init.len());
+                }
                 state.root_var = Some(frag_name);
                 Ok(node_name.into())
             }
@@ -250,6 +256,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     &node_name,
                     b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
                 ));
+                if state.legacy_slot_anchor_end.is_none() {
+                    state.legacy_slot_anchor_end = Some(state.init.len());
+                }
                 state.root_var = Some(frag_name);
                 Ok(b.rid_expr(&node_name))
             }

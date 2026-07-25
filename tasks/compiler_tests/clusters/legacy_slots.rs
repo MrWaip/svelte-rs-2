@@ -63,3 +63,12 @@ compiler_case!(
     parent_default_element_let,
     "legacy_slots/parent_default_element_let"
 );
+
+compiler_case!(
+    named_slot_dynamic_component_let,
+    "legacy_slots/named_slot_dynamic_component_let"
+);
+compiler_case!(
+    named_slot_static_component_let_guard,
+    "legacy_slots/named_slot_static_component_let_guard"
+);
