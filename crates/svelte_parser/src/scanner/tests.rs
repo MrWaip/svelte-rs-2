@@ -1304,7 +1304,7 @@ fn recovery_unclosed_script_tag() {
     let (tokens, diagnostics) = scanner.scan_tokens();
     assert!(matches!(tokens[0].token_type, TokenType::ScriptTag(_)));
     if let TokenType::ScriptTag(ref st) = tokens[0].token_type {
-        assert_eq!(st.content_span.source_text(source), "code");
+        assert_eq!(st.content_span.source_text(source), "");
     }
     assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert_has_diagnostic(

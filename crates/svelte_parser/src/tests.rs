@@ -1893,3 +1893,33 @@ fn type_alias_in_typescript_reports_declaration_tag_invalid_type() {
         48,
     );
 }
+
+#[test]
+fn snippet_header_without_whitespace_reports_expected_whitespace() {
+    assert_only_diagnostic("{#snippet}a{/snippet}", "expected_whitespace", 9, 9);
+}
+
+#[test]
+fn snippet_header_without_name_reports_expected_identifier() {
+    assert_only_diagnostic("{#snippet }a{/snippet}", "expected_identifier", 10, 10);
+}
+
+#[test]
+fn snippet_header_with_non_identifier_name_reports_expected_identifier() {
+    assert_only_diagnostic(
+        "{#snippet 1foo()}a{/snippet}",
+        "expected_identifier",
+        10,
+        10,
+    );
+}
+
+#[test]
+fn snippet_header_without_parameters_reports_expected_open_paren() {
+    assert_only_diagnostic("{#snippet foo}a{/snippet}", "expected_token", 13, 13);
+}
+
+#[test]
+fn earliest_error_in_the_source_wins_over_the_one_found_first() {
+    assert_only_diagnostic("{#if }{/if}{#snippet }{/snippet}", "js_parse_error", 5, 5);
+}

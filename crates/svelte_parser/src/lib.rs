@@ -51,14 +51,24 @@ pub fn parse_with_js<'a>(
 }
 
 fn reduce_to_first_error(diagnostics: &mut Vec<Diagnostic>) {
-    let mut seen_error = false;
+    let earliest = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == svelte_diagnostics::Severity::Error)
+        .map(|diagnostic| diagnostic.span.start)
+        .min();
+    let Some(earliest) = earliest else {
+        return;
+    };
+
+    let mut kept = false;
     diagnostics.retain(|diagnostic| {
-        if diagnostic.severity == svelte_diagnostics::Severity::Error {
-            if seen_error {
-                return false;
-            }
-            seen_error = true;
+        if diagnostic.severity != svelte_diagnostics::Severity::Error {
+            return true;
         }
+        if kept || diagnostic.span.start != earliest {
+            return false;
+        }
+        kept = true;
         true
     });
 }

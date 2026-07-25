@@ -2908,6 +2908,28 @@ mod compiler_errors {
     );
     diagnostic_case!(script_unparsable_js, "parser/script_unparsable_js");
     diagnostic_case!(
+        snippet_header_missing_whitespace,
+        "parser/snippet_header_missing_whitespace"
+    );
+    diagnostic_case!(
+        snippet_header_missing_name,
+        "parser/snippet_header_missing_name"
+    );
+    diagnostic_case!(
+        snippet_header_non_identifier_name,
+        "parser/snippet_header_non_identifier_name"
+    );
+    diagnostic_case!(
+        snippet_header_missing_parameters,
+        "parser/snippet_header_missing_parameters"
+    );
+    diagnostic_case!(snippet_header_guard, "parser/snippet_header_guard");
+    diagnostic_case!(earliest_error_wins, "parser/earliest_error_wins");
+    diagnostic_case!(
+        script_unclosed_no_js_error,
+        "parser/script_unclosed_no_js_error"
+    );
+    diagnostic_case!(
         script_generics_unparsable_js,
         "parser/script_generics_unparsable_js"
     );

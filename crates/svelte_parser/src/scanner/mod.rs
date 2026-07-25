@@ -2145,7 +2145,7 @@ impl<'a> Scanner<'a> {
             }
 
             self.add_token(TokenType::ScriptTag(ScriptTag {
-                content_span: self.span(start, self.current),
+                content_span: self.span(start, start),
                 is_typescript,
                 is_module,
                 context_deprecated,
@@ -2368,17 +2368,27 @@ impl<'a> Scanner<'a> {
     }
 
     fn start_snippet_tag(&mut self) -> Result<(), Diagnostic> {
+        if !self.peek().is_some_and(char::is_whitespace) {
+            let pos = self.current as u32;
+            return Err(Diagnostic::error(
+                svelte_diagnostics::DiagnosticKind::ExpectedWhitespace,
+                Span::new(pos, pos),
+            ));
+        }
         self.skip_whitespace();
 
         let expr_start = self.current;
         let name = self.js_identifier_segment();
 
         if name.is_empty() {
-            return Err(Diagnostic::unexpected_token(Span::new(
-                self.start as u32,
-                self.current as u32,
-            )));
+            let pos = self.current as u32;
+            return Err(Diagnostic::error(
+                svelte_diagnostics::DiagnosticKind::ExpectedIdentifier,
+                Span::new(pos, pos),
+            ));
         }
+
+        self.expect_snippet_parameters()?;
 
         let rest = self.collect_js_until_brace()?;
         let expression_span = self.span(expr_start, rest.end as usize);
@@ -2389,6 +2399,21 @@ impl<'a> Scanner<'a> {
         self.enter_fragment();
 
         Ok(())
+    }
+
+    fn expect_snippet_parameters(&mut self) -> Result<(), Diagnostic> {
+        let checkpoint = self.checkpoint();
+        self.skip_whitespace();
+        if matches!(self.peek_byte(), Some(b'(' | b'<')) {
+            self.restore(checkpoint);
+            return Ok(());
+        }
+        let pos = self.current as u32;
+        self.restore(checkpoint);
+        Err(Diagnostic::error(
+            svelte_diagnostics::DiagnosticKind::ExpectedToken { token: "(".into() },
+            Span::new(pos, pos),
+        ))
     }
 
     fn parse_no_as_each_context(
