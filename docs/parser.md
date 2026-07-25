@@ -42,7 +42,8 @@ topics: parser/parse/parsing, scanner, svelte-to-ast, handlers, walk_js, js_post
 4. **Best-effort recovery.** Битые регионы становятся `ErrorNode` со span'ом; парсинг продолжается.
 5. **Единственная разрешённая синтез-форма** — `{@const name = expr}` парсится через `parse_js::parse_const_declaration_with_alloc` в реальную `oxc` `VariableDeclaration`, чтобы анализ видел нормальный биндинг. Оборачивание template-level JS-исходника в валидный JS, чтобы `oxc_parser` его съел.
 6. **Wrapped sub-parses** (выражения, each-контексты, const-decls) реконструируют точные span'ы через offset-арифметику.
-7. **CSS-парсер заполняет только оригинальные поля** (`name`, `prelude`, идентификаторы как `CompactString`); `*_override: Option<String>` остаются `None` — зарезервированы для `supporting-crates.md` §`svelte_transform_css`.
+7. **Вид узла шаблона решает сканер; фаза разбора JS его не переклассифицирует.** `walk_js` заполняет узлы разобранным JS, но не меняет вариант `Node` и не переписывает `AstStore`. Механическая проверка: `walk_js` получает `&Component`, не `&mut`. Цена — `{type …}` классифицируется лексически и на выражениях с `type`-идентификатором расходится с Оригиналом; причина и альтернативы — `adr/0006-node-kind-decided-in-scanner.md`.
+8. **CSS-парсер заполняет только оригинальные поля** (`name`, `prelude`, идентификаторы как `CompactString`); `*_override: Option<String>` остаются `None` — зарезервированы для `supporting-crates.md` §`svelte_transform_css`.
 
 ## Анти-паттерны
 
@@ -57,3 +58,4 @@ topics: parser/parse/parsing, scanner, svelte-to-ast, handlers, walk_js, js_post
 - `ast.md` — формы дерева, которые парсер производит.
 - `analyze.md` — граница парсер ↔ анализ (форма vs смысл).
 - `compiler.md` — кто владеет `Allocator` и зовёт парсер.
+- `adr/0006-node-kind-decided-in-scanner.md` — почему вид узла не пересматривается после разбора JS.
