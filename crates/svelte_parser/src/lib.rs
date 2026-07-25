@@ -745,6 +745,12 @@ fn validate_custom_element_tag(tag: &str) -> Option<TagError> {
     None
 }
 
+pub(crate) fn is_regular_element_name(name: &str) -> bool {
+    !is_component_name(name)
+        && !svelte_ast::is_svelte_meta_tag(name)
+        && name != svelte_ast::SLOT_ELEMENT
+}
+
 fn is_component_name(name: &str) -> bool {
     name.starts_with(|c: char| c.is_uppercase())
         || name.contains('.')

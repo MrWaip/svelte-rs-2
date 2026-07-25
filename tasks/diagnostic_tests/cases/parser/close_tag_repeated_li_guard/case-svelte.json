@@ -1,0 +1,14 @@
+[
+  {
+    "code": "element_implicitly_closed",
+    "end": 8,
+    "severity": "warning",
+    "start": 4
+  },
+  {
+    "code": "element_implicitly_closed",
+    "end": 13,
+    "severity": "warning",
+    "start": 9
+  }
+]

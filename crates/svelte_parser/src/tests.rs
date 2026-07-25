@@ -1923,3 +1923,30 @@ fn snippet_header_without_parameters_reports_expected_open_paren() {
 fn earliest_error_in_the_source_wins_over_the_one_found_first() {
     assert_only_diagnostic("{#if }{/if}{#snippet }{/snippet}", "js_parse_error", 5, 5);
 }
+
+#[test]
+fn closing_tag_over_component_is_an_error() {
+    assert_only_diagnostic("<div><Comp></div>", "element_invalid_closing_tag", 11, 11);
+}
+
+#[test]
+fn closing_tag_over_svelte_element_is_an_error() {
+    assert_only_diagnostic(
+        "<div><svelte:element this=\"p\"></div>",
+        "element_invalid_closing_tag",
+        30,
+        30,
+    );
+}
+
+#[test]
+fn closing_tag_over_regular_element_only_warns() {
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, _js, diags) = crate::parse_with_js(&alloc, "<div><span></div>");
+    assert!(
+        diags
+            .iter()
+            .all(|d| d.severity == svelte_diagnostics::Severity::Warning),
+        "expected no errors, got {diags:?}"
+    );
+}

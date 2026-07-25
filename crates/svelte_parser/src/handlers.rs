@@ -614,16 +614,23 @@ impl<'a> Parser<'a> {
                         closing_start,
                         tag_name,
                     } => {
-                        let diag_end = children
-                            .first()
-                            .map(|id| self.store.get(*id).span().start)
-                            .unwrap_or(*closing_start);
-                        let diag_span = Span::new(el.span_start.start, diag_end);
-                        let tag = format!("</{tag_name}>");
-                        let closing = format!("</{}>", el.name);
-                        self.recover(Diagnostic::element_implicitly_closed(
-                            diag_span, tag, closing,
-                        ));
+                        if crate::is_regular_element_name(&el.name) {
+                            let diag_end = children
+                                .first()
+                                .map(|id| self.store.get(*id).span().start)
+                                .unwrap_or(*closing_start);
+                            let diag_span = Span::new(el.span_start.start, diag_end);
+                            let tag = format!("</{tag_name}>");
+                            let closing = format!("</{}>", el.name);
+                            self.recover(Diagnostic::element_implicitly_closed(
+                                diag_span, tag, closing,
+                            ));
+                        } else {
+                            self.recover(Diagnostic::element_invalid_closing_tag(
+                                Span::new(*closing_start, *closing_start),
+                                tag_name.clone(),
+                            ));
+                        }
                     }
                     CloseReason::ImplicitOpen {
                         following_tag,

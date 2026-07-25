@@ -2907,6 +2907,32 @@ mod compiler_errors {
         "parser/block_if_expression_guard"
     );
     diagnostic_case!(script_unparsable_js, "parser/script_unparsable_js");
+    diagnostic_case!(close_tag_over_component, "parser/close_tag_over_component");
+    diagnostic_case!(
+        close_tag_over_svelte_element,
+        "parser/close_tag_over_svelte_element"
+    );
+    diagnostic_case!(
+        close_tag_over_svelte_fragment,
+        "parser/close_tag_over_svelte_fragment"
+    );
+    diagnostic_case!(close_tag_over_slot, "parser/close_tag_over_slot");
+    diagnostic_case!(
+        close_tag_matches_nothing,
+        "parser/close_tag_matches_nothing"
+    );
+    diagnostic_case!(
+        close_tag_over_regular_element_guard,
+        "parser/close_tag_over_regular_element_guard"
+    );
+    diagnostic_case!(
+        close_tag_implicit_open_guard,
+        "parser/close_tag_implicit_open_guard"
+    );
+    diagnostic_case!(
+        close_tag_repeated_li_guard,
+        "parser/close_tag_repeated_li_guard"
+    );
     diagnostic_case!(
         snippet_header_missing_whitespace,
         "parser/snippet_header_missing_whitespace"

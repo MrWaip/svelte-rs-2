@@ -153,6 +153,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         warning_filter: None,
     };
 
+    let mut css_parse_diags: Vec<Diagnostic> = Vec::new();
     let (js, css, analyze_diags) = {
         let (mut analysis, mut parsed, mut analyze_diags) =
             svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
@@ -164,7 +165,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 .css
                 .as_ref()
                 .map_or(0, |block| block.content_span.start);
-            analyze_diags.extend(css_diags.into_iter().map(|mut diag| {
+            css_parse_diags.extend(css_diags.into_iter().map(|mut diag| {
                 diag.span = svelte_span::Span::new(
                     diag.span.start + css_offset,
                     diag.span.end + css_offset,
@@ -263,6 +264,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let has_errors = has_parse_errors
             || analyze_diags
                 .iter()
+                .chain(css_parse_diags.iter())
                 .any(|d| d.severity == svelte_diagnostics::Severity::Error);
 
         if has_errors {
@@ -352,7 +354,10 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         }
     };
 
-    diagnostics.extend(analyze_diags);
+    diagnostics.extend(css_parse_diags);
+    if !has_parse_errors {
+        diagnostics.extend(analyze_diags);
+    }
     apply_suppress(&mut diagnostics, &options.suppress);
     let source_name =
         svelte_sourcemap::get_source_name(&options.filename, options.output_filename.as_deref());
