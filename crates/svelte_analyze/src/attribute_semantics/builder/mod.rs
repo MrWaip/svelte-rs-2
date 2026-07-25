@@ -306,13 +306,13 @@ fn reference_symbol_needs_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData, sym: Sy
 
 fn references_need_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData) -> bool {
     match data.volatility {
-        Volatility::Reactive if data.references.is_empty() => return true,
+        Volatility::Reactive if data.evaluated_reads.is_empty() => return true,
         Volatility::Static
         | Volatility::Reactive
         | Volatility::Heavy
         | Volatility::Asynchronous => {}
     }
-    data.references
+    data.evaluated_reads
         .iter()
         .any(|&sym| reference_symbol_needs_wrap(ctx, data, sym))
 }

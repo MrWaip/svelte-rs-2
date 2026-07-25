@@ -363,3 +363,6 @@ mod script_element;
 
 #[path = "clusters/module_props.rs"]
 mod module_props;
+
+#[path = "clusters/closure_volatility.rs"]
+mod closure_volatility;

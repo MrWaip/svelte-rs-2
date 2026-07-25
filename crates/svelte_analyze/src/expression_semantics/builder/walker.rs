@@ -505,6 +505,7 @@ fn empty_data() -> ExpressionData {
         blockers: SmallVec::new(),
         legacy_wrap: LegacyWrap::None,
         references: SmallVec::new(),
+        evaluated_reads: SmallVec::new(),
     }
 }
 
@@ -539,7 +540,7 @@ fn compute<'a>(
             ctx.reactivity,
         ),
         SiteContext::ElementAttr | SiteContext::StyleDirective => {
-            derive::volatile_element_attr(is_reactive, &facts.references, ctx)
+            derive::volatile_element_attr(is_reactive, &facts.evaluated_reads, ctx)
         }
         SiteContext::ComponentAttr => is_reactive,
         SiteContext::ComponentName => derive::volatile_component_name(
@@ -595,6 +596,7 @@ fn compute<'a>(
             has_context_member_root,
         ),
         references: facts.references.clone(),
+        evaluated_reads: facts.evaluated_reads.clone(),
     };
     (data, facts)
 }

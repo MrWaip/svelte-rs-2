@@ -18,6 +18,7 @@ pub struct ExpressionData {
     pub blockers: SmallVec<[u32; 2]>,
     pub legacy_wrap: LegacyWrap,
     pub references: SmallVec<[SymbolId; 2]>,
+    pub evaluated_reads: SmallVec<[SymbolId; 2]>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]

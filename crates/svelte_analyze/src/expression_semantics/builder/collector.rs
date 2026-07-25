@@ -28,7 +28,7 @@ pub(super) enum TopLevelForm {
 
 pub(super) struct ExprFacts {
     pub references: SmallVec<[SymbolId; 2]>,
-    pub top_level_reads: SmallVec<[SymbolId; 2]>,
+    pub evaluated_reads: SmallVec<[SymbolId; 2]>,
     pub member_or_call_roots: SmallVec<[SymbolId; 2]>,
     pub member_roots: SmallVec<[SymbolId; 2]>,
     pub top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
@@ -58,7 +58,7 @@ pub(super) fn collect<'a>(
         semantics,
         reactivity,
         references: SmallVec::new(),
-        top_level_reads: SmallVec::new(),
+        evaluated_reads: SmallVec::new(),
         member_or_call_roots: SmallVec::new(),
         member_roots: SmallVec::new(),
         top_member_or_call_roots: SmallVec::new(),
@@ -80,7 +80,7 @@ pub(super) fn collect<'a>(
     visitor.visit_expression(expr);
     ExprFacts {
         references: visitor.references,
-        top_level_reads: visitor.top_level_reads,
+        evaluated_reads: visitor.evaluated_reads,
         member_or_call_roots: visitor.member_or_call_roots,
         member_roots: visitor.member_roots,
         top_member_or_call_roots: visitor.top_member_or_call_roots,
@@ -264,7 +264,7 @@ struct Collector<'c, 'a> {
     semantics: &'c ComponentSemantics<'a>,
     reactivity: &'c ReactivitySemantics,
     references: SmallVec<[SymbolId; 2]>,
-    top_level_reads: SmallVec<[SymbolId; 2]>,
+    evaluated_reads: SmallVec<[SymbolId; 2]>,
     member_or_call_roots: SmallVec<[SymbolId; 2]>,
     member_roots: SmallVec<[SymbolId; 2]>,
     top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
@@ -369,7 +369,8 @@ impl<'a> Collector<'_, 'a> {
 impl<'a> Visit<'a> for Collector<'_, 'a> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         let name = ident.name.as_str();
-        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
+        if self.fn_depth == 0 && name.starts_with('$') && name.len() > 1 && !name.starts_with("$$")
+        {
             self.has_store_ref = true;
         }
         self.in_write_position = false;
@@ -381,11 +382,15 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             | ReferenceSemantics::StoreWrite { symbol }
             | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
             ReferenceSemantics::LegacyPropsIdentifierRead => {
-                self.reads_legacy_props = true;
+                if self.fn_depth == 0 {
+                    self.reads_legacy_props = true;
+                }
                 None
             }
             ReferenceSemantics::LegacyRestPropsIdentifierRead => {
-                self.reads_legacy_rest_props = true;
+                if self.fn_depth == 0 {
+                    self.reads_legacy_rest_props = true;
+                }
                 None
             }
             ReferenceSemantics::LegacySlotsIdentifierRead => None,
@@ -395,8 +400,8 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
         if !self.references.contains(&sym) {
             self.references.push(sym);
         }
-        if self.fn_depth == 0 && !self.top_level_reads.contains(&sym) {
-            self.top_level_reads.push(sym);
+        if self.fn_depth == 0 && !self.evaluated_reads.contains(&sym) {
+            self.evaluated_reads.push(sym);
         }
     }
 

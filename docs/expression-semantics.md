@@ -1,7 +1,7 @@
 # PRD: ExpressionSemantics (корневой)
 
 label: expression-semantics
-topics: template expression, volatility, value evaluation, Evaluation, memoization, heavy, asynchronous/await, value folding
+topics: template expression, volatility, value evaluation, Evaluation, memoization, heavy, asynchronous/await, value folding, references, evaluated reads, closure
 
 Корневой PRD для модуля `svelte_analyze::expression_semantics` (3.A.3).
 Дочерний по слою: `analyze.md`. Зависит от `ComponentSemantics`, `ReactivitySemantics` (фаза 1), `ComponentScoping`.
@@ -20,7 +20,8 @@ Per-expression факты для каждого template/attribute-выраже�
 - expression kind (sync / async / non-special);
 - `Evaluation` — `Known(KnownValue)` / `Defined { class }` / `MaybeNullish { has_unknown }`; выражение несёт две оценки одного типа под разные модели исполнения: `evaluation` — значение при реактивном чтении (`ReadContext::Runtime`, реактивный источник непрозрачен), потребляет клиентский backend; `declared_evaluation` — значение при сколлапсированной реактивности (`ReadContext::Declaration`, `$state`/`$derived` свёрнуты к init, **const-теги** фрагмента свёрнуты к своему init), потребляет серверный backend, где рендер однократен. Обе target-агностичны — считаются всегда, backend выбирает свою; выбор формы (свернуть в статический текст vs `$.escape` в рантайме) живёт в кодгене. const-теги видит только `declared_evaluation`: их init-биндинги подмешиваются в declaration-эвалуатор, но не в runtime-эвалуатор и не в общий `ValueEvaluation` (тот питает `OptimizedDerived`), поэтому клиентская классификация не затрагивается;
 - `LegacyWrap`-выбор для legacy reactive-контекстов;
-- `references: SmallVec<SymbolId>`, реально прочитанные выражением;
+- `references: SmallVec<SymbolId>` — биндинги, которые выражение упоминает где угодно, включая тела вложенных функций;
+- `evaluated_reads: SmallVec<SymbolId>` — биндинги, которые выражение читает **при вычислении**: только чтения вне тел вложенных функций. Подмножество `references`;
 - blocker-индексы.
 
 Плюс единый агрегат `is_context_required()` — единственный component-wide вердикт «нужен ли компоненту runtime-контекст», по любому выражению шаблона **и** скрипта (напр. `$$props.x`, store-мутация, `$effect`). Потребитель читает его одним запросом; пере-выводить наблюдение контекста собственным обходом запрещено.
@@ -34,6 +35,10 @@ Per-expression факты для каждого template/attribute-выраже�
 5. **Идентичность ссылки не подменяется.** `references` несёт `SymbolId` именно того биндинга, который выражение реально читает (store-чтение `$x` реально читает синтетический store-sub — он и лежит). Подписка биндинга — производный факт `ReactivitySemantics` (`store_symbol` в `LegacyStateSubscribed*` / `ImportSubscribedRead`, `store_shadow_of_internal`); потребитель, которому нужна подписка, разворачивает её сам — коллектор символ не перепрыгивает.
 
 `references` отвечает на «какие биндинги выражение упоминает где угодно» (включая замыкания) — он для потребителей, которым важны захваченные чтения. Это **не** вход реактивности: реактивность (`Volatility`) — другой вопрос, «наблюдает ли вычисление выражения реактивный state», и замыкания на него не влияют. Решать форму чтения (getter / мемоизация) по `references` — значит смешать два разных вопроса.
+
+Вход реактивности — `evaluated_reads`: тело вложенной функции при вычислении выражения не исполняется, поэтому прочитанное внутри неё (собственный параметр, локальная переменная, захваченный реактивный источник, `$store`, `$$props`) на вердикт не влияет. На `evaluated_reads` считаются все входы `Volatility` — реактивность идентификаторов, `Heavy` (динамический вход вызова), `needs_context` — и `LegacyWrap`. Перепутать списки — вернуть замыкания в реактивность: `{[(x) => x]}` станет изменчивым, хотя его значение постоянно.
+
+`references` остаётся ответом про упоминания и питает **только** ось blocker'ов (`blockers` здесь, `push_expression_data` в кодгене): захваченный биндинг может блокировать выражение, даже если не читается при вычислении.
 
 ## Связь с другими документами
 

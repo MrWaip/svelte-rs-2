@@ -19,7 +19,7 @@ pub(super) fn needs_context(facts: &ExprFacts, reactivity: &ReactivitySemantics)
         return false;
     }
     facts
-        .references
+        .evaluated_reads
         .iter()
         .any(|&sym| binding_reads_through_props_object(reactivity.binding_semantics(sym)))
 }
@@ -65,16 +65,16 @@ pub(super) fn is_reactive_template(facts: &ExprFacts, ctx: &Ctx<'_, '_>) -> bool
                 return true;
             }
             facts
-                .top_level_reads
+                .evaluated_reads
                 .iter()
                 .any(|&sym| call_root_is_reactive(ctx, sym))
         }
-        TopLevelForm::Member => facts.has_runtime_root || !facts.top_level_reads.is_empty(),
+        TopLevelForm::Member => facts.has_runtime_root || !facts.evaluated_reads.is_empty(),
         TopLevelForm::Identifier
         | TopLevelForm::Assignment
         | TopLevelForm::Update
         | TopLevelForm::Other => facts
-            .top_level_reads
+            .evaluated_reads
             .iter()
             .any(|&sym| identifier_read_is_reactive(ctx, sym)),
     }
@@ -161,7 +161,7 @@ fn is_unified_plain_symbol(reactivity: &ReactivitySemantics, sym_id: SymbolId) -
 }
 
 fn call_has_dynamic_input(facts: &ExprFacts) -> bool {
-    !facts.references.is_empty() || facts.has_impure_call || reads_legacy_props_object(facts)
+    !facts.evaluated_reads.is_empty() || facts.has_impure_call || reads_legacy_props_object(facts)
 }
 
 pub(super) fn is_heavy(facts: &ExprFacts) -> bool {
@@ -305,7 +305,7 @@ fn is_reactive_component_binding(reactivity: &ReactivitySemantics, sym: SymbolId
 
 fn references_optimized_rune(facts: &ExprFacts, reactivity: &ReactivitySemantics) -> bool {
     facts
-        .references
+        .evaluated_reads
         .iter()
         .any(|&sym| reactivity.binding_semantics(sym).is_optimized_rune())
 }
@@ -319,7 +319,7 @@ pub(super) fn legacy_wrap(
         return LegacyWrap::None;
     }
     let call_is_reactive =
-        facts.has_impure_call || (facts.has_call && !facts.references.is_empty());
+        facts.has_impure_call || (facts.has_call && !facts.evaluated_reads.is_empty());
     let needs_coarse = call_is_reactive
         || facts.has_member
         || matches!(
