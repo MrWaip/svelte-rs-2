@@ -23,6 +23,8 @@ use crate::block_semantics::data::BlockSemantics;
 use crate::utils::snippet::snippet_name_symbol;
 use crate::{AnalysisData, types::data::JsAst};
 
+use dollar_name::{INSTANCE_FUNCTION_DEPTH, MODULE_FUNCTION_DEPTH};
+
 pub fn validate(
     component: &Component,
     data: &AnalysisData,
@@ -36,7 +38,7 @@ pub fn validate(
         runes::validate_invalid_exports(data, program, true, None, diags);
         validate_illegal_default_export(program, diags);
         const_assignment::validate(data, program, diags);
-        dollar_name::validate(program, runes, diags);
+        dollar_name::validate(program, runes, INSTANCE_FUNCTION_DEPTH, diags);
         validate_module_import_conflict(data, program, diags);
     }
     const_assignment::validate_template(data, parsed, diags);
@@ -55,6 +57,7 @@ pub fn validate(
             diags,
         );
         stores::validate_module(data, module_program, diags);
+        dollar_name::validate(module_program, runes, MODULE_FUNCTION_DEPTH, diags);
         syntax_bundle::validate_module(data, module_program, runes, diags);
     }
     non_reactive_update::validate(component, data, parsed, runes, diags);
@@ -324,7 +327,7 @@ pub fn validate_standalone_module(
     );
     runes::validate_default_export_state(data, program, data.scoping.root_scope_id(), diags);
     const_assignment::validate(data, program, diags);
-    dollar_name::validate(program, true, diags);
+    dollar_name::validate(program, true, MODULE_FUNCTION_DEPTH, diags);
     stores::validate_dollar_globals(data, source, diags);
     stores::validate_standalone_module(data, program, diags);
     syntax_bundle::validate_module(data, program, true, diags);

@@ -1,0 +1,8 @@
+[
+  {
+    "code": "dollar_prefix_invalid",
+    "end": 63,
+    "severity": "error",
+    "start": 57
+  }
+]
