@@ -736,8 +736,15 @@ impl<'a> ServerCodegen<'a> {
         for attr in attributes {
             if matches!(
                 self.analysis.attributes.get(attr.id()),
-                AttributeSemantics::Skip(_) | AttributeSemantics::Event(_)
+                AttributeSemantics::Skip(_)
             ) {
+                continue;
+            }
+            if matches!(
+                self.analysis.attributes.get(attr.id()),
+                AttributeSemantics::Event(_)
+            ) && !is_select_or_option
+            {
                 continue;
             }
             if let AttributeSemantics::CannotBeStatic(sem) = self.analysis.attributes.get(attr.id())

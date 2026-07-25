@@ -80,3 +80,19 @@ compiler_case!(
     static_then_dynamic_ident,
     "customizable_select/static_then_dynamic_ident"
 );
+
+compiler_case!(
+    select_event_attr,
+    "customizable_select/select_event_attr",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    option_event_attr,
+    "customizable_select/option_event_attr",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    plain_element_event_attr_guard,
+    "customizable_select/plain_element_event_attr_guard",
+    [prod, dev, ssr, ssr_dev]
+);
