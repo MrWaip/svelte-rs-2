@@ -209,6 +209,64 @@ fn unquoted_attribute_value_keeps_bare_slash_not_before_gt() {
 }
 
 #[test]
+fn unquoted_attribute_value_of_slash_before_gt_does_not_self_close() {
+    let source = "<a href=/>home</a>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "a", vec![("href", "/")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_of_slash_before_gt_after_whitespace() {
+    let source = "<a href = />home</a>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "a", vec![("href", "/")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_keeps_leading_slash() {
+    let source = "<a href=/foo>home</a>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "a", vec![("href", "/foo")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_of_bare_slash_stops_at_whitespace() {
+    let source = "<div foo=/ ></div>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("foo", "/")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_stops_at_equals() {
+    let source = "<div foo=a=b></div>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("foo", "a")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_stops_at_quote() {
+    let source = "<div foo=a'b></div>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("foo", "a")], false);
+}
+
+#[test]
+fn start_tag_missing_close_reports_expected_token() {
+    let (_, diagnostics) = Scanner::new("<div foo=a'b></div>").scan_tokens();
+
+    assert_has_diagnostic(
+        &diagnostics,
+        DiagnosticKind::ExpectedToken { token: ">".into() },
+    );
+}
+
+#[test]
 fn tag_line_comment_between_attributes() {
     let source = "<div\n\ta=\"1\"\n\t// a line comment\n\tb=\"2\"\n>";
     let tokens = Scanner::new(source).scan_tokens().0;

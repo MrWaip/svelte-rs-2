@@ -759,6 +759,21 @@ fn analyze_source_with_diags(
     (component, data, diags)
 }
 
+fn analyze_source_legacy_with_diags(source: &str) -> Vec<svelte_diagnostics::Diagnostic> {
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let options = AnalyzeOptions {
+        runes: svelte_ast::RunesOption::Legacy,
+        ..AnalyzeOptions::default()
+    };
+    let (_data, _parsed, diags) = analyze_with_options(&component, js_result, &options);
+    diags
+}
+
 fn assert_symbol(data: &AnalysisData, name: &str) {
     let root = data.scoping.root_scope_id();
     assert!(
@@ -5939,6 +5954,26 @@ fn bind_group_to_snippet_parameter_reports_assignment_error_first() {
     );
 
     assert_diag_codes(&diags, &["snippet_parameter_assignment"]);
+}
+
+#[test]
+fn unquoted_attribute_sequence_errors_in_runes_mode() {
+    let (_component, _data, diags) = analyze_source_with_diags(
+        r#"<script>let value = $state('x');</script>
+<div foo=a{value}></div>"#,
+    );
+
+    assert_diag_codes(&diags, &["attribute_unquoted_sequence"]);
+}
+
+#[test]
+fn unquoted_attribute_sequence_allowed_outside_runes_mode() {
+    let diags = analyze_source_legacy_with_diags(
+        r#"<script>export let value;</script>
+<div foo=a{value}></div>"#,
+    );
+
+    assert_diag_codes(&diags, &[]);
 }
 
 #[test]

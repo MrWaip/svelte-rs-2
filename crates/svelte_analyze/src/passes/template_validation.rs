@@ -3744,6 +3744,10 @@ fn check_event_handler_value(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>
 }
 
 fn check_attribute_unquoted_sequence(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
+    if !ctx.runes {
+        return;
+    }
+
     for attr in attrs {
         let Attribute::ConcatenationAttribute(concat) = attr else {
             continue;

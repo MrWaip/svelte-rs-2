@@ -53,6 +53,19 @@ struct JsScanResult {
     has_comment: bool,
 }
 
+const UNQUOTED_ATTRIBUTE_VALUE_END: [bool; 128] = {
+    let mut table = [false; 128];
+    let mut byte = 0usize;
+    while byte < 128 {
+        table[byte] = matches!(
+            byte as u8,
+            b'\t' | b'\n' | 0x0b | 0x0c | b'\r' | b' ' | b'"' | b'\'' | b'=' | b'<' | b'>' | b'`'
+        );
+        byte += 1;
+    }
+    table
+};
+
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Scanner<'a> {
         Scanner {
@@ -581,8 +594,10 @@ impl<'a> Scanner<'a> {
                 let len = self.bytes.len() as u32;
                 return Err(Diagnostic::unexpected_end_of_file(Span::new(len, len)));
             }
-            self.recover(Diagnostic::unterminated_start_tag(
-                self.span(name_start, self.current),
+            let pos = self.current as u32;
+            self.recover(Diagnostic::error(
+                svelte_diagnostics::DiagnosticKind::ExpectedToken { token: ">".into() },
+                Span::new(pos, pos),
             ));
 
             self.add_token(TokenType::StartTag(StartTag {
@@ -1032,10 +1047,16 @@ impl<'a> Scanner<'a> {
 
     fn attribute_value(&mut self) -> Result<AttributeValue, Diagnostic> {
         match self.peek_byte() {
-            None | Some(b'>' | b'/') => Err(Diagnostic::error(
+            None | Some(b'>') => Err(Diagnostic::error(
                 svelte_diagnostics::DiagnosticKind::ExpectedAttributeValue,
                 Span::new(self.current as u32, self.current as u32),
             )),
+            Some(b'/') if self.bytes.get(self.current + 1) == Some(&b'>') => {
+                let start = self.current;
+                self.prev = start;
+                self.current = start + 1;
+                Ok(AttributeValue::String(self.span(start, self.current)))
+            }
             Some(b'"') => self.attribute_concatenation_or_string('"'),
             Some(b'\'') => self.attribute_concatenation_or_string('\''),
             _ => self.unquoted_attribute_concatenation_or_string(),
@@ -1154,16 +1175,28 @@ impl<'a> Scanner<'a> {
         let mut has_expression = false;
         let mut parts: Vec<ConcatenationPart> = vec![];
 
-        while let Some(char) = self.peek() {
-            if matches!(char, '"' | '\'' | '>' | '<' | '`') || char.is_whitespace() {
+        while let Some(&byte) = self.bytes.get(self.current) {
+            if byte >= 0x80 {
+                let Some(char) = self.source[self.current..].chars().next() else {
+                    break;
+                };
+                if char.is_whitespace() {
+                    break;
+                }
+                self.prev = self.current;
+                self.current += char.len_utf8();
+                continue;
+            }
+
+            if UNQUOTED_ATTRIBUTE_VALUE_END[byte as usize] {
                 break;
             }
 
-            if char == '/' && self.peek_next() == Some('>') {
+            if byte == b'/' && self.bytes.get(self.current + 1) == Some(&b'>') {
                 break;
             }
 
-            if char == '{' {
+            if byte == b'{' {
                 has_expression = true;
 
                 if current_pos < self.current {
@@ -1178,7 +1211,8 @@ impl<'a> Scanner<'a> {
                 continue;
             }
 
-            self.advance();
+            self.prev = self.current;
+            self.current += 1;
         }
 
         let end = self.current;

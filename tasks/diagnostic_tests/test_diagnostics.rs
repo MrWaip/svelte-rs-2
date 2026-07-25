@@ -650,6 +650,38 @@ mod attributes {
         event_handler_concat_value_errors,
         "attributes/event_handler_concat_value_errors"
     );
+    diagnostic_case!(
+        unquoted_value_single_quote_terminator,
+        "attributes/unquoted_value_single_quote_terminator"
+    );
+    diagnostic_case!(
+        unquoted_value_double_quote_terminator,
+        "attributes/unquoted_value_double_quote_terminator"
+    );
+    diagnostic_case!(
+        unquoted_value_equals_terminator,
+        "attributes/unquoted_value_equals_terminator"
+    );
+    diagnostic_case!(
+        unquoted_value_ws_slash_gt_unclosed,
+        "attributes/unquoted_value_ws_slash_gt_unclosed"
+    );
+    diagnostic_case!(
+        unquoted_value_empty_guard,
+        "attributes/unquoted_value_empty_guard"
+    );
+    diagnostic_case!(
+        regular_element_unquoted_sequence_legacy_allowed,
+        "attributes/regular_element_unquoted_sequence_legacy_allowed"
+    );
+    diagnostic_case!(
+        component_unquoted_sequence_legacy_allowed,
+        "attributes/component_unquoted_sequence_legacy_allowed"
+    );
+    diagnostic_case!(
+        attribute_quoted_legacy_no_warn_guard,
+        "attributes/attribute_quoted_legacy_no_warn_guard"
+    );
 }
 
 mod css {
