@@ -72,7 +72,7 @@ for (const file of files) {
     try {
       const result = isModule
         ? compileModule(moduleSource, {
-            filename: isTsModule ? "input.svelte.ts" : "input.svelte.js",
+            filename: file,
             dev,
             ...(generate ? { generate } : {}),
           })

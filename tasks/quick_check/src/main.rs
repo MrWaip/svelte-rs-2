@@ -289,6 +289,7 @@ fn run_our_compiler(source: &str, cli: &CliOptions, is_module: bool) -> OurOutco
     }
     let mut opts = CompileOptions {
         name: Some("App".into()),
+        disclose_version: false,
         ..Default::default()
     };
     if let Some(mode) = cli.mode {

@@ -12,7 +12,7 @@ pub fn canonicalize_js(js: &str) -> String {
     if !parsed.diagnostics.is_empty() {
         return strip_js_comments(js);
     }
-    strip_empty_statement_nodes(&mut parsed.program);
+    canonicalize_ast(&mut parsed.program);
     Codegen::new()
         .with_options(CodegenOptions {
             comments: CommentOptions::disabled(),
@@ -22,7 +22,7 @@ pub fn canonicalize_js(js: &str) -> String {
         .code
 }
 
-fn strip_empty_statement_nodes(program: &mut Program<'_>) {
+fn canonicalize_ast(program: &mut Program<'_>) {
     use oxc_allocator::Vec as OxcVec;
     use oxc_ast::ast::{BlockStatement, FunctionBody, StaticBlock, SwitchCase};
     use oxc_ast_visit::{VisitMut, walk_mut};
@@ -53,6 +53,14 @@ fn strip_empty_statement_nodes(program: &mut Program<'_>) {
         fn visit_switch_case(&mut self, it: &mut SwitchCase<'a>) {
             retain(&mut it.consequent);
             walk_mut::walk_switch_case(self, it);
+        }
+        fn visit_expression(&mut self, it: &mut Expression<'a>) {
+            match it {
+                Expression::ArrowFunctionExpression(arrow) => arrow.pife = false,
+                Expression::FunctionExpression(function) => function.pife = false,
+                _ => {}
+            }
+            walk_mut::walk_expression(self, it);
         }
     }
 
