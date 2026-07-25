@@ -12,6 +12,47 @@ use crate::js_postprocess::{
     process_statement, shift_comments, wrapper_delta,
 };
 
+fn js_parse_error_position(
+    error: &oxc_diagnostics::OxcDiagnostic,
+    source: &str,
+    offset: u32,
+) -> u32 {
+    let label_offset = error
+        .labels
+        .as_slice()
+        .first()
+        .map_or(0usize, |label| label.offset() as usize);
+    let bytes = source.as_bytes();
+    let mut position = label_offset;
+    while position < bytes.len() && bytes[position].is_ascii_whitespace() {
+        position += 1;
+    }
+    offset + position as u32
+}
+
+fn js_parse_error_at(
+    error: &oxc_diagnostics::OxcDiagnostic,
+    source: &str,
+    offset: u32,
+) -> Diagnostic {
+    let point = js_parse_error_position(error, source, offset);
+    Diagnostic::js_parse_error(Span::new(point, point), error.message.to_string())
+}
+
+fn first_js_parse_error(
+    errors: &[oxc_diagnostics::OxcDiagnostic],
+    source: &str,
+    offset: u32,
+) -> Diagnostic {
+    let Some(error) = errors.first() else {
+        return Diagnostic::js_parse_error(
+            Span::new(offset, offset),
+            "Unexpected token".to_string(),
+        );
+    };
+    js_parse_error_at(error, source, offset)
+}
+
 fn parse_expression_as_program<'a>(
     alloc: &'a Allocator,
     source: &'a str,
@@ -46,9 +87,9 @@ pub fn parse_expression_with_alloc<'a>(
         SourceType::default()
     };
     let parser = OxcParser::new(alloc, source, src_type);
-    let mut expr = parser.parse_expression().map_err(|_| {
-        Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-    })?;
+    let mut expr = parser
+        .parse_expression()
+        .map_err(|errors| first_js_parse_error(&errors, source, offset))?;
     process_expression(alloc, &mut expr, wrapper_delta(offset, 0, 0), typescript);
     Ok(expr)
 }
@@ -94,22 +135,21 @@ pub(crate) fn parse_expression_tag_body<'a>(
             process_expression(alloc, &mut expr, wrapper_delta(offset, 0, 0), typescript);
             ExpressionTagBody::Expression(expr)
         }
-        Err(errs) => {
-            let diag = errs.first().and_then(|e| {
-                let acorn_message = match e.message.as_ref() {
-                    "Cannot assign to this expression" => "Assigning to rvalue",
-                    _ => return None,
-                };
-                let label_offset = e
-                    .labels
-                    .as_slice()
-                    .first()
-                    .map_or(0u32, |label| label.offset());
-                let pos = offset + label_offset;
-                Some(Diagnostic::js_parse_error(
-                    Span::new(pos, pos),
-                    acorn_message.to_string(),
-                ))
+        Err(errors) => {
+            let diag = errors.first().map(|error| {
+                if error.message.as_ref() == "Cannot assign to this expression" {
+                    let label_offset = error
+                        .labels
+                        .as_slice()
+                        .first()
+                        .map_or(0u32, |label| label.offset());
+                    let point = offset + label_offset;
+                    return Diagnostic::js_parse_error(
+                        Span::new(point, point),
+                        "Assigning to rvalue".to_string(),
+                    );
+                }
+                js_parse_error_at(error, source, offset)
             });
             ExpressionTagBody::Invalid(diag)
         }
@@ -159,9 +199,7 @@ pub fn parse_script_with_alloc<'a>(
         return Err(result
             .diagnostics
             .iter()
-            .map(|_| {
-                Diagnostic::invalid_expression(Span::new(offset, offset + source.len() as u32))
-            })
+            .map(|error| js_parse_error_at(error, source, offset))
             .collect());
     }
 
@@ -226,21 +264,7 @@ pub fn parse_declaration_body<'a>(
     let result = OxcParser::new(alloc, source, src_type).parse();
 
     if let Some(error) = result.diagnostics.first() {
-        let label_offset = error
-            .labels
-            .as_slice()
-            .first()
-            .map_or(0usize, |label| label.offset() as usize);
-        let bytes = source.as_bytes();
-        let mut position = label_offset;
-        while position < bytes.len() && bytes[position].is_ascii_whitespace() {
-            position += 1;
-        }
-        let point = offset + position as u32;
-        return DeclarationTagBody::ParseError(Diagnostic::js_parse_error(
-            Span::new(point, point),
-            error.message.to_string(),
-        ));
+        return DeclarationTagBody::ParseError(js_parse_error_at(error, source, offset));
     }
 
     let Some(mut stmt) = result.program.body.into_iter().next() else {

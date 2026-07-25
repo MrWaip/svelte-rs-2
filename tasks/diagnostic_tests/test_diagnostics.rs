@@ -2887,6 +2887,31 @@ mod compiler_errors {
     diagnostic_case!(doctype_closing_tag_void, "parser/doctype_closing_tag_void");
     diagnostic_case!(bang_element_unclosed, "parser/bang_element_unclosed");
     diagnostic_case!(
+        block_if_empty_expression,
+        "parser/block_if_empty_expression"
+    );
+    diagnostic_case!(
+        block_each_empty_expression,
+        "parser/block_each_empty_expression"
+    );
+    diagnostic_case!(
+        block_key_empty_expression,
+        "parser/block_key_empty_expression"
+    );
+    diagnostic_case!(
+        block_await_empty_expression,
+        "parser/block_await_empty_expression"
+    );
+    diagnostic_case!(
+        block_if_expression_guard,
+        "parser/block_if_expression_guard"
+    );
+    diagnostic_case!(script_unparsable_js, "parser/script_unparsable_js");
+    diagnostic_case!(
+        script_generics_unparsable_js,
+        "parser/script_generics_unparsable_js"
+    );
+    diagnostic_case!(
         doctype_public_identifier,
         "parser/doctype_public_identifier"
     );

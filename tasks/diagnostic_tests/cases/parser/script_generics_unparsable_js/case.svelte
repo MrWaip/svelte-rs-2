@@ -1,0 +1,1 @@
+<script generics="T">foo {}</script>

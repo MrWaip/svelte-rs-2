@@ -151,7 +151,10 @@ fn parse_span<'a>(
         }
         ExpressionTagBody::Invalid(diag) => {
             diags.push(diag.unwrap_or_else(|| {
-                Diagnostic::invalid_expression(svelte_span::Span::new(span.start, span.end))
+                Diagnostic::js_parse_error(
+                    svelte_span::Span::new(span.start, span.start),
+                    "Unexpected token".to_string(),
+                )
             }));
             result.alloc_expr(span.start, placeholder_expression(alloc, span.start));
         }

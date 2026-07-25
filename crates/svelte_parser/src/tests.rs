@@ -1821,3 +1821,75 @@ fn assert_no_template_comment(source: &str) {
 fn no_template_comment_when_expression_has_none() {
     assert_no_template_comment("<button onclick={() => test.test = 1}></button>");
 }
+
+#[track_caller]
+fn assert_only_diagnostic(
+    source: &str,
+    expected_code: &str,
+    expected_start: u32,
+    expected_end: u32,
+) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, _js, diags) = crate::parse_with_js(&alloc, source);
+    let errors = diags
+        .iter()
+        .filter(|d| d.severity == svelte_diagnostics::Severity::Error)
+        .collect::<Vec<_>>();
+    assert_eq!(errors.len(), 1, "expected exactly one error, got {diags:?}");
+    let error = errors[0];
+    assert_eq!(
+        error.kind.code(),
+        expected_code,
+        "expected code {expected_code}, got {error:?}"
+    );
+    assert_eq!(
+        (error.span.start, error.span.end),
+        (expected_start, expected_end),
+        "expected span {expected_start}..{expected_end}, got {error:?}"
+    );
+}
+
+#[test]
+fn empty_if_expression_reports_js_parse_error_at_the_gap() {
+    assert_only_diagnostic("{#if }a{/if}", "js_parse_error", 5, 5);
+}
+
+#[test]
+fn empty_each_expression_reports_js_parse_error_at_the_gap() {
+    assert_only_diagnostic("{#each }a{/each}", "js_parse_error", 7, 7);
+}
+
+#[test]
+fn empty_key_expression_reports_js_parse_error_at_the_gap() {
+    assert_only_diagnostic("{#key }a{/key}", "js_parse_error", 6, 6);
+}
+
+#[test]
+fn empty_await_expression_reports_js_parse_error_at_the_gap() {
+    assert_only_diagnostic("{#await }a{/await}", "js_parse_error", 8, 8);
+}
+
+#[test]
+fn unparsable_script_reports_js_parse_error_at_the_offending_token() {
+    assert_only_diagnostic("<script>foo {}</script>", "js_parse_error", 12, 12);
+}
+
+#[test]
+fn unparsable_script_with_generics_reports_js_parse_error_at_the_offending_token() {
+    assert_only_diagnostic(
+        "<script generics=\"T\">foo {}</script>",
+        "js_parse_error",
+        25,
+        25,
+    );
+}
+
+#[test]
+fn type_alias_in_typescript_reports_declaration_tag_invalid_type() {
+    assert_only_diagnostic(
+        "<script lang=\"ts\">let a = 1;</script>{type X = 1}",
+        "declaration_tag_invalid_type",
+        38,
+        48,
+    );
+}
