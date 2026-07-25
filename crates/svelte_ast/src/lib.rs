@@ -813,10 +813,21 @@ impl SvelteComponentLegacy {
 
 impl SvelteElement {
     pub fn this_expr(&self) -> Option<&ExprRef> {
-        self.attributes.iter().find_map(|a| match a {
-            Attribute::ExpressionAttribute(x) if x.name == "this" => Some(&x.expression),
+        if self.static_tag {
+            return None;
+        }
+        match self
+            .attributes
+            .iter()
+            .find(|a| a.is_svelte_element_this())?
+        {
+            Attribute::ExpressionAttribute(x) => Some(&x.expression),
+            Attribute::ConcatenationAttribute(x) => match x.parts.first()? {
+                ConcatPart::Dynamic { expr, .. } => Some(expr),
+                ConcatPart::Static(_) => None,
+            },
             _ => None,
-        })
+        }
     }
 }
 
