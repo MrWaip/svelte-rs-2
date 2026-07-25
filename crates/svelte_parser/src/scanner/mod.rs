@@ -115,7 +115,7 @@ impl<'a> Scanner<'a> {
 
             match peeked {
                 Some('/') => return self.end_tag(),
-                Some('!') => return self.comment(),
+                Some('!') if self.at_comment_open() => return self.comment(),
                 _ => return self.start_tag(),
             }
         }
@@ -285,7 +285,19 @@ impl<'a> Scanner<'a> {
         self.slice_source(start, self.current)
     }
 
+    fn at_comment_open(&self) -> bool {
+        matches!(self.bytes.get(self.current + 1), Some(b'-'))
+            && matches!(self.bytes.get(self.current + 2), Some(b'-'))
+    }
+
     fn scan_tag_name(&mut self) -> &'a str {
+        if self.peek_byte() == Some(b'!') {
+            let start = self.current;
+            self.advance();
+            self.identifier();
+            return self.slice_source(start, self.current);
+        }
+
         if let Some(name) = self.try_component_tag_name() {
             name
         } else {
@@ -502,7 +514,11 @@ impl<'a> Scanner<'a> {
             ));
         }
 
-        self.consume_dotted_tag_suffix();
+        let doctype_body = name.strip_prefix('!');
+
+        if doctype_body.is_none() {
+            self.consume_dotted_tag_suffix();
+        }
 
         if name == "svelte" && self.peek() == Some(':') {
             self.advance();
@@ -527,6 +543,12 @@ impl<'a> Scanner<'a> {
             } else {
                 return Err(Diagnostic::invalid_tag_name(name_span));
             }
+        }
+
+        if doctype_body
+            .is_some_and(|body| body.is_empty() || !body.bytes().all(|b| b.is_ascii_alphabetic()))
+        {
+            return Err(Diagnostic::invalid_tag_name(name_span));
         }
 
         let is_top_level_script_or_style =
@@ -706,13 +728,19 @@ impl<'a> Scanner<'a> {
     fn html_attribute(&mut self, name_span: Span) -> Result<Attribute, Diagnostic> {
         let mut value: AttributeValue = AttributeValue::Empty;
 
-        if self.match_equals() {
+        let checkpoint = self.checkpoint();
+        self.skip_whitespace();
+
+        if self.match_char('=') {
+            self.skip_whitespace();
             value = self.attribute_value()?;
-        } else if matches!(self.peek(), Some('"' | '\'')) {
+        } else if matches!(self.peek_byte(), Some(b'"' | b'\'')) {
             return Err(Diagnostic::error(
                 svelte_diagnostics::DiagnosticKind::ExpectedToken { token: "=".into() },
                 Span::new(self.current as u32, self.current as u32),
             ));
+        } else {
+            self.restore(checkpoint);
         }
 
         Ok(Attribute::HTMLAttribute(HTMLAttribute {

@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use svelte_ast::is_void;
+
 pub(crate) enum TemplateNode<'a> {
     Text(String),
     Comment(Option<String>),
@@ -235,27 +237,4 @@ pub(crate) fn escape_html_attr(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     escape_html_attr_into(s, &mut out);
     out
-}
-
-#[inline]
-fn is_void(name: &str) -> bool {
-    matches!(
-        name,
-        "area"
-            | "base"
-            | "br"
-            | "col"
-            | "command"
-            | "embed"
-            | "hr"
-            | "img"
-            | "input"
-            | "keygen"
-            | "link"
-            | "meta"
-            | "param"
-            | "source"
-            | "track"
-            | "wbr"
-    )
 }

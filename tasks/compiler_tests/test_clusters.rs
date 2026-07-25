@@ -77,6 +77,9 @@ mod dev_element_locations;
 #[path = "clusters/dev_location.rs"]
 mod dev_location;
 
+#[path = "clusters/doctype.rs"]
+mod doctype;
+
 #[path = "clusters/set_class_scope_hash.rs"]
 mod set_class_scope_hash;
 

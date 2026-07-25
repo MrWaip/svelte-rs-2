@@ -2840,6 +2840,24 @@ mod compiler_errors {
         style_self_closing_expected_token,
         "parser/style_self_closing_expected_token"
     );
+    diagnostic_case!(
+        doctype_invalid_name_digit,
+        "parser/doctype_invalid_name_digit"
+    );
+    diagnostic_case!(
+        doctype_invalid_name_empty,
+        "parser/doctype_invalid_name_empty"
+    );
+    diagnostic_case!(
+        doctype_invalid_name_dotted,
+        "parser/doctype_invalid_name_dotted"
+    );
+    diagnostic_case!(doctype_closing_tag_void, "parser/doctype_closing_tag_void");
+    diagnostic_case!(bang_element_unclosed, "parser/bang_element_unclosed");
+    diagnostic_case!(
+        doctype_public_identifier,
+        "parser/doctype_public_identifier"
+    );
     diagnostic_case!(else_before_closing, "compiler_errors/else-before-closing");
     diagnostic_case!(
         else_before_closing_2,

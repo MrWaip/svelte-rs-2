@@ -13,7 +13,7 @@ const VOID_ELEMENTS: &[&str] = &[
 ];
 
 pub fn is_void(name: &str) -> bool {
-    VOID_ELEMENTS.contains(&name)
+    VOID_ELEMENTS.contains(&name) || name.eq_ignore_ascii_case("!doctype")
 }
 
 const SVG_ELEMENTS: &[&str] = &[
