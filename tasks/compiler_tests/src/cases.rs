@@ -68,10 +68,13 @@ fn load_module_case(dir: PathBuf) -> (String, ModuleCompileOptions) {
         filename: default_filename,
         ..Default::default()
     };
-    if let Some(config) = read_config(&dir)
-        && let Some(filename) = config.get("filename").and_then(|v| v.as_str())
-    {
-        opts.filename = filename.to_string();
+    if let Some(config) = read_config(&dir) {
+        if let Some(filename) = config.get("filename").and_then(|v| v.as_str()) {
+            opts.filename = filename.to_string();
+        }
+        if let Some(root_dir) = config.get("rootDir").and_then(|v| v.as_str()) {
+            opts.root_dir = Some(root_dir.to_string());
+        }
     }
     (input, opts)
 }

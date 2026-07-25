@@ -143,6 +143,7 @@ pub fn generate<'a>(
             &mut *ctx.state.ident_gen,
             ctx.state.line_index,
             ctx.state.dev,
+            ctx.state.filename,
         );
 
         script_comments.extend(module_output.comments);
@@ -845,6 +846,7 @@ pub fn generate_module<'a>(
         &mut ident_gen,
         line_index,
         dev,
+        filename,
     );
 
     let b = Builder::new(alloc);

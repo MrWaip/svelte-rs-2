@@ -31,7 +31,7 @@ fn filename_relative_to_root_dir(filename: &str, root_dir: Option<&str>) -> Stri
     };
     let rd_norm = rd.replace('\\', "/");
     if let Some(rest) = normalized.strip_prefix(&rd_norm) {
-        rest.trim_start_matches('/').to_string()
+        rest.strip_prefix('/').unwrap_or(rest).to_string()
     } else {
         normalized
     }
@@ -403,7 +403,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
         svelte_span::LineIndex::empty()
     };
     let kind = options.sourcemap_kind;
-    let filename = options.filename.clone();
+    let filename = filename_relative_to_root_dir(&options.filename, options.root_dir.as_deref());
     let js = match options.generate {
         GenerateMode::Server => {
             let mut ident_gen = svelte_analyze::IdentGen::with_conflicts(

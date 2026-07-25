@@ -1,0 +1,3 @@
+export async function load(cache, p) {
+	return (cache.items ??= await p);
+}

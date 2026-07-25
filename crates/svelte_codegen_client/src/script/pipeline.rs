@@ -82,6 +82,7 @@ pub fn transform_module_program<'a, 'b>(
     ident_gen: &'b mut IdentGen,
     line_index: &'b svelte_span::LineIndex,
     dev: bool,
+    filename: &str,
 ) -> ScriptOutput<'a> {
     let ignore_query = match analysis {
         Some(analysis) => IgnoreQuery::new(analysis),
@@ -97,7 +98,7 @@ pub fn transform_module_program<'a, 'b>(
         dev,
         "",
         line_index,
-        "(unknown)",
+        filename,
         true,
         false,
         false,
@@ -115,6 +116,7 @@ pub fn transform_component_module_program<'a, 'b>(
     ident_gen: &'b mut IdentGen,
     line_index: &'b svelte_span::LineIndex,
     dev: bool,
+    filename: &str,
 ) -> ScriptOutput<'a> {
     run_transform(
         allocator,
@@ -126,7 +128,7 @@ pub fn transform_component_module_program<'a, 'b>(
         dev,
         "",
         line_index,
-        "(unknown)",
+        filename,
         false,
         false,
         false,
