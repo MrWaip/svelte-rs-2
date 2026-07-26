@@ -1,4 +1,5 @@
 pub mod attribute_semantics;
+pub mod await_semantics;
 pub mod block_semantics;
 pub(crate) mod css;
 pub mod element_semantics;
@@ -34,6 +35,7 @@ pub(crate) mod utils;
 pub(crate) mod validate;
 pub(crate) mod walker;
 
+pub use await_semantics::{AwaitSemantics, AwaitSemanticsStore};
 pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagBlockSemantics, DeclarationTagBlockSemantics, EachAsyncKind,
@@ -70,13 +72,12 @@ pub use types::data::{
     ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry,
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDependency,
     LegacySummary, MediaBindKind, NamespaceKind, OptimizedRuneSemantics, ParentKind, ParentRef,
-    PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode,
-    PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
-    ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
-    RichContentParentKind, RuntimeRuneKind, ScriptAnalysis, SignalReadLocality,
-    SignalReferenceKind, SnippetData, SnippetParamStrategy, StateDeclarationSemantics, StateKind,
-    StoreBindingSemantics, SvelteElementTag, TemplateAnalysis, TemplateElementEntry,
-    TemplateElementIndex, TemplateTopology, WindowBindKind,
+    PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics,
+    PropsSummary, ReactivitySemantics, ReactivitySummary, ReferenceSemantics, ResizeObserverKind,
+    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimeRuneKind,
+    ScriptAnalysis, SignalReadLocality, SignalReferenceKind, SnippetData, SnippetParamStrategy,
+    StateDeclarationSemantics, StateKind, StoreBindingSemantics, SvelteElementTag,
+    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 
 bitflags::bitflags! {

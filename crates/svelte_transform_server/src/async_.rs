@@ -2,6 +2,7 @@ use std::mem;
 
 use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, BindingPattern, Expression, Statement};
 use oxc_span::SPAN;
+use svelte_analyze::AwaitSemantics;
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::OxcNodeId;
 
@@ -28,11 +29,10 @@ impl<'a> ServerTransform<'_, 'a> {
     }
 
     fn await_needs_save(&self, id: OxcNodeId) -> bool {
-        self.analysis.pickled_awaits.contains(id)
-            || self
-                .analysis
-                .expression_data_by_oxc(id)
-                .is_some_and(|data| !data.blockers.is_empty() || !data.references.is_empty())
+        match self.analysis.await_semantics.query(id) {
+            AwaitSemantics::NonTerminal | AwaitSemantics::TerminalInConstruct => true,
+            AwaitSemantics::TerminalInFragmentInterpolation | AwaitSemantics::Detached => false,
+        }
     }
 }
 

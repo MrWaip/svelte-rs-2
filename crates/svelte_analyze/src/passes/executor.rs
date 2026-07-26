@@ -5,7 +5,9 @@ use crate::reactivity_semantics::{
     ReactivityInputs, build_v2, finalize_component_prop_facts, finalize_reactivity,
 };
 use crate::types::markers::ScopingBuilt;
-use crate::{AnalysisData, AnalyzeOptions, JsAst, validate, value_evaluation, walker};
+use crate::{
+    AnalysisData, AnalyzeOptions, JsAst, await_semantics, validate, value_evaluation, walker,
+};
 use crate::{
     attribute_semantics, block_semantics, element_semantics, expression_semantics,
     fragment_semantics, runtime_semantics,
@@ -116,7 +118,9 @@ pub(crate) fn execute_pass<'a>(
         }
         super::PassKey::JsAnalyzePostTemplate => {
             js_analyze::calculate_instance_blockers(parsed, data);
-            js_analyze::classify_pickled_awaits(parsed, data);
+        }
+        super::PassKey::BuildAwaitSemantics => {
+            data.await_semantics = await_semantics::build(component, parsed);
         }
         super::PassKey::BuildReactivitySemantics => {
             build_v2(

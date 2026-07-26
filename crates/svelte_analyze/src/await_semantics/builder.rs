@@ -2,34 +2,98 @@ use oxc_ast::ast::{
     Argument, ArrayExpression, ArrowFunctionExpression, AssignmentExpression, AwaitExpression,
     BinaryExpression, CallExpression, ConditionalExpression, Expression, Function,
     LogicalExpression, MemberExpression, NewExpression, ObjectExpression, ObjectPropertyKind,
-    SequenceExpression, TaggedTemplateExpression, TemplateLiteral,
+    SequenceExpression, Statement, TaggedTemplateExpression, TemplateLiteral,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_expression, walk_function};
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
-use svelte_component_semantics::OxcNodeId;
+use svelte_ast::{Component, FragmentId, Node, OxcNodeId};
 
-use crate::types::data::{AnalysisData, JsAst};
+use crate::types::data::JsAst;
 
-pub(crate) fn classify_pickled_awaits(parsed: &JsAst<'_>, data: &mut AnalysisData) {
+use super::data::{AwaitSemantics, AwaitSemanticsStore};
+
+pub(crate) fn build(component: &Component, parsed: &JsAst<'_>) -> AwaitSemanticsStore {
+    let mut store = AwaitSemanticsStore::new();
+
     for expr in parsed.iter_exprs() {
-        let mut collector = PickledAwaitCollector::new();
-        collector.visit_expression(expr);
-        data.pickled_awaits.extend_node_ids(collector.node_ids);
+        classify_expression(expr, AwaitSemantics::TerminalInConstruct, &mut store);
+    }
+
+    for stmt in parsed.iter_stmts() {
+        classify_statement(stmt, &mut store);
+    }
+
+    for expr_id in fragment_interpolations(component) {
+        let Some(expr) = parsed.expr(expr_id) else {
+            continue;
+        };
+        classify_expression(
+            expr,
+            AwaitSemantics::TerminalInFragmentInterpolation,
+            &mut store,
+        );
+    }
+
+    store
+}
+
+fn fragment_interpolations(component: &Component) -> Vec<OxcNodeId> {
+    let store = &component.store;
+    let mut out = Vec::new();
+
+    for index in 0..store.fragments_len() {
+        let fragment = store.fragment(FragmentId(index));
+        let inlined_into_element = fragment
+            .owner
+            .is_some_and(|owner| matches!(store.get(owner), Node::Element(_)));
+        if inlined_into_element {
+            continue;
+        }
+
+        for &node_id in &fragment.nodes {
+            if let Node::ExpressionTag(tag) = store.get(node_id) {
+                out.push(tag.expression.id());
+            }
+        }
+    }
+
+    out
+}
+
+fn classify_expression(
+    expr: &Expression<'_>,
+    terminal: AwaitSemantics,
+    store: &mut AwaitSemanticsStore,
+) {
+    let mut collector = AwaitCollector::new(terminal);
+    collector.visit_expression(expr);
+    for (id, semantics) in collector.entries {
+        store.set(id, semantics);
     }
 }
 
-struct PickledAwaitCollector {
-    node_ids: SmallVec<[OxcNodeId; 4]>,
+fn classify_statement(stmt: &Statement<'_>, store: &mut AwaitSemanticsStore) {
+    let mut collector = AwaitCollector::new(AwaitSemantics::TerminalInConstruct);
+    collector.visit_statement(stmt);
+    for (id, semantics) in collector.entries {
+        store.set(id, semantics);
+    }
+}
+
+struct AwaitCollector {
+    terminal: AwaitSemantics,
+    entries: SmallVec<[(OxcNodeId, AwaitSemantics); 4]>,
     last_stack: Vec<bool>,
     fn_depth: u32,
 }
 
-impl PickledAwaitCollector {
-    fn new() -> Self {
+impl AwaitCollector {
+    fn new(terminal: AwaitSemantics) -> Self {
         Self {
-            node_ids: SmallVec::new(),
+            terminal,
+            entries: SmallVec::new(),
             last_stack: vec![true],
             fn_depth: 0,
         }
@@ -37,6 +101,16 @@ impl PickledAwaitCollector {
 
     fn current_is_last(&self) -> bool {
         self.last_stack.last().copied().unwrap_or(true)
+    }
+
+    fn semantics_here(&self) -> AwaitSemantics {
+        if self.fn_depth > 0 {
+            AwaitSemantics::Detached
+        } else if self.current_is_last() {
+            self.terminal
+        } else {
+            AwaitSemantics::NonTerminal
+        }
     }
 
     fn visit_child(&mut self, expr: &Expression<'_>, is_last: bool) {
@@ -52,13 +126,11 @@ impl PickledAwaitCollector {
     }
 }
 
-impl<'a> Visit<'a> for PickledAwaitCollector {
+impl<'a> Visit<'a> for AwaitCollector {
     fn visit_expression(&mut self, expr: &Expression<'a>) {
-        if let Expression::AwaitExpression(await_expr) = expr
-            && self.fn_depth == 0
-            && !self.current_is_last()
-        {
-            self.node_ids.push(await_expr.node_id());
+        if let Expression::AwaitExpression(await_expr) = expr {
+            let semantics = self.semantics_here();
+            self.entries.push((await_expr.node_id(), semantics));
         }
         walk_expression(self, expr);
     }

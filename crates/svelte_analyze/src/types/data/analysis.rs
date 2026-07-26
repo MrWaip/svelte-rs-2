@@ -3,6 +3,7 @@ use crate::attribute_semantics::{
     AttributeSemanticsStore,
     data::{AttributeSemantics, ComponentPropMemo, ComponentPropSemantics},
 };
+use crate::await_semantics::AwaitSemanticsStore;
 use crate::block_semantics::{BlockSemantics, BlockSemanticsStore, EachIndexKind, EachItemKind};
 use crate::element_semantics::ElementSemanticsStore;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics, ExpressionSemanticsStore};
@@ -168,7 +169,7 @@ pub struct CustomElement {
 pub struct AnalysisData<'a> {
     pub expressions_v2: ExpressionSemanticsStore,
     pub attributes: AttributeSemanticsStore,
-    pub pickled_awaits: PickledAwaits,
+    pub await_semantics: AwaitSemanticsStore,
     pub scoping: ComponentScoping<'a>,
     pub script: ScriptAnalysis,
     pub elements: ElementAnalysis,
@@ -194,7 +195,7 @@ impl<'a> AnalysisData<'a> {
         Self {
             expressions_v2: ExpressionSemanticsStore::new(node_count),
             attributes: AttributeSemanticsStore::new(node_count),
-            pickled_awaits: PickledAwaits::new(),
+            await_semantics: AwaitSemanticsStore::new(),
             scoping: ComponentScoping::with_capacity(node_count as usize),
             script: ScriptAnalysis::new(),
             elements: ElementAnalysis::new(node_count),

@@ -18,6 +18,7 @@
   - ExpressionSemantics — `expression-semantics.md`
   - ElementSemantics — `element-semantics.md`
   - AttributeSemantics — `attribute-semantics.md`
+  - AwaitSemantics — `await-semantics.md`
   - BlockSemantics — `block-semantics.md`
   - FragmentSemantics — `fragment-semantics.md`
   - RuntimeSemantics — `runtime-semantics.md`
@@ -236,6 +237,9 @@ _Avoid_: expensive, complex, dynamic call как форма, отдельное 
 
 **Асинхронное выражение** *(en: asynchronous; вариант `Volatility::Asynchronous`)* — выражение содержит `await`; причина выноса — оно **приостанавливается**, нужна async-машинерия (`async_values`-слот, deferred). `{await x}` асинхронно без вызова, `{foo()}` тяжело без await, `{await foo()}` — `Asynchronous` (поглощает тяжесть). Выбор формы выноса (sync-ячейка `$.derived` vs async-слот) — **эмит-форма**, derived-правило **в кодгене** (`MemoForm::of`: `Asynchronous → слот; Heavy && нет blockers → ячейка; иначе инлайн`), в анализе не хранится.
 _Avoid_: `await`-флаг (`has_await`), `async` (зарезервировано в Rust), promise-bearing, отдельное поле `asynchronous`.
+
+**Сохранение контекста await** *(en: await context preservation; кластер `AwaitSemantics`)* — доменный вердикт на каждом `await` шаблонного выражения: что ещё исполняется в той же продолжающейся цепочке после его разрешения — остаток самого выражения, объемлющая конструкция шаблона либо ничто. Backend'ы по этому вердикту решают, оборачивать ли `await` в восстановление контекста компонента. Инварианты — `await-semantics.md`.
+_Avoid_: pickled await, save-обёртка, отдельный `has_await`-флаг на await-узле.
 
 ### Режимы и legacy
 

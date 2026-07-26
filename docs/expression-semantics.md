@@ -47,5 +47,6 @@ Per-expression факты для каждого template/attribute-выраже�
 - `context.md` §«Семантика и анализ» (мемоизация — `Memoization`-кластер живёт здесь), §«Реактивность».
 - `analyze.md` — место в build order (между фазами `ReactivitySemantics`).
 - `reactivity-semantics.md` — источник per-reference реактивных фактов.
+- `await-semantics.md` — вердикт на отдельном `await` внутри выражения; другая гранулярность ключа.
 - `block-semantics.md` — читает per-expression факты вместо параллельной классификации.
 - `attribute-semantics.md` — со-потребитель тех же выражений.

@@ -378,3 +378,6 @@ mod module_props;
 
 #[path = "clusters/closure_volatility.rs"]
 mod closure_volatility;
+
+#[path = "clusters/async_expression_tag.rs"]
+mod async_expression_tag;

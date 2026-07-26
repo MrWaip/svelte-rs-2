@@ -19,7 +19,6 @@ mod elements;
 mod fragment_facts;
 mod fragment_namespaces;
 mod ignore;
-mod pickled_awaits;
 mod rich_content_facts;
 mod template_data;
 mod template_element_index;
@@ -52,7 +51,6 @@ pub use elements::{
 pub use fragment_facts::{FragmentFacts, FragmentFactsEntry};
 pub use fragment_namespaces::FragmentNamespaces;
 pub use ignore::IgnoreData;
-pub use pickled_awaits::PickledAwaits;
 pub use rich_content_facts::{RichContentFacts, RichContentFactsEntry, RichContentParentKind};
 pub use template_data::{
     BindHostKind, BindPropertyKind, BindSemanticsData, BindSource, BindTargetSemantics,

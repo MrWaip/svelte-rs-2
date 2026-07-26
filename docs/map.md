@@ -32,8 +32,8 @@
 
 **Анализ** (`analyze.md` + кластерные PRD)
 - `svelte_component_semantics` — хранилище семантики. Главное: `ComponentSemantics` (`src/storage.rs:125`), `BindingPattern` (`src/pattern.rs`), `Symbol` (`src/symbol.rs`), `Scope` (`src/scope.rs`), `Reference` (`src/reference.rs`); билдер `src/builder/` (`js_visitor.rs`, `template.rs`).
-- `svelte_analyze` — анализ (read-only над AST). Вход `src/lib.rs`. Пассы — `src/passes/` (`build_component_semantics.rs`, `collect_symbols.rs`, `dynamism.rs`, `fragment_topology.rs`, `css_*`, `js_analyze/`, `template_validation/`). Кластеры `*Semantics`: `src/expression_semantics/`, `block_semantics/`, `attribute_semantics/`, `reactivity_semantics/` (+ `legacy_reactive.rs`, `mode_resolution.rs`). Скоупы `src/scope.rs`, валидация `src/validate/`.
-  - PRD: `component-semantics.md`, `expression-semantics.md`, `block-semantics.md`, `attribute-semantics.md`, `reactivity-semantics.md` (дочерний `state-rune.md`). Идентификаторы — `bindings-and-references.md`.
+- `svelte_analyze` — анализ (read-only над AST). Вход `src/lib.rs`. Пассы — `src/passes/` (`build_component_semantics.rs`, `collect_symbols.rs`, `dynamism.rs`, `fragment_topology.rs`, `css_*`, `js_analyze/`, `template_validation/`). Кластеры `*Semantics`: `src/expression_semantics/`, `block_semantics/`, `attribute_semantics/`, `await_semantics/`, `reactivity_semantics/` (+ `legacy_reactive.rs`, `mode_resolution.rs`). Скоупы `src/scope.rs`, валидация `src/validate/`.
+  - PRD: `component-semantics.md`, `expression-semantics.md`, `block-semantics.md`, `attribute-semantics.md`, `await-semantics.md`, `reactivity-semantics.md` (дочерний `state-rune.md`). Идентификаторы — `bindings-and-references.md`.
 
 **Трансформ** (client — `transform.md`, server — `transform-server.md`)
 - `svelte_transform_client` — мутация JS AST под `svelte/internal/client`. Вход `src/lib.rs`; пассы — `src/transformer/` (`runes.rs`, `state.rs`, `derived.rs`, `props.rs`, `legacy_reactive.rs`, `props_legacy.rs`, `assignments.rs`, `inspect.rs`, …).

@@ -7804,87 +7804,59 @@ mod expression_semantics_tests {
     };
 
     #[test]
-    fn t12_pickled_await_non_tail_position() {
-        use oxc_ast::ast::Expression;
-        use oxc_ast_visit::Visit;
-        use oxc_ast_visit::walk::walk_expression;
-
-        let source = r#"<script>
-async function foo(a, b) { return a + b; }
-async function bar() { return 1; }
-async function baz() { return 2; }
-</script>
-<p>{await foo(await bar(), await baz())}</p>"#;
-        let (_component, data, parsed) = analyze_with_async(source);
-
-        struct InnerAwaitFinder {
-            depth: u32,
-            inner_node_ids: Vec<OxcNodeId>,
-        }
-        impl<'a> Visit<'a> for InnerAwaitFinder {
-            fn visit_expression(&mut self, expr: &Expression<'a>) {
-                if let Expression::AwaitExpression(a) = expr {
-                    self.depth += 1;
-                    if self.depth >= 2 {
-                        self.inner_node_ids.push(a.node_id());
-                    }
-                    walk_expression(self, expr);
-                    self.depth -= 1;
-                } else {
-                    walk_expression(self, expr);
-                }
-            }
-        }
-        let mut finder = InnerAwaitFinder {
-            depth: 0,
-            inner_node_ids: Vec::new(),
-        };
-        for expr in parsed.iter_exprs() {
-            finder.visit_expression(expr);
-        }
-        assert!(
-            !finder.inner_node_ids.is_empty(),
-            "expected nested awaits in source"
-        );
-        assert!(
-            finder
-                .inner_node_ids
-                .iter()
-                .any(|nid| data.pickled_awaits.contains(*nid)),
-            "at least one non-tail await must be pickled"
+    fn await_in_fragment_interpolation_is_terminal_there() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script>{await p}"#,
+            &[crate::AwaitSemantics::TerminalInFragmentInterpolation],
         );
     }
 
     #[test]
-    fn t12_pickled_await_tail_position_not_pickled() {
-        use oxc_ast::ast::Expression;
-        use oxc_ast_visit::Visit;
-        use oxc_ast_visit::walk::walk_expression;
+    fn await_in_element_interpolation_is_terminal_in_construct() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script><p>{await p}</p>"#,
+            &[crate::AwaitSemantics::TerminalInConstruct],
+        );
+    }
 
-        let source = r#"<script>let p = Promise.resolve(1);</script><p>{await p}</p>"#;
-        let (_component, data, parsed) = analyze_with_async(source);
+    #[test]
+    fn await_in_attribute_is_terminal_in_construct() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script><div title={await p}></div>"#,
+            &[crate::AwaitSemantics::TerminalInConstruct],
+        );
+    }
 
-        struct AwaitFinder {
-            node_id: Option<OxcNodeId>,
-        }
-        impl<'a> Visit<'a> for AwaitFinder {
-            fn visit_expression(&mut self, expr: &Expression<'a>) {
-                if let Expression::AwaitExpression(a) = expr
-                    && self.node_id.is_none()
-                {
-                    self.node_id = Some(a.node_id());
-                }
-                walk_expression(self, expr);
-            }
-        }
-        let mut finder = AwaitFinder { node_id: None };
-        for expr in parsed.iter_exprs() {
-            finder.visit_expression(expr);
-        }
-        let nid = finder.node_id.expect("await expression");
-        assert!(
-            !data.pickled_awaits.contains(nid),
-            "tail-position await must not be pickled"
+    #[test]
+    fn await_followed_by_more_of_the_expression_is_non_terminal() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script>{(await p) + 1}"#,
+            &[crate::AwaitSemantics::NonTerminal],
+        );
+    }
+
+    #[test]
+    fn await_inside_nested_function_is_detached() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script><button onclick={async () => await p}>go</button>"#,
+            &[crate::AwaitSemantics::Detached],
+        );
+    }
+
+    #[test]
+    fn only_the_argument_evaluated_last_stays_terminal() {
+        assert_await_semantics(
+            r#"<script>
+async function foo(a, b) { return a + b; }
+async function bar() { return 1; }
+async function baz() { return 2; }
+</script>
+{await foo(await bar(), await baz())}"#,
+            &[
+                crate::AwaitSemantics::TerminalInFragmentInterpolation,
+                crate::AwaitSemantics::NonTerminal,
+                crate::AwaitSemantics::TerminalInFragmentInterpolation,
+            ],
         );
     }
 
@@ -8290,6 +8262,43 @@ async function baz() { return 2; }
                 ..AnalyzeOptions::default()
             },
         )
+    }
+
+    #[track_caller]
+    fn assert_await_semantics(source: &'static str, expected: &[crate::AwaitSemantics]) {
+        use oxc_ast::ast::Expression;
+        use oxc_ast_visit::Visit;
+        use oxc_ast_visit::walk::walk_expression;
+
+        struct AwaitIds(Vec<OxcNodeId>);
+        impl<'a> Visit<'a> for AwaitIds {
+            fn visit_expression(&mut self, expr: &Expression<'a>) {
+                if let Expression::AwaitExpression(await_expr) = expr {
+                    self.0.push(await_expr.node_id());
+                }
+                walk_expression(self, expr);
+            }
+        }
+
+        let (_component, data, parsed) = analyze_with_async(source);
+        let mut ids = AwaitIds(Vec::new());
+        for expr in parsed.iter_exprs() {
+            ids.visit_expression(expr);
+        }
+        for stmt in parsed.iter_stmts() {
+            ids.visit_statement(stmt);
+        }
+        assert!(!ids.0.is_empty(), "source declares no await expression");
+        let actual: Vec<crate::AwaitSemantics> = ids
+            .0
+            .iter()
+            .map(|id| data.await_semantics.query(*id))
+            .collect();
+        assert_eq!(
+            actual.as_slice(),
+            expected,
+            "await semantics: expected {expected:?}, got {actual:?}"
+        );
     }
 
     fn analyze_with_opts(

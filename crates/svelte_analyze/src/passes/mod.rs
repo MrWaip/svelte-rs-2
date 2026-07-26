@@ -30,6 +30,7 @@ pub(crate) enum PassKey {
     BuildFragmentSemantics,
     BuildRuntimeSemantics,
     JsAnalyzePostTemplate,
+    BuildAwaitSemantics,
     BuildReactivitySemantics,
     BuildValueEvaluation,
     FinalizeReactivity,
@@ -55,6 +56,7 @@ pub(crate) enum DataToken {
     FragmentSemantics,
     RuntimeSemantics,
     JsAnalyzePostTemplate,
+    AwaitSemantics,
     ReactivitySemantics,
     ValueEvaluation,
     OptimizedDerived,
@@ -132,6 +134,11 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         key: PassKey::JsAnalyzePostTemplate,
         requires: &[],
         produces: &[DataToken::JsAnalyzePostTemplate],
+    },
+    PassDescriptor {
+        key: PassKey::BuildAwaitSemantics,
+        requires: &[DataToken::TemplateSemantics],
+        produces: &[DataToken::AwaitSemantics],
     },
     PassDescriptor {
         key: PassKey::BuildFragmentTopology,
@@ -216,6 +223,7 @@ pub(crate) const INDEX_BUILD_STAGE: &[PassKey] =
 
 pub(crate) const POST_TEMPLATE_ANALYSIS_STAGE: &[PassKey] = &[
     PassKey::JsAnalyzePostTemplate,
+    PassKey::BuildAwaitSemantics,
     PassKey::BuildValueEvaluation,
     PassKey::FinalizeReactivity,
     PassKey::BuildExpressionSemantics,
