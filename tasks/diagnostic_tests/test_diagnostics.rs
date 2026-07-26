@@ -2659,6 +2659,14 @@ mod await_ {
         "await/validate_if_block_test_illegal_await_expression"
     );
     diagnostic_case!(
+        validate_template_await_legacy_option_invalid,
+        "await/validate_template_await_legacy_option_invalid"
+    );
+    diagnostic_case!(
+        validate_instance_await_inline_legacy_option_invalid,
+        "await/validate_instance_await_inline_legacy_option_invalid"
+    );
+    diagnostic_case!(
         validate_each_block_collection_illegal_await_expression,
         "await/validate_each_block_collection_illegal_await_expression"
     );

@@ -8,29 +8,36 @@ use crate::types::data::AnalysisData;
 
 pub(super) fn new_instance_validator<'a>(
     data: &'a AnalysisData<'_>,
+    runes: bool,
     diags: &'a mut Vec<Diagnostic>,
-) -> Option<ExperimentalAsyncValidator<'a>> {
-    new_validator(data, diags, true)
+) -> Option<SuspendingAwaitValidator<'a>> {
+    new_validator(data, runes, diags, true)
 }
 
 pub(super) fn new_module_validator<'a>(
     data: &'a AnalysisData<'_>,
     diags: &'a mut Vec<Diagnostic>,
-) -> Option<ExperimentalAsyncValidator<'a>> {
-    new_validator(data, diags, false)
+) -> Option<SuspendingAwaitValidator<'a>> {
+    new_validator(data, true, diags, false)
 }
 
 fn new_validator<'a>(
     data: &'a AnalysisData<'_>,
+    runes: bool,
     diags: &'a mut Vec<Diagnostic>,
     check_top_level: bool,
-) -> Option<ExperimentalAsyncValidator<'a>> {
-    if data.script.experimental_async {
+) -> Option<SuspendingAwaitValidator<'a>> {
+    let legacy_mode = if !data.script.experimental_async {
+        false
+    } else if !runes {
+        true
+    } else {
         return None;
-    }
-    Some(ExperimentalAsyncValidator {
+    };
+    Some(SuspendingAwaitValidator {
         reactivity: &data.reactivity,
         diags,
+        legacy_mode,
         function_depth: 0,
         expression_active: false,
         expression_active_stack: Vec::new(),
@@ -38,16 +45,17 @@ fn new_validator<'a>(
     })
 }
 
-pub(super) struct ExperimentalAsyncValidator<'a> {
+pub(super) struct SuspendingAwaitValidator<'a> {
     reactivity: &'a ReactivitySemantics,
     diags: &'a mut Vec<Diagnostic>,
+    legacy_mode: bool,
     function_depth: u32,
     expression_active: bool,
     expression_active_stack: Vec<bool>,
     check_top_level: bool,
 }
 
-impl ExperimentalAsyncValidator<'_> {
+impl SuspendingAwaitValidator<'_> {
     fn enter_isolated(&mut self, active: bool) {
         self.expression_active_stack.push(self.expression_active);
         self.expression_active = active;
@@ -70,26 +78,26 @@ impl ExperimentalAsyncValidator<'_> {
     }
 }
 
-const EXPERIMENTAL_ASYNC_LEAVE_INTERESTS: JsNodeMask = JsNodeMask::new(&[
+const SUSPENDING_AWAIT_LEAVE_INTERESTS: JsNodeMask = JsNodeMask::new(&[
     AstType::Function,
     AstType::ArrowFunctionExpression,
     AstType::CallExpression,
 ]);
 
-const EXPERIMENTAL_ASYNC_INTERESTS: JsNodeMask = JsNodeMask::new(&[
+const SUSPENDING_AWAIT_INTERESTS: JsNodeMask = JsNodeMask::new(&[
     AstType::Function,
     AstType::ArrowFunctionExpression,
     AstType::CallExpression,
     AstType::AwaitExpression,
 ]);
 
-impl<'a> JsVisitor<'a> for ExperimentalAsyncValidator<'_> {
+impl<'a> JsVisitor<'a> for SuspendingAwaitValidator<'_> {
     fn enter_interests(&self) -> JsNodeMask {
-        EXPERIMENTAL_ASYNC_INTERESTS
+        SUSPENDING_AWAIT_INTERESTS
     }
 
     fn leave_interests(&self) -> JsNodeMask {
-        EXPERIMENTAL_ASYNC_LEAVE_INTERESTS
+        SUSPENDING_AWAIT_LEAVE_INTERESTS
     }
 
     fn enter_js_node(&mut self, kind: AstKind<'a>) -> JsFlow {
@@ -101,8 +109,13 @@ impl<'a> JsVisitor<'a> for ExperimentalAsyncValidator<'_> {
             AstKind::AwaitExpression(expr)
                 if (self.check_top_level && self.function_depth == 0) || self.expression_active =>
             {
+                let kind = if self.legacy_mode {
+                    DiagnosticKind::LegacyAwaitInvalid
+                } else {
+                    DiagnosticKind::ExperimentalAsync
+                };
                 self.diags.push(Diagnostic::error(
-                    DiagnosticKind::ExperimentalAsync,
+                    kind,
                     Span::new(expr.span.start, expr.span.end),
                 ));
             }

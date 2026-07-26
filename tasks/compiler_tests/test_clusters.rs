@@ -211,6 +211,9 @@ mod runes_derived;
 #[path = "clusters/runes_props.rs"]
 mod runes_props;
 
+#[path = "clusters/runes_mode.rs"]
+mod runes_mode;
+
 #[path = "clusters/legacy_state.rs"]
 mod legacy_state;
 

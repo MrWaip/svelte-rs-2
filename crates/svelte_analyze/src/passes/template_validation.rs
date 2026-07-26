@@ -986,13 +986,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
             return;
         }
 
-        if !ctx.data.script.experimental_async
-            && let Some(parsed) = ctx.parsed()
+        if let Some(parsed) = ctx.parsed()
             && let Some(stmt) = parsed.stmt(tag.decl.id())
             && let Some(span) = first_await_span_in_stmt(stmt, tag.decl.span.start)
         {
-            ctx.warnings_mut()
-                .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
+            emit_suspending_await_diagnostic(ctx, span);
         }
     }
 
@@ -1008,13 +1006,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        if !ctx.data.script.experimental_async
-            && let Some(parsed) = ctx.parsed()
+        if let Some(parsed) = ctx.parsed()
             && let Some(stmt) = parsed.stmt(tag.declaration.id())
             && let Some(span) = first_await_span_in_stmt(stmt, tag.declaration.span.start)
         {
-            ctx.warnings_mut()
-                .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
+            emit_suspending_await_diagnostic(ctx, span);
         }
     }
 
@@ -1422,7 +1418,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
             })
         {
-            emit_template_await_experimental(ctx, &attr.expression);
+            let span = first_await_span(ctx, &attr.expression).unwrap_or(attr.expression.span);
+            emit_suspending_await_diagnostic(ctx, span);
         }
 
         self.check_event_handler_references(&attr.name, &attr.expression, ctx);
@@ -1737,7 +1734,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
             })
         {
-            emit_template_await_experimental(ctx, &tag.expression);
+            let span = first_await_span(ctx, &tag.expression).unwrap_or(tag.expression.span);
+            emit_suspending_await_diagnostic(ctx, span);
         }
     }
 
@@ -3896,17 +3894,20 @@ fn check_template_await(ctx: &mut VisitContext<'_, '_>, id: NodeId, expression: 
             Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
         })
     {
-        emit_template_await_experimental(ctx, expression);
+        let span = first_await_span(ctx, expression).unwrap_or(expression.span);
+        emit_suspending_await_diagnostic(ctx, span);
     }
 }
 
-fn emit_template_await_experimental(ctx: &mut VisitContext<'_, '_>, expression: &ExprRef) {
-    if ctx.data.script.experimental_async {
+fn emit_suspending_await_diagnostic(ctx: &mut VisitContext<'_, '_>, span: Span) {
+    let kind = if !ctx.data.script.experimental_async {
+        DiagnosticKind::ExperimentalAsync
+    } else if !ctx.runes {
+        DiagnosticKind::LegacyAwaitInvalid
+    } else {
         return;
-    }
-    let span = first_await_span(ctx, expression).unwrap_or(expression.span);
-    ctx.warnings_mut()
-        .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
+    };
+    ctx.warnings_mut().push(Diagnostic::error(kind, span));
 }
 
 fn expression_tag_body_is_declaration(ctx: &VisitContext<'_, '_>, tag: &ExpressionTag) -> bool {

@@ -102,7 +102,8 @@ fn run_instance_js_bundle(
     let mut dollar =
         dollar_name::new_validator(runes, INSTANCE_FUNCTION_DEPTH, &mut dollar_name_diags);
     let mut syntax = syntax_bundle::new_instance_validator(data, runes, &mut syntax_diags);
-    let mut experimental = experimental_async::new_instance_validator(data, &mut async_diags);
+    let mut experimental =
+        experimental_async::new_instance_validator(data, runes, &mut async_diags);
     let mut state_ref = runes::new_state_ref_locally_validator(data, &mut state_ref_diags);
     let mut rest_prop = runes::new_rest_prop_validator(data, &mut rest_prop_diags);
 
