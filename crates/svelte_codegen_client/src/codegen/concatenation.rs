@@ -108,6 +108,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         &data.references,
                         |sym| legacy_dep_expr(self.ctx, sym),
                     );
+                    let suspension = data.suspension;
                     match data.volatility {
                         Volatility::Heavy => {
                             memo_deps.push_node_deps(self.ctx, *id);
@@ -119,7 +120,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         Volatility::Asynchronous => {
                             memo_deps.push_node_deps(self.ctx, *id);
                             let cloned = self.ctx.b.clone_expr(&expr);
-                            let index = memo_deps.async_values_push(cloned);
+                            let index = memo_deps.async_values_push(cloned, suspension);
                             needs_effect = true;
                             (memo_deps.async_param_expr(self.ctx, index), false)
                         }

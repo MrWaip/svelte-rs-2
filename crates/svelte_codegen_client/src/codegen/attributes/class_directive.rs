@@ -196,7 +196,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         if let Some(d) = &data {
                             memo.push_expression_data(self.ctx, d);
                         }
-                        let index = memo.async_values_push(expr);
+                        let index = memo
+                            .async_values_push(expr, self.ctx.expression_suspension(class_attr_id));
                         memo.async_param_expr(self.ctx, index)
                     }
                     _ => expr,

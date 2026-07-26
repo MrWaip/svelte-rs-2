@@ -1,11 +1,13 @@
 use oxc_ast::ast::{
-    Argument, ArrayExpression, ArrowFunctionExpression, AssignmentExpression, AwaitExpression,
-    BinaryExpression, CallExpression, ConditionalExpression, Expression, Function,
-    LogicalExpression, MemberExpression, NewExpression, ObjectExpression, ObjectPropertyKind,
-    SequenceExpression, Statement, TaggedTemplateExpression, TemplateLiteral,
+    Argument, ArrayExpression, ArrayExpressionElement, ArrowFunctionExpression,
+    AssignmentExpression, AwaitExpression, BinaryExpression, CallExpression, ConditionalExpression,
+    Expression, Function, LogicalExpression, MemberExpression, NewExpression, ObjectExpression,
+    ObjectPropertyKind, SequenceExpression, Statement, TaggedTemplateExpression, TemplateLiteral,
 };
 use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::{walk_arrow_function_expression, walk_expression, walk_function};
+use oxc_ast_visit::walk::{
+    walk_arrow_function_expression, walk_assignment_target, walk_expression, walk_function,
+};
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 use svelte_ast::{Component, FragmentId, Node, OxcNodeId};
@@ -144,11 +146,49 @@ impl AwaitCollector {
         self.last_stack.pop();
     }
 
+    fn in_non_tail_position(&mut self, visit: impl FnOnce(&mut Self)) {
+        self.last_stack.push(false);
+        visit(self);
+        self.last_stack.pop();
+    }
+
     fn visit_argument(&mut self, arg: &Argument<'_>, is_last: bool) {
-        if let Some(expr) = arg.as_expression() {
-            self.visit_child(expr, is_last);
+        match arg {
+            Argument::SpreadElement(spread) => self.visit_child(&spread.argument, false),
+            _ => {
+                if let Some(expr) = arg.as_expression() {
+                    self.visit_child(expr, is_last);
+                }
+            }
         }
     }
+}
+
+fn positions_its_own_children(expr: &Expression<'_>) -> bool {
+    matches!(
+        expr,
+        Expression::ArrayExpression(_)
+            | Expression::AssignmentExpression(_)
+            | Expression::AwaitExpression(_)
+            | Expression::BinaryExpression(_)
+            | Expression::CallExpression(_)
+            | Expression::ComputedMemberExpression(_)
+            | Expression::ConditionalExpression(_)
+            | Expression::LogicalExpression(_)
+            | Expression::NewExpression(_)
+            | Expression::ObjectExpression(_)
+            | Expression::PrivateFieldExpression(_)
+            | Expression::SequenceExpression(_)
+            | Expression::StaticMemberExpression(_)
+            | Expression::TaggedTemplateExpression(_)
+            | Expression::TemplateLiteral(_)
+            | Expression::ParenthesizedExpression(_)
+            | Expression::TSAsExpression(_)
+            | Expression::TSInstantiationExpression(_)
+            | Expression::TSNonNullExpression(_)
+            | Expression::TSSatisfiesExpression(_)
+            | Expression::TSTypeAssertion(_)
+    )
 }
 
 impl<'a> Visit<'a> for AwaitCollector {
@@ -157,23 +197,36 @@ impl<'a> Visit<'a> for AwaitCollector {
             let semantics = self.semantics_here();
             self.entries.push((await_expr.node_id(), semantics));
         }
-        walk_expression(self, expr);
+
+        if positions_its_own_children(expr) {
+            walk_expression(self, expr);
+        } else {
+            self.in_non_tail_position(|collector| walk_expression(collector, expr));
+        }
     }
 
     fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
-        self.visit_child(&expr.argument, true);
+        self.visit_child(&expr.argument, false);
     }
 
     fn visit_array_expression(&mut self, expr: &ArrayExpression<'a>) {
         let last = expr.elements.len().saturating_sub(1);
         for (index, elem) in expr.elements.iter().enumerate() {
-            if let Some(elem_expr) = elem.as_expression() {
-                self.visit_child(elem_expr, self.current_is_last() && index == last);
+            match elem {
+                ArrayExpressionElement::SpreadElement(spread) => {
+                    self.visit_child(&spread.argument, false);
+                }
+                _ => {
+                    if let Some(elem_expr) = elem.as_expression() {
+                        self.visit_child(elem_expr, self.current_is_last() && index == last);
+                    }
+                }
             }
         }
     }
 
     fn visit_assignment_expression(&mut self, expr: &AssignmentExpression<'a>) {
+        self.in_non_tail_position(|collector| walk_assignment_target(collector, &expr.left));
         self.visit_child(&expr.right, self.current_is_last());
     }
 
@@ -195,13 +248,13 @@ impl<'a> Visit<'a> for AwaitCollector {
         match expr {
             MemberExpression::ComputedMemberExpression(member) => {
                 self.visit_child(&member.object, false);
-                self.visit_child(&member.expression, self.current_is_last());
+                self.visit_child(&member.expression, false);
             }
             MemberExpression::StaticMemberExpression(member) => {
-                self.visit_child(&member.object, self.current_is_last());
+                self.visit_child(&member.object, false);
             }
             MemberExpression::PrivateFieldExpression(member) => {
-                self.visit_child(&member.object, self.current_is_last());
+                self.visit_child(&member.object, false);
             }
         }
     }
@@ -219,10 +272,13 @@ impl<'a> Visit<'a> for AwaitCollector {
         for (index, prop) in expr.properties.iter().enumerate() {
             match prop {
                 ObjectPropertyKind::ObjectProperty(prop) => {
+                    if let Some(key) = prop.key.as_expression() {
+                        self.visit_child(key, false);
+                    }
                     self.visit_child(&prop.value, self.current_is_last() && index == last);
                 }
                 ObjectPropertyKind::SpreadProperty(prop) => {
-                    self.visit_child(&prop.argument, self.current_is_last() && index == last);
+                    self.visit_child(&prop.argument, false);
                 }
             }
         }
@@ -237,7 +293,7 @@ impl<'a> Visit<'a> for AwaitCollector {
 
     fn visit_tagged_template_expression(&mut self, expr: &TaggedTemplateExpression<'a>) {
         self.visit_child(&expr.tag, false);
-        self.visit_template_literal(&expr.quasi);
+        self.in_non_tail_position(|collector| collector.visit_template_literal(&expr.quasi));
     }
 
     fn visit_template_literal(&mut self, expr: &TemplateLiteral<'a>) {

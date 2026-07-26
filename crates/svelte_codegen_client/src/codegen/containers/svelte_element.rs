@@ -10,6 +10,7 @@ use super::super::attributes::AttributeOwnerKind;
 use super::super::data_structures::AsyncEmission;
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::effect::suspending_block_thunk;
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -79,7 +80,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             AsyncEmission::Awaited { .. } => {
                 use oxc_allocator::CloneIn;
                 let cloned = tag_expr.clone_in(self.ctx.b.ast.allocator);
-                Some(self.ctx.b.async_thunk(cloned))
+                let suspension = self.ctx.expression_suspension(el_id);
+                Some(suspending_block_thunk(self.ctx, cloned, suspension))
             }
             AsyncEmission::Deferred { .. } | AsyncEmission::Sync => None,
         };

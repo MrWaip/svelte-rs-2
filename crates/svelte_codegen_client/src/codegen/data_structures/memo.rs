@@ -1,5 +1,5 @@
 use oxc_ast::ast::Expression;
-use svelte_analyze::{ExpressionData, Volatility};
+use svelte_analyze::{ExpressionData, Suspension, Volatility};
 use svelte_ast::NodeId;
 
 use crate::context::Ctx;
@@ -12,7 +12,7 @@ pub(crate) enum MemoValueRef {
 #[derive(Default)]
 pub(crate) struct TemplateMemoState<'a> {
     pub(crate) sync_values: Vec<Expression<'a>>,
-    pub(crate) async_values: Vec<Expression<'a>>,
+    pub(crate) async_values: Vec<(Expression<'a>, Suspension)>,
     pub(crate) blockers: Vec<u32>,
     pub(crate) extra_blockers: Vec<(String, usize)>,
 }
@@ -62,7 +62,7 @@ impl<'a> TemplateMemoState<'a> {
         match data.volatility {
             Volatility::Asynchronous => {
                 let index = self.async_values.len();
-                self.async_values.push(expr);
+                self.async_values.push((expr, data.suspension));
                 Some(MemoValueRef::Async(index))
             }
             Volatility::Heavy => {
@@ -74,9 +74,13 @@ impl<'a> TemplateMemoState<'a> {
         }
     }
 
-    pub(crate) fn async_values_push(&mut self, expr: Expression<'a>) -> usize {
+    pub(crate) fn async_values_push(
+        &mut self,
+        expr: Expression<'a>,
+        suspension: Suspension,
+    ) -> usize {
         let index = self.async_values.len();
-        self.async_values.push(expr);
+        self.async_values.push((expr, suspension));
         index
     }
 
@@ -135,11 +139,10 @@ impl<'a> TemplateMemoState<'a> {
         if self.async_values.is_empty() {
             ctx.b.void_zero_expr()
         } else {
-            ctx.b.array_expr(
-                self.async_values
-                    .drain(..)
-                    .map(|expr| super::super::effect::async_value_thunk(ctx, expr)),
-            )
+            ctx.b
+                .array_expr(self.async_values.drain(..).map(|(expr, suspension)| {
+                    super::super::effect::suspending_thunk(ctx, expr, suspension)
+                }))
         }
     }
 

@@ -3,8 +3,8 @@ pub mod data;
 
 pub use builder::build;
 pub use data::{
-    Evaluation, ExpressionData, ExpressionSemantics, KnownValue, LegacyWrap, SyntheticPropsCarrier,
-    ValueClass, Volatility,
+    Evaluation, ExpressionData, ExpressionSemantics, KnownValue, LegacyWrap, Suspension,
+    SyntheticPropsCarrier, ValueClass, Volatility,
 };
 
 use bitflags::bitflags;

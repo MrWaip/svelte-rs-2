@@ -238,6 +238,9 @@ _Avoid_: expensive, complex, dynamic call как форма, отдельное 
 **Асинхронное выражение** *(en: asynchronous; вариант `Volatility::Asynchronous`)* — выражение содержит `await`; причина выноса — оно **приостанавливается**, нужна async-машинерия (`async_values`-слот, deferred). `{await x}` асинхронно без вызова, `{foo()}` тяжело без await, `{await foo()}` — `Asynchronous` (поглощает тяжесть). Выбор формы выноса (sync-ячейка `$.derived` vs async-слот) — **эмит-форма**, derived-правило **в кодгене** (`MemoForm::of`: `Asynchronous → слот; Heavy && нет blockers → ячейка; иначе инлайн`), в анализе не хранится.
 _Avoid_: `await`-флаг (`has_await`), `async` (зарезервировано в Rust), promise-bearing, отдельное поле `asynchronous`.
 
+**Приостановка выражения** *(en: expression suspension; ось `Suspension` в `ExpressionSemantics`)* — где расположены исполняемые `await`'ы **асинхронного выражения** относительно него самого: нигде, ровно во внешнем `await`, чей операнд не ждёт снова, либо ещё и в других точках. Вопрос уровня выражения; пер-`await` сосед — **сохранение контекста await**. Backend по этому вердикту выбирает форму async-thunk'а; сама форма в вердикт не входит. Инварианты — `expression-semantics.md`.
+_Avoid_: collapse-флаг, async-thunk form, has_outer_await.
+
 **Сохранение контекста await** *(en: await context preservation; кластер `AwaitSemantics`)* — доменный вердикт на каждом `await` шаблонного выражения: что ещё исполняется в той же продолжающейся цепочке после его разрешения — остаток самого выражения, объемлющая конструкция шаблона либо ничто. Backend'ы по этому вердикту решают, оборачивать ли `await` в восстановление контекста компонента. Инварианты — `await-semantics.md`.
 _Avoid_: pickled await, save-обёртка, отдельный `has_await`-флаг на await-узле.
 

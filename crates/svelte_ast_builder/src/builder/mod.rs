@@ -21,6 +21,7 @@ mod base;
 mod calls;
 mod classes;
 mod functions;
+pub use functions::OutermostAwait;
 mod members;
 mod modules;
 mod objects;

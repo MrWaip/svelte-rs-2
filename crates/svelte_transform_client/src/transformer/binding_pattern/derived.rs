@@ -330,11 +330,10 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 .is_ignored_at_span(span_start, WarningCode::AwaitReactivityLoss);
         let thunk = if let Expression::AwaitExpression(await_expr) = awaited {
             let source_expr = await_expr.unbox().argument;
-            let await_inner = self.b.await_expr(source_expr);
             if track_inner_await {
-                self.b.async_arrow_expr_body(await_inner)
+                self.b.async_arrow_expr_body(self.b.await_expr(source_expr))
             } else {
-                self.b.async_thunk(await_inner)
+                self.b.thunk(source_expr)
             }
         } else {
             self.b.async_arrow_expr_body(awaited)

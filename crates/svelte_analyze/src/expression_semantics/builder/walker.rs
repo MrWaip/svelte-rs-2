@@ -1,10 +1,12 @@
 use super::super::ContextSignal;
 use super::super::ExpressionSemanticsStore;
 use super::super::data::{
-    Evaluation, ExpressionData, ExpressionSemantics, LegacyWrap, SyntheticPropsCarrier, Volatility,
+    Evaluation, ExpressionData, ExpressionSemantics, LegacyWrap, Suspension, SyntheticPropsCarrier,
+    Volatility,
 };
 use super::collector::{ExprFacts, collect};
 use super::derive;
+use crate::await_semantics::AwaitSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{BindingSemantics, BlockerData, JsAst, PropBindingKind, SnippetData};
@@ -29,6 +31,7 @@ pub(super) fn populate<'a>(
     value_evaluation: &ValueEvaluation,
     has_class_state_fields: bool,
     blockers: &BlockerData,
+    await_semantics: &AwaitSemanticsStore,
     runes_mode: svelte_ast::RunesMode,
     store: &mut ExpressionSemanticsStore,
     dev: bool,
@@ -53,6 +56,7 @@ pub(super) fn populate<'a>(
         value_evaluation,
         has_class_state_fields,
         blockers,
+        await_semantics,
         uses_legacy_coarse_wrap: matches!(runes_mode, svelte_ast::RunesMode::HardLegacy),
         evaluator,
         declared_evaluator,
@@ -69,6 +73,7 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) value_evaluation: &'c ValueEvaluation,
     pub(super) has_class_state_fields: bool,
     pub(super) blockers: &'c BlockerData,
+    pub(super) await_semantics: &'c AwaitSemanticsStore,
     pub(super) uses_legacy_coarse_wrap: bool,
     pub(super) evaluator: ValueEvaluator<'c, 'a>,
     pub(super) declared_evaluator: ValueEvaluator<'c, 'a>,
@@ -478,6 +483,9 @@ fn store_aggregate(
         let (part, facts) = compute(expr, ctx, context);
         update_aggregates(sink, &facts, ctx);
         acc.volatility = acc.volatility.max(part.volatility);
+        if part.volatility.is_asynchronous() {
+            acc.suspension = Suspension::Interleaved;
+        }
         acc.legacy_wrap = combine_legacy_wrap(acc.legacy_wrap, part.legacy_wrap);
         for b in part.blockers {
             if !acc.blockers.contains(&b) {
@@ -500,6 +508,7 @@ fn store_aggregate(
 fn empty_data() -> ExpressionData {
     ExpressionData {
         volatility: Volatility::Static,
+        suspension: Suspension::None,
         evaluation: Evaluation::unknown(),
         declared_evaluation: Evaluation::unknown(),
         blockers: SmallVec::new(),
@@ -587,6 +596,7 @@ fn compute<'a>(
     };
     let data = ExpressionData {
         volatility,
+        suspension: derive::suspension(expr, volatility, &facts, ctx.await_semantics),
         evaluation,
         declared_evaluation,
         blockers,

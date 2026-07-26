@@ -7851,11 +7851,27 @@ async function foo(a, b) { return a + b; }
 async function bar() { return 1; }
 async function baz() { return 2; }
 </script>
+{foo(await bar(), await baz())}"#,
+            &[
+                crate::AwaitSemantics::NonTerminal,
+                crate::AwaitSemantics::TerminalInFragmentInterpolation,
+            ],
+        );
+    }
+
+    #[test]
+    fn arguments_under_an_enclosing_await_are_all_non_terminal() {
+        assert_await_semantics(
+            r#"<script>
+async function foo(a, b) { return a + b; }
+async function bar() { return 1; }
+async function baz() { return 2; }
+</script>
 {await foo(await bar(), await baz())}"#,
             &[
                 crate::AwaitSemantics::TerminalInFragmentInterpolation,
                 crate::AwaitSemantics::NonTerminal,
-                crate::AwaitSemantics::TerminalInFragmentInterpolation,
+                crate::AwaitSemantics::NonTerminal,
             ],
         );
     }
@@ -7896,6 +7912,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -7933,6 +7950,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8340,6 +8358,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8395,6 +8414,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8463,6 +8483,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8507,6 +8528,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8546,6 +8568,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8604,6 +8627,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8636,6 +8660,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8673,6 +8698,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8715,6 +8741,7 @@ async function baz() { return 2; }
             data.script.has_class_state_fields,
             data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,

@@ -13,12 +13,30 @@ pub enum ExpressionSemantics {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExpressionData {
     pub volatility: Volatility,
+    pub suspension: Suspension,
     pub evaluation: Evaluation,
     pub declared_evaluation: Evaluation,
     pub blockers: SmallVec<[u32; 2]>,
     pub legacy_wrap: LegacyWrap,
     pub references: SmallVec<[SymbolId; 2]>,
     pub evaluated_reads: SmallVec<[SymbolId; 2]>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Suspension {
+    #[default]
+    None,
+    Outermost,
+    Interleaved,
+}
+
+impl Suspension {
+    pub fn is_outermost(&self) -> bool {
+        match self {
+            Suspension::Outermost => true,
+            Suspension::None | Suspension::Interleaved => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]

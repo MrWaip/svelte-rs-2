@@ -1,4 +1,4 @@
-use crate::expression_semantics::Volatility;
+use crate::expression_semantics::{Suspension, Volatility};
 use crate::scope::SymbolId;
 use bitflags::bitflags;
 use smallvec::SmallVec;
@@ -295,11 +295,16 @@ pub enum RenderCallKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RenderArgKind {
-    PropPassthrough { sym: SymbolId },
+    PropPassthrough {
+        sym: SymbolId,
+    },
 
     NeedsMemo,
 
-    AwaitMemo { inner_node_id: Option<OxcNodeId> },
+    AwaitMemo {
+        inner_node_id: Option<OxcNodeId>,
+        suspension: Suspension,
+    },
 
     InertThunk,
 }

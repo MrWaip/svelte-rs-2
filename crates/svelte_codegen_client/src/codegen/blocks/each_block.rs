@@ -13,6 +13,7 @@ use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::effect::suspending_block_thunk;
 use super::super::{Codegen, CodegenError, Result};
 
 const EACH_IS_CONTROLLED: u32 = 4;
@@ -73,8 +74,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let async_thunk = match &plan.async_kind {
             EachAsyncKind::Awaited { .. } => {
+                let suspension = self.ctx.expression_suspension(id);
                 let collection_expr = self.take_node_expr(id)?;
-                Some(self.ctx.b.async_thunk(collection_expr))
+                Some(suspending_block_thunk(
+                    self.ctx,
+                    collection_expr,
+                    suspension,
+                ))
             }
             EachAsyncKind::Deferred { .. } | EachAsyncKind::Sync => None,
         };

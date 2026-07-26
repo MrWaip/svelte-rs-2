@@ -7,6 +7,7 @@ use svelte_emit_builders::runes::rune_get;
 use super::super::data_structures::AsyncEmission;
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::effect::suspending_block_thunk;
 use super::super::{Codegen, Result};
 use crate::context::Ctx;
 
@@ -55,9 +56,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         match &plan {
             AsyncEmission::Awaited { blockers } | AsyncEmission::Deferred { blockers } => {
                 let blockers = blockers.to_vec();
+                let suspension = self.ctx.expression_suspension(id);
                 let expression = self.take_node_expr(id)?;
                 let async_thunk = match &plan {
-                    AsyncEmission::Awaited { .. } => Some(self.ctx.b.async_thunk(expression)),
+                    AsyncEmission::Awaited { .. } => {
+                        Some(suspending_block_thunk(self.ctx, expression, suspension))
+                    }
                     AsyncEmission::Deferred { .. } | AsyncEmission::Sync => None,
                 };
 

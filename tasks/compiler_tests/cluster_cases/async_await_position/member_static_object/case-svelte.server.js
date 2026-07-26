@@ -1,0 +1,12 @@
+import "svelte/internal/flags/async";
+import * as $ from "svelte/internal/server";
+export default function App($$renderer, $$props) {
+	$$renderer.component(($$renderer) => {
+		let x = 0;
+		function delay(value) {
+			return Promise.resolve({ value });
+		}
+		$$renderer.push(`<button>inc</button> `);
+		$$renderer.push(async () => $.escape((await $.save(delay(x)))().value));
+	});
+}

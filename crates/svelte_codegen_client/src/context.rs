@@ -245,6 +245,11 @@ impl<'a> Ctx<'a> {
     pub fn expression_data(&self, id: NodeId) -> Option<&svelte_analyze::ExpressionData> {
         self.query.view.expression_data(id)
     }
+    pub fn expression_suspension(&self, id: NodeId) -> svelte_analyze::Suspension {
+        self.expression_data(id)
+            .map(|data| data.suspension)
+            .unwrap_or_default()
+    }
     pub fn const_tag_symbol_blocker_slot(&self, sym: SymbolId) -> Option<(String, usize)> {
         let (name, idx) = self.const_tag_blockers.get(&sym)?;
         Some((name.clone(), *idx))

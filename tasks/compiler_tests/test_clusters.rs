@@ -384,3 +384,9 @@ mod async_expression_tag;
 
 #[path = "clusters/async_fragment_declaration.rs"]
 mod async_fragment_declaration;
+
+#[path = "clusters/async_await_position.rs"]
+mod async_await_position;
+
+#[path = "clusters/async_block_thunk.rs"]
+mod async_block_thunk;

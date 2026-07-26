@@ -8,6 +8,7 @@ use svelte_component_semantics::OxcNodeId;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::effect::suspending_block_thunk;
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -78,10 +79,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         block_id: NodeId,
         volatility: Volatility,
     ) -> Result<Expression<'a>> {
+        let suspension = self.ctx.expression_suspension(block_id);
         let expr = self.take_node_expr(block_id)?;
         let expr = coarse_wrap(self.ctx, expr, self.ctx.expression_data(block_id));
         match volatility {
-            Volatility::Asynchronous => Ok(self.ctx.b.async_thunk(expr)),
+            Volatility::Asynchronous => Ok(suspending_block_thunk(self.ctx, expr, suspension)),
             Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
                 Ok(self.ctx.b.thunk(expr))
             }

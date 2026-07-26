@@ -3,6 +3,7 @@ mod derive;
 mod walker;
 
 use super::ExpressionSemanticsStore;
+use crate::await_semantics::AwaitSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::ComponentScoping;
 use crate::types::data::{BlockerData, JsAst, SnippetData};
@@ -22,6 +23,7 @@ pub fn build<'a>(
     has_class_state_fields: bool,
     observes_context: bool,
     blockers: &BlockerData,
+    await_semantics: &AwaitSemanticsStore,
     runes_mode: svelte_ast::RunesMode,
     node_count: u32,
     dev: bool,
@@ -37,6 +39,7 @@ pub fn build<'a>(
         value_evaluation,
         has_class_state_fields,
         blockers,
+        await_semantics,
         runes_mode,
         &mut store,
         dev,

@@ -169,6 +169,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
             DataToken::ReactivitySemantics,
             DataToken::ValueEvaluation,
             DataToken::OptimizedDerived,
+            DataToken::AwaitSemantics,
         ],
         produces: &[DataToken::ExpressionSemantics],
     },

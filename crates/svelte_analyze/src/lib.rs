@@ -24,7 +24,7 @@ pub use attribute_semantics::{
 };
 pub use expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, KnownValue,
-    LegacyWrap, SyntheticPropsCarrier, ValueClass, Volatility,
+    LegacyWrap, Suspension, SyntheticPropsCarrier, ValueClass, Volatility,
 };
 
 pub use css::head_hash;

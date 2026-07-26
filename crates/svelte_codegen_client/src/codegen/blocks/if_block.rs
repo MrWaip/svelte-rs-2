@@ -7,6 +7,7 @@ use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::effect::suspending_block_thunk;
 use super::super::{Codegen, CodegenError, Result};
 
 struct BranchNames {
@@ -53,8 +54,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
                 let async_thunk = match &sem.async_kind {
                     IfAsyncKind::Awaited { .. } => {
+                        let suspension = self.ctx.expression_suspension(id);
                         let expr = self.take_node_expr(id)?;
-                        Some(self.ctx.b.async_thunk(expr))
+                        Some(suspending_block_thunk(self.ctx, expr, suspension))
                     }
                     IfAsyncKind::Deferred { .. } | IfAsyncKind::Sync => None,
                 };

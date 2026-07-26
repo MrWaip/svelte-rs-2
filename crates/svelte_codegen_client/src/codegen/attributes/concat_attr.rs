@@ -171,7 +171,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     if let Some(d) = &data {
                         memo_deps.push_expression_data(self.ctx, d);
                     }
-                    let index = memo_deps.async_values_push(wrapped);
+                    let index = memo_deps
+                        .async_values_push(wrapped, self.ctx.expression_suspension(*part_id));
                     let slot = memo_deps.async_param_expr(self.ctx, index);
                     tpl_parts.push(TemplatePart::Expr(slot, *defined));
                 }

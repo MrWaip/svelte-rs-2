@@ -1,7 +1,8 @@
 use super::super::Evaluation;
-use super::super::data::{LegacyWrap, SyntheticPropsCarrier, Volatility};
+use super::super::data::{LegacyWrap, Suspension, SyntheticPropsCarrier, Volatility};
 use super::collector::{ExprFacts, TopLevelForm};
 use super::walker::Ctx;
+use crate::await_semantics::{AwaitSemantics, AwaitSemanticsStore};
 use crate::reactivity_semantics::builder_v2::expression_root_reference_id;
 use crate::reactivity_semantics::data::ContextualBindingSemantics;
 use crate::reactivity_semantics::data::ReactivitySemantics;
@@ -177,6 +178,29 @@ pub(super) fn volatility(reactive_gate: bool, facts: &ExprFacts) -> Volatility {
         Volatility::Reactive
     } else {
         Volatility::Static
+    }
+}
+
+pub(super) fn suspension(
+    expr: &Expression<'_>,
+    volatility: Volatility,
+    facts: &ExprFacts,
+    await_semantics: &AwaitSemanticsStore,
+) -> Suspension {
+    if !volatility.is_asynchronous() {
+        return Suspension::None;
+    }
+    let Expression::AwaitExpression(outermost) = expr.get_inner_expression() else {
+        return Suspension::Interleaved;
+    };
+    let outermost_id = outermost.node_id();
+    let operand_suspends = facts.awaits.iter().any(|&id| {
+        id != outermost_id && !matches!(await_semantics.query(id), AwaitSemantics::Detached)
+    });
+    if operand_suspends {
+        Suspension::Interleaved
+    } else {
+        Suspension::Outermost
     }
 }
 

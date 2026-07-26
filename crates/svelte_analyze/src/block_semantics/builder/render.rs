@@ -156,7 +156,10 @@ fn derive_arg_kind(ctx: &Ctx<'_, '_>, argument: &Argument<'_>) -> RenderArgKind 
             } else {
                 None
             };
-            RenderArgKind::AwaitMemo { inner_node_id }
+            RenderArgKind::AwaitMemo {
+                inner_node_id,
+                suspension: data.suspension,
+            }
         }
         Volatility::Heavy => {
             if data.blockers.is_empty() {

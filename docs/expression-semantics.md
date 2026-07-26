@@ -1,7 +1,7 @@
 # PRD: ExpressionSemantics (корневой)
 
 label: expression-semantics
-topics: template expression, volatility, value evaluation, Evaluation, memoization, heavy, asynchronous/await, value folding, references, evaluated reads, closure
+topics: template expression, volatility, suspension, value evaluation, Evaluation, memoization, heavy, asynchronous/await, value folding, references, evaluated reads, closure
 
 Корневой PRD для модуля `svelte_analyze::expression_semantics` (3.A.3).
 Дочерний по слою: `analyze.md`. Зависит от `ComponentSemantics`, `ReactivitySemantics` (фаза 1), `ComponentScoping`.
@@ -18,6 +18,7 @@ Per-expression факты для каждого template/attribute-выраже�
 ## Что несёт вариант
 
 - expression kind (sync / async / non-special);
+- `suspension: Suspension` — **приостановка выражения**: `None` / `Outermost` (выражение есть ровно один `await`, его операнд не ждёт снова) / `Interleaved` (ждёт и в других точках). Уточняет `Volatility::Asynchronous`;
 - `Evaluation` — `Known(KnownValue)` / `Defined { class }` / `MaybeNullish { has_unknown }`; выражение несёт две оценки одного типа под разные модели исполнения: `evaluation` — значение при реактивном чтении (`ReadContext::Runtime`, реактивный источник непрозрачен), потребляет клиентский backend; `declared_evaluation` — значение при сколлапсированной реактивности (`ReadContext::Declaration`, `$state`/`$derived` свёрнуты к init, **const-теги** фрагмента свёрнуты к своему init), потребляет серверный backend, где рендер однократен. Обе target-агностичны — считаются всегда, backend выбирает свою; выбор формы (свернуть в статический текст vs `$.escape` в рантайме) живёт в кодгене. const-теги видит только `declared_evaluation`: их init-биндинги подмешиваются в declaration-эвалуатор, но не в runtime-эвалуатор и не в общий `ValueEvaluation` (тот питает `OptimizedDerived`), поэтому клиентская классификация не затрагивается;
 - `LegacyWrap`-выбор для legacy reactive-контекстов;
 - `references: SmallVec<SymbolId>` — биндинги, которые выражение упоминает где угодно, включая тела вложенных функций;
@@ -41,6 +42,8 @@ Per-expression факты для каждого template/attribute-выраже�
 `references` остаётся ответом про упоминания и питает **только** ось blocker'ов (`blockers` здесь, `push_expression_data` в кодгене): захваченный биндинг может блокировать выражение, даже если не читается при вычислении.
 
 6. **Свёртка биндинга считается один раз на эвалуатор.** `ValueEvaluator` мемоизирует `Evaluation` биндинга по `SymbolId` (`binding_memo`). Без мемо свёртка экспоненциальна по глубине цепочки биндингов: `const aN = aN-1 + aN-1` заставляет каждый уровень пересчитывать предыдущий дважды, и цепочка из 20 деклараций компилируется четверть секунды, из 25 — секунды. Мемо-запись кладётся только если поддерево посчиталось без обрыва по cycle-guard (`cycle_truncated`): результат, усечённый циклом, зависит от того, какие init'ы были в обходе, и переиспользовать его нельзя. Оба эвалуатора (`Runtime` / `Declaration`) держат свой кеш — вердикт зависит от `ReadContext`; подмешивание const-тегов (`ingest_const_tag_bindings`) кеш сбрасывает.
+
+7. **`suspension` собирается запросом к `AwaitSemantics`, не вторым обходом.** `BuildExpressionSemantics` объявляет `requires: AwaitSemantics` в `PASS_DESCRIPTORS`; «операнд ждёт снова» — это «в выражении есть другой `await` с вердиктом не `Detached`». Вопрос уровня выражения живёт здесь: у `AwaitSemantics` ключ — узел-`await`, и про выражение целиком он не отвечает.
 
 ## Связь с другими документами
 

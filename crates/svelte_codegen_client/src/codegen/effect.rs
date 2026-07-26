@@ -1,5 +1,6 @@
 use oxc_ast::ast::{Expression, Statement};
-use svelte_ast_builder::Arg;
+use svelte_analyze::Suspension;
+use svelte_ast_builder::{Arg, OutermostAwait};
 
 use crate::context::Ctx;
 
@@ -44,20 +45,37 @@ fn emit_effect_call<'a>(
     body.push(ctx.b.call_stmt(effect_name, args));
 }
 
-pub(in crate::codegen) fn async_value_thunk<'a>(
+pub(in crate::codegen) fn suspending_thunk<'a>(
     ctx: &Ctx<'a>,
     expr: Expression<'a>,
+    suspension: Suspension,
 ) -> Expression<'a> {
-    let is_await = matches!(expr.get_inner_expression(), Expression::AwaitExpression(_));
-    if is_await {
-        let Expression::AwaitExpression(await_expr) = expr.into_inner_expression() else {
-            unreachable!()
-        };
-        let inner = await_expr.unbox().argument;
+    collapse_when_outermost(ctx, expr, suspension, |ctx, operand| {
         ctx.b
-            .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(inner)])
-    } else {
-        ctx.b.async_arrow_expr_body(expr)
+            .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(operand)])
+    })
+}
+
+pub(in crate::codegen) fn suspending_block_thunk<'a>(
+    ctx: &Ctx<'a>,
+    expr: Expression<'a>,
+    suspension: Suspension,
+) -> Expression<'a> {
+    collapse_when_outermost(ctx, expr, suspension, |ctx, operand| ctx.b.thunk(operand))
+}
+
+fn collapse_when_outermost<'a>(
+    ctx: &Ctx<'a>,
+    expr: Expression<'a>,
+    suspension: Suspension,
+    collapse: impl FnOnce(&Ctx<'a>, Expression<'a>) -> Expression<'a>,
+) -> Expression<'a> {
+    if !suspension.is_outermost() {
+        return ctx.b.async_arrow_expr_body(expr);
+    }
+    match ctx.b.outermost_await(expr) {
+        OutermostAwait::Operand(operand) => collapse(ctx, operand),
+        OutermostAwait::Absent(expr) => ctx.b.async_arrow_expr_body(expr),
     }
 }
 

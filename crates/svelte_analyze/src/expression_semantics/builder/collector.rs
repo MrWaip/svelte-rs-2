@@ -14,7 +14,7 @@ use oxc_ast_visit::walk::{
 };
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
-use svelte_component_semantics::{ComponentSemantics, SymbolId};
+use svelte_component_semantics::{ComponentSemantics, OxcNodeId, SymbolId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TopLevelForm {
@@ -33,6 +33,7 @@ pub(super) struct ExprFacts {
     pub member_roots: SmallVec<[SymbolId; 2]>,
     pub top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
     pub has_await: bool,
+    pub awaits: SmallVec<[OxcNodeId; 2]>,
     pub has_call: bool,
     pub has_impure_call: bool,
     pub has_member: bool,
@@ -74,6 +75,7 @@ pub(super) fn collect<'a>(
         has_unsafe_member_root: false,
         has_unsafe_callee_or_new: false,
         has_await: false,
+        awaits: SmallVec::new(),
         fn_depth: 0,
         in_write_position: false,
     };
@@ -85,6 +87,7 @@ pub(super) fn collect<'a>(
         member_roots: visitor.member_roots,
         top_member_or_call_roots: visitor.top_member_or_call_roots,
         has_await: visitor.has_await,
+        awaits: visitor.awaits,
         has_call: visitor.has_call,
         has_impure_call: visitor.has_impure_call,
         has_member: visitor.has_member,
@@ -280,6 +283,7 @@ struct Collector<'c, 'a> {
     has_unsafe_member_root: bool,
     has_unsafe_callee_or_new: bool,
     has_await: bool,
+    awaits: SmallVec<[OxcNodeId; 2]>,
     fn_depth: u32,
     in_write_position: bool,
 }
@@ -510,6 +514,7 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
         if self.fn_depth == 0 {
             self.has_await = true;
         }
+        self.awaits.push(expr.node_id());
         walk_await_expression(self, expr);
     }
 

@@ -168,6 +168,7 @@ pub(crate) fn execute_pass<'a>(
                 data.script.has_class_state_fields,
                 data.script.observes_context,
                 &data.script.blocker_data,
+                &data.await_semantics,
                 data.script.runes_mode,
                 component.node_count(),
                 data.script.dev,
