@@ -72,3 +72,8 @@ compiler_case!(
     named_slot_static_component_let_guard,
     "legacy_slots/named_slot_static_component_let_guard"
 );
+compiler_case!(
+    svelte_self_slot_let_guard,
+    "legacy_slots/svelte_self_slot_let_guard",
+    [prod, dev, ssr, ssr_dev]
+);

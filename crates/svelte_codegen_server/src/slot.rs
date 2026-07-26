@@ -216,23 +216,15 @@ impl<'a> ServerCodegen<'a> {
     }
 
     fn collect_let_directives(&self, node_id: NodeId) -> Vec<LetDirectiveLegacy> {
-        let node = self.component.store.get(node_id);
-        let attrs: &[Attribute] = match node {
-            Node::Element(el) => &el.attributes,
-            Node::SvelteElement(el) => &el.attributes,
-            Node::SvelteFragmentLegacy(el) => &el.attributes,
-            Node::SlotElementLegacy(el) => &el.attributes,
-            _ => match node.as_component_like() {
-                Some(view) => view.attributes,
-                None => return Vec::new(),
-            },
-        };
-        let mut out = Vec::new();
-        for attr in attrs {
-            if let Attribute::LetDirectiveLegacy(dir) = attr {
-                out.push(dir.clone());
-            }
-        }
-        out
+        self.component
+            .store
+            .get(node_id)
+            .attributes()
+            .iter()
+            .filter_map(|attr| match attr {
+                Attribute::LetDirectiveLegacy(dir) => Some(dir.clone()),
+                _ => None,
+            })
+            .collect()
     }
 }

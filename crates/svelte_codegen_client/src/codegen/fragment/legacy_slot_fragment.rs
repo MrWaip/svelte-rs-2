@@ -122,16 +122,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 
     fn has_let_directives(&self, owner_id: NodeId) -> bool {
-        let node = self.ctx.query.component.store.get(owner_id);
-        let attrs = match node {
-            Node::Element(el) => &el.attributes[..],
-            Node::SvelteFragmentLegacy(el) => &el.attributes[..],
-            _ => match node.as_component_like() {
-                Some(view) => view.attributes,
-                None => return false,
-            },
-        };
-        attrs
+        self.ctx
+            .query
+            .component
+            .store
+            .get(owner_id)
+            .attributes()
             .iter()
             .any(|a| matches!(a, svelte_ast::Attribute::LetDirectiveLegacy(_)))
     }
