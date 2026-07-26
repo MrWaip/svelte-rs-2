@@ -4,6 +4,7 @@ pub(crate) mod css;
 pub mod element_semantics;
 pub mod expression_semantics;
 pub mod fragment_semantics;
+pub(crate) mod js_walker;
 pub(crate) mod passes;
 pub mod reactivity_semantics;
 pub mod runtime_semantics;

@@ -3,18 +3,17 @@ use std::mem;
 
 use oxc_ast::ast::{
     Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentPattern,
-    AssignmentTarget, BindingPattern, CallExpression, Declaration, ExportDefaultDeclaration,
-    ExportDefaultDeclarationKind, ExportSpecifier, Expression, ExpressionStatement, Function,
-    IdentifierReference, ImportDeclarationSpecifier, MemberExpression, MethodDefinition,
-    MethodDefinitionKind, ModuleExportName, Program, PropertyDefinition, PropertyKey, Statement,
-    StaticMemberExpression, VariableDeclarator,
+    AssignmentTarget, BindingPattern, CallExpression, Declaration, ExportDefaultDeclarationKind,
+    Expression, ExpressionStatement, Function, IdentifierReference, ImportDeclarationSpecifier,
+    MethodDefinition, MethodDefinitionKind, ModuleExportName, Program, PropertyDefinition,
+    PropertyKey, Statement, StaticMemberExpression, VariableDeclarator,
 };
+use oxc_ast::{AstKind, AstType};
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
     walk_arrow_function_expression, walk_assignment_expression, walk_call_expression,
-    walk_export_default_declaration, walk_expression, walk_expression_statement, walk_function,
-    walk_member_expression, walk_method_definition, walk_property_definition,
-    walk_static_member_expression,
+    walk_expression, walk_expression_statement, walk_function, walk_method_definition,
+    walk_property_definition,
 };
 use oxc_semantic::{ScopeFlags, ScopeId};
 use oxc_span::GetSpan;
@@ -24,6 +23,7 @@ use svelte_ast::Component;
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
+use crate::js_walker::{JsFlow, JsNodeMask, JsVisitor};
 use crate::reactivity_semantics::data::{
     DeclaratorSemantics, DerivedKind, ReactivitySemantics, RuntimeRuneKind,
 };
@@ -87,8 +87,6 @@ pub(super) fn validate(
         let mut v = RuneValidator::new(data, diags, is_instance_script);
         v.visit_program(program);
     }
-    validate_state_referenced_locally_derived(data, program, diags);
-    validate_rest_prop_illegal_access(data, program, diags);
     if runes {
         validate_rune_names(data, program, diags);
     }
@@ -414,35 +412,58 @@ fn push_unique(diags: &mut Vec<Diagnostic>, kind: DiagnosticKind, span: Span) {
     }
 }
 
-fn validate_state_referenced_locally_derived(
-    data: &AnalysisData<'_>,
-    program: &Program<'_>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    let mut v = StateRefLocallyValidator {
+pub(super) fn new_state_ref_locally_validator<'a, 'b>(
+    data: &'b AnalysisData<'a>,
+    diags: &'b mut Vec<Diagnostic>,
+) -> StateRefLocallyValidator<'a, 'b> {
+    StateRefLocallyValidator {
         data,
         diags,
         in_state_rune_arg: false,
+        state_rune_arg_stack: Vec::new(),
         call_depth_offset: 0,
+        call_depth_stack: Vec::new(),
         in_illegal_prop_member_object: false,
+        illegal_prop_member_stack: Vec::new(),
         _phantom: PhantomData,
-    };
-    v.visit_program(program);
+    }
 }
 
-struct StateRefLocallyValidator<'a, 'b> {
+pub(super) struct StateRefLocallyValidator<'a, 'b> {
     data: &'b AnalysisData<'a>,
     diags: &'b mut Vec<Diagnostic>,
 
     in_state_rune_arg: bool,
+    state_rune_arg_stack: Vec<bool>,
     call_depth_offset: u32,
+    call_depth_stack: Vec<u32>,
 
     in_illegal_prop_member_object: bool,
+    illegal_prop_member_stack: Vec<bool>,
     _phantom: PhantomData<&'a ()>,
 }
 
-impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
-    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+enum StateRuneCallKind {
+    StateArgument,
+    DeferredArgument,
+    Plain,
+}
+
+impl<'a> StateRefLocallyValidator<'a, '_> {
+    fn call_kind(&self, call: &CallExpression<'a>) -> StateRuneCallKind {
+        match self.data.reactivity.declarator_semantics(call.node_id()) {
+            DeclaratorSemantics::RuneState {
+                kind: StateKind::State | StateKind::StateRaw,
+            } => StateRuneCallKind::StateArgument,
+            DeclaratorSemantics::RuneDerived { .. }
+            | DeclaratorSemantics::RuntimeRuneCall {
+                kind: RuntimeRuneKind::Inspect,
+            } => StateRuneCallKind::DeferredArgument,
+            _ => StateRuneCallKind::Plain,
+        }
+    }
+
+    fn check_identifier(&mut self, ident: &IdentifierReference<'a>) {
         let Some(ref_id) = ident.reference_id.get() else {
             return;
         };
@@ -502,70 +523,104 @@ impl<'a> Visit<'a> for StateRefLocallyValidator<'a, '_> {
             Span::new(ident.span.start, ident.span.end),
         ));
     }
+}
 
-    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        match self.data.reactivity.declarator_semantics(call.node_id()) {
-            DeclaratorSemantics::RuneState {
-                kind: StateKind::State | StateKind::StateRaw,
-            } => {
-                self.visit_expression(&call.callee);
-                let prev = mem::replace(&mut self.in_state_rune_arg, true);
-                for arg in &call.arguments {
-                    self.visit_argument(arg);
+const STATE_REF_LOCALLY_LEAVE_INTERESTS: JsNodeMask = JsNodeMask::new(&[
+    AstType::CallExpression,
+    AstType::Function,
+    AstType::ArrowFunctionExpression,
+    AstType::StaticMemberExpression,
+    AstType::ExportSpecifier,
+    AstType::ExportDefaultDeclaration,
+]);
+
+const STATE_REF_LOCALLY_INTERESTS: JsNodeMask = JsNodeMask::new(&[
+    AstType::IdentifierReference,
+    AstType::CallExpression,
+    AstType::Function,
+    AstType::ArrowFunctionExpression,
+    AstType::StaticMemberExpression,
+    AstType::ExportSpecifier,
+    AstType::ExportDefaultDeclaration,
+]);
+
+impl<'a> JsVisitor<'a> for StateRefLocallyValidator<'a, '_> {
+    fn enter_interests(&self) -> JsNodeMask {
+        STATE_REF_LOCALLY_INTERESTS
+    }
+
+    fn leave_interests(&self) -> JsNodeMask {
+        STATE_REF_LOCALLY_LEAVE_INTERESTS
+    }
+
+    fn enter_js_node(&mut self, kind: AstKind<'a>) -> JsFlow {
+        match kind {
+            AstKind::IdentifierReference(ident) => self.check_identifier(ident),
+            AstKind::CallExpression(call) => match self.call_kind(call) {
+                StateRuneCallKind::StateArgument => {
+                    self.state_rune_arg_stack.push(self.in_state_rune_arg);
+                    self.in_state_rune_arg = true;
                 }
-                self.in_state_rune_arg = prev;
-            }
-            DeclaratorSemantics::RuneDerived { .. }
-            | DeclaratorSemantics::RuntimeRuneCall {
-                kind: RuntimeRuneKind::Inspect,
-            } => {
-                self.visit_expression(&call.callee);
-                self.call_depth_offset += 1;
-                for arg in &call.arguments {
-                    self.visit_argument(arg);
+                StateRuneCallKind::DeferredArgument => {
+                    self.call_depth_offset += 1;
                 }
-                self.call_depth_offset -= 1;
+                StateRuneCallKind::Plain => {}
+            },
+            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => {
+                self.state_rune_arg_stack.push(self.in_state_rune_arg);
+                self.call_depth_stack.push(self.call_depth_offset);
+                self.in_state_rune_arg = false;
+                self.call_depth_offset = 0;
             }
-            _ => walk_call_expression(self, call),
+            AstKind::StaticMemberExpression(expr) => {
+                self.illegal_prop_member_stack
+                    .push(self.in_illegal_prop_member_object);
+                if is_props_illegal_name_member(expr, self.data) {
+                    self.in_illegal_prop_member_object = true;
+                }
+            }
+            AstKind::ExportSpecifier(_) => return JsFlow::SkipSubtree,
+            AstKind::ExportDefaultDeclaration(export) => {
+                if matches!(
+                    export.declaration,
+                    ExportDefaultDeclarationKind::Identifier(_)
+                ) {
+                    return JsFlow::SkipSubtree;
+                }
+            }
+            _ => {}
         }
+        JsFlow::Continue
     }
 
-    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-        let prev_state_arg = mem::replace(&mut self.in_state_rune_arg, false);
-        let prev_call_depth = mem::replace(&mut self.call_depth_offset, 0);
-        walk_arrow_function_expression(self, arrow);
-        self.in_state_rune_arg = prev_state_arg;
-        self.call_depth_offset = prev_call_depth;
-    }
-
-    fn visit_function(&mut self, func: &Function<'a>, flags: ScopeFlags) {
-        let prev_state_arg = mem::replace(&mut self.in_state_rune_arg, false);
-        let prev_call_depth = mem::replace(&mut self.call_depth_offset, 0);
-        walk_function(self, func, flags);
-        self.in_state_rune_arg = prev_state_arg;
-        self.call_depth_offset = prev_call_depth;
-    }
-
-    fn visit_static_member_expression(&mut self, expr: &StaticMemberExpression<'a>) {
-        if is_props_illegal_name_member(expr, self.data) {
-            let prev = mem::replace(&mut self.in_illegal_prop_member_object, true);
-            self.visit_expression(&expr.object);
-            self.in_illegal_prop_member_object = prev;
-        } else {
-            walk_static_member_expression(self, expr);
+    fn leave_js_node(&mut self, kind: AstKind<'a>) {
+        match kind {
+            AstKind::CallExpression(call) => match self.call_kind(call) {
+                StateRuneCallKind::StateArgument => {
+                    if let Some(prev) = self.state_rune_arg_stack.pop() {
+                        self.in_state_rune_arg = prev;
+                    }
+                }
+                StateRuneCallKind::DeferredArgument => {
+                    self.call_depth_offset -= 1;
+                }
+                StateRuneCallKind::Plain => {}
+            },
+            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => {
+                if let Some(prev) = self.state_rune_arg_stack.pop() {
+                    self.in_state_rune_arg = prev;
+                }
+                if let Some(prev) = self.call_depth_stack.pop() {
+                    self.call_depth_offset = prev;
+                }
+            }
+            AstKind::StaticMemberExpression(_) => {
+                if let Some(prev) = self.illegal_prop_member_stack.pop() {
+                    self.in_illegal_prop_member_object = prev;
+                }
+            }
+            _ => {}
         }
-    }
-
-    fn visit_export_specifier(&mut self, _spec: &ExportSpecifier<'a>) {}
-
-    fn visit_export_default_declaration(&mut self, export: &ExportDefaultDeclaration<'a>) {
-        if matches!(
-            export.declaration,
-            ExportDefaultDeclarationKind::Identifier(_)
-        ) {
-            return;
-        }
-        walk_export_default_declaration(self, export);
     }
 }
 
@@ -1132,28 +1187,32 @@ impl<'a> Visit<'a> for RuneNameValidator<'a, '_> {
     }
 }
 
-fn validate_rest_prop_illegal_access(
-    data: &AnalysisData<'_>,
-    program: &Program<'_>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    let mut v = RestPropAccessValidator {
+pub(super) fn new_rest_prop_validator<'a, 'b>(
+    data: &'b AnalysisData<'a>,
+    diags: &'b mut Vec<Diagnostic>,
+) -> RestPropAccessValidator<'a, 'b> {
+    RestPropAccessValidator {
         data,
         diags,
         _phantom: PhantomData,
-    };
-    v.visit_program(program);
+    }
 }
 
-struct RestPropAccessValidator<'a, 'b> {
+pub(super) struct RestPropAccessValidator<'a, 'b> {
     data: &'b AnalysisData<'a>,
     diags: &'b mut Vec<Diagnostic>,
     _phantom: PhantomData<&'a ()>,
 }
 
-impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
-    fn visit_member_expression(&mut self, expr: &MemberExpression<'a>) {
-        if let MemberExpression::StaticMemberExpression(member) = expr
+const REST_PROP_INTERESTS: JsNodeMask = JsNodeMask::new(&[AstType::StaticMemberExpression]);
+
+impl<'a> JsVisitor<'a> for RestPropAccessValidator<'a, '_> {
+    fn enter_interests(&self) -> JsNodeMask {
+        REST_PROP_INTERESTS
+    }
+
+    fn enter_js_node(&mut self, kind: AstKind<'a>) -> JsFlow {
+        if let AstKind::StaticMemberExpression(member) = kind
             && is_props_illegal_name_member(member, self.data)
         {
             self.diags.push(Diagnostic::error(
@@ -1161,7 +1220,7 @@ impl<'a> Visit<'a> for RestPropAccessValidator<'a, '_> {
                 Span::new(member.property.span.start, member.property.span.end),
             ));
         }
-        walk_member_expression(self, expr);
+        JsFlow::Continue
     }
 }
 

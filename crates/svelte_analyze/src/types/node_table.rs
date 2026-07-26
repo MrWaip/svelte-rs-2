@@ -4,10 +4,8 @@ use svelte_ast::NodeId;
 pub struct NodeTable<T>(Vec<Option<T>>);
 
 impl<T> NodeTable<T> {
-    pub fn new(node_count: u32) -> Self {
-        let mut v = Vec::with_capacity(node_count as usize);
-        v.resize_with(node_count as usize, || None);
-        Self(v)
+    pub fn new(_node_count: u32) -> Self {
+        Self(Vec::new())
     }
 
     #[inline]
@@ -93,12 +91,10 @@ pub struct NodeBitSet {
 }
 
 impl NodeBitSet {
-    pub fn new(node_count: u32) -> Self {
-        let len = node_count as usize;
-        let word_count = len.div_ceil(64);
+    pub fn new(_node_count: u32) -> Self {
         Self {
-            words: vec![0u64; word_count],
-            len,
+            words: Vec::new(),
+            len: 0,
         }
     }
 
