@@ -103,6 +103,9 @@ mod spread_class;
 #[path = "clusters/spread_default_value.rs"]
 mod spread_default_value;
 
+#[path = "clusters/flag_imports.rs"]
+mod flag_imports;
+
 #[path = "clusters/head_title.rs"]
 mod head_title;
 

@@ -86,7 +86,6 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) strip_exports: bool,
     pub(crate) dev: bool,
     pub(crate) function_info_stack: Vec<FunctionInfo>,
-    pub(crate) has_tracing: bool,
     pub(crate) needs_ownership_validator: bool,
     pub(crate) pending_prop_update_validations: FxHashMap<u32, PendingPropMutationValidation<'a>>,
     pub(crate) component_source: &'b str,

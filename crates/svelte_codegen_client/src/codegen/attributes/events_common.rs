@@ -195,7 +195,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             trace_call
         };
-        self.ctx.state.has_tracing = true;
 
         Ok(TracedHandler {
             params,

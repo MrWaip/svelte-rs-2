@@ -744,6 +744,7 @@ pub struct ReactivitySummary {
     pub has_legacy_reactive_statements: bool,
     pub has_named_runes_prop: bool,
     pub has_named_legacy_prop: bool,
+    pub has_inspect_trace: bool,
     pub legacy: LegacySummary,
 }
 
@@ -1927,6 +1928,8 @@ pub struct ReactivitySemantics {
 
     has_named_legacy_prop: bool,
 
+    has_inspect_trace: bool,
+
     each_item_indirect_sources: FxHashMap<SymbolId, SmallVec<[SymbolId; 2]>>,
 
     legacy_indirect_bindings: FxHashMap<SymbolId, SmallVec<[SymbolId; 4]>>,
@@ -1989,6 +1992,7 @@ impl ReactivitySemantics {
             legacy_reads_slots: false,
             has_named_runes_prop: false,
             has_named_legacy_prop: false,
+            has_inspect_trace: false,
             uses_runes: false,
             runes_mode: RunesMode::Runes,
             svelte_store_rune_import: None,
@@ -2179,6 +2183,7 @@ impl ReactivitySemantics {
                 .is_some(),
             has_named_runes_prop: self.has_named_runes_prop,
             has_named_legacy_prop: self.has_named_legacy_prop,
+            has_inspect_trace: self.has_inspect_trace,
             legacy: LegacySummary {
                 has_bindable_prop: self.iter_legacy_bindable_prop_symbols().next().is_some(),
                 reads_props_object: self.legacy_uses_props,
@@ -2286,6 +2291,10 @@ impl ReactivitySemantics {
 
     pub(crate) fn mark_legacy_reads_slots(&mut self) {
         self.legacy_reads_slots = true;
+    }
+
+    pub(crate) fn mark_inspect_trace(&mut self) {
+        self.has_inspect_trace = true;
     }
 
     pub(crate) fn set_named_prop_flags(&mut self, runes: bool, legacy: bool) {

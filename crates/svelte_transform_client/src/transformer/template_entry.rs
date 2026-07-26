@@ -46,7 +46,6 @@ pub(crate) fn run_template<'a, 'b>(
         strip_exports: false,
         dev,
         function_info_stack: Vec::new(),
-        has_tracing: false,
         needs_ownership_validator: false,
         pending_prop_update_validations: rustc_hash::FxHashMap::default(),
         component_source: "",

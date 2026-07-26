@@ -1,6 +1,7 @@
 use super::data::{
     ChildPropMode, ComponentBindOwnership, ComponentFrame, ContentProjection, ContextScope,
-    LegacyInit, LegacySlotSanitization, PropAccessors, PropsInput, RuntimeSemantics, StoreBindings,
+    FunctionTracing, LegacyInit, LegacySlotSanitization, PropAccessors, PropsInput,
+    RuntimeSemantics, StoreBindings,
 };
 use crate::expression_semantics::ExpressionSemanticsStore;
 use crate::types::data::{
@@ -113,6 +114,11 @@ pub(crate) fn build(
             is_custom_element,
             source,
         ),
+        function_tracing: if summary.has_inspect_trace {
+            FunctionTracing::Traced
+        } else {
+            FunctionTracing::Untraced
+        },
     }
 }
 

@@ -11,7 +11,6 @@ use crate::context::Ctx;
 pub struct ScriptOutput<'a> {
     pub imports: Vec<Statement<'a>>,
     pub body: Vec<Statement<'a>>,
-    pub has_tracing: bool,
     pub needs_ownership_validator: bool,
     pub comments: Vec<Comment>,
     pub source_text: &'a str,
@@ -23,7 +22,6 @@ fn empty_script_output<'a>() -> ScriptOutput<'a> {
     ScriptOutput {
         imports: vec![],
         body: vec![],
-        has_tracing: false,
         needs_ownership_validator: false,
         comments: vec![],
         source_text: "",
@@ -202,7 +200,6 @@ fn run_transform<'a, 'b>(
     ScriptOutput {
         imports,
         body,
-        has_tracing: out.has_tracing,
         needs_ownership_validator: out.needs_ownership_validator,
         comments,
         source_text,

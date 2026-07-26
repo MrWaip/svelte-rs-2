@@ -58,6 +58,13 @@ pub enum ContextScope {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FunctionTracing {
+    #[default]
+    Untraced,
+    Traced,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ContentProjection {
     #[default]
     Unused,
@@ -83,6 +90,7 @@ pub struct RuntimeSemantics {
     pub context_ssr: ContextScope,
     pub props_input_ssr: PropsInput,
     pub content_projection: ContentProjection,
+    pub function_tracing: FunctionTracing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

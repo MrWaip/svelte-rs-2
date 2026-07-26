@@ -2408,6 +2408,14 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
             && let Some(fact) =
                 detect_rune_from_call(call).and_then(|kind| rune_call_fact(kind, call))
         {
+            if matches!(
+                fact,
+                DeclaratorSemantics::RuntimeRuneCall {
+                    kind: RuntimeRuneKind::InspectTrace
+                }
+            ) {
+                self.data.reactivity.mark_inspect_trace();
+            }
             self.data
                 .reactivity
                 .record_declarator_semantics(call.node_id(), fact);

@@ -53,9 +53,9 @@ pub use fragment_semantics::{
     FragmentContent, FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace,
 };
 pub use runtime_semantics::{
-    ChildPropMode, ComponentBindOwnership, ComponentFrame, ContextScope, LegacyInit,
-    LegacySlotSanitization, PropAccessors, PropsInput, RuntimeSemantics, RuntimeSemanticsStore,
-    StoreBindings,
+    ChildPropMode, ComponentBindOwnership, ComponentFrame, ContextScope, FunctionTracing,
+    LegacyInit, LegacySlotSanitization, PropAccessors, PropsInput, RuntimeSemantics,
+    RuntimeSemanticsStore, StoreBindings,
 };
 pub use scope::ComponentScoping;
 pub use types::data::{

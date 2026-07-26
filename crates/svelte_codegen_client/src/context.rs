@@ -99,8 +99,6 @@ pub struct CodegenState<'a> {
 
     pub css_text: Option<&'a str>,
 
-    pub has_tracing: bool,
-
     pub(crate) const_tag_blockers: FxHashMap<SymbolId, (String, usize)>,
 
     pub(crate) each_item_writeback_places: Option<FxHashMap<SymbolId, Expression<'a>>>,
@@ -141,7 +139,6 @@ impl<'a> CodegenState<'a> {
             delegated_events: Vec::new(),
             delegated_events_set: FxHashSet::default(),
             css_text,
-            has_tracing: false,
             const_tag_blockers: FxHashMap::default(),
             each_item_writeback_places: None,
             hoisted_templates: FxHashMap::default(),

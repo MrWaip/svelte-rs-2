@@ -16,8 +16,8 @@ use std::path::PathBuf;
 
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
-    AnalysisData, BindingSemantics, ComponentBindOwnership, ComponentFrame, PropAccessors,
-    PropsInput, ReferenceSemantics, SignalReadLocality, SignalReferenceKind,
+    AnalysisData, BindingSemantics, ComponentBindOwnership, ComponentFrame, FunctionTracing,
+    PropAccessors, PropsInput, ReferenceSemantics, SignalReadLocality, SignalReferenceKind,
     StateDeclarationSemantics, StateKind, StoreBindings,
 };
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
@@ -122,7 +122,6 @@ pub fn generate<'a>(
     let script_output = script::gen_script(&mut ctx, dev);
     let script_imports = script_output.imports;
     let script_body = script_output.body;
-    let has_tracing = script_output.has_tracing;
     let needs_ownership_validator = script_output.needs_ownership_validator
         || analysis.runtime_semantics.query().component_bind_ownership
             == ComponentBindOwnership::Tracked
@@ -606,14 +605,16 @@ pub fn generate<'a>(
     if ctx.state.disclose_version {
         program_body.push(b.bare_import("svelte/internal/disclose-version"));
     }
-    if ctx.state.experimental_async {
-        program_body.push(b.bare_import("svelte/internal/flags/async"));
+    if ctx.state.dev
+        && analysis.runtime_semantics.query().function_tracing == FunctionTracing::Traced
+    {
+        program_body.push(b.bare_import("svelte/internal/flags/tracing"));
     }
     if !ctx.query.runes() {
         program_body.push(b.bare_import("svelte/internal/flags/legacy"));
     }
-    if has_tracing || ctx.state.has_tracing {
-        program_body.push(b.bare_import("svelte/internal/flags/tracing"));
+    if ctx.state.experimental_async {
+        program_body.push(b.bare_import("svelte/internal/flags/async"));
     }
     if ctx.state.dev {
         let left = AssignLeft::ComputedMember(b.computed_member(

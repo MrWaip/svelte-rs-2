@@ -11,7 +11,6 @@ use svelte_ast_builder::Builder;
 use super::model::{ComponentTransformer, IgnoreQuery, TransformMode};
 
 pub struct TransformScriptOutput {
-    pub has_tracing: bool,
     pub needs_ownership_validator: bool,
     pub rest_excludes: Vec<RestExcludes>,
 }
@@ -46,7 +45,6 @@ pub fn transform_script<'a, 'b>(
         strip_exports,
         dev,
         function_info_stack: Vec::new(),
-        has_tracing: false,
         needs_ownership_validator: false,
         pending_prop_update_validations: rustc_hash::FxHashMap::default(),
         component_source,
@@ -76,7 +74,6 @@ pub fn transform_script<'a, 'b>(
     }
 
     TransformScriptOutput {
-        has_tracing: transformer.has_tracing,
         needs_ownership_validator: transformer.needs_ownership_validator,
         rest_excludes: transformer.transform_data.rest_excludes,
     }
