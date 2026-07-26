@@ -14,9 +14,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<Option<Expression<'a>>> {
         let (default_wrapper, default_let_scope_owners) =
             match self.ctx.query.analysis.element_semantics.query(el_id) {
-                ElementSemantics::LegacyComponentSlots(sem) => {
-                    (sem.default_wrapper, sem.default_let_scope_owners.clone())
-                }
+                ElementSemantics::Component(sem) => (
+                    sem.legacy_slots.default_wrapper,
+                    sem.legacy_slots.default_let_scope_owners.clone(),
+                ),
                 _ => (None, Default::default()),
             };
         let (let_owner, effective_fragment) = match default_wrapper {

@@ -1,4 +1,5 @@
 mod anchor;
+mod async_values;
 mod attributes;
 mod binding_pattern;
 mod blocks;

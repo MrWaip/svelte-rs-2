@@ -1,10 +1,12 @@
 use std::mem;
 
+use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{LegacyDefaultSlot, Volatility};
+use svelte_analyze::{ElementAsyncKind, LegacyDefaultSlot, Volatility};
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
+use super::super::async_values::AsyncValues;
 use super::super::data_structures::EmitState;
 use super::super::data_structures::FragmentCtx;
 use super::super::fragment::SlotFragmentOutcome;
@@ -196,6 +198,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     span_start,
                     anchor_node,
                     reserved_intermediate,
+                    props.async_values,
+                    self.ctx
+                        .query
+                        .analysis
+                        .element_semantics
+                        .query(el_id)
+                        .async_kind()
+                        .clone(),
                 );
             }
             Some(Volatility::Static) | None => {}
@@ -204,6 +214,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let anchor_expr = anchor_expr_early
             .ok_or(())
             .or_else(|()| self.direct_anchor_expr(state, ctx))?;
+        let anchor_for_async = anchor_expr.clone_in(self.ctx.b.ast.allocator);
 
         let callee: &str = if is_svelte_self {
             self.ctx.state.name
@@ -262,17 +273,46 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         for stmt in props.validate_binding_stmts {
             state.init.push(stmt);
         }
-        if snippet_children.decls.is_empty()
-            && body_memo_decls.is_empty()
-            && ownership_stmts.is_empty()
-        {
-            state.init.push(component_stmt);
-        } else {
-            let mut block = snippet_children.decls;
-            block.extend(body_memo_decls);
-            block.extend(ownership_stmts);
-            block.push(component_stmt);
-            state.init.push(self.ctx.b.block_stmt(block));
+
+        let async_kind = self
+            .ctx
+            .query
+            .analysis
+            .element_semantics
+            .query(el_id)
+            .async_kind()
+            .clone();
+        match async_kind {
+            ElementAsyncKind::Sync => {
+                if snippet_children.decls.is_empty()
+                    && body_memo_decls.is_empty()
+                    && ownership_stmts.is_empty()
+                {
+                    state.init.push(component_stmt);
+                } else {
+                    let mut block = snippet_children.decls;
+                    block.extend(body_memo_decls);
+                    block.extend(ownership_stmts);
+                    block.push(component_stmt);
+                    state.init.push(self.ctx.b.block_stmt(block));
+                }
+            }
+            ElementAsyncKind::Awaited { blockers } | ElementAsyncKind::Deferred { blockers } => {
+                let mut inner = snippet_children.decls;
+                inner.extend(body_memo_decls);
+                inner.extend(ownership_stmts);
+                inner.push(component_stmt);
+                let emit_next = super::super::blocks::owns_fragment_anchor(ctx);
+                self.emit_async_wrapped(
+                    state,
+                    &blockers,
+                    props.async_values,
+                    anchor_for_async,
+                    "$$anchor",
+                    emit_next,
+                    inner,
+                );
+            }
         }
         Ok(String::new())
     }
@@ -326,6 +366,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         span_start: u32,
         anchor_node: String,
         reserved_intermediate: Option<&'a str>,
+        async_values: AsyncValues<'a>,
+        async_kind: ElementAsyncKind,
     ) -> Result<String> {
         for stmt in bind_init_stmts {
             state.init.push(stmt);
@@ -401,13 +443,32 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if let Some(stmt) = inner_validate {
             state.init.push(stmt);
         }
-        if snippet_decls.is_empty() && memo_decls.is_empty() {
-            state.init.push(component_stmt);
-        } else {
-            let mut block = snippet_decls;
-            block.extend(memo_decls);
-            block.push(component_stmt);
-            state.init.push(self.ctx.b.block_stmt(block));
+        match async_kind {
+            ElementAsyncKind::Sync => {
+                if snippet_decls.is_empty() && memo_decls.is_empty() {
+                    state.init.push(component_stmt);
+                } else {
+                    let mut block = snippet_decls;
+                    block.extend(memo_decls);
+                    block.push(component_stmt);
+                    state.init.push(self.ctx.b.block_stmt(block));
+                }
+            }
+            ElementAsyncKind::Awaited { blockers } | ElementAsyncKind::Deferred { blockers } => {
+                let mut inner = snippet_decls;
+                inner.extend(memo_decls);
+                inner.push(component_stmt);
+                let anchor = self.ctx.b.rid_expr(&anchor_node);
+                self.emit_async_wrapped(
+                    state,
+                    &blockers,
+                    async_values,
+                    anchor,
+                    "$$anchor",
+                    false,
+                    inner,
+                );
+            }
         }
         Ok(anchor_node)
     }

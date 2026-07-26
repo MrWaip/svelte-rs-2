@@ -10,8 +10,8 @@ use svelte_ast::{
 use smallvec::SmallVec;
 
 use super::{
-    ElementPropertyReset, ElementReplayEvent, ElementSemantics, ElementSemanticsStore,
-    RegularElementSemantics, SvelteElementSemantics,
+    ComponentElementSemantics, ElementPropertyReset, ElementReplayEvent, ElementSemantics,
+    ElementSemanticsStore, RegularElementSemantics, SvelteElementSemantics,
 };
 use compact_str::CompactString;
 
@@ -77,7 +77,8 @@ pub(crate) fn build(
                     }
                 }
                 Node::SlotElementLegacy(el) => {
-                    let slot = legacy_slot::classify_slot(el, component, source);
+                    let async_kind = async_kind::from_slot(expressions, &el.attributes);
+                    let slot = legacy_slot::classify_slot(el, component, source, async_kind);
                     store.set(el.id, ElementSemantics::LegacySlot(slot));
                 }
                 _ => {
@@ -88,10 +89,22 @@ pub(crate) fn build(
                             fragment,
                             ..
                         } = view;
-                        let slots = legacy_slot::classify_component_slots(
+                        let name_id = match node {
+                            Node::SvelteSelf(_) => None,
+                            _ => Some(id),
+                        };
+                        let async_kind =
+                            async_kind::from_component(expressions, attributes, name_id);
+                        let legacy_slots = legacy_slot::classify_component_slots(
                             attributes, fragment, component, source,
                         );
-                        store.set(id, ElementSemantics::LegacyComponentSlots(slots));
+                        store.set(
+                            id,
+                            ElementSemantics::Component(ComponentElementSemantics {
+                                async_kind,
+                                legacy_slots,
+                            }),
+                        );
                     }
                 }
             }

@@ -1,10 +1,11 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{AttributeSemantics, ElementSemantics, Volatility};
+use svelte_analyze::{AttributeSemantics, ElementAsyncKind, ElementSemantics, Volatility};
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 use svelte_emit_builders::runes::rune_get;
 
+use super::super::async_values::AsyncValues;
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, CodegenError, Result};
@@ -39,15 +40,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             _ => return CodegenError::unexpected_node(el_id, "SlotElementLegacy"),
         };
 
-        let slot_name = match self.ctx.query.analysis.element_semantics.query(el_id) {
-            ElementSemantics::LegacySlot(sem) => sem.name.as_str(),
-            _ => "default",
+        let (slot_name, async_kind) = match self.ctx.query.analysis.element_semantics.query(el_id) {
+            ElementSemantics::LegacySlot(sem) => (sem.name.as_str(), sem.async_kind.clone()),
+            _ => ("default", ElementAsyncKind::Sync),
         };
         let slot_name_alloc: &str = self.ctx.b.alloc_str(slot_name);
 
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         let mut spreads: Vec<Expression<'a>> = Vec::new();
         let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
+        let mut async_values = AsyncValues::new(self.count_slot_sync_memos(attrs));
         let derived_fn = self.ctx.query.view.derived_helper();
 
         for attr in attrs {
@@ -86,6 +88,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     };
                     let data = self.ctx.expression_data(attr_id).cloned();
                     match memo {
+                        svelte_analyze::ComponentPropMemo::Awaited => {
+                            let value = coarse_wrap(self.ctx, expr, data.as_ref());
+                            let suspension = data.map(|d| d.suspension).unwrap_or_default();
+                            let name_ref = async_values.push(self.ctx, value, suspension);
+                            props.push(ObjProp::Getter(key, rune_get(&self.ctx.b, name_ref)));
+                        }
                         svelte_analyze::ComponentPropMemo::Derived => {
                             let name = format!("${}", memo_stmts.len());
                             let name_ref = self.ctx.b.alloc_str(&name);
@@ -158,11 +166,28 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         for stmt in let_stmts {
             state.init.push(stmt);
         }
-        if memo_stmts.is_empty() {
-            state.init.push(slot_stmt);
-        } else {
-            memo_stmts.push(slot_stmt);
-            state.init.push(self.ctx.b.block_stmt(memo_stmts));
+        match async_kind {
+            ElementAsyncKind::Sync => {
+                if memo_stmts.is_empty() {
+                    state.init.push(slot_stmt);
+                } else {
+                    memo_stmts.push(slot_stmt);
+                    state.init.push(self.ctx.b.block_stmt(memo_stmts));
+                }
+            }
+            ElementAsyncKind::Awaited { blockers } | ElementAsyncKind::Deferred { blockers } => {
+                memo_stmts.push(slot_stmt);
+                let anchor = self.ctx.b.rid_expr(&anchor_node);
+                self.emit_async_wrapped(
+                    state,
+                    &blockers,
+                    async_values,
+                    anchor,
+                    &anchor_node,
+                    false,
+                    memo_stmts,
+                );
+            }
         }
 
         if matches!(ctx.anchor, FragmentAnchor::Child { .. }) {
@@ -170,6 +195,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         Ok(anchor_node)
+    }
+
+    fn count_slot_sync_memos(&self, attrs: &[Attribute]) -> u32 {
+        attrs
+            .iter()
+            .map(
+                |attr| match self.ctx.query.analysis.attributes.get(attr.id()) {
+                    AttributeSemantics::Skip(_) => 0,
+                    AttributeSemantics::ComponentProp(
+                        svelte_analyze::ComponentPropSemantics::Expression(e),
+                    ) => super::super::component_props::sync_memo_slots_of_prop(e.memo),
+                    _ => 0,
+                },
+            )
+            .sum()
     }
 
     fn build_legacy_slot_fallback(

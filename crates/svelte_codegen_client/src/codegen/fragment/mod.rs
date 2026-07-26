@@ -804,6 +804,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let mut prop_items: Vec<ObjProp<'a>> = Vec::with_capacity(css_props.len());
         let mut css_memo_decls: Vec<Statement<'a>> = Vec::new();
+        let mut css_async_values = super::async_values::AsyncValues::new(0);
         let mut memo_counter: u32 = 0;
         for (attribute_id, name, value) in css_props {
             let key = self.ctx.b.alloc_str(&name);
@@ -819,7 +820,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .map(|data| data.volatility)
                         .unwrap_or(Volatility::Static);
                     match volatility {
-                        Volatility::Heavy | Volatility::Asynchronous => {
+                        Volatility::Asynchronous => {
+                            return CodegenError::not_implemented(
+                                attribute_id,
+                                "await in a component custom css property",
+                            );
+                        }
+                        Volatility::Heavy => {
                             let helper = self.ctx.query.view.derived_helper();
                             let memo_name = format!("${memo_counter}");
                             memo_counter += 1;
@@ -837,6 +844,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     self.ctx.b.str_expr(value)
                 }
                 ComponentCssPropValue::Concatenation(plan) => {
+                    if plan
+                        .iter()
+                        .any(|emit| matches!(emit, svelte_analyze::ConcatPartEmit::Awaited))
+                    {
+                        return CodegenError::not_implemented(
+                            attribute_id,
+                            "await in a component custom css property",
+                        );
+                    }
                     let Some(view) = self
                         .ctx
                         .query
@@ -858,6 +874,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         &plan,
                         &mut css_memo_decls,
                         &mut memo_counter,
+                        &mut css_async_values,
                     )?
                 }
                 ComponentCssPropValue::Boolean => self.ctx.b.bool_expr(true),

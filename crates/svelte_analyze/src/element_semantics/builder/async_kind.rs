@@ -29,6 +29,48 @@ pub(super) fn from_attributes(
     make(blockers, awaited)
 }
 
+pub(super) fn from_component(
+    expressions: &ExpressionSemanticsStore,
+    attributes: &[Attribute],
+    name_id: Option<NodeId>,
+) -> ElementAsyncKind {
+    let mut blockers: SmallVec<[u32; 2]> = SmallVec::new();
+    let mut awaited = false;
+    let mut absorb = |id: NodeId, contributes_value: bool| {
+        let ExpressionSemantics::Expression(data) = expressions.get(id) else {
+            return;
+        };
+        for &blocker in &data.blockers {
+            if !blockers.contains(&blocker) {
+                blockers.push(blocker);
+            }
+        }
+        if contributes_value && data.volatility.is_asynchronous() {
+            awaited = true;
+        }
+    };
+    if let Some(id) = name_id {
+        absorb(id, false);
+    }
+    for attr in attributes {
+        match attr {
+            Attribute::ExpressionAttribute(_)
+            | Attribute::ConcatenationAttribute(_)
+            | Attribute::SpreadAttribute(_) => absorb(attr.id(), true),
+            Attribute::AttachTag(_) | Attribute::BindDirective(_) => absorb(attr.id(), false),
+            _ => {}
+        }
+    }
+    make(blockers, awaited)
+}
+
+pub(super) fn from_slot(
+    expressions: &ExpressionSemanticsStore,
+    attributes: &[Attribute],
+) -> ElementAsyncKind {
+    from_component(expressions, attributes, None)
+}
+
 pub(super) fn from_tag(expressions: &ExpressionSemanticsStore, id: NodeId) -> ElementAsyncKind {
     let ExpressionSemantics::Expression(data) = expressions.get(id) else {
         return ElementAsyncKind::Sync;

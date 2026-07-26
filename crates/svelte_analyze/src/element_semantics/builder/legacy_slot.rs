@@ -3,17 +3,21 @@ use svelte_ast::{
     Attribute, Component, FragmentId, Node, NodeId, SLOT_ATTRIBUTE, SlotElementLegacy,
 };
 
-use super::super::{LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics};
+use super::super::{
+    ElementAsyncKind, LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics,
+};
 
 pub(super) fn classify_slot(
     el: &SlotElementLegacy,
     component: &Component,
     source: &str,
+    async_kind: ElementAsyncKind,
 ) -> LegacySlotSemantics {
     let has_fallback = !component.store.fragment(el.fragment).nodes.is_empty();
     LegacySlotSemantics {
         name: slot_name(&el.attributes, source).to_string(),
         has_fallback,
+        async_kind,
     }
 }
 

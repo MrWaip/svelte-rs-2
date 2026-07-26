@@ -393,7 +393,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     }
     pub fn legacy_default_slot(&self, id: NodeId) -> LegacyDefaultSlot {
         match self.data.element_semantics.query(id) {
-            ElementSemantics::LegacyComponentSlots(sem) => sem.default_slot,
+            ElementSemantics::Component(sem) => sem.legacy_slots.default_slot,
             _ => LegacyDefaultSlot::ChildrenProp,
         }
     }

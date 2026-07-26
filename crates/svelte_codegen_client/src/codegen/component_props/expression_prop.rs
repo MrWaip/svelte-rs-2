@@ -6,6 +6,7 @@ use svelte_ast::{ConcatPart, NodeId};
 use svelte_ast_builder::{Arg, ObjProp, TemplatePart};
 use svelte_emit_builders::runes::rune_get;
 
+use super::super::async_values::AsyncValues;
 use super::super::expr::evaluation_is_defined;
 use super::super::{Codegen, CodegenError, Result};
 use super::dispatch::PropOrSpread;
@@ -46,12 +47,21 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         items: &mut Vec<PropOrSpread<'a>>,
         memo_decls: &mut Vec<Statement<'a>>,
         memo_counter: &mut u32,
+        async_values: &mut AsyncValues<'a>,
     ) -> Result<()> {
         let key = self.ctx.b.alloc_str(name);
         let Some(expr) = self.ctx.state.parsed.take_expr(expr_id) else {
             return CodegenError::missing_expression(attr_id);
         };
         match memo {
+            ComponentPropMemo::Awaited => {
+                let data = self.ctx.expression_data(attr_id).cloned();
+                let value = coarse_wrap(self.ctx, expr, data.as_ref());
+                let suspension = data.map(|d| d.suspension).unwrap_or_default();
+                let memo_ref = async_values.push(self.ctx, value, suspension);
+                let get = rune_get(&self.ctx.b, memo_ref);
+                items.push(PropOrSpread::Prop(ObjProp::Getter(key, get)));
+            }
             ComponentPropMemo::Derived => {
                 let data = self.ctx.expression_data(attr_id).cloned();
                 let thunk_body = coarse_wrap(self.ctx, expr, data.as_ref());
@@ -93,12 +103,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         items: &mut Vec<PropOrSpread<'a>>,
         memo_decls: &mut Vec<Statement<'a>>,
         memo_counter: &mut u32,
+        async_values: &mut AsyncValues<'a>,
     ) -> Result<()> {
         let key = self.ctx.b.alloc_str(name);
-        let val =
-            self.build_concat_expr_from_plan(attr_id, parts, plan, memo_decls, memo_counter)?;
+        let val = self.build_concat_expr_from_plan(
+            attr_id,
+            parts,
+            plan,
+            memo_decls,
+            memo_counter,
+            async_values,
+        )?;
         match memo {
-            ComponentPropMemo::Derived | ComponentPropMemo::Getter => {
+            ComponentPropMemo::Awaited | ComponentPropMemo::Derived | ComponentPropMemo::Getter => {
                 items.push(PropOrSpread::Prop(ObjProp::Getter(key, val)));
             }
             ComponentPropMemo::Inline => {
@@ -115,6 +132,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         plan: &[ConcatPartEmit],
         memo_decls: &mut Vec<Statement<'a>>,
         memo_counter: &mut u32,
+        async_values: &mut AsyncValues<'a>,
     ) -> Result<Expression<'a>> {
         let helper = self.ctx.query.view.derived_helper();
         let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::new();
@@ -142,6 +160,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     };
                     let wrapped = coarse_wrap(self.ctx, part_expr, data.as_ref());
                     tpl_parts.push(TemplatePart::Expr(wrapped, defined));
+                }
+                (ConcatPart::Dynamic { id, expr }, ConcatPartEmit::Awaited) => {
+                    let data = self.ctx.expression_data(*id).cloned();
+                    let Some(part_expr) = self.take_expr_by_ref(expr) else {
+                        return CodegenError::missing_expression(attr_id);
+                    };
+                    let value = coarse_wrap(self.ctx, part_expr, data.as_ref());
+                    let suspension = data.map(|d| d.suspension).unwrap_or_default();
+                    let memo_ref = async_values.push(self.ctx, value, suspension);
+                    let get = rune_get(&self.ctx.b, memo_ref);
+                    tpl_parts.push(TemplatePart::Expr(get, false));
                 }
                 (ConcatPart::Dynamic { id, expr }, ConcatPartEmit::HoistDerived) => {
                     let data = self.ctx.expression_data(*id).cloned();

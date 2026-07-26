@@ -233,6 +233,7 @@ pub enum ComponentSpreadEmit {
     Inline,
     Thunk,
     MemoThunk,
+    AwaitedThunk,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -299,6 +300,7 @@ pub enum ConcatPartEmit {
     Static,
     Inline,
     HoistDerived,
+    Awaited,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -306,6 +308,7 @@ pub enum ComponentPropMemo {
     Inline,
     Getter,
     Derived,
+    Awaited,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

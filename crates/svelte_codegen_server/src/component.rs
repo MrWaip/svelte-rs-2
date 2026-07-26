@@ -412,9 +412,11 @@ impl<'a> ServerCodegen<'a> {
     ) -> Result<()> {
         let (default_slot, default_wrapper, default_let_owner) =
             match self.analysis.element_semantics.query(id) {
-                ElementSemantics::LegacyComponentSlots(sem) => {
-                    (sem.default_slot, sem.default_wrapper, sem.default_let_owner)
-                }
+                ElementSemantics::Component(sem) => (
+                    sem.legacy_slots.default_slot,
+                    sem.legacy_slots.default_wrapper,
+                    sem.legacy_slots.default_let_owner,
+                ),
                 _ => (LegacyDefaultSlot::ChildrenProp, None, None),
             };
 

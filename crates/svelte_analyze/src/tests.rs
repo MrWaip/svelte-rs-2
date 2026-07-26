@@ -2948,7 +2948,7 @@ fn is_head_title(data: &crate::AnalysisData, id: NodeId) -> bool {
         | crate::ElementSemantics::Boundary(_)
         | crate::ElementSemantics::SvelteElement(_)
         | crate::ElementSemantics::LegacySlot(_)
-        | crate::ElementSemantics::LegacyComponentSlots(_) => false,
+        | crate::ElementSemantics::Component(_) => false,
     }
 }
 

@@ -38,6 +38,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         let mut ns_thunk: Option<Expression<'a>> = None;
         let mut memo: TemplateMemoState<'a> = TemplateMemoState::default();
+        let mut deferred_spreads: Vec<(usize, usize)> = Vec::new();
 
         if !options.skip_directives {
             for attr in attributes {
@@ -217,19 +218,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 Attribute::SpreadAttribute(sa) => {
                     let expr = self.take_attr_expr(attr_id, &sa.expression)?;
-                    match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
+                    let data = self.ctx.expression_data(attr_id).cloned();
+                    if let Some(data) = data.as_ref() {
+                        memo.push_expression_data(self.ctx, data);
+                    }
+                    match data.as_ref().map(|d| d.volatility) {
                         Some(Volatility::Heavy) => {
-                            if let Some(data) = self.ctx.expression_data(attr_id) {
-                                memo.push_expression_data(self.ctx, data);
-                            }
                             let idx = memo.sync_values_push(expr);
                             let param = memo.sync_param_expr(self.ctx, idx);
                             props.push(ObjProp::Spread(param));
                         }
-                        Some(
-                            Volatility::Static | Volatility::Reactive | Volatility::Asynchronous,
-                        )
-                        | None => {
+                        Some(Volatility::Asynchronous) => {
+                            let suspension = data.map(|d| d.suspension).unwrap_or_default();
+                            let idx = memo.async_values_push(expr, suspension);
+                            deferred_spreads.push((props.len(), idx));
+                            props.push(ObjProp::Spread(self.ctx.b.void_zero_expr()));
+                        }
+                        Some(Volatility::Static | Volatility::Reactive) | None => {
                             props.push(ObjProp::Spread(expr));
                         }
                     }
@@ -291,6 +296,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .b
                 .static_member_expr(self.ctx.b.rid_expr("$"), "STYLE");
             props.push(ObjProp::Computed(style_key_expr, style_obj));
+        }
+
+        for (prop_index, async_index) in deferred_spreads {
+            props[prop_index] = ObjProp::Spread(memo.async_param_expr(self.ctx, async_index));
         }
 
         if !props.is_empty() {

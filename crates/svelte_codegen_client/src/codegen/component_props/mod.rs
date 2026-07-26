@@ -9,4 +9,6 @@ mod slots;
 mod snippet_children;
 mod spread_prop;
 
-pub(super) use dispatch::{OwnershipBinding, OwnershipGetter, PropOrSpread};
+pub(super) use dispatch::{
+    OwnershipBinding, OwnershipGetter, PropOrSpread, sync_memo_slots_of_prop,
+};

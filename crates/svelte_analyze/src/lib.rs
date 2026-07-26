@@ -46,10 +46,10 @@ pub use block_semantics::{
     SnippetParam, SnippetPlacement, SnippetSlotKey,
 };
 pub use element_semantics::{
-    BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementPropertyReset, ElementReplayEvent,
-    ElementSemantics, ElementSemanticsStore, ElementValueRole, LegacyComponentSlotsSemantics,
-    LegacyDefaultSlot, LegacySlotSemantics, RegularElementSemantics, SvelteElementSemantics,
-    TextareaBody, TextareaSegment,
+    BoundaryBranch, BoundarySemantics, ComponentElementSemantics, ElementAsyncKind,
+    ElementPropertyReset, ElementReplayEvent, ElementSemantics, ElementSemanticsStore,
+    ElementValueRole, LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics,
+    RegularElementSemantics, SvelteElementSemantics, TextareaBody, TextareaSegment,
 };
 pub use fragment_semantics::{
     FragmentContent, FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace,

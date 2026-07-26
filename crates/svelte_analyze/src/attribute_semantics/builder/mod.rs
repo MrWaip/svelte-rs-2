@@ -1850,6 +1850,7 @@ fn derive_component_concat_semantics(
     {
         let memo = derive_component_prop_memo_core(ctx, expr_raw, data, carrier);
         let emit = match memo {
+            ComponentPropMemo::Awaited => ConcatPartEmit::Awaited,
             ComponentPropMemo::Derived => ConcatPartEmit::HoistDerived,
             ComponentPropMemo::Getter | ComponentPropMemo::Inline => ConcatPartEmit::Inline,
         };
@@ -1865,9 +1866,6 @@ fn derive_component_concat_semantics(
         match data.volatility {
             Volatility::Heavy | Volatility::Asynchronous => true,
             Volatility::Static | Volatility::Reactive => {
-                if !data.blockers.is_empty() {
-                    return true;
-                }
                 let Some(e) = ctx.parsed.expr(expr.id()) else {
                     return false;
                 };
@@ -1892,23 +1890,16 @@ fn derive_component_concat_semantics(
                 Evaluation::Known(_) => ConcatPartEmit::Static,
                 Evaluation::Defined { .. } | Evaluation::MaybeNullish { .. } => {
                     match data.volatility {
-                        Volatility::Heavy | Volatility::Asynchronous => {
-                            ConcatPartEmit::HoistDerived
-                        }
+                        Volatility::Asynchronous => ConcatPartEmit::Awaited,
+                        Volatility::Heavy => ConcatPartEmit::HoistDerived,
                         Volatility::Reactive => {
-                            if !data.blockers.is_empty() || forces_wrap {
+                            if forces_wrap {
                                 ConcatPartEmit::HoistDerived
                             } else {
                                 ConcatPartEmit::Inline
                             }
                         }
-                        Volatility::Static => {
-                            if data.blockers.is_empty() {
-                                ConcatPartEmit::Inline
-                            } else {
-                                ConcatPartEmit::HoistDerived
-                            }
-                        }
+                        Volatility::Static => ConcatPartEmit::Inline,
                     }
                 }
             }
@@ -1924,16 +1915,24 @@ fn component_prop_memo(
     parts: &[ConcatPart],
     plan: &[ConcatPartEmit],
 ) -> ComponentPropMemo {
+    let has_await = plan
+        .iter()
+        .any(|emit| matches!(emit, ConcatPartEmit::Awaited));
+    if has_await {
+        return ComponentPropMemo::Awaited;
+    }
     let has_hoist = plan.iter().any(|emit| match emit {
         ConcatPartEmit::HoistDerived => true,
-        ConcatPartEmit::Inline | ConcatPartEmit::Static => false,
+        ConcatPartEmit::Awaited | ConcatPartEmit::Inline | ConcatPartEmit::Static => false,
     });
     if has_hoist {
         return ComponentPropMemo::Derived;
     }
     for (part, emit) in parts.iter().zip(plan.iter()) {
         match emit {
-            ConcatPartEmit::HoistDerived | ConcatPartEmit::Static => continue,
+            ConcatPartEmit::HoistDerived | ConcatPartEmit::Awaited | ConcatPartEmit::Static => {
+                continue;
+            }
             ConcatPartEmit::Inline => {}
         }
         let ConcatPart::Dynamic { id, .. } = part else {
@@ -1975,11 +1974,9 @@ fn derive_component_spread_emit(ctx: &Ctx<'_, '_>, attr_id: NodeId) -> Component
         return ComponentSpreadEmit::Inline;
     };
     match data.volatility {
-        Volatility::Heavy | Volatility::Asynchronous => return ComponentSpreadEmit::MemoThunk,
+        Volatility::Asynchronous => return ComponentSpreadEmit::AwaitedThunk,
+        Volatility::Heavy => return ComponentSpreadEmit::MemoThunk,
         Volatility::Static | Volatility::Reactive => {}
-    }
-    if !data.blockers.is_empty() {
-        return ComponentSpreadEmit::MemoThunk;
     }
     if references_need_wrap(ctx, data) {
         ComponentSpreadEmit::Thunk
@@ -2029,11 +2026,9 @@ fn derive_component_prop_memo_core(
             | Expression::ComputedMemberExpression(_)
     );
     let needs_wrap = references_need_wrap(ctx, data);
-    if matches!(
-        data.volatility,
-        Volatility::Heavy | Volatility::Asynchronous
-    ) || !data.blockers.is_empty()
-    {
+    if data.volatility.is_asynchronous() {
+        ComponentPropMemo::Awaited
+    } else if matches!(data.volatility, Volatility::Heavy) {
         ComponentPropMemo::Derived
     } else if needs_wrap && simple_shape {
         ComponentPropMemo::Getter

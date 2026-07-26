@@ -19,7 +19,7 @@ pub enum ElementSemantics {
 
     LegacySlot(LegacySlotSemantics),
 
-    LegacyComponentSlots(LegacyComponentSlotsSemantics),
+    Component(ComponentElementSemantics),
 }
 
 impl ElementSemantics {
@@ -31,7 +31,7 @@ impl ElementSemantics {
             | ElementSemantics::Boundary(_)
             | ElementSemantics::SvelteElement(_)
             | ElementSemantics::LegacySlot(_)
-            | ElementSemantics::LegacyComponentSlots(_) => ElementPropertyReset::None,
+            | ElementSemantics::Component(_) => ElementPropertyReset::None,
         }
     }
 
@@ -43,7 +43,19 @@ impl ElementSemantics {
             | ElementSemantics::Boundary(_)
             | ElementSemantics::SvelteElement(_)
             | ElementSemantics::LegacySlot(_)
-            | ElementSemantics::LegacyComponentSlots(_) => false,
+            | ElementSemantics::Component(_) => false,
+        }
+    }
+
+    pub fn async_kind(&self) -> &ElementAsyncKind {
+        match self {
+            ElementSemantics::RegularElement(sem) => &sem.async_kind,
+            ElementSemantics::SvelteElement(sem) => &sem.async_kind,
+            ElementSemantics::Component(sem) => &sem.async_kind,
+            ElementSemantics::LegacySlot(sem) => &sem.async_kind,
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_) => &ElementAsyncKind::Sync,
         }
     }
 }
@@ -52,6 +64,13 @@ impl ElementSemantics {
 pub struct LegacySlotSemantics {
     pub name: String,
     pub has_fallback: bool,
+    pub async_kind: ElementAsyncKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComponentElementSemantics {
+    pub async_kind: ElementAsyncKind,
+    pub legacy_slots: LegacyComponentSlotsSemantics,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

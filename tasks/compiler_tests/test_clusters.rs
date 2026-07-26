@@ -393,3 +393,6 @@ mod async_block_thunk;
 
 #[path = "clusters/async_instance_blockers.rs"]
 mod async_instance_blockers;
+
+#[path = "clusters/async_construct_wrap.rs"]
+mod async_construct_wrap;

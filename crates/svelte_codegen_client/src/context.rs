@@ -388,7 +388,7 @@ impl<'a> Ctx<'a> {
             | ElementSemantics::Boundary(_)
             | ElementSemantics::SvelteElement(_)
             | ElementSemantics::LegacySlot(_)
-            | ElementSemantics::LegacyComponentSlots(_) => false,
+            | ElementSemantics::Component(_) => false,
         }
     }
     pub fn element_name(&self, id: NodeId) -> Option<&str> {
@@ -399,7 +399,7 @@ impl<'a> Ctx<'a> {
             | ElementSemantics::Boundary(_)
             | ElementSemantics::SvelteElement(_)
             | ElementSemantics::LegacySlot(_)
-            | ElementSemantics::LegacyComponentSlots(_) => None,
+            | ElementSemantics::Component(_) => None,
         }
     }
     pub fn needs_var(&self, id: NodeId) -> bool {
