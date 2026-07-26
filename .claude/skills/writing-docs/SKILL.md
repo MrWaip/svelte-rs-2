@@ -1,6 +1,7 @@
 ---
 name: writing-docs
 description: PRD editorial standard for docs/. Use when writing a new PRD, extending one, or reviewing changes under docs/ — and when another skill needs the PRD rules.
+when_to_use: When creating or editing any file under `docs/`, adding an invariant or an anti-pattern to a PRD, adding a term to a `topics:` line, or deciding where a fact belongs — PRD, `context.md`, `map.md`, `docs/adr/`, or a GitHub issue.
 allowed-tools: Read, Edit, Write, Grep, Bash
 ---
 

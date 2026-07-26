@@ -1,8 +1,7 @@
 ---
 name: write-unit-test
 description: The required unit-test format for `crates/**/src/**` — use when writing or reviewing a Rust `#[test]`, a test helper, or an `assert_*`. Not for `tasks/compiler_tests/` (use add-test) or `tasks/diagnostic_tests/` (use add-diagnostic-test).
-paths:
-  - "crates/**/src/**/*.rs"
+when_to_use: When adding or editing a `#[test]` under `crates/`, writing a Creation Method or a `#[track_caller]` `assert_*` helper, stacking more than one assertion in a test body, or reviewing a unit test against the three-line setup/execute/assert format.
 ---
 
 # Write unit test
