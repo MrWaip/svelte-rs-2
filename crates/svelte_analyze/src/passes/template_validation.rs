@@ -30,6 +30,8 @@ use crate::validate::attrs_have_duplicate;
 use crate::validate::const_assignment::constant_kind;
 use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
 use crate::{AnalysisData, EventModifier, concat_single_dynamic_expr, event_attribute};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::sync::LazyLock;
 
 mod a11y;
 
@@ -596,6 +598,44 @@ const A11Y_GLOBAL_ROLE_SUPPORTED_PROPS: &[&str] = &[
     "aria-relevant",
     "aria-roledescription",
 ];
+
+type StaticNameSet = LazyLock<FxHashSet<&'static str>>;
+type StaticNameMap = LazyLock<FxHashMap<&'static str, &'static str>>;
+type StaticNameListMap = LazyLock<FxHashMap<&'static str, &'static [&'static str]>>;
+
+macro_rules! name_set {
+    ($index:ident, $table:ident) => {
+        static $index: StaticNameSet = LazyLock::new(|| $table.iter().copied().collect());
+    };
+}
+
+macro_rules! name_map {
+    ($index:ident, $table:ident) => {
+        static $index: StaticNameMap = LazyLock::new(|| $table.iter().copied().collect());
+    };
+}
+
+name_set!(A11Y_ARIA_ATTRIBUTES_INDEX, A11Y_ARIA_ATTRIBUTES);
+name_set!(A11Y_ARIA_ROLES_INDEX, A11Y_ARIA_ROLES);
+name_set!(A11Y_ABSTRACT_ROLES_INDEX, A11Y_ABSTRACT_ROLES);
+name_set!(A11Y_INTERACTIVE_ROLES_INDEX, A11Y_INTERACTIVE_ROLES);
+name_set!(A11Y_NON_INTERACTIVE_ROLES_INDEX, A11Y_NON_INTERACTIVE_ROLES);
+name_set!(A11Y_INTERACTIVE_HANDLERS_INDEX, A11Y_INTERACTIVE_HANDLERS);
+name_set!(
+    A11Y_GLOBAL_ROLE_SUPPORTED_PROPS_INDEX,
+    A11Y_GLOBAL_ROLE_SUPPORTED_PROPS
+);
+
+name_map!(A11Y_IMPLICIT_ROLES_INDEX, A11Y_IMPLICIT_ROLES);
+name_map!(A11Y_NESTED_IMPLICIT_ROLES_INDEX, A11Y_NESTED_IMPLICIT_ROLES);
+name_map!(A11Y_INPUT_IMPLICIT_ROLES_INDEX, A11Y_INPUT_IMPLICIT_ROLES);
+name_map!(
+    A11Y_MENUITEM_IMPLICIT_ROLES_INDEX,
+    A11Y_MENUITEM_IMPLICIT_ROLES
+);
+
+static A11Y_REQUIRED_ROLE_PROPS_INDEX: StaticNameListMap =
+    LazyLock::new(|| A11Y_REQUIRED_ROLE_PROPS.iter().copied().collect());
 
 struct BindParentInfo<'d> {
     id: svelte_ast::NodeId,
