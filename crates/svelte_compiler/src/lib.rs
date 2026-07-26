@@ -1,3 +1,4 @@
+mod arena_reuse;
 mod options;
 mod sourcemap_finalize;
 
@@ -116,15 +117,25 @@ fn validate_compile_options(options: &CompileOptions, diagnostics: &mut Vec<Diag
 }
 
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
+    let js_alloc = arena_reuse::acquire();
+    let result = compile_in(&js_alloc, source, options);
+    arena_reuse::release(js_alloc);
+    result
+}
+
+fn compile_in(
+    js_alloc: &oxc_allocator::Allocator,
+    source: &str,
+    options: &CompileOptions,
+) -> CompileResult {
     let candidate_name = options.component_name();
     let preprocessor_map = options
         .preprocessor_map
         .as_deref()
         .and_then(svelte_sourcemap::parse_input_map);
 
-    let js_alloc = oxc_allocator::Allocator::default();
     let (mut component, js_result, mut diagnostics) =
-        svelte_parser::parse_with_js(&js_alloc, source);
+        svelte_parser::parse_with_js(js_alloc, source);
     validate_compile_options(options, &mut diagnostics);
     apply_compile_options_to_component(&mut component, options);
     let css_parsed = svelte_parser::parse_css_block(&component);
@@ -301,7 +312,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             let js = match options.generate {
                 GenerateMode::Server => {
                     let mut compile_ctx = svelte_types::CompileContext {
-                        alloc: &js_alloc,
+                        alloc: js_alloc,
                         component: &component,
                         analysis: &analysis,
                         js_arena: &mut parsed,
@@ -322,7 +333,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 GenerateMode::Client | GenerateMode::False => {
                     let transform_data = {
                         let mut compile_ctx = svelte_types::CompileContext {
-                            alloc: &js_alloc,
+                            alloc: js_alloc,
                             component: &component,
                             analysis: &analysis,
                             js_arena: &mut parsed,
@@ -335,7 +346,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                         )
                     };
                     let compile_ctx = svelte_types::CompileContext {
-                        alloc: &js_alloc,
+                        alloc: js_alloc,
                         component: &component,
                         analysis: &analysis,
                         js_arena: &mut parsed,
@@ -377,13 +388,22 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 }
 
 pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileResult {
+    let js_alloc = arena_reuse::acquire();
+    let result = compile_module_in(&js_alloc, source, options);
+    arena_reuse::release(js_alloc);
+    result
+}
+
+fn compile_module_in(
+    js_alloc: &oxc_allocator::Allocator,
+    source: &str,
+    options: &ModuleCompileOptions,
+) -> CompileResult {
     let is_ts = options.filename.ends_with(".ts");
     let dev = options.dev;
 
-    let js_alloc = oxc_allocator::Allocator::default();
-
     let (analysis, mut parsed, mut diagnostics) =
-        svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
+        svelte_analyze::analyze_module(js_alloc, source, is_ts, dev);
     apply_suppress(&mut diagnostics, &options.suppress);
 
     if options.generate == GenerateMode::False
@@ -419,16 +439,16 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
                 filename: filename.clone(),
             };
             svelte_transform_server::transform_module(
-                &js_alloc,
+                js_alloc,
                 &mut program,
                 &analysis,
                 &mut ident_gen,
                 &transform_options,
             );
-            svelte_codegen_server::generate_module(&js_alloc, program)
+            svelte_codegen_server::generate_module(js_alloc, program)
         }
         GenerateMode::Client | GenerateMode::False => svelte_codegen_client::generate_module(
-            &js_alloc,
+            js_alloc,
             program,
             &analysis,
             &line_index,
