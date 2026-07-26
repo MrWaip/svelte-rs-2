@@ -142,30 +142,32 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             if recording_slot_const_tags {
                 state.legacy_slot_const_tag_start = Some(state.init.len());
             }
-            let has_async = self.ctx.state.experimental_async
-                && bucket.const_tags.iter().any(|&id| {
-                    let BlockSemantics::ConstTag(s) = self.ctx.query.analysis.block_semantics(id)
-                    else {
-                        return false;
-                    };
-                    match s.async_kind {
-                        FragmentDeclarationAsyncKind::Awaited { .. }
-                        | FragmentDeclarationAsyncKind::Deferred { .. } => true,
-                        FragmentDeclarationAsyncKind::Sync => false,
-                    }
-                });
             let mut ordered: SmallVec<[NodeId; 4]> = bucket.const_tags.iter().copied().collect();
             ordered.sort_by_key(|&id| match self.ctx.query.analysis.block_semantics(id) {
                 BlockSemantics::ConstTag(s) => s.order_rank,
                 _ => 0,
             });
             if !state.skip_const_tags {
-                if has_async {
-                    self.emit_const_tags_async_batch(state, &ordered)?;
-                } else {
-                    for &id in &ordered {
+                let mut grouped: SmallVec<[NodeId; 4]> = SmallVec::new();
+                for &id in &ordered {
+                    if !self.ctx.state.experimental_async {
                         self.emit_hoisted_const_tag(state, ctx, id)?;
+                        continue;
                     }
+                    let BlockSemantics::ConstTag(sem) = self.ctx.query.analysis.block_semantics(id)
+                    else {
+                        return CodegenError::unexpected_block_semantics(id, "ConstTag expected");
+                    };
+                    match sem.async_kind {
+                        FragmentDeclarationAsyncKind::Sync => {
+                            self.emit_hoisted_const_tag(state, ctx, id)?
+                        }
+                        FragmentDeclarationAsyncKind::Awaited { .. }
+                        | FragmentDeclarationAsyncKind::Deferred { .. } => grouped.push(id),
+                    }
+                }
+                if !grouped.is_empty() {
+                    self.emit_const_tags_async_batch(state, &grouped)?;
                 }
             }
             if recording_slot_const_tags {

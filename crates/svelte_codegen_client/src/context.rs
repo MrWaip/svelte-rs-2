@@ -239,18 +239,15 @@ impl<'a> Ctx<'a> {
     pub fn expression_data(&self, id: NodeId) -> Option<&svelte_analyze::ExpressionData> {
         self.query.view.expression_data(id)
     }
-    pub fn const_tag_symbol_blocker_expr(&self, sym: SymbolId) -> Option<Expression<'a>> {
+    pub fn const_tag_symbol_blocker_slot(&self, sym: SymbolId) -> Option<(String, usize)> {
         let (name, idx) = self.const_tag_blockers.get(&sym)?;
-        Some(
-            self.b
-                .computed_member_expr(self.b.rid_expr(name), self.b.num_expr(*idx as f64)),
-        )
+        Some((name.clone(), *idx))
     }
     pub fn runtime_semantics(&self) -> RuntimeSemantics {
         self.query.runtime_semantics()
     }
 
-    pub fn const_tag_blocker_exprs(&mut self, id: NodeId) -> Vec<Expression<'a>> {
+    pub fn const_tag_blocker_slots(&mut self, id: NodeId) -> Vec<(String, usize)> {
         if self.const_tag_blockers.is_empty() {
             return Vec::new();
         }
@@ -258,13 +255,22 @@ impl<'a> Ctx<'a> {
             return Vec::new();
         };
         let ref_symbols: Vec<SymbolId> = data.references.iter().copied().collect();
-        let mut result = Vec::new();
+        let mut slots: Vec<(String, usize)> = Vec::new();
         for sym in &ref_symbols {
-            if let Some(expr) = self.const_tag_symbol_blocker_expr(*sym) {
-                result.push(expr);
+            let Some(slot) = self.const_tag_symbol_blocker_slot(*sym) else {
+                continue;
+            };
+            if slots.contains(&slot) {
+                continue;
             }
+            slots.push(slot);
         }
-        result
+        slots
+    }
+
+    pub fn blocker_slot_expr(&self, slot: &(String, usize)) -> Expression<'a> {
+        self.b
+            .computed_member_expr(self.b.rid_expr(&slot.0), self.b.num_expr(slot.1 as f64))
     }
 
     pub fn has_spread(&self, id: NodeId) -> bool {

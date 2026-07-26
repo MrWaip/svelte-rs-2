@@ -23,9 +23,8 @@ impl<'a> ServerTransform<'_, 'a> {
             &mut await_expr.argument,
             ast.expression_identifier(SPAN, ""),
         );
-        await_expr.argument = self.b.call_expr("$.save", [Arg::Expr(arg)]);
-        let awaited = mem::replace(it, ast.expression_identifier(SPAN, ""));
-        *it = self.b.call_expr_callee(awaited, []);
+        let saved = self.b.call_expr("$.save", [Arg::Expr(arg)]);
+        *it = self.b.call_expr_callee(self.b.await_expr(saved), []);
     }
 
     fn await_needs_save(&self, id: OxcNodeId) -> bool {

@@ -1,7 +1,7 @@
 use std::mem;
 
 use compact_str::CompactString;
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::Statement;
 use svelte_analyze::{ElementPropertyReset, Volatility};
 use svelte_ast::{Attribute, Namespace, Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
@@ -233,7 +233,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Vec<Statement<'a>>,
             TemplateMemoState<'a>,
             Vec<u32>,
-            Vec<Expression<'a>>,
+            Vec<(String, usize)>,
         );
         let mut block_wrap: Option<BlockWrap<'a>> = None;
         let saved_skip_snippets = mem::replace(&mut state.skip_snippets, false);

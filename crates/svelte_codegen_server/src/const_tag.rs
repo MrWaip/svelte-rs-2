@@ -1,5 +1,4 @@
-use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, Expression, Statement};
-use oxc_span::SPAN;
+use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{BlockSemantics, ConstTagBlockSemantics, FragmentDeclarationAsyncKind};
 use svelte_ast::NodeId;
@@ -35,37 +34,26 @@ impl<'a> ServerCodegen<'a> {
                 BlockSemantics::ConstTag(s) => s.clone(),
                 _ => continue,
             };
-            let (symbol, target, value) = self.take_const_parts(id, sem.decl_node_id)?;
+            let (symbols, assignments) = self.take_const_parts(id, sem.decl_node_id)?;
 
-            self.push_stmt(self.b.let_stmt(&target));
-
-            let target_atom = self.b.alloc_str(&target);
-            let assignment_target = AssignmentTarget::AssignmentTargetIdentifier(
-                self.b
-                    .alloc(self.b.ast.identifier_reference(SPAN, target_atom)),
-            );
-            let assignment = self.b.ast.expression_assignment(
-                SPAN,
-                AssignmentOperator::Assign,
-                assignment_target,
-                value,
-            );
-
-            let body = match &sem.async_kind {
+            let is_awaited = match &sem.async_kind {
                 FragmentDeclarationAsyncKind::Awaited { blockers } => {
                     self.push_blocker_thunk(blockers, &mut thunks);
-                    self.b.async_thunk(assignment)
+                    true
                 }
                 FragmentDeclarationAsyncKind::Deferred { blockers } => {
                     self.push_blocker_thunk(blockers, &mut thunks);
-                    self.b.thunk(assignment)
+                    false
                 }
-                FragmentDeclarationAsyncKind::Sync => self.b.thunk(assignment),
+                FragmentDeclarationAsyncKind::Sync => false,
             };
-            thunks.push(body);
+
+            thunks.push(self.build_declaration_thunk(assignments, is_awaited));
             let thunk_idx = (thunks.len() - 1) as u32;
-            self.const_tag_blockers
-                .insert(symbol, (promises_name.clone(), thunk_idx));
+            for symbol in symbols {
+                self.const_tag_blockers
+                    .insert(symbol, (promises_name.clone(), thunk_idx));
+            }
         }
 
         if !thunks.is_empty() {
@@ -81,7 +69,7 @@ impl<'a> ServerCodegen<'a> {
         &mut self,
         id: NodeId,
         decl_id: OxcNodeId,
-    ) -> Result<(SymbolId, String, Expression<'a>)> {
+    ) -> Result<(Vec<SymbolId>, Vec<Expression<'a>>)> {
         let stmt = self
             .js_arena
             .take_stmt(decl_id)
@@ -89,22 +77,33 @@ impl<'a> ServerCodegen<'a> {
         let Statement::VariableDeclaration(mut decl) = stmt else {
             return Err(CodegenError::Unsupported(id, "const tag declaration"));
         };
-        if decl.declarations.is_empty() {
-            return Err(CodegenError::Unsupported(id, "const tag declarator"));
-        }
-        let declarator = decl.declarations.remove(0);
 
-        let mut targets: Vec<(SymbolId, bool)> = Vec::new();
-        walk_bindings(&declarator.id, |v| {
-            targets.push((v.symbol, v.path.is_empty() && !v.is_rest));
-        });
-        let [(symbol, true)] = targets.as_slice() else {
-            return Err(CodegenError::Unsupported(id, "destructured async const"));
-        };
-        let symbol = *symbol;
-        let name = self.analysis.scoping.symbol_name(symbol).to_string();
-        let value = declarator.init.ok_or(CodegenError::MissingExpression(id))?;
-        Ok((symbol, name, value))
+        let mut symbols: Vec<SymbolId> = Vec::new();
+        let mut assignments: Vec<Expression<'a>> = Vec::new();
+        let mut declared: Vec<String> = Vec::new();
+        for declarator in decl.declarations.drain(..) {
+            walk_bindings(&declarator.id, |v| {
+                if symbols.contains(&v.symbol) {
+                    return;
+                }
+                symbols.push(v.symbol);
+                declared.push(self.analysis.scoping.symbol_name(v.symbol).to_string());
+            });
+
+            let Some(init) = declarator.init else {
+                continue;
+            };
+            let target = self
+                .b
+                .binding_pattern_to_assignment_target(declarator.id)
+                .ok_or(CodegenError::Unsupported(id, "const tag pattern"))?;
+            assignments.push(self.b.assign_expr_raw(target, init));
+        }
+
+        for name in &declared {
+            self.push_stmt(self.b.let_stmt(name));
+        }
+        Ok((symbols, assignments))
     }
 
     pub(crate) fn push_blocker_thunk(&self, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {

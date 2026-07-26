@@ -16,6 +16,7 @@ use oxc_parser::Parser as OxcParser;
 use oxc_span::{SPAN, SourceType, Span};
 use oxc_syntax::scope::ScopeId;
 
+mod assignment_targets;
 mod base;
 mod calls;
 mod classes;

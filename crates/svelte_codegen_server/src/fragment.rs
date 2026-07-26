@@ -219,14 +219,16 @@ impl<'a> ServerCodegen<'a> {
             })
             .collect();
         const_tags.sort_by_key(|(rank, _, _)| *rank);
-        let has_async = const_tags.iter().any(|(_, _, is_async)| *is_async);
-        if has_async {
-            let ordered: Vec<NodeId> = const_tags.iter().map(|(_, nid, _)| *nid).collect();
-            self.emit_const_tags_async(&ordered)?;
-        } else {
-            for (_, nid, _) in &const_tags {
-                self.const_tag(*nid)?;
+        let mut grouped: Vec<NodeId> = Vec::new();
+        for &(_, nid, is_async) in &const_tags {
+            if is_async {
+                grouped.push(nid);
+                continue;
             }
+            self.const_tag(nid)?;
+        }
+        if !grouped.is_empty() {
+            self.emit_const_tags_async(&grouped)?;
         }
         Ok(())
     }

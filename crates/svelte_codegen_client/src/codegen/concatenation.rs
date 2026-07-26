@@ -50,12 +50,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ctx: &FragmentCtx<'a>,
         memo_deps: &mut TemplateMemoState<'a>,
         parts: &[ConcatPart],
-    ) -> Result<(Vec<TemplatePart<'a>>, bool, Vec<Expression<'a>>)> {
+    ) -> Result<(Vec<TemplatePart<'a>>, bool, Vec<(String, usize)>)> {
         use svelte_analyze::ExpressionSemantics;
 
         let mut tpl_parts: Vec<TemplatePart<'a>> = Vec::with_capacity(parts.len());
         let mut needs_effect = false;
-        let mut extra_blockers: Vec<Expression<'a>> = Vec::new();
+        let mut extra_blockers: Vec<(String, usize)> = Vec::new();
 
         for part in parts {
             if let Some(s) = ctx.static_text_of(part) {
@@ -89,10 +89,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 },
                 ExpressionSemantics::NonSpecial => false,
             };
-            let const_blockers = self.ctx.const_tag_blocker_exprs(*id);
+            let const_blockers = self.ctx.const_tag_blocker_slots(*id);
             if !const_blockers.is_empty() {
                 needs_effect = true;
-                extra_blockers.extend(const_blockers);
+                super::data_structures::extend_blocker_slots(&mut extra_blockers, const_blockers);
             }
             let plain_part = |expr: Expression<'a>| {
                 let is_sequence = matches!(expr, Expression::SequenceExpression(_));
@@ -161,7 +161,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
         has_memo: bool,
-        extra_blockers: Vec<Expression<'a>>,
+        extra_blockers: Vec<(String, usize)>,
     ) -> Result<()> {
         match anchor {
             ConcatenationAnchor::SiblingTextNode { node_var } => self.emit_to_sibling_text_node(
@@ -210,7 +210,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
         _has_memo: bool,
-        extra_blockers: Vec<Expression<'a>>,
+        extra_blockers: Vec<(String, usize)>,
     ) -> Result<()> {
         let b = &self.ctx.state.b;
         let final_expr = match tpl_expr {
@@ -220,7 +220,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         if needs_effect {
             if !extra_blockers.is_empty() {
-                state.extra_blockers.extend(extra_blockers);
+                super::data_structures::extend_blocker_slots(
+                    &mut state.extra_blockers,
+                    extra_blockers,
+                );
             }
             state
                 .update
@@ -242,7 +245,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
         _has_memo: bool,
-        extra_blockers: Vec<Expression<'a>>,
+        extra_blockers: Vec<(String, usize)>,
     ) -> Result<()> {
         if !needs_effect {
             let b = &self.ctx.state.b;
@@ -291,7 +294,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return Ok(());
         }
         if !extra_blockers.is_empty() {
-            state.extra_blockers.extend(extra_blockers);
+            super::data_structures::extend_blocker_slots(&mut state.extra_blockers, extra_blockers);
         }
         let b = &self.ctx.state.b;
         state
@@ -307,7 +310,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
         _has_memo: bool,
-        extra_blockers: Vec<Expression<'a>>,
+        extra_blockers: Vec<(String, usize)>,
     ) -> Result<()> {
         let name = self.ctx.state.gen_ident("text");
         let b = &self.ctx.state.b;
@@ -333,7 +336,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
         _has_memo: bool,
-        extra_blockers: Vec<Expression<'a>>,
+        extra_blockers: Vec<(String, usize)>,
     ) -> Result<()> {
         let name = self.ctx.state.gen_ident("text");
         let b = &self.ctx.state.b;
@@ -355,7 +358,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         node_var: &str,
         tpl_expr: ConcatenationExpr<'a>,
         needs_effect: bool,
-        extra_blockers: Vec<Expression<'a>>,
+        extra_blockers: Vec<(String, usize)>,
     ) -> Result<()> {
         let final_expr = match tpl_expr {
             ConcatenationExpr::Static(e) => e,
@@ -364,7 +367,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         if needs_effect {
             if !extra_blockers.is_empty() {
-                state.extra_blockers.extend(extra_blockers);
+                super::data_structures::extend_blocker_slots(
+                    &mut state.extra_blockers,
+                    extra_blockers,
+                );
             }
             let b = &self.ctx.state.b;
             state

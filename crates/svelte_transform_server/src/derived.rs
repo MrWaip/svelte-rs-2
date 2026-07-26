@@ -30,7 +30,8 @@ impl<'a> ServerTransform<'_, 'a> {
         let Some(Expression::CallExpression(call)) = declarator.init.as_mut() else {
             return;
         };
-        let value = self.take_first_arg(call);
+        let mut value = self.take_first_arg(call);
+        self.rewrite_await(&mut value);
         if matches!(kind, DerivedKind::Derived)
             && matches!(async_kind, DerivedAsyncKind::Sync)
             && let Expression::Identifier(id) = value.get_inner_expression()

@@ -1,5 +1,5 @@
 use compact_str::CompactString;
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::Statement;
 use svelte_ast::NodeId;
 
 use super::memo::TemplateMemoState;
@@ -17,7 +17,7 @@ pub(crate) struct EmitState<'a> {
     pub special_elements: Vec<Statement<'a>>,
     pub shared_memo: TemplateMemoState<'a>,
     pub script_blockers: Vec<u32>,
-    pub extra_blockers: Vec<Expression<'a>>,
+    pub extra_blockers: Vec<(String, usize)>,
     pub skip_snippets: bool,
     pub skip_const_tags: bool,
     pub last_fragment_needs_reset: bool,

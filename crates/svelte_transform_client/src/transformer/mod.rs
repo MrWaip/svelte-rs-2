@@ -120,9 +120,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
-            if !self.function_info_stack.is_empty() || self.rewrite_top_level_declarations {
-                self.rewrite_binding_declarations(stmts, ctx);
-            }
             return;
         }
         if ctx.current_scope_id() == ctx.scoping().root_scope_id() {
@@ -134,9 +131,12 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     fn exit_statements(
         &mut self,
         stmts: &mut OxcVec<'a, Statement<'a>>,
-        _ctx: &mut TraverseCtx<'a, ()>,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
+            if !self.function_info_stack.is_empty() || self.rewrite_top_level_declarations {
+                self.rewrite_binding_declarations(stmts, ctx);
+            }
             self.strip_inspect_trace_statements(stmts);
             return;
         }

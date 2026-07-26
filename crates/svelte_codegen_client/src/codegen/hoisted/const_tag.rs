@@ -72,7 +72,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let body = match &sem.async_kind {
                 FragmentDeclarationAsyncKind::Awaited { blockers } => {
                     build_blocker_thunks(self.ctx, blockers, &mut thunks);
-                    self.ctx.b.async_thunk(assignment)
+                    self.ctx.b.async_arrow_expr_body(assignment)
                 }
                 FragmentDeclarationAsyncKind::Deferred { blockers } => {
                     build_blocker_thunks(self.ctx, blockers, &mut thunks);

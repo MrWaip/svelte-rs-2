@@ -351,7 +351,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             };
             let target: &str = self.ctx.b.alloc_str(&name);
             let value_thunk = match async_kind {
-                DerivedAsyncKind::Async => self.ctx.b.async_thunk(init),
+                DerivedAsyncKind::Async => self.ctx.b.async_arrow_expr_body(init),
                 DerivedAsyncKind::Sync => self.ctx.b.thunk(init),
             };
             let derived = self.build_derived(value_thunk, async_kind);
@@ -419,10 +419,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         async_kind: DerivedAsyncKind,
     ) -> Expression<'a> {
         match async_kind {
-            DerivedAsyncKind::Async => self
-                .ctx
-                .b
-                .call_expr("$.async_derived", [Arg::Expr(value_thunk)]),
+            DerivedAsyncKind::Async => {
+                let derived = self
+                    .ctx
+                    .b
+                    .call_expr("$.async_derived", [Arg::Expr(value_thunk)]);
+                let save = self.ctx.b.call_expr("$.save", [Arg::Expr(derived)]);
+                let awaited = self.ctx.b.await_expr(save);
+                self.ctx.b.call_expr_callee(awaited, [])
+            }
             DerivedAsyncKind::Sync => {
                 let helper = self.ctx.query.view.derived_helper();
                 self.ctx.b.call_expr(helper, [Arg::Expr(value_thunk)])

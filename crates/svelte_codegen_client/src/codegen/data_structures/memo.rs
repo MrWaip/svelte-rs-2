@@ -14,7 +14,7 @@ pub(crate) struct TemplateMemoState<'a> {
     pub(crate) sync_values: Vec<Expression<'a>>,
     pub(crate) async_values: Vec<Expression<'a>>,
     pub(crate) blockers: Vec<u32>,
-    pub(crate) extra_blockers: Vec<Expression<'a>>,
+    pub(crate) extra_blockers: Vec<(String, usize)>,
 }
 
 impl<'a> TemplateMemoState<'a> {
@@ -24,13 +24,17 @@ impl<'a> TemplateMemoState<'a> {
         }
     }
 
+    pub(crate) fn push_const_tag_blocker(&mut self, slot: (String, usize)) {
+        push_blocker_slot(&mut self.extra_blockers, slot);
+    }
+
     pub(crate) fn push_expression_data(&mut self, ctx: &Ctx<'a>, data: &ExpressionData) {
         for &sym in data.references.iter() {
             if let Some(idx) = ctx.symbol_blocker(sym) {
                 self.push_script_blocker(idx);
             }
-            if let Some(expr) = ctx.const_tag_symbol_blocker_expr(sym) {
-                self.extra_blockers.push(expr);
+            if let Some(slot) = ctx.const_tag_symbol_blocker_slot(sym) {
+                self.push_const_tag_blocker(slot);
             }
         }
     }
@@ -43,7 +47,9 @@ impl<'a> TemplateMemoState<'a> {
         for idx in blockers {
             self.push_script_blocker(idx);
         }
-        self.extra_blockers.extend(ctx.const_tag_blocker_exprs(id));
+        for slot in ctx.const_tag_blocker_slots(id) {
+            self.push_const_tag_blocker(slot);
+        }
     }
 
     pub(crate) fn add_memoized_expr(
@@ -146,11 +152,26 @@ impl<'a> TemplateMemoState<'a> {
                     .computed_member_expr(ctx.b.rid_expr("$$promises"), ctx.b.num_expr(idx as f64))
             })
             .collect();
-        all_blockers.append(&mut self.extra_blockers);
+        for slot in self.extra_blockers.drain(..) {
+            all_blockers.push(ctx.blocker_slot_expr(&slot));
+        }
         if all_blockers.is_empty() {
             ctx.b.void_zero_expr()
         } else {
             ctx.b.array_expr(all_blockers)
         }
+    }
+}
+
+pub(crate) fn push_blocker_slot(slots: &mut Vec<(String, usize)>, slot: (String, usize)) {
+    if slots.contains(&slot) {
+        return;
+    }
+    slots.push(slot);
+}
+
+pub(crate) fn extend_blocker_slots(slots: &mut Vec<(String, usize)>, more: Vec<(String, usize)>) {
+    for slot in more {
+        push_blocker_slot(slots, slot);
     }
 }

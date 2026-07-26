@@ -65,7 +65,7 @@ fn emit_template_effect_with_blockers<'a>(
     ctx: &mut Ctx<'a>,
     update: Vec<Statement<'a>>,
     script_blockers: Vec<u32>,
-    extra_blockers: Vec<Expression<'a>>,
+    extra_blockers: Vec<(String, usize)>,
     body: &mut Vec<Statement<'a>>,
 ) {
     if update.is_empty() {
@@ -76,7 +76,7 @@ fn emit_template_effect_with_blockers<'a>(
     for idx in script_blockers {
         deps.push_script_blocker(idx);
     }
-    deps.extra_blockers.extend(extra_blockers);
+    super::data_structures::extend_blocker_slots(&mut deps.extra_blockers, extra_blockers);
     emit_effect_call(ctx, "$.template_effect", eff, &mut deps, body);
 }
 
@@ -86,7 +86,7 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
     regular_updates: Vec<Statement<'a>>,
     mut shared_memo: TemplateMemoState<'a>,
     script_blockers: Vec<u32>,
-    extra_blockers: Vec<Expression<'a>>,
+    extra_blockers: Vec<(String, usize)>,
 ) -> Result<()> {
     if !shared_memo.has_deps() {
         emit_template_effect_with_blockers(
@@ -102,7 +102,7 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
     for idx in script_blockers {
         shared_memo.push_script_blocker(idx);
     }
-    shared_memo.extra_blockers.extend(extra_blockers);
+    super::data_structures::extend_blocker_slots(&mut shared_memo.extra_blockers, extra_blockers);
 
     let param_names = shared_memo.param_names();
     let params = ctx.b.params(param_names.iter().map(|s| s.as_str()));

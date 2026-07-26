@@ -1,6 +1,7 @@
 mod await_;
 mod common;
 mod const_tag;
+mod declaration_group;
 mod declaration_tag;
 mod each;
 mod html_tag;
@@ -40,5 +41,6 @@ pub fn build(
         dev,
         &mut store,
     );
+    declaration_group::populate(component, &mut store);
     store
 }

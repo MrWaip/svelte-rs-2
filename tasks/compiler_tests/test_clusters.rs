@@ -381,3 +381,6 @@ mod closure_volatility;
 
 #[path = "clusters/async_expression_tag.rs"]
 mod async_expression_tag;
+
+#[path = "clusters/async_fragment_declaration.rs"]
+mod async_fragment_declaration;

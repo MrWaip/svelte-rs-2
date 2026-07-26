@@ -22,7 +22,7 @@ pub(crate) fn build(component: &Component, parsed: &JsAst<'_>) -> AwaitSemantics
     }
 
     for stmt in parsed.iter_stmts() {
-        classify_statement(stmt, &mut store);
+        classify_statement(stmt, AwaitSemantics::TerminalInConstruct, &mut store);
     }
 
     for expr_id in fragment_interpolations(component) {
@@ -36,7 +36,28 @@ pub(crate) fn build(component: &Component, parsed: &JsAst<'_>) -> AwaitSemantics
         );
     }
 
+    for stmt_id in const_tag_declarations(component) {
+        let Some(stmt) = parsed.stmt(stmt_id) else {
+            continue;
+        };
+        classify_statement(stmt, AwaitSemantics::NonTerminal, &mut store);
+    }
+
     store
+}
+
+fn const_tag_declarations(component: &Component) -> Vec<OxcNodeId> {
+    let store = &component.store;
+    let mut out = Vec::new();
+
+    for node in store.iter_nodes() {
+        let Node::ConstTag(tag) = node else {
+            continue;
+        };
+        out.push(tag.decl.id());
+    }
+
+    out
 }
 
 fn fragment_interpolations(component: &Component) -> Vec<OxcNodeId> {
@@ -74,8 +95,12 @@ fn classify_expression(
     }
 }
 
-fn classify_statement(stmt: &Statement<'_>, store: &mut AwaitSemanticsStore) {
-    let mut collector = AwaitCollector::new(AwaitSemantics::TerminalInConstruct);
+fn classify_statement(
+    stmt: &Statement<'_>,
+    terminal: AwaitSemantics,
+    store: &mut AwaitSemanticsStore,
+) {
+    let mut collector = AwaitCollector::new(terminal);
     collector.visit_statement(stmt);
     for (id, semantics) in collector.entries {
         store.set(id, semantics);

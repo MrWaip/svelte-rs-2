@@ -1,8 +1,8 @@
-use oxc_ast::ast::{BindingPattern, Expression, Statement};
+use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{BlockSemantics, FragmentDeclarationAsyncKind};
 use svelte_ast::NodeId;
-use svelte_ast_builder::{Arg, AssignLeft};
+use svelte_ast_builder::Arg;
 use svelte_component_semantics::walk_bindings;
 
 use super::super::data_structures::EmitState;
@@ -15,24 +15,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state: &mut EmitState<'a>,
         ids: &[NodeId],
     ) -> Result<()> {
-        let first_async = if self.ctx.state.experimental_async {
-            ids.iter()
-                .position(|&id| self.declaration_tag_async_kind(id).is_async())
-        } else {
-            None
-        };
-        match first_async {
-            None => {
-                for &id in ids {
-                    self.emit_hoisted_declaration_tag(state, id)?;
-                }
+        let mut grouped: Vec<NodeId> = Vec::new();
+        for &id in ids {
+            if !self.ctx.state.experimental_async {
+                self.emit_hoisted_declaration_tag(state, id)?;
+                continue;
             }
-            Some(idx) => {
-                for &id in &ids[..idx] {
-                    self.emit_hoisted_declaration_tag(state, id)?;
+            match self.declaration_tag_async_kind(id) {
+                FragmentDeclarationAsyncKind::Sync => {
+                    self.emit_hoisted_declaration_tag(state, id)?
                 }
-                self.emit_declaration_tags_async_batch(state, &ids[idx..])?;
+                FragmentDeclarationAsyncKind::Awaited { .. }
+                | FragmentDeclarationAsyncKind::Deferred { .. } => grouped.push(id),
             }
+        }
+        if !grouped.is_empty() {
+            self.emit_declaration_tags_async_batch(state, &grouped)?;
         }
         Ok(())
     }
@@ -94,50 +92,43 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             let is_awaited = matches!(async_kind, FragmentDeclarationAsyncKind::Awaited { .. });
 
-            for mut declarator in decl.declarations.drain(..) {
-                let mut symbols: Vec<SymbolId> = Vec::new();
-                let mut names: Vec<String> = Vec::new();
+            let mut symbols: Vec<SymbolId> = Vec::new();
+            let mut assignments: Vec<Expression<'a>> = Vec::new();
+            for declarator in decl.declarations.drain(..) {
                 walk_bindings(&declarator.id, |v| {
+                    let name = self.ctx.query.view.symbol_name(v.symbol).to_string();
+                    if symbols.contains(&v.symbol) {
+                        return;
+                    }
                     symbols.push(v.symbol);
-                    names.push(self.ctx.query.view.symbol_name(v.symbol).to_string());
+                    state
+                        .init
+                        .push(self.ctx.b.let_stmt(self.ctx.b.alloc_str(&name)));
                 });
 
-                let single_ident_init = match &declarator.id {
-                    BindingPattern::BindingIdentifier(_) => declarator.init.take(),
-                    _ => None,
+                let Some(init) = declarator.init else {
+                    continue;
                 };
-                let thunk = if let Some(init) = single_ident_init {
-                    let target = self.ctx.b.alloc_str(&names[0]);
-                    state.init.push(self.ctx.b.let_stmt(target));
-                    let assignment = self
-                        .ctx
-                        .b
-                        .assign_expr(AssignLeft::Ident(target.to_string()), init);
-                    if is_awaited {
-                        self.ctx.b.async_arrow_expr_body(assignment)
-                    } else {
-                        self.ctx.b.thunk(assignment)
-                    }
-                } else {
-                    for name in &names {
-                        state
-                            .init
-                            .push(self.ctx.b.let_stmt(self.ctx.b.alloc_str(name)));
-                    }
-                    let var_stmt = self.ctx.b.var_init_stmt(declarator);
-                    if is_awaited {
-                        self.ctx.b.async_thunk_block(vec![var_stmt])
-                    } else {
-                        self.ctx.b.thunk_block(vec![var_stmt])
-                    }
+                let Some(target) = self
+                    .ctx
+                    .b
+                    .binding_pattern_to_assignment_target(declarator.id)
+                else {
+                    return CodegenError::unexpected_child(
+                        "declaration tag pattern",
+                        "assignment target",
+                    );
                 };
-                thunks.push(thunk);
-                let thunk_idx = thunks.len() - 1;
-                for sym in symbols {
-                    self.ctx
-                        .const_tag_blockers
-                        .insert(sym, (promises_name.clone(), thunk_idx));
-                }
+                assignments.push(self.ctx.b.assign_expr_raw(target, init));
+            }
+
+            let thunk = self.build_declaration_thunk(assignments, is_awaited);
+            thunks.push(thunk);
+            let thunk_idx = thunks.len() - 1;
+            for sym in symbols {
+                self.ctx
+                    .const_tag_blockers
+                    .insert(sym, (promises_name.clone(), thunk_idx));
             }
         }
 
@@ -149,5 +140,27 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .push(self.ctx.b.var_stmt(&promises_name, run_call));
         }
         Ok(())
+    }
+
+    fn build_declaration_thunk(
+        &mut self,
+        mut assignments: Vec<Expression<'a>>,
+        is_awaited: bool,
+    ) -> Expression<'a> {
+        if assignments.len() == 1 {
+            let single = assignments.remove(0);
+            if is_awaited {
+                return self.ctx.b.async_arrow_expr_body(single);
+            }
+            return self.ctx.b.thunk(single);
+        }
+        let stmts: Vec<Statement<'a>> = assignments
+            .into_iter()
+            .map(|expr| self.ctx.b.expr_stmt(expr))
+            .collect();
+        if is_awaited {
+            return self.ctx.b.async_thunk_block(stmts);
+        }
+        self.ctx.b.thunk_block(stmts)
     }
 }
