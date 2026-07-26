@@ -390,3 +390,6 @@ mod async_await_position;
 
 #[path = "clusters/async_block_thunk.rs"]
 mod async_block_thunk;
+
+#[path = "clusters/async_instance_blockers.rs"]
+mod async_instance_blockers;
