@@ -18,9 +18,7 @@ use super::super::data::{
 };
 use crate::PropsFlags;
 
-const PROPS_NAME: &str = "$$props";
-const REST_PROPS_NAME: &str = "$$restProps";
-const SLOTS_NAME: &str = "$$slots";
+use svelte_ast::{DOLLAR_PROPS, DOLLAR_REST_PROPS, DOLLAR_SLOTS};
 
 #[derive(Clone, Copy)]
 enum LegacyMagicObject {
@@ -32,9 +30,9 @@ enum LegacyMagicObject {
 impl LegacyMagicObject {
     fn from_name(name: &str) -> Option<Self> {
         match name {
-            PROPS_NAME => Some(Self::Props),
-            REST_PROPS_NAME => Some(Self::RestProps),
-            SLOTS_NAME => Some(Self::Slots),
+            DOLLAR_PROPS => Some(Self::Props),
+            DOLLAR_REST_PROPS => Some(Self::RestProps),
+            DOLLAR_SLOTS => Some(Self::Slots),
             _ => None,
         }
     }
@@ -350,8 +348,19 @@ pub(super) fn register_legacy_synthetic_objects(data: &mut AnalysisData<'_>) {
         }
     }
 
+    if reads_declared_slots_object(data) {
+        data.reactivity.mark_legacy_reads_slots();
+    }
+
     data.reactivity
         .set_legacy_unresolved_usage(uses_props, uses_rest_props);
+}
+
+fn reads_declared_slots_object(data: &AnalysisData<'_>) -> bool {
+    data.scoping.symbol_ids().any(|sym| {
+        data.scoping.symbol_name(sym) == DOLLAR_SLOTS
+            && !data.scoping.get_resolved_reference_ids(sym).is_empty()
+    })
 }
 
 pub(super) fn register_standalone_module_props_object(data: &mut AnalysisData<'_>) {
@@ -360,7 +369,7 @@ pub(super) fn register_standalone_module_props_object(data: &mut AnalysisData<'_
     }
 
     let mut rename_refs: Vec<ReferenceId> =
-        match data.scoping.root_unresolved_references().get(PROPS_NAME) {
+        match data.scoping.root_unresolved_references().get(DOLLAR_PROPS) {
             Some(refs) => refs.clone(),
             None => Vec::new(),
         };
@@ -369,7 +378,7 @@ pub(super) fn register_standalone_module_props_object(data: &mut AnalysisData<'_
         .scoping
         .semantics()
         .symbol_ids()
-        .filter(|&sym| data.scoping.semantics().symbol_name(sym) == PROPS_NAME)
+        .filter(|&sym| data.scoping.semantics().symbol_name(sym) == DOLLAR_PROPS)
         .collect();
 
     for &sym in &props_symbols {

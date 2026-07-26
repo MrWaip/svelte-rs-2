@@ -1,3 +1,5 @@
+use svelte_span::Span;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChildPropMode {
     #[default]
@@ -56,6 +58,19 @@ pub enum ContextScope {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ContentProjection {
+    #[default]
+    Unused,
+    RenderTags,
+    LegacySlots {
+        first_slot_syntax: Span,
+    },
+    Mixed {
+        first_slot_syntax: Span,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RuntimeSemantics {
     pub child_prop_mode: ChildPropMode,
     pub frame: ComponentFrame,
@@ -67,6 +82,7 @@ pub struct RuntimeSemantics {
     pub component_bind_ownership: ComponentBindOwnership,
     pub context_ssr: ContextScope,
     pub props_input_ssr: PropsInput,
+    pub content_projection: ContentProjection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

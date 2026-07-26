@@ -21,6 +21,7 @@ use svelte_span::Span;
 
 use crate::block_semantics::data::BlockSemantics;
 use crate::js_walker::{JsVisitor, JsWalk};
+use crate::runtime_semantics::ContentProjection;
 use crate::utils::snippet::snippet_name_symbol;
 use crate::{AnalysisData, types::data::JsAst};
 
@@ -70,6 +71,18 @@ pub fn validate(
     validate_attribute_duplicate(component, diags);
     validate_attribute_names(component, diags);
     declaration_duplicate::validate(component, data, parsed, diags);
+    validate_content_projection(data, diags);
+}
+
+fn validate_content_projection(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
+    if let ContentProjection::Mixed { first_slot_syntax } =
+        data.runtime_semantics.query().content_projection
+    {
+        diags.push(Diagnostic::error(
+            DiagnosticKind::SlotSnippetConflict,
+            first_slot_syntax,
+        ));
+    }
 }
 
 fn run_instance_js_bundle(

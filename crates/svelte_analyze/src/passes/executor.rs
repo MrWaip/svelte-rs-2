@@ -108,6 +108,8 @@ pub(crate) fn execute_pass<'a>(
                 &data.expressions_v2,
                 &data.api_exports,
                 data.legacy_has_export_declaration,
+                data.custom_element.is_target,
+                source,
                 options.dev,
             );
             data.runtime_semantics.record(semantics);

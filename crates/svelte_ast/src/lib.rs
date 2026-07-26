@@ -224,6 +224,18 @@ pub const SLOT_ELEMENT: &str = "slot";
 
 pub const SLOT_ATTRIBUTE: &str = "slot";
 
+pub const SLOT_NAME_ATTRIBUTE: &str = "name";
+
+pub const DEFAULT_SLOT_NAME: &str = "default";
+
+pub const DOLLAR_PROPS: &str = "$$props";
+
+pub const DOLLAR_REST_PROPS: &str = "$$restProps";
+
+pub const DOLLAR_SLOTS: &str = "$$slots";
+
+pub const DOLLAR_SLOTS_SEARCH_TOKEN: &str = "$$slot";
+
 pub const SVELTE_META_TAGS: &[&str] = &[
     SVELTE_HEAD,
     SVELTE_OPTIONS,

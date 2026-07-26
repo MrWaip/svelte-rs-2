@@ -73,7 +73,8 @@ impl ScriptAnalysis {
 pub struct ElementAnalysis {
     pub(crate) facts: ElementFacts,
     pub flags: ElementFlags,
-    pub renders_legacy_slot: bool,
+    pub legacy_slots_by_name: Vec<(String, Span)>,
+    pub has_render_tag: bool,
     pub needs_component_bind_ownership: bool,
     pub has_child_component_bind: bool,
     pub has_legacy_event_forward: bool,
@@ -84,7 +85,8 @@ impl ElementAnalysis {
         Self {
             facts: ElementFacts::new(node_count),
             flags: ElementFlags::new(node_count),
-            renders_legacy_slot: false,
+            legacy_slots_by_name: Vec::new(),
+            has_render_tag: false,
             needs_component_bind_ownership: false,
             has_child_component_bind: false,
             has_legacy_event_forward: false,

@@ -1,7 +1,7 @@
 # PRD: RuntimeSemantics (корневой)
 
 label: runtime-semantics
-topics: RuntimeSemantics, runtime semantics, child prop mode, component, bind, prop passing
+topics: RuntimeSemantics, runtime semantics, child prop mode, component, bind, prop passing, content projection, slot, slots, snippet, render tag, custom element
 
 Дочерний PRD слоя анализа (`analyze.md`). Кластер `svelte_analyze::runtime_semantics` — единственный дом доменных вердиктов **уровня компонента как целого**: фактов, которые backend (client|server) читает раз на **компонент**, а не на узел. Component-level двойник пер-узловых кластеров (`ElementSemantics`/`FragmentSemantics`), ключёванных по узлу/фрагменту.
 
@@ -17,6 +17,14 @@ topics: RuntimeSemantics, runtime semantics, child prop mode, component, bind, p
 
 `RuntimeSemanticsStore::query() -> RuntimeSemantics` — пучок ортогональных пер-компонентных осей (форма как у `FragmentSemantics`/`ExpressionData`). Каждая ось — доменный enum, называющий состояния компонента, а не булев предикат синтаксиса или форму runtime-вызова.
 
+Ось `content_projection: ContentProjection { Unused, RenderTags, LegacySlots, Mixed }` — **проекция контента** компонента. Гейт custom element асимметричен: `<slot>`-элемент проекцией не считается (это slot Shadow DOM), `$$slots` — считается.
+
+`LegacySlots` / `Mixed` несут `first_slot_syntax: Span` — позицию слот-словаря. Правило форка контринтуитивно в трёх точках:
+
+- `<slot>`-элементы индексируются по имени слота (`name`-атрибут, иначе `default`), значение под именем перезаписывает последний элемент; позиция — значение под первым встреченным именем. `<slot name="a"/><slot name="b"/><slot name="a"/>` даёт третий элемент.
+- Позиция приходит от `<slot>`-элемента независимо от гейта: у custom element проекцию засчитал `$$slots`, а позиция всё равно от `<slot>`.
+- Без `<slot>`-элемента позиция — текстовый поиск `$$slot` по исходнику; единственный `Span` слоя не от узла AST, поэтому попадает и на упоминание в комментарии.
+
 Каноническая ось — `child_prop_mode: ChildPropMode { In, InOut }`: режим передачи пропсов дочерним компонентам в терминологии режимов параметров (Ada `in`/`in out`, Swift `inout`, Mercury modes). `In` — все пропсы идут только внутрь; `InOut` — есть хотя бы одна **`bind:`-директива** на дочернем компоненте (кроме `bind:this`), значение ходит туда и обратно. Форк `original/compiler/phases/2-analyze/visitors/shared/component.js` (`BindDirective && name !== 'this'`). Серверный backend отображает `InOut` в settle-обёртку (форма — в `codegen-server.md`), клиентский — в свою bind-машинерию; выбор формы — instruction selection в backend'е, не здесь.
 
 ## Построение
@@ -27,12 +35,14 @@ topics: RuntimeSemantics, runtime semantics, child prop mode, component, bind, p
 
 Backend (client|server) — один запрос `query()`. Backend матчит вердикт; проброс component-level факта параметром сквозь дерево кодгена или его накопление побочным эффектом эмита запрещены (verdict-directed).
 
+Backend'ом потребители не исчерпываются: `content_projection` читает валидация (3.C) внутри самого слоя одним `if let` на `Mixed` — законно по тому же основанию, что и ось `content` в `fragment-semantics.md` §«Потребители». Пасс `Validate` объявляет `requires: RuntimeSemantics`, поэтому порядок держит контракт пассов, а не совпадение стейджей.
+
 ## Инварианты
 
 1. **Единственный дом whole-component вердиктов.** Доменный факт уровня компонента-как-целого, читаемый backend'ом раз на компонент, живёт здесь как ось-enum. Тот же факт, лежащий сырым булем в другом хранилище анализа, — нарушение: два дома одного факта desync'аются первыми.
 2. **Ось — доменный enum, не форма эмита (guardrail).** Ось называет доменное свойство компонента (`child_prop_mode`, из PL-теории режимов параметров), не выбранную форму вызова (`needs_settled`, `needs_push`). Литмус: подмени рантайм — значение оси не меняется; меняется — это emit-форма, ей здесь не место (`context.md` §«Эмит-форма семантики»). Механическая проверка: имя оси/варианта не повторяет идентификатор из `svelte/internal/*`.
 3. **Синглтон на компонент.** Один вердикт на компонент, без ключа. Пер-узловые факты сюда не кладём — у element/attribute/fragment/expression свои дома; смешение — «Сырые факты».
-4. **Read-only после build.** Backend только читает; вердикт не производит диагностик.
+4. **Read-only после build.** Потребитель только читает; вердикт не производит диагностик сам — валидация (3.C) читает ось и эмитит диагностику у себя.
 
 ## Anti-patterns
 
@@ -40,6 +50,8 @@ Backend (client|server) — один запрос `query()`. Backend матчи�
 - Ось хранит `needs_<runtime_fn>` / повторяет имя рантайм-вызова — «Эмит-форма семантики».
 - Backend накапливает компонентный факт побочным эффектом эмита (`self.flag = true` в визиторе узла) и читает позже — источник истины становится проходом кодгена, не вердиктом.
 - Backend пере-обходит шаблон, вычисляя факт сам, — «Анализ в кодгене».
+- `first_slot_syntax` взят от первого `<slot>`-элемента файла вместо значения под первым именем — молчаливое расхождение с Оригиналом: зелёное на одиночном `<slot>`, красное на повторе имени.
+- Гейт custom element или условие смешения словарей пересобраны у потребителя — доменный факт в обход вердикта, «Анализ в кодгене» для внутрислойного потребителя ничем не лучше, чем для backend'а.
 
 ## Связь с другими документами
 

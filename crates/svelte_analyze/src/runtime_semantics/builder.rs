@@ -1,12 +1,14 @@
 use super::data::{
-    ChildPropMode, ComponentBindOwnership, ComponentFrame, ContextScope, LegacyInit,
-    LegacySlotSanitization, PropAccessors, PropsInput, RuntimeSemantics, StoreBindings,
+    ChildPropMode, ComponentBindOwnership, ComponentFrame, ContentProjection, ContextScope,
+    LegacyInit, LegacySlotSanitization, PropAccessors, PropsInput, RuntimeSemantics, StoreBindings,
 };
 use crate::expression_semantics::ExpressionSemanticsStore;
 use crate::types::data::{
     ApiExport, ElementAnalysis, LegacySummary, ReactivitySemantics, ReactivitySummary,
     ScriptAnalysis,
 };
+use svelte_ast::DOLLAR_SLOTS_SEARCH_TOKEN;
+use svelte_span::Span;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build(
@@ -16,6 +18,8 @@ pub(crate) fn build(
     expressions: &ExpressionSemanticsStore,
     api_exports: &[ApiExport],
     legacy_has_export_declaration: bool,
+    is_custom_element: bool,
+    source: &str,
     dev: bool,
 ) -> RuntimeSemantics {
     let uses_runes = reactivity.uses_runes();
@@ -55,7 +59,7 @@ pub(crate) fn build(
         || summary.legacy.reads_props_object
         || summary.legacy.reads_rest_props_object
         || summary.legacy.reads_slots_object
-        || elements.renders_legacy_slot
+        || !elements.legacy_slots_by_name.is_empty()
         || has_legacy_export
     {
         PropsInput::Consumed
@@ -103,7 +107,38 @@ pub(crate) fn build(
         },
         context_ssr,
         props_input_ssr,
+        content_projection: content_projection(
+            elements,
+            summary.legacy.reads_slots_object,
+            is_custom_element,
+            source,
+        ),
     }
+}
+
+fn content_projection(
+    elements: &ElementAnalysis,
+    reads_slots_object: bool,
+    is_custom_element: bool,
+    source: &str,
+) -> ContentProjection {
+    let named_slot = elements.legacy_slots_by_name.first().map(|(_, span)| *span);
+    let projects_legacy_slots = reads_slots_object || (!is_custom_element && named_slot.is_some());
+    let first_slot_syntax = projects_legacy_slots
+        .then(|| named_slot.or_else(|| find_slots_object_mention(source)))
+        .flatten();
+
+    match (first_slot_syntax, elements.has_render_tag) {
+        (Some(first_slot_syntax), true) => ContentProjection::Mixed { first_slot_syntax },
+        (Some(first_slot_syntax), false) => ContentProjection::LegacySlots { first_slot_syntax },
+        (None, true) => ContentProjection::RenderTags,
+        (None, false) => ContentProjection::Unused,
+    }
+}
+
+fn find_slots_object_mention(source: &str) -> Option<Span> {
+    let start = u32::try_from(source.find(DOLLAR_SLOTS_SEARCH_TOKEN)?).ok()?;
+    Some(Span::new(start, start))
 }
 
 fn scopes_frame(uses_runes: bool, summary: ReactivitySummary, observes_context: bool) -> bool {
@@ -159,7 +194,7 @@ fn needs_props_param(
     if has_legacy_export {
         return true;
     }
-    if elements.renders_legacy_slot || summary.legacy.reads_slots_object {
+    if !elements.legacy_slots_by_name.is_empty() || summary.legacy.reads_slots_object {
         return true;
     }
     elements.has_legacy_event_forward

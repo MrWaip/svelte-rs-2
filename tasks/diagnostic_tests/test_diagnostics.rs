@@ -2071,6 +2071,58 @@ mod slots {
     );
     diagnostic_case!(slot_snippet_conflict, "slots/slot_snippet_conflict");
     diagnostic_case!(
+        slot_snippet_conflict_render_tag_before_slot,
+        "slots/slot_snippet_conflict_render_tag_before_slot"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_custom_element_ok,
+        "slots/slot_snippet_conflict_custom_element_ok"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_template,
+        "slots/slot_snippet_conflict_dollar_slots_template"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_script,
+        "slots/slot_snippet_conflict_dollar_slots_script"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_custom_element,
+        "slots/slot_snippet_conflict_dollar_slots_custom_element"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_slot_and_dollar_slots,
+        "slots/slot_snippet_conflict_slot_and_dollar_slots"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_slot_and_dollar_slots_custom_element,
+        "slots/slot_snippet_conflict_slot_and_dollar_slots_custom_element"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_without_render_tag_ok,
+        "slots/slot_snippet_conflict_dollar_slots_without_render_tag_ok"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_not_a_reference_ok,
+        "slots/slot_snippet_conflict_dollar_slots_not_a_reference_ok"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_position_first_dollar_slot_text,
+        "slots/slot_snippet_conflict_position_first_dollar_slot_text"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_local_binding,
+        "slots/slot_snippet_conflict_dollar_slots_local_binding"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_repeated_default_slots,
+        "slots/slot_snippet_conflict_repeated_default_slots"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_repeated_named_slots,
+        "slots/slot_snippet_conflict_repeated_named_slots"
+    );
+    diagnostic_case!(
         svelte_fragment_invalid_placement_root,
         "slots/svelte_fragment_invalid_placement_root"
     );

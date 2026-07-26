@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use svelte_ast::{
-    Attribute, ComponentNode, ConcatPart, Element, NodeId, SlotElementLegacy, is_mathml, is_svg,
-    is_void,
+    Attribute, ComponentNode, ConcatPart, DEFAULT_SLOT_NAME, Element, NodeId, RenderTag,
+    SLOT_NAME_ATTRIBUTE, SlotElementLegacy, is_mathml, is_svg, is_void,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -30,6 +30,18 @@ impl<'src> ElementFlagsVisitor<'src> {
 
     fn source_text(&self, span: Span) -> &str {
         &self.source[span.start as usize..span.end as usize]
+    }
+
+    fn legacy_slot_name(&self, el: &SlotElementLegacy) -> String {
+        el.attributes
+            .iter()
+            .find_map(|attr| match attr {
+                Attribute::StringAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
+                    Some(self.source_text(attr.value_span).to_string())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| DEFAULT_SLOT_NAME.to_string())
     }
 
     fn modifier_flags(modifiers: &[String]) -> EventModifier {
@@ -322,10 +334,19 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
     fn visit_slot_element_legacy(
         &mut self,
-        _el: &SlotElementLegacy,
+        el: &SlotElementLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        ctx.data.elements.renders_legacy_slot = true;
+        let name = self.legacy_slot_name(el);
+        let slots = &mut ctx.data.elements.legacy_slots_by_name;
+        match slots.iter_mut().find(|(known, _)| *known == name) {
+            Some((_, span)) => *span = el.span,
+            None => slots.push((name, el.span)),
+        }
+    }
+
+    fn visit_render_tag(&mut self, _tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
+        ctx.data.elements.has_render_tag = true;
     }
 
     fn visit_js_expression(

@@ -142,8 +142,11 @@ _Avoid_: partial, фрагмент.
 **Рендер** *(en: render)* — функция, в которую кодген компилирует компонент (`function App($$anchor, $$props) {…}`), исполняется рантаймом для построения и обновления DOM.
 _Avoid_: render-вызов сниппета (это `{@render}` как @-тег), DOM-операция (это действие рантайма, не сущность).
 
-**Слот** *(en: slot)* — legacy-механизм проброса контента в компонент через `<slot>` / `<div slot="name" />` / `<svelte:fragment slot="…">`.
+**Слот** *(en: slot)* — legacy-механизм проброса контента в компонент через `<slot>` / `<div slot="name" />` / `<svelte:fragment slot="…">`; со стороны скрипта тот же механизм читается через синтетический объект `$$slots`.
 _Avoid_: сниппет, placeholder.
+
+**Проекция контента** *(en: content projection; ось `ContentProjection` в `RuntimeSemantics`)* — каким словарём компонент принимает содержимое от потребителя: **слотом** (`<slot>`, `$$slots`) или **сниппетом** (`{@render}`). Свойство компонента целиком, не отдельного узла; Svelte 5 запрещает оба словаря разом. Инварианты вердикта — `runtime-semantics.md`.
+_Avoid_: slot forwarding, content channel, transclusion, slot/snippet conflict (это диагностика, а не механизм).
 
 ### Скоупы, биндинги, ссылки
 

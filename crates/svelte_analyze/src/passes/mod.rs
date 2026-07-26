@@ -196,6 +196,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
         requires: &[
             DataToken::TemplateClassification,
             DataToken::FragmentSemantics,
+            DataToken::RuntimeSemantics,
         ],
         produces: &[DataToken::Validation],
     },

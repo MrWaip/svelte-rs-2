@@ -7,13 +7,14 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
-    ComponentNode, ConcatPart, ConcatenationAttribute, ConstTag, DebugTag, EachBlock, Element,
-    ExprRef, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy,
-    Node, NodeId, OnDirectiveLegacy, RenderTag, SLOT_ATTRIBUTE, SVELTE_BODY, SVELTE_COMPONENT,
-    SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_HEAD, SVELTE_META_TAG_LIST, SVELTE_SELF, SVELTE_WINDOW,
-    SlotElementLegacy, SnippetBlock, SpreadAttribute, StyleDirective, SvelteBody, SvelteBoundary,
-    SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteHead, SvelteWindow, Text,
-    TransitionDirection, TransitionDirective, UseDirective, is_svelte_meta_tag, is_svg,
+    ComponentNode, ConcatPart, ConcatenationAttribute, ConstTag, DEFAULT_SLOT_NAME, DebugTag,
+    EachBlock, Element, ExprRef, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock,
+    LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SLOT_ATTRIBUTE,
+    SLOT_NAME_ATTRIBUTE, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT,
+    SVELTE_HEAD, SVELTE_META_TAG_LIST, SVELTE_SELF, SVELTE_WINDOW, SlotElementLegacy, SnippetBlock,
+    SpreadAttribute, StyleDirective, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
+    SvelteFragmentLegacy, SvelteHead, SvelteWindow, Text, TransitionDirection, TransitionDirective,
+    UseDirective, is_svelte_meta_tag, is_svg,
 };
 use svelte_component_semantics::{ScopeId, SymbolFlags, SymbolId, walk_bindings};
 use svelte_diagnostics::codes::fuzzymatch;
@@ -695,10 +696,6 @@ pub(crate) struct TemplateValidationVisitor {
 
     dialog_depth: u32,
 
-    first_legacy_slot_span: Option<Span>,
-    saw_render_tag: bool,
-    emitted_slot_snippet_conflict: bool,
-
     mixed_first_on_directive: Option<(Span, String)>,
     mixed_uses_s5_events: bool,
     mixed_emitted: bool,
@@ -714,9 +711,6 @@ impl TemplateValidationVisitor {
         Self {
             element_event_state: Vec::new(),
             dialog_depth: 0,
-            first_legacy_slot_span: None,
-            saw_render_tag: false,
-            emitted_slot_snippet_conflict: false,
             mixed_first_on_directive: None,
             mixed_uses_s5_events: false,
             mixed_emitted: false,
@@ -849,41 +843,6 @@ impl TemplateValidationVisitor {
         }
     }
 
-    fn note_legacy_slot_element(&mut self, span: Span, ctx: &mut VisitContext<'_, '_>) {
-        if ctx.data.custom_element.is_target {
-            return;
-        }
-
-        if self.saw_render_tag {
-            self.emit_slot_snippet_conflict(span, ctx);
-            return;
-        }
-
-        self.first_legacy_slot_span.get_or_insert(span);
-    }
-
-    fn note_render_tag(&mut self, ctx: &mut VisitContext<'_, '_>) {
-        self.saw_render_tag = true;
-
-        if ctx.data.custom_element.is_target {
-            return;
-        }
-
-        if let Some(span) = self.first_legacy_slot_span {
-            self.emit_slot_snippet_conflict(span, ctx);
-        }
-    }
-
-    fn emit_slot_snippet_conflict(&mut self, span: Span, ctx: &mut VisitContext<'_, '_>) {
-        if self.emitted_slot_snippet_conflict {
-            return;
-        }
-
-        ctx.warnings_mut()
-            .push(Diagnostic::error(DiagnosticKind::SlotSnippetConflict, span));
-        self.emitted_slot_snippet_conflict = true;
-    }
-
     fn visit_special_element(
         &mut self,
         kind: SpecialElementKind,
@@ -968,7 +927,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
         check_template_await(ctx, tag.id, &tag.expression);
-        self.note_render_tag(ctx);
         check_opening_sigil(tag.span, b'@', ctx);
 
         let invalid_call = ctx
@@ -1180,7 +1138,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
         ctx: &mut VisitContext<'_, '_>,
     ) {
         self.element_event_state.push(ElementEventState::default());
-        self.note_legacy_slot_element(el.span, ctx);
 
         if ctx.runes && !ctx.data.custom_element.is_target {
             ctx.warnings_mut().push(Diagnostic::warning(
@@ -1191,27 +1148,27 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         for attr in &el.attributes {
             match attr {
-                Attribute::StringAttribute(attr) if attr.name == "name" => {
-                    if attr.value_span.source_text(ctx.source) == "default" {
+                Attribute::StringAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
+                    if attr.value_span.source_text(ctx.source) == DEFAULT_SLOT_NAME {
                         ctx.warnings_mut().push(Diagnostic::error(
                             DiagnosticKind::SlotElementInvalidNameDefault,
                             attr.span,
                         ));
                     }
                 }
-                Attribute::ExpressionAttribute(attr) if attr.name == "name" => {
+                Attribute::ExpressionAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::SlotElementInvalidName,
                         attr.span,
                     ));
                 }
-                Attribute::ConcatenationAttribute(attr) if attr.name == "name" => {
+                Attribute::ConcatenationAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::SlotElementInvalidName,
                         attr.span,
                     ));
                 }
-                Attribute::BooleanAttribute(attr) if attr.name == "name" => {
+                Attribute::BooleanAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::SlotElementInvalidName,
                         attr.span,

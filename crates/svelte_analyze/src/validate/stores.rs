@@ -56,7 +56,11 @@ pub(super) fn validate_dollar_globals(
     source: &str,
     diags: &mut Vec<Diagnostic>,
 ) {
-    const RESERVED: &[&str] = &["$$props", "$$restProps", "$$slots"];
+    const RESERVED: &[&str] = &[
+        svelte_ast::DOLLAR_PROPS,
+        svelte_ast::DOLLAR_REST_PROPS,
+        svelte_ast::DOLLAR_SLOTS,
+    ];
     for (name, refs) in data.scoping.root_unresolved_references() {
         let name = name.as_str();
         if !name.starts_with('$') || RESERVED.contains(&name) {

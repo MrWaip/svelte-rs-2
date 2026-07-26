@@ -44,7 +44,7 @@ fn expression_uses_legacy_slots(expr: &Expression<'_>) -> bool {
     struct Probe(bool);
     impl<'a> Visit<'a> for Probe {
         fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
-            if ident.name.as_str() == "$$slots" {
+            if ident.name.as_str() == svelte_ast::DOLLAR_SLOTS {
                 self.0 = true;
             }
         }
