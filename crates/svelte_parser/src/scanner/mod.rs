@@ -230,12 +230,23 @@ impl<'a> Scanner<'a> {
     fn identifier(&mut self) -> &'a str {
         let start = self.current;
 
-        while let Some(ch) = self.peek() {
-            if ch.is_alphanumeric() || ch == '-' {
-                self.advance();
-            } else {
+        while let Some(&b) = self.bytes.get(self.current) {
+            if b.is_ascii_alphanumeric() || b == b'-' {
+                self.prev = self.current;
+                self.current += 1;
+                continue;
+            }
+            if b < 0x80 {
                 break;
             }
+            let Some(ch) = self.source[self.current..].chars().next() else {
+                break;
+            };
+            if !ch.is_alphanumeric() {
+                break;
+            }
+            self.prev = self.current;
+            self.current += ch.len_utf8();
         }
 
         self.slice_source(start, self.current)
@@ -287,12 +298,23 @@ impl<'a> Scanner<'a> {
         }
 
         self.advance();
-        while let Some(ch) = self.peek() {
-            if ch.is_alphanumeric() || matches!(ch, '_' | '$') {
-                self.advance();
-            } else {
+        while let Some(&b) = self.bytes.get(self.current) {
+            if b.is_ascii_alphanumeric() || b == b'_' || b == b'$' {
+                self.prev = self.current;
+                self.current += 1;
+                continue;
+            }
+            if b < 0x80 {
                 break;
             }
+            let Some(ch) = self.source[self.current..].chars().next() else {
+                break;
+            };
+            if !ch.is_alphanumeric() {
+                break;
+            }
+            self.prev = self.current;
+            self.current += ch.len_utf8();
         }
 
         self.slice_source(start, self.current)
@@ -631,7 +653,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn attributes(&mut self, allow_comments: bool) -> Result<Vec<Attribute>, Diagnostic> {
-        let mut attributes: Vec<Attribute> = Vec::with_capacity(4);
+        let mut attributes: Vec<Attribute> = Vec::new();
 
         loop {
             self.skip_whitespace();
