@@ -2,14 +2,26 @@
 generate:
     cargo run -p generate_test_cases
 
+# Build the napi addon with profile-guided optimization (trains on the repo corpus; PGO_CORPUS adds more).
+build-napi-pgo:
+    bash scripts/pgo.sh napi
+
+# Build the release bench binary with profile-guided optimization.
+build-bench-pgo:
+    bash scripts/pgo.sh bench
+
 # Rebuild napi in release and benchmark our compiler vs svelte/compiler across .svelte files in dir (default: whole repo)
 bench-compare dir='.':
     npm run --prefix packages/svelte-rs2 build:release
     node tasks/compiler_bench/compare.mjs {{dir}}
 
-# Per-file breakdown: slowest .svelte files for our compiler in dir + weakest lead vs svelte. Feed hot paths into bench-flame. Args: dir [mode=client|client-dev|ssr|ssr-dev] [top=15]
+# Per-file breakdown: slowest .svelte files for our compiler in dir + weakest lead vs svelte. Feed hot paths into bench-flame. Builds the addon with PGO; BENCH_SKIP_BUILD=1 measures whatever is already built. Args: dir [mode=client|client-dev|ssr|ssr-dev] [top=15]
 bench-breakdown dir mode='client' top='15':
-    npm run --prefix packages/svelte-rs2 build:release
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${BENCH_SKIP_BUILD:-}" ]; then
+        bash scripts/pgo.sh napi
+    fi
     node tasks/compiler_bench/breakdown.mjs {{dir}} {{mode}} {{top}}
 
 # Run all diagnostic integration tests (aggregated summary via nextest)
