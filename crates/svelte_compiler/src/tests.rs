@@ -381,8 +381,22 @@ fn compile_component_name_conflicts_with_module_scope_bindings() {
     );
 }
 
+#[track_caller]
+fn assert_parse_error_only(result: &CompileResult, code: &str) {
+    assert!(
+        result.js.is_none(),
+        "expected codegen to be skipped on a parse error, got JS"
+    );
+    let codes: Vec<&str> = result.diagnostics.iter().map(|d| d.kind.code()).collect();
+    assert_eq!(
+        codes.as_slice(),
+        [code],
+        "expected only `{code}` to surface, got: {codes:?}"
+    );
+}
+
 #[test]
-fn analyze_runs_despite_parse_errors() {
+fn parse_error_suppresses_analyze_diagnostics() {
     let result = compile(
         r#"<script>
 const id = $props.id();
@@ -390,20 +404,7 @@ const id2 = $props.id();
 </script><div"#,
         &CompileOptions::default(),
     );
-    assert!(
-        result.js.is_none(),
-        "codegen must be skipped when errors present"
-    );
-
-    assert!(
-        result
-            .diagnostics
-            .iter()
-            .any(|d| d.kind.code() == "props_id_invalid_placement"
-                || d.kind.code() == "props_duplicate"),
-        "analyze diagnostics must surface alongside parse errors: {:?}",
-        result.diagnostics
-    );
+    assert_parse_error_only(&result, "unexpected_eof");
 }
 
 #[test]
