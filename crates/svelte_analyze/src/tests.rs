@@ -8009,6 +8009,32 @@ async function baz() { return 2; }
         assert_eq!(ev, Evaluation::Known(KnownValue::Str("hi".into())));
     }
 
+    fn reconverging_const_chain(depth: usize) -> &'static str {
+        let mut source = String::from("<script>const a0 = 1;");
+        for step in 1..=depth {
+            let prev = step - 1;
+            source.push_str(&format!("const a{step} = a{prev} + a{prev};"));
+        }
+        source.push_str("</script><p>{a0}</p>");
+        Box::leak(source.into_boxed_str())
+    }
+
+    #[track_caller]
+    fn assert_binding_evaluates_to_number(source: &'static str, name: &str, expected: f64) {
+        let evaluation = evaluate_binding_init(source, name);
+        assert_eq!(
+            evaluation,
+            Evaluation::Known(KnownValue::Num(expected)),
+            "{name}: expected Known(Num({expected})), got {evaluation:?}"
+        );
+    }
+
+    #[test]
+    fn evaluation_folds_reconverging_binding_chain_in_linear_time() {
+        let source = reconverging_const_chain(30);
+        assert_binding_evaluates_to_number(source, "a30", 1_073_741_824.0);
+    }
+
     #[test]
     fn evaluation_logical_and_with_boolean_left_string_right_is_defined() {
         let source =

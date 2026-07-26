@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::reactivity_semantics::data::{
@@ -173,6 +173,8 @@ pub struct ValueEvaluator<'c, 'a> {
     read_context: ReadContext,
     dev: bool,
     binding_depth: Cell<u32>,
+    binding_memo: RefCell<FxHashMap<SymbolId, EvalSet>>,
+    cycle_truncated: Cell<bool>,
 }
 
 impl<'c, 'a> ValueEvaluator<'c, 'a> {
@@ -197,6 +199,8 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
             read_context,
             dev,
             binding_depth: Cell::new(0),
+            binding_memo: RefCell::default(),
+            cycle_truncated: Cell::new(false),
         }
     }
 
@@ -211,6 +215,8 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
             read_context,
             dev: self.dev,
             binding_depth: Cell::new(0),
+            binding_memo: RefCell::default(),
+            cycle_truncated: Cell::new(false),
         }
     }
 
@@ -261,6 +267,7 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
                 }
             }
         }
+        self.binding_memo.get_mut().clear();
     }
 }
 
@@ -1146,13 +1153,20 @@ fn eval_identifier(
     let Some(&init_expr) = ctx.bindings_init.get(&sym) else {
         return smallvec![EvalAtom::Unknown];
     };
+    if let Some(cached) = ctx.binding_memo.borrow().get(&sym) {
+        return cached.clone();
+    }
     let init_node_id = expression_node_id(init_expr);
     if !guard.insert(init_node_id) {
+        ctx.cycle_truncated.set(true);
         return smallvec![EvalAtom::Unknown];
     }
+    let outer_truncated = ctx.cycle_truncated.replace(false);
     ctx.binding_depth.set(ctx.binding_depth.get() + 1);
     let result = eval_binding_init(sym, init_expr, ctx, guard);
     ctx.binding_depth.set(ctx.binding_depth.get() - 1);
+    let truncated = ctx.cycle_truncated.get();
+    ctx.cycle_truncated.set(outer_truncated || truncated);
     guard.remove(&init_node_id);
     let runtime_rune = match ctx.reactivity.binding_semantics(sym) {
         BindingSemantics::RuntimeRune { .. } => true,
@@ -1175,13 +1189,18 @@ fn eval_identifier(
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     };
-    if ctx.read_context == ReadContext::Runtime
+    let result = if ctx.read_context == ReadContext::Runtime
         && runtime_rune
         && result
             .iter()
             .all(|a| matches!(a, EvalAtom::Known(KnownValue::Undefined)))
     {
-        return smallvec![EvalAtom::Unknown];
+        smallvec![EvalAtom::Unknown]
+    } else {
+        result
+    };
+    if !truncated {
+        ctx.binding_memo.borrow_mut().insert(sym, result.clone());
     }
     result
 }
