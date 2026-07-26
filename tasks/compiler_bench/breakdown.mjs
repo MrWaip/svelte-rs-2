@@ -79,7 +79,13 @@ for (const rel of relFiles) {
     try {
         oursMs = medianMs(ours, src, o);
     } catch (e) {
-        failed.push({ rel, error: String(e.message ?? e).split('\n')[0] });
+        let refFailed = false;
+        try {
+            ref(src, o);
+        } catch {
+            refFailed = true;
+        }
+        failed.push({ rel, error: String(e.message ?? e).split('\n')[0], refFailed });
         continue;
     }
     let refMs = null;
@@ -130,12 +136,22 @@ process.stdout.write(
 );
 table([...meaningful].sort((a, b) => a.ratio - b.ratio).slice(0, top));
 
+const oursOnly = failed.filter((f) => !f.refFailed);
+const bothFailed = failed.length - oursOnly.length;
+
 if (failed.length) {
-    process.stdout.write(`\nfailed to compile in ours (${failed.length}):\n`);
-    for (const f of failed.slice(0, top)) {
+    process.stdout.write(
+        `\nfailed to compile in ours (${failed.length}, of them ${bothFailed} also fail in svelte):\n`,
+    );
+    for (const f of oursOnly.slice(0, top)) {
         process.stdout.write(`  ${f.rel}  —  ${f.error}\n`);
     }
-    if (failed.length > top) process.stdout.write(`  … and ${failed.length - top} more\n`);
+    if (oursOnly.length > top) {
+        process.stdout.write(`  … and ${oursOnly.length - top} more\n`);
+    }
+    if (!oursOnly.length) {
+        process.stdout.write(`  none unique to ours\n`);
+    }
 }
 
 const hottest = [...rows].sort((a, b) => b.ours - a.ours)[0];
