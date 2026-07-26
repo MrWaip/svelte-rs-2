@@ -56,3 +56,40 @@ compiler_case!(
     closure_reference_guard,
     "async_instance_blockers/closure_reference_guard"
 );
+compiler_case!(
+    await_statement_collapse,
+    "async_instance_blockers/await_statement_collapse",
+    ignore =
+        "a bare await statement keeps its async arrow instead of collapsing to `() => argument`"
+);
+compiler_case!(
+    await_call_unthunk,
+    "async_instance_blockers/await_call_unthunk",
+    ignore = "`await load()` is not collapsed to the callee `load`"
+);
+compiler_case!(
+    nested_await_no_collapse,
+    "async_instance_blockers/nested_await_no_collapse",
+    ignore = "an await with a nested await keeps a block body instead of an expression body"
+);
+compiler_case!(
+    class_declaration_assignment,
+    "async_instance_blockers/class_declaration_assignment",
+    ignore = "a class declaration in a promise group is not rewritten to an assignment of a class expression"
+);
+compiler_case!(
+    destructured_await_assignment,
+    "async_instance_blockers/destructured_await_assignment",
+    ignore = "a destructured awaited declarator keeps its declaration instead of assigning the hoisted bindings"
+);
+compiler_case!(
+    removed_statement_slot,
+    "async_instance_blockers/removed_statement_slot",
+    ignore = "a statement erased by the transform panics instead of holding its slot with `() => void 0`"
+);
+compiler_case!(
+    multi_declarator_slots,
+    "async_instance_blockers/multi_declarator_slots",
+    ignore =
+        "a multi-declarator declaration in an async instance body panics on statement metadata"
+);
