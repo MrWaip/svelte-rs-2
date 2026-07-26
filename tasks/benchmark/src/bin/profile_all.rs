@@ -12,6 +12,7 @@ fn is_module(path: &str) -> bool {
 fn main() {
     let mut seconds: u64 = 10;
     let mut dev = false;
+    let mut async_ = false;
     let mut root: Option<String> = None;
     let mut fixed_iters: Option<u64> = None;
     let mut args = env::args().skip(1);
@@ -19,6 +20,7 @@ fn main() {
         match arg.as_str() {
             "--dev" => dev = true,
             "--prod" => dev = false,
+            "--async" => async_ = true,
             "--dir" => root = Some(args.next().expect("--dir requires value")),
             "--iters" => {
                 fixed_iters = Some(
@@ -67,6 +69,7 @@ fn main() {
                 let opts = svelte_compiler::CompileOptions {
                     dev,
                     filename: path.clone(),
+                    experimental: svelte_compiler::ExperimentalOptions { async_ },
                     ..svelte_compiler::CompileOptions::default()
                 };
                 let _ = svelte_compiler::compile(source, &opts);
@@ -74,5 +77,5 @@ fn main() {
         }
         iters += 1;
     }
-    eprintln!("iters over suite: {iters} (dev: {dev})");
+    eprintln!("iters over suite: {iters} (dev: {dev}, async: {async_})");
 }

@@ -12,7 +12,7 @@ const repoRoot = resolve(here, '../../..');
 const benchRoot = join(repoRoot, 'tasks', 'benchmark', 'benches', 'compiler');
 
 function parseArgs(argv) {
-    const opts = { seconds: 3, warmup: 0.5, minIters: 5, filter: null, build: false };
+    const opts = { seconds: 3, warmup: 0.5, minIters: 5, filter: null, build: false, async: false };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--seconds') opts.seconds = parseFloat(argv[++i]);
@@ -24,6 +24,7 @@ function parseArgs(argv) {
         else if (a === '--filter') opts.filter = argv[++i];
         else if (a.startsWith('--filter=')) opts.filter = a.slice(9);
         else if (a === '--build') opts.build = true;
+        else if (a === '--async') opts.async = true;
     }
     return opts;
 }
@@ -37,10 +38,11 @@ function buildRustBin() {
     if (r.status !== 0) throw new Error(`cargo build failed (${r.status})`);
 }
 
-function runRust(file, { seconds, warmup, minIters, dev, module }) {
+function runRust(file, { seconds, warmup, minIters, dev, module, async: asyncFlag }) {
     const bin = join(repoRoot, 'target', 'release', 'bench_once');
     const args = [file, String(seconds), String(warmup), String(minIters)];
     if (dev) args.push('--dev');
+    if (asyncFlag) args.push('--async');
     if (module !== undefined) args.push(module ? '--module' : '--compile');
 
     const r = spawnSync(bin, args, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -151,7 +153,7 @@ async function main() {
     }
 
     console.log(
-        `cases: ${filtered.length}, seconds: ${opts.seconds}, warmup: ${opts.warmup}s, min-iters: ${opts.minIters}\n`,
+        `cases: ${filtered.length}, seconds: ${opts.seconds}, warmup: ${opts.warmup}s, min-iters: ${opts.minIters}, async: ${opts.async}\n`,
     );
 
     const rows = [];
@@ -165,9 +167,15 @@ async function main() {
             minIters: opts.minIters,
             dev: c.dev,
             module: c.kind === 'module',
+            async: opts.async,
         });
 
-        const jsCompileOpts = { generate: 'client', dev: c.dev, filename: c.abs };
+        const jsCompileOpts = {
+            generate: 'client',
+            dev: c.dev,
+            filename: c.abs,
+            ...(opts.async ? { experimental: { async: true } } : {}),
+        };
         const jsFn =
             c.kind === 'compile'
                 ? () => compile(source, jsCompileOpts)

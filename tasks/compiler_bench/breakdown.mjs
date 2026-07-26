@@ -9,13 +9,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..', '..');
 const require = createRequire(import.meta.url);
 
-const dirArg = process.argv[2];
+const argv = process.argv.slice(2);
+const asyncFlag = argv.includes('--async');
+const positional = argv.filter((a) => !a.startsWith('--'));
+const dirArg = positional[0];
 if (!dirArg) {
-    process.stderr.write('usage: node breakdown.mjs <dir> [mode] [top]\n');
+    process.stderr.write('usage: node breakdown.mjs <dir> [mode] [top] [--async]\n');
     process.exit(1);
 }
-const mode = process.argv[3] ?? 'client';
-const top = Number(process.argv[4] ?? 15);
+const mode = positional[1] ?? 'client';
+const top = Number(positional[2] ?? 15);
 const samples = Number(process.env.BENCH_REPEATS ?? 9);
 const batch = Number(process.env.BENCH_BATCH ?? 1);
 
@@ -26,10 +29,11 @@ const MODES = {
     'ssr-dev': { generate: 'server', dev: true },
 };
 if (!MODES[mode]) throw new Error(`unknown mode: ${mode}`);
-const opts = MODES[mode];
+const opts = { ...MODES[mode], ...(asyncFlag ? { experimental: { async: true } } : {}) };
 const flameFlags = [
     ...(opts.generate === 'server' ? ['--server'] : []),
     ...(opts.dev ? ['--dev'] : []),
+    ...(asyncFlag ? ['--async'] : []),
 ].join(' ');
 
 const searchDir = resolve(process.cwd(), dirArg);
@@ -119,7 +123,7 @@ function table(list) {
 }
 
 process.stdout.write(
-    `\nper-file breakdown — ${searchDir}\nmode=${mode} — ${rows.length} files timed` +
+    `\nper-file breakdown — ${searchDir}\nmode=${mode}${asyncFlag ? ' async' : ''} — ${rows.length} files timed` +
         (failed.length ? `, ${failed.length} failed in ours` : '') +
         ` — median of ${samples}×${batch}\n\n`,
 );

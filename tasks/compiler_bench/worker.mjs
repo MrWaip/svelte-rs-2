@@ -8,10 +8,13 @@ import { glob } from 'glob';
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..', '..');
 
-const compiler = process.argv[2];
-const mode = process.argv[3];
-const explicitDir = Boolean(process.argv[4]);
-const searchDir = explicitDir ? resolve(process.cwd(), process.argv[4]) : repoRoot;
+const argv = process.argv.slice(2);
+const asyncFlag = argv.includes('--async');
+const positional = argv.filter((a) => !a.startsWith('--'));
+const compiler = positional[0];
+const mode = positional[1];
+const explicitDir = Boolean(positional[2]);
+const searchDir = explicitDir ? resolve(process.cwd(), positional[2]) : repoRoot;
 const repeats = Number(process.env.BENCH_REPEATS ?? 5);
 const warmups = Number(process.env.BENCH_WARMUPS ?? 1);
 
@@ -23,7 +26,7 @@ const MODES = {
 };
 
 if (!MODES[mode]) throw new Error(`unknown mode: ${mode}`);
-const baseOptions = MODES[mode];
+const baseOptions = { ...MODES[mode], ...(asyncFlag ? { experimental: { async: true } } : {}) };
 
 const require = createRequire(import.meta.url);
 

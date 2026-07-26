@@ -10,19 +10,19 @@ build-napi-pgo:
 build-bench-pgo:
     bash scripts/pgo.sh bench
 
-# Rebuild napi in release and benchmark our compiler vs svelte/compiler across .svelte files in dir (default: whole repo)
-bench-compare dir='.':
+# Rebuild napi in release and benchmark our compiler vs svelte/compiler across .svelte files in dir (default: whole repo). Flags: --async.
+bench-compare dir='.' *flags:
     npm run --prefix packages/svelte-rs2 build:release
-    node tasks/compiler_bench/compare.mjs {{dir}}
+    node tasks/compiler_bench/compare.mjs {{dir}} {{flags}}
 
-# Per-file breakdown: slowest .svelte files for our compiler in dir + weakest lead vs svelte. Feed hot paths into bench-flame. Builds the addon with PGO; BENCH_SKIP_BUILD=1 measures whatever is already built. Args: dir [mode=client|client-dev|ssr|ssr-dev] [top=15]
-bench-breakdown dir mode='client' top='15':
+# Per-file breakdown: slowest .svelte files for our compiler in dir + weakest lead vs svelte. Feed hot paths into bench-flame. Builds the addon with PGO; BENCH_SKIP_BUILD=1 measures whatever is already built. Args: dir [mode=client|client-dev|ssr|ssr-dev] [top=15] [--async]
+bench-breakdown dir mode='client' top='15' *flags:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -z "${BENCH_SKIP_BUILD:-}" ]; then
         bash scripts/pgo.sh napi
     fi
-    node tasks/compiler_bench/breakdown.mjs {{dir}} {{mode}} {{top}}
+    node tasks/compiler_bench/breakdown.mjs {{dir}} {{mode}} {{top}} {{flags}}
 
 # Run all diagnostic integration tests (aggregated summary via nextest)
 test-diagnostics:
@@ -89,7 +89,7 @@ bench-walltime-all:
 bench-node:
     node tasks/benchmark/bench.mjs
 
-# Walltime comparison: rust vs svelte/compiler. Time-budgeted per side, mean/median/speedup table. Flags: --seconds T --warmup W --min-iters N --filter SUBSTR.
+# Walltime comparison: rust vs svelte/compiler. Time-budgeted per side, mean/median/speedup table. Flags: --seconds T --warmup W --min-iters N --filter SUBSTR --async.
 bench-compare-walltime *flags:
     cargo build --release -p benchmark --bin bench_once
     node tasks/benchmark/scripts/compare-walltime.mjs {{flags}}
@@ -98,7 +98,7 @@ bench-compare-walltime *flags:
 bench-case filter:
     cargo bench -p benchmark --bench svelte_compiler -- '{{filter}}'
 
-# Profile one file. Extra flags forwarded to profile bin: --dev, --mode compile|compile_module. Requires: cargo install samply && samply setup.
+# Profile one file. Extra flags forwarded to profile bin: --dev, --async, --mode compile|compile_module. Requires: cargo install samply && samply setup.
 bench-flame path *flags:
     cargo build --profile profiling -p benchmark --bin profile
     bash tasks/benchmark/scripts/bench-flame.sh '{{path}}' {{flags}}
@@ -112,7 +112,7 @@ bench-flame-all:
 dump-ast expr:
     cargo run -p svelte_parser --example dump_ast -- '{{expr}}'
 
-# Quick-check one Svelte component against the reference compiler (usage: just quick-check path/to/component.svelte [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>])
+# Quick-check one Svelte component against the reference compiler (usage: just quick-check path/to/component.svelte [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--async] [--filename=<name>])
 quick-check path *flags:
     cargo run -q -p quick_check -- {{path}} {{flags}}
 
@@ -141,6 +141,6 @@ npm-build:
 build-native:
     npm run --prefix packages/svelte-rs2 build:release
 
-# Parity-sweep a directory: our compiler vs svelte/compiler across client+server × dev+prod, always dry-run. Flags: --mode=auto|runes|legacy --chunk=N (default auto) --print-diffs --out=<file>
+# Parity-sweep a directory: our compiler vs svelte/compiler across client+server × dev+prod, always dry-run. Flags: --mode=auto|runes|legacy --async --chunk=N (default auto) --print-diffs --out=<file>
 sweep-run pathname *flags:
     cargo run --profile sweep -p sweep -- {{pathname}} {{flags}}

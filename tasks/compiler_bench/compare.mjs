@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const worker = resolve(here, 'worker.mjs');
 
-const targetDir = process.argv[2] && process.argv[2] !== '.' ? process.argv[2] : null;
+const argv = process.argv.slice(2);
+const asyncFlag = argv.includes('--async');
+const positional = argv.filter((a) => !a.startsWith('--'));
+const targetDir = positional[0] && positional[0] !== '.' ? positional[0] : null;
 
 const MODES = ['client', 'client-dev', 'ssr', 'ssr-dev'];
 
@@ -35,15 +38,23 @@ const COMPILERS = ['svelte', 'ours', ...COMPETITORS.map((c) => c.id)];
 const LABELS = { svelte: 'svelte', ours: 'ours', ...Object.fromEntries(COMPETITORS.map((c) => [c.id, c.label])) };
 
 function run(compiler, mode) {
-    const argv = [worker, compiler, mode, ...(targetDir ? [targetDir] : [])];
-    const out = execFileSync('node', argv, {
+    const args = [
+        worker,
+        compiler,
+        mode,
+        ...(targetDir ? [targetDir] : []),
+        ...(asyncFlag ? ['--async'] : []),
+    ];
+    const out = execFileSync('node', args, {
         encoding: 'utf8',
         maxBuffer: 64 * 1024 * 1024,
     });
     return JSON.parse(out);
 }
 
-process.stderr.write(`benchmarking .svelte files in: ${targetDir ?? '<repo root>'}\n`);
+process.stderr.write(
+    `benchmarking .svelte files in: ${targetDir ?? '<repo root>'}${asyncFlag ? ' (experimental async)' : ''}\n`,
+);
 
 const rows = [];
 for (const mode of MODES) {

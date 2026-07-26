@@ -12,6 +12,7 @@ fn main() {
     let mut path: Option<String> = None;
     let mut seconds: u64 = 10;
     let mut dev = false;
+    let mut async_ = false;
     let mut mode: Option<Mode> = None;
     let mut generate = svelte_compiler::GenerateMode::Client;
 
@@ -21,6 +22,7 @@ fn main() {
         match arg.as_str() {
             "--dev" => dev = true,
             "--prod" => dev = false,
+            "--async" => async_ = true,
             "--server" => generate = svelte_compiler::GenerateMode::Server,
             "--client" => generate = svelte_compiler::GenerateMode::Client,
             "--generate" => {
@@ -61,8 +63,9 @@ fn main() {
         }
     }
 
-    let path =
-        path.expect("usage: profile <path> [seconds] [--dev] [--mode compile|compile_module]");
+    let path = path.expect(
+        "usage: profile <path> [seconds] [--dev] [--async] [--mode compile|compile_module]",
+    );
     let source = fs::read_to_string(&path).expect("read source");
 
     let resolved_mode = mode.unwrap_or_else(|| {
@@ -82,6 +85,7 @@ fn main() {
                 dev,
                 generate,
                 filename: path.clone(),
+                experimental: svelte_compiler::ExperimentalOptions { async_ },
                 ..svelte_compiler::CompileOptions::default()
             };
             while Instant::now() < deadline {
@@ -104,11 +108,10 @@ fn main() {
     }
 
     eprintln!(
-        "iters: {iters} (mode: {}, dev: {})",
+        "iters: {iters} (mode: {}, dev: {dev}, async: {async_})",
         match resolved_mode {
             Mode::Compile => "compile",
             Mode::CompileModule => "compile_module",
         },
-        dev
     );
 }

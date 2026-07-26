@@ -1,7 +1,7 @@
 ---
 name: quick-check
 description: Use when you have an ad-hoc Svelte component or `.svelte.js`/`.svelte.ts` module (pasted inline, scratch file, or a single existing file) and need a one-shot parity check against `svelte/compiler` without registering a persistent case.
-argument-hint: "<path-or-inline-source> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>] [--print=diff|ours|ref|both]"
+argument-hint: "<path-or-inline-source> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--async] [--filename=<name>] [--print=diff|ours|ref|both]"
 allowed-tools: Bash, Write
 ---
 
@@ -25,6 +25,7 @@ Flags (forwarded to both sides; pass through whatever the user named):
 - `--mode=auto|runes|legacy` — default runes unless `<svelte:options runes={false}/>`. Ignored for modules.
 - `--generate=client|server` — default client.
 - `--dev` — dev build.
+- `--async` — `experimental.async` on both sides. Required for `await` in the instance script or a template expression: without it both sides error as `experimental_async`. Modules ignore it.
 - `--filename=<name>` — component-name resolution / module filename.
 - `--print=diff|ours|ref|both` — default `diff` (interleaved `<` ours / `>` ref). `both` prints full outputs even on match; `ours`/`ref` print one side. Exit code unchanged.
 

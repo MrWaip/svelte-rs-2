@@ -17,7 +17,7 @@ use svelte_compiler::{
     CompileOptions, GenerateMode, ModuleCompileOptions, RunesOption, compile, compile_module,
 };
 
-const USAGE: &str = "usage: quick_check <path-to-.svelte-file|-> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--filename=<name>] [--print=diff|ours|ref|both]\n  pass `-` to read source from stdin (extension inferred from --filename, default .svelte)";
+const USAGE: &str = "usage: quick_check <path-to-.svelte-file|-> [--mode=auto|runes|legacy] [--generate=client|server] [--dev] [--async] [--filename=<name>] [--print=diff|ours|ref|both]\n  pass `-` to read source from stdin (extension inferred from --filename, default .svelte)";
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 enum PrintMode {
@@ -33,6 +33,7 @@ struct CliOptions {
     mode: Option<RunesOption>,
     generate: Option<GenerateMode>,
     dev: bool,
+    async_: bool,
     filename: Option<String>,
     print: PrintMode,
 }
@@ -57,6 +58,8 @@ fn parse_cli(args: &[String]) -> Result<(String, CliOptions), String> {
             });
         } else if arg == "--dev" {
             opts.dev = true;
+        } else if arg == "--async" {
+            opts.async_ = true;
         } else if let Some(v) = arg.strip_prefix("--filename=") {
             opts.filename = Some(v.to_string());
         } else if let Some(v) = arg.strip_prefix("--print=") {
@@ -94,6 +97,9 @@ fn reference_config_json(opts: &CliOptions) -> Option<String> {
     }
     if opts.dev {
         entries.push("\"dev\":true".to_string());
+    }
+    if opts.async_ {
+        entries.push("\"experimental\":{\"async\":true}".to_string());
     }
     if let Some(ref name) = opts.filename {
         entries.push(format!(
@@ -301,6 +307,9 @@ fn run_our_compiler(source: &str, cli: &CliOptions, is_module: bool) -> OurOutco
     if cli.dev {
         opts.dev = true;
     }
+    if cli.async_ {
+        opts.experimental.async_ = true;
+    }
     if let Some(ref name) = cli.filename {
         opts.filename = name.clone();
     }
@@ -452,6 +461,9 @@ fn describe_applied_options(cli: &CliOptions) -> String {
     }
     if cli.dev {
         parts.push("dev".to_string());
+    }
+    if cli.async_ {
+        parts.push("async".to_string());
     }
     if let Some(ref name) = cli.filename {
         parts.push(format!("filename={name}"));

@@ -8,16 +8,18 @@ use benchmark as _;
 fn main() {
     let path = env::args()
         .nth(1)
-        .expect("usage: phase_bench <path> [iters]");
+        .expect("usage: phase_bench <path> [iters] [--async] [--no-sourcemap]");
     let iters: u64 = env::args()
         .nth(2)
         .and_then(|s| s.parse().ok())
         .unwrap_or(500);
     let source = fs::read_to_string(&path).expect("read source");
+    let async_ = env::args().any(|a| a == "--async");
 
     let options = svelte_compiler::CompileOptions {
         dev: false,
         filename: path.clone(),
+        experimental: svelte_compiler::ExperimentalOptions { async_ },
         ..svelte_compiler::CompileOptions::default()
     };
 
@@ -70,6 +72,7 @@ fn main() {
         };
         let no_map = env::args().any(|a| a == "--no-sourcemap");
         let codegen_options = svelte_types::CodegenOptions {
+            experimental_async: options.experimental.async_,
             sourcemap_kind: if no_map {
                 svelte_sourcemap::SourcemapKind::None
             } else {

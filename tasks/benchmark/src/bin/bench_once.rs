@@ -17,6 +17,7 @@ fn main() {
     let mut warmup: f64 = 0.5;
     let mut min_iters: u64 = 5;
     let mut dev = false;
+    let mut async_ = false;
     let mut mode: Option<Mode> = None;
 
     let mut positional = 0usize;
@@ -25,6 +26,7 @@ fn main() {
         match arg.as_str() {
             "--dev" => dev = true,
             "--prod" => dev = false,
+            "--async" => async_ = true,
             "--module" => mode = Some(Mode::CompileModule),
             "--compile" => mode = Some(Mode::Compile),
             _ => match positional {
@@ -49,8 +51,9 @@ fn main() {
         }
     }
 
-    let path =
-        path.expect("usage: bench_once <path> [seconds] [warmup_s] [min_iters] [--dev] [--module]");
+    let path = path.expect(
+        "usage: bench_once <path> [seconds] [warmup_s] [min_iters] [--dev] [--async] [--module]",
+    );
     let source = fs::read_to_string(&path).expect("read source");
 
     let resolved_mode = mode.unwrap_or_else(|| {
@@ -72,6 +75,7 @@ fn main() {
             let opts = svelte_compiler::CompileOptions {
                 dev,
                 filename: path.clone(),
+                experimental: svelte_compiler::ExperimentalOptions { async_ },
                 ..svelte_compiler::CompileOptions::default()
             };
             let warmup_deadline = Instant::now() + warmup_dur;
