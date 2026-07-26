@@ -13,7 +13,7 @@ use svelte_analyze::{
 };
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
-use svelte_component_semantics::{Access, OxcNodeId, walk_bindings};
+use svelte_component_semantics::{Access, BindingVisit, OxcNodeId, walk_bindings};
 use svelte_emit_builders::binding_pattern as bp;
 use svelte_emit_builders::runes::rune_get;
 
@@ -202,7 +202,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let needs_derived = v.path.iter().any(|s| s.default.is_some());
             let mut expr = self.item_read_expr(item_reactive);
             let mut update_expr = self.item_read_expr(item_reactive);
-            let mut member_chain = !v.is_rest;
 
             let simple_flags: Option<Vec<bool>> = self
                 .ctx
@@ -223,7 +222,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         len,
                         has_rest,
                     } => {
-                        member_chain = false;
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
                             &mut carriers,
@@ -233,13 +231,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             carrier_count(len, has_rest),
                         );
                         let name_alloc: &'a str = self.ctx.b.alloc_str(&name);
-                        expr = self.ctx.b.computed_member_expr(
-                            rune_get(&self.ctx.b, name_alloc),
-                            self.ctx.b.num_expr(index as f64),
-                        );
+                        expr = self.carrier_index_expr(rune_get(&self.ctx.b, name_alloc), index);
+                        update_expr =
+                            self.carrier_index_expr(self.ctx.b.rid_expr(name_alloc), index);
                     }
                     Access::Slice { from } => {
-                        member_chain = false;
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
                             &mut carriers,
@@ -249,14 +245,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             None,
                         );
                         let name_alloc: &'a str = self.ctx.b.alloc_str(&name);
-                        let slice_callee = self
-                            .ctx
-                            .b
-                            .static_member_expr(rune_get(&self.ctx.b, name_alloc), "slice");
-                        expr = self
-                            .ctx
-                            .b
-                            .call_expr_callee(slice_callee, [Arg::Num(from as f64)]);
+                        expr = self.carrier_slice_expr(rune_get(&self.ctx.b, name_alloc), from);
+                        update_expr =
+                            self.carrier_slice_expr(self.ctx.b.rid_expr(name_alloc), from);
                     }
                 }
                 if let Some(default) = step.default {
@@ -273,7 +264,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 expr = bp::exclude_from_object(&self.ctx.b, expr, v.excluded);
             }
 
-            if member_chain {
+            if has_writeback_place_legacy(&v) {
                 writeback_places.insert(v.symbol, update_expr);
             }
 
@@ -452,6 +443,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             self.ctx.b.rid_expr(SYNTHETIC_ITEM_NAME)
         }
+    }
+
+    fn carrier_index_expr(&self, carrier: Expression<'a>, index: u32) -> Expression<'a> {
+        self.ctx
+            .b
+            .computed_member_expr(carrier, self.ctx.b.num_expr(index as f64))
+    }
+
+    fn carrier_slice_expr(&self, carrier: Expression<'a>, from: u32) -> Expression<'a> {
+        let callee = self.ctx.b.static_member_expr(carrier, "slice");
+        self.ctx.b.call_expr_callee(callee, [Arg::Num(from as f64)])
     }
 
     fn ensure_carrier(
@@ -727,6 +729,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
 fn carrier_count(len: u32, has_rest: bool) -> Option<u32> {
     if has_rest { None } else { Some(len) }
+}
+
+fn has_writeback_place_legacy(v: &BindingVisit<'_, '_>) -> bool {
+    if v.is_rest {
+        return false;
+    }
+    match v.path.last().map(|step| step.access) {
+        Some(Access::Slice { .. }) => false,
+        Some(Access::Key { .. }) | Some(Access::Index { .. }) | None => true,
+    }
 }
 
 fn param_member_access<'a, 'ctx>(
