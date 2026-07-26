@@ -1,6 +1,6 @@
 ---
 name: add-diagnostic-test
-description: Create a new diagnostic parity test case. Use when the user asks to add a diagnostic test, create a new `tasks/diagnostic_tests/cases/<name>` case, or capture a false positive/false negative against npm `svelte/compiler` before implementation.
+description: Creates a diagnostic parity test case under `tasks/diagnostic_tests/cases/<name>`. Use when adding a diagnostic test, or when capturing a false positive/false negative against npm `svelte/compiler` before implementation.
 ---
 
 # Add Diagnostic Test
