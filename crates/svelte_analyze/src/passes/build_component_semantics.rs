@@ -5,7 +5,7 @@ use smallvec::smallvec;
 use std::slice;
 use svelte_ast::{
     Attribute, AwaitBlock, BindDirective, ClassDirective, Component, LetDirectiveLegacy, Node,
-    NodeId, StyleDirective, StyleDirectiveValue,
+    NodeId, SLOT_ATTRIBUTE, StyleDirective, StyleDirectiveValue,
 };
 use svelte_component_semantics::SymbolId;
 use svelte_component_semantics::{
@@ -688,7 +688,7 @@ fn attr_root_symbol<'a>(
 
 fn attrs_static_slot_name<'a>(attributes: &'a [Attribute], source: &'a str) -> Option<&'a str> {
     attributes.iter().find_map(|attr| match attr {
-        Attribute::StringAttribute(attr) if attr.name == "slot" => {
+        Attribute::StringAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
             Some(attr.value_span.source_text(source))
         }
         _ => None,

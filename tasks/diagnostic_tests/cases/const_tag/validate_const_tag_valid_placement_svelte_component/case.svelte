@@ -1,0 +1,1 @@
+<svelte:component this={Comp}>{@const x = 1}<p>{x}</p></svelte:component>

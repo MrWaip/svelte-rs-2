@@ -9,8 +9,8 @@ use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
     ComponentNode, ConcatPart, ConcatenationAttribute, ConstTag, DebugTag, EachBlock, Element,
     ExprRef, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy,
-    Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT,
-    SVELTE_ELEMENT, SVELTE_HEAD, SVELTE_META_TAG_LIST, SVELTE_SELF, SVELTE_WINDOW,
+    Node, NodeId, OnDirectiveLegacy, RenderTag, SLOT_ATTRIBUTE, SVELTE_BODY, SVELTE_COMPONENT,
+    SVELTE_DOCUMENT, SVELTE_ELEMENT, SVELTE_HEAD, SVELTE_META_TAG_LIST, SVELTE_SELF, SVELTE_WINDOW,
     SlotElementLegacy, SnippetBlock, SpreadAttribute, StyleDirective, SvelteBody, SvelteBoundary,
     SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteHead, SvelteWindow, Text,
     TransitionDirection, TransitionDirective, UseDirective, is_svelte_meta_tag, is_svg,
@@ -28,7 +28,7 @@ use crate::utils::html_tree_validation::{is_tag_valid_with_ancestor, is_tag_vali
 use crate::utils::snippet::snippet_name_symbol;
 use crate::validate::attrs_have_duplicate;
 use crate::validate::const_assignment::constant_kind;
-use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
+use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
 use crate::{AnalysisData, EventModifier, concat_single_dynamic_expr, event_attribute};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::LazyLock;
@@ -1012,21 +1012,15 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        let is_valid_parent = ctx.data.parent(tag.id).is_some_and(|p| {
-            matches!(
-                p.kind,
-                ParentKind::IfBlock
-                    | ParentKind::EachBlock
-                    | ParentKind::SnippetBlock
-                    | ParentKind::ComponentNode
-                    | ParentKind::AwaitBlock
-                    | ParentKind::SvelteBoundary
-                    | ParentKind::KeyBlock
-                    | ParentKind::SvelteFragmentLegacy
-            ) || element_has_slot_attr(p, ctx)
+        let hosted = ctx.store.node_fragment(tag.id).is_some_and(|fragment| {
+            ctx.data
+                .fragment_semantics
+                .query(fragment)
+                .content
+                .is_self_contained()
         });
 
-        if !is_valid_parent {
+        if !hosted {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::ConstTagInvalidPlacement,
                 tag.span,
@@ -1125,7 +1119,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             slot_attr,
         ) = {
             (
-                ctx.data.has_attribute(el.id, "slot"),
+                ctx.data.has_attribute(el.id, SLOT_ATTRIBUTE),
                 ctx.data.has_spread(el.id),
                 ctx.data.attribute(el.id, &el.attributes, "accesskey"),
                 ctx.data.attribute(el.id, &el.attributes, "tabindex"),
@@ -1136,7 +1130,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     None
                 },
                 ctx.data.has_attribute(el.id, "value"),
-                ctx.data.attribute(el.id, &el.attributes, "slot"),
+                ctx.data.attribute(el.id, &el.attributes, SLOT_ATTRIBUTE),
             )
         };
 
@@ -1151,7 +1145,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
 
         if has_slot && let Some(attr) = slot_attr {
-            validate_slot_attribute_placement(el, attr, ctx);
+            validate_slot_attribute_placement(el.id, el.span, attr, ctx);
         }
 
         a11y::check_element_warnings(
@@ -1310,7 +1304,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         for attr in &el.attributes {
             match attr {
-                Attribute::StringAttribute(attr) if attr.name == "slot" => {
+                Attribute::StringAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
                     if !is_direct_child_of_component {
                         ctx.warnings_mut().push(Diagnostic::error(
                             DiagnosticKind::SlotAttributeInvalidPlacement,
@@ -1318,20 +1312,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                         ));
                     }
                 }
-                Attribute::ExpressionAttribute(attr) if attr.name == "slot" => {
-                    if !is_direct_child_of_component {
-                        ctx.warnings_mut().push(Diagnostic::error(
-                            DiagnosticKind::SlotAttributeInvalidPlacement,
-                            el.span,
-                        ));
-                    } else {
-                        ctx.warnings_mut().push(Diagnostic::error(
-                            DiagnosticKind::SlotAttributeInvalid,
-                            attr.span,
-                        ));
-                    }
-                }
-                Attribute::ConcatenationAttribute(attr) if attr.name == "slot" => {
+                Attribute::ExpressionAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
                     if !is_direct_child_of_component {
                         ctx.warnings_mut().push(Diagnostic::error(
                             DiagnosticKind::SlotAttributeInvalidPlacement,
@@ -1344,7 +1325,20 @@ impl TemplateVisitor for TemplateValidationVisitor {
                         ));
                     }
                 }
-                Attribute::BooleanAttribute(attr) if attr.name == "slot" => {
+                Attribute::ConcatenationAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
+                    if !is_direct_child_of_component {
+                        ctx.warnings_mut().push(Diagnostic::error(
+                            DiagnosticKind::SlotAttributeInvalidPlacement,
+                            el.span,
+                        ));
+                    } else {
+                        ctx.warnings_mut().push(Diagnostic::error(
+                            DiagnosticKind::SlotAttributeInvalid,
+                            attr.span,
+                        ));
+                    }
+                }
+                Attribute::BooleanAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
                     if !is_direct_child_of_component {
                         ctx.warnings_mut().push(Diagnostic::error(
                             DiagnosticKind::SlotAttributeInvalidPlacement,
@@ -1377,6 +1371,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_attribute_unquoted_sequence(&el.attributes, ctx);
         check_attribute_sequence_expression(&el.attributes, ctx);
         check_event_handler_value(&el.attributes, ctx);
+
+        if let Some(attr) = ctx.data.attribute(el.id, &el.attributes, SLOT_ATTRIBUTE) {
+            let attr = attr.clone();
+            validate_slot_attribute_placement(el.id, el.span, &attr, ctx);
+        }
     }
 
     fn visit_svelte_head(&mut self, head: &SvelteHead, ctx: &mut VisitContext<'_, '_>) {
@@ -2766,13 +2765,14 @@ fn scope_is_within(ctx: &VisitContext<'_, '_>, mut scope: ScopeId, target: Scope
 }
 
 fn validate_slot_attribute_placement(
-    el: &Element,
+    el_id: NodeId,
+    el_span: Span,
     slot_attr: &Attribute,
     ctx: &mut VisitContext<'_, '_>,
 ) {
     if ctx
         .data
-        .parent(el.id)
+        .parent(el_id)
         .is_some_and(|parent| parent.kind == ParentKind::SnippetBlock)
     {
         if !matches!(slot_attr, Attribute::StringAttribute(_)) {
@@ -2784,7 +2784,7 @@ fn validate_slot_attribute_placement(
         return;
     }
 
-    let owner = ctx.data.ancestors(el.id).find(|ancestor| {
+    let owner = ctx.data.ancestors(el_id).find(|ancestor| {
         matches!(
             ancestor.kind,
             ParentKind::ComponentNode
@@ -2797,7 +2797,7 @@ fn validate_slot_attribute_placement(
     let Some(owner) = owner else {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SlotAttributeInvalidPlacement,
-            el.span,
+            el_span,
         ));
         return;
     };
@@ -2812,12 +2812,12 @@ fn validate_slot_attribute_placement(
 
     let is_direct_child = ctx
         .data
-        .parent(el.id)
+        .parent(el_id)
         .is_some_and(|parent| parent.id == owner.id);
     if !is_direct_child {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SlotAttributeInvalidPlacement,
-            el.span,
+            el_span,
         ));
         return;
     }
@@ -2830,15 +2830,15 @@ fn validate_slot_attribute_placement(
         return;
     }
 
-    validate_component_slot_conflicts(el, slot_attr, ctx);
+    validate_component_slot_conflicts(el_id, slot_attr, ctx);
 }
 
 fn validate_component_slot_conflicts(
-    el: &Element,
+    el_id: NodeId,
     slot_attr: &Attribute,
     ctx: &mut VisitContext<'_, '_>,
 ) {
-    let Some(parent) = ctx.data.parent(el.id) else {
+    let Some(parent) = ctx.data.parent(el_id) else {
         return;
     };
     if parent.kind != ParentKind::ComponentNode {
@@ -2853,7 +2853,7 @@ fn validate_component_slot_conflicts(
     };
     let slot_name = slot_attr.value_span.source_text(ctx.source);
 
-    if has_prior_named_slot(component, el.id, slot_name, ctx) {
+    if has_prior_named_slot(component, el_id, slot_name, ctx) {
         let component_name = ctx.source
             [component.name.span.start as usize..component.name.span.end as usize]
             .to_string();
@@ -2868,7 +2868,7 @@ fn validate_component_slot_conflicts(
 
     if slot_name == "default"
         && let Some(conflict_span) =
-            component_has_implicit_default_children(component, Some(el.id), ctx)
+            component_has_implicit_default_children(component, Some(el_id), ctx)
     {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SlotDefaultDuplicate,
@@ -2885,20 +2885,6 @@ fn check_empty_fragment(fragment_id: svelte_ast::FragmentId, ctx: &mut VisitCont
         ctx.warnings_mut()
             .push(Diagnostic::warning(DiagnosticKind::BlockEmpty, text.span));
     }
-}
-
-fn element_has_slot_attr(parent: ParentRef, ctx: &VisitContext<'_, '_>) -> bool {
-    if !matches!(parent.kind, ParentKind::Element | ParentKind::SvelteElement) {
-        return false;
-    }
-    let attrs = match ctx.store.get(parent.id) {
-        Node::Element(el) => &el.attributes,
-        Node::SvelteElement(el) => &el.attributes,
-        _ => return false,
-    };
-    ctx.data
-        .attribute(parent.id, attrs, "slot")
-        .is_some_and(|attr| matches!(attr, Attribute::StringAttribute(_)))
 }
 
 fn contains_non_whitespace_text(text: &str) -> bool {
@@ -3335,7 +3321,7 @@ fn check_named_slot_duplicate(
         return;
     };
     let Some(slot_span) = attributes.iter().find_map(|a| match a {
-        Attribute::StringAttribute(sa) if sa.name == "slot" => Some(sa.value_span),
+        Attribute::StringAttribute(sa) if sa.name == SLOT_ATTRIBUTE => Some(sa.value_span),
         _ => None,
     }) else {
         return;
@@ -3367,7 +3353,7 @@ fn check_component_default_slot_duplicate(cn: &ComponentNode, ctx: &mut VisitCon
         node_attributes(ctx.store.get(id)).is_some_and(|attrs| {
             attrs.iter().any(|a| {
                 matches!(a, Attribute::StringAttribute(sa)
-                    if sa.name == "slot" && sa.value_span.source_text(ctx.source) == "default")
+                    if sa.name == SLOT_ATTRIBUTE && sa.value_span.source_text(ctx.source) == "default")
             })
         })
     });
@@ -3385,7 +3371,7 @@ fn check_component_default_slot_duplicate(cn: &ComponentNode, ctx: &mut VisitCon
         let has_slot = node_attributes(node).is_some_and(|attrs| {
             attrs
                 .iter()
-                .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot"))
+                .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == SLOT_ATTRIBUTE))
         });
         if has_slot {
             continue;

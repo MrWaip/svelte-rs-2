@@ -3,5 +3,6 @@ pub(crate) mod data;
 
 pub(crate) use builder::build;
 pub use data::{
-    FragmentBindings, FragmentScript, FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace,
+    FragmentBindings, FragmentContent, FragmentScript, FragmentSemantics, FragmentSemanticsStore,
+    FragmentWhitespace,
 };

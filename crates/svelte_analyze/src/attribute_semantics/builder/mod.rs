@@ -43,8 +43,8 @@ use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 use svelte_ast::{
     AttachTag, Attribute, BindDirective, Component, ConcatPart, Element, ExpressionAttribute,
-    FragmentId, Node, NodeId, OnDirectiveLegacy, OxcNodeId, StyleDirective, SvelteBody,
-    SvelteBoundary, SvelteDocument, SvelteWindow,
+    FragmentId, Node, NodeId, OnDirectiveLegacy, OxcNodeId, SLOT_ATTRIBUTE, StyleDirective,
+    SvelteBody, SvelteBoundary, SvelteDocument, SvelteWindow,
 };
 use svelte_component_semantics::{ComponentSemantics, SymbolFlags};
 
@@ -1685,7 +1685,7 @@ fn is_slot_meta_attribute(attr: &Attribute) -> bool {
     let Some(name) = attr.name() else {
         return false;
     };
-    name == "name" || name == "slot"
+    name == "name" || name == SLOT_ATTRIBUTE
 }
 
 fn parse_event_modifiers(modifiers: &[String]) -> EventModifier {

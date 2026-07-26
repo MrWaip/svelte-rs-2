@@ -1,11 +1,13 @@
 use svelte_ast::{
-    AstStore, Component, FragmentId, Namespace, Node, is_whitespace_removable_parent,
+    AstStore, Attribute, Component, FragmentId, Namespace, Node, NodeId, SLOT_ATTRIBUTE,
+    is_whitespace_removable_parent,
 };
 
 use crate::AnalysisData;
 
 use super::data::{
-    FragmentBindings, FragmentScript, FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace,
+    FragmentBindings, FragmentContent, FragmentScript, FragmentSemantics, FragmentSemanticsStore,
+    FragmentWhitespace,
 };
 
 struct WsContext {
@@ -175,10 +177,58 @@ fn walk(
             whitespace,
             bindings,
             script,
+            content: classify_content(fragment_id, store, data),
         },
     );
 
     contains_script
+}
+
+fn classify_content(
+    fragment_id: FragmentId,
+    store: &AstStore,
+    data: &AnalysisData,
+) -> FragmentContent {
+    let Some(owner) = store.fragment(fragment_id).owner else {
+        return FragmentContent::Markup;
+    };
+
+    match store.get(owner) {
+        Node::IfBlock(_)
+        | Node::EachBlock(_)
+        | Node::AwaitBlock(_)
+        | Node::KeyBlock(_)
+        | Node::SnippetBlock(_)
+        | Node::ComponentNode(_)
+        | Node::SvelteComponentLegacy(_)
+        | Node::SvelteFragmentLegacy(_)
+        | Node::SvelteBoundary(_) => FragmentContent::SelfContained,
+        Node::Element(el) => slot_content(owner, &el.attributes, data),
+        Node::SvelteElement(el) => slot_content(owner, &el.attributes, data),
+        Node::SvelteSelf(_)
+        | Node::SvelteHead(_)
+        | Node::SlotElementLegacy(_)
+        | Node::SvelteWindow(_)
+        | Node::SvelteDocument(_)
+        | Node::SvelteBody(_)
+        | Node::Text(_)
+        | Node::Comment(_)
+        | Node::ExpressionTag(_)
+        | Node::RenderTag(_)
+        | Node::HtmlTag(_)
+        | Node::ConstTag(_)
+        | Node::DeclarationTag(_)
+        | Node::DebugTag(_)
+        | Node::Error(_) => FragmentContent::Markup,
+    }
+}
+
+fn slot_content(owner: NodeId, attrs: &[Attribute], data: &AnalysisData) -> FragmentContent {
+    if data.attribute(owner, attrs, SLOT_ATTRIBUTE).is_some() {
+        FragmentContent::SelfContained
+    } else {
+        FragmentContent::Markup
+    }
 }
 
 fn walk_block(

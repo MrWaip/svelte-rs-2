@@ -222,6 +222,8 @@ pub const SVELTE_BOUNDARY: &str = "svelte:boundary";
 
 pub const SLOT_ELEMENT: &str = "slot";
 
+pub const SLOT_ATTRIBUTE: &str = "slot";
+
 pub const SVELTE_META_TAGS: &[&str] = &[
     SVELTE_HEAD,
     SVELTE_OPTIONS,

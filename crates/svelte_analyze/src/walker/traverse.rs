@@ -1,4 +1,5 @@
 use std::slice;
+use svelte_ast::SLOT_ATTRIBUTE;
 
 use super::*;
 
@@ -432,7 +433,7 @@ fn walk_component_like(
 
 fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option<&'a str> {
     attrs.iter().find_map(|attr| match attr {
-        Attribute::StringAttribute(attr) if attr.name == "slot" => {
+        Attribute::StringAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
             Some(attr.value_span.source_text(source))
         }
         _ => None,

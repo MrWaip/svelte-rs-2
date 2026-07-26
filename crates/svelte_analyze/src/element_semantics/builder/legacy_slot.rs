@@ -1,5 +1,7 @@
 use smallvec::SmallVec;
-use svelte_ast::{Attribute, Component, FragmentId, Node, NodeId, SlotElementLegacy};
+use svelte_ast::{
+    Attribute, Component, FragmentId, Node, NodeId, SLOT_ATTRIBUTE, SlotElementLegacy,
+};
 
 use super::super::{LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics};
 
@@ -62,7 +64,7 @@ fn default_slot_form(
         return LegacyDefaultSlot::SlotDefaultInvalid;
     }
     if has_let_directive(attributes) {
-        if has_named_attribute(attributes, "slot") {
+        if has_named_attribute(attributes, SLOT_ATTRIBUTE) {
             return LegacyDefaultSlot::OwnLetDisplaced;
         }
         return LegacyDefaultSlot::SlotDefaultInvalid;
@@ -99,7 +101,9 @@ fn element_has_default_slot_attribute(
         _ => return false,
     };
     attrs.iter().any(|a| match a {
-        Attribute::StringAttribute(sa) => sa.name == "slot" && sa.value(source) == "default",
+        Attribute::StringAttribute(sa) => {
+            sa.name == SLOT_ATTRIBUTE && sa.value(source) == "default"
+        }
         _ => false,
     })
 }

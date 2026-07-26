@@ -49,7 +49,9 @@ pub use element_semantics::{
     LegacyDefaultSlot, LegacySlotSemantics, RegularElementSemantics, SvelteElementSemantics,
     TextareaBody, TextareaSegment,
 };
-pub use fragment_semantics::{FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace};
+pub use fragment_semantics::{
+    FragmentContent, FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace,
+};
 pub use runtime_semantics::{
     ChildPropMode, ComponentBindOwnership, ComponentFrame, ContextScope, LegacyInit,
     LegacySlotSanitization, PropAccessors, PropsInput, RuntimeSemantics, RuntimeSemanticsStore,

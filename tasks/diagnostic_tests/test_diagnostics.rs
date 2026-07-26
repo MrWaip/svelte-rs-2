@@ -2102,6 +2102,10 @@ mod slots {
         let_directive_on_svelte_self,
         "slots/let_directive_on_svelte_self"
     );
+    diagnostic_case!(
+        slot_attribute_invalid_on_svelte_element,
+        "slots/slot_attribute_invalid_on_svelte_element"
+    );
 }
 
 mod const_tag {
@@ -2134,6 +2138,54 @@ mod const_tag {
     diagnostic_case!(
         validate_const_tag_valid_placement_key,
         "const_tag/validate_const_tag_valid_placement_key"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_else,
+        "const_tag/validate_const_tag_valid_placement_else"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_await_then,
+        "const_tag/validate_const_tag_valid_placement_await_then"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_await_catch,
+        "const_tag/validate_const_tag_valid_placement_await_catch"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_snippet,
+        "const_tag/validate_const_tag_valid_placement_snippet"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_component,
+        "const_tag/validate_const_tag_valid_placement_component"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_svelte_component,
+        "const_tag/validate_const_tag_valid_placement_svelte_component"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_svelte_fragment,
+        "const_tag/validate_const_tag_valid_placement_svelte_fragment"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_svelte_boundary,
+        "const_tag/validate_const_tag_valid_placement_svelte_boundary"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_svelte_element_slot,
+        "const_tag/validate_const_tag_valid_placement_svelte_element_slot"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_placement_svelte_element_no_slot,
+        "const_tag/validate_const_tag_invalid_placement_svelte_element_no_slot"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_placement_svelte_head,
+        "const_tag/validate_const_tag_invalid_placement_svelte_head"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_placement_slot_element,
+        "const_tag/validate_const_tag_invalid_placement_slot_element"
     );
     diagnostic_case!(
         validate_const_tag_invalid_expression,
