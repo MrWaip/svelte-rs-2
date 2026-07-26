@@ -150,6 +150,7 @@ pub fn generate<'a>(
         module_body = module_output.body;
     }
 
+    codegen::prepare_declaration_groups(&mut ctx);
     let codegen_result = codegen::codegen_root_fragment(&mut ctx).expect("codegen failed");
     let hoisted = codegen_result.hoisted;
     let template_body = codegen_result.body;

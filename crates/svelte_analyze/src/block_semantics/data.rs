@@ -247,9 +247,15 @@ pub struct ConstTagBlockSemantics {
 pub enum FragmentDeclarationAsyncKind {
     Sync,
 
-    Awaited { blockers: SmallVec<[u32; 2]> },
+    Awaited {
+        blockers: SmallVec<[u32; 2]>,
+        declaration_blockers: SmallVec<[NodeId; 2]>,
+    },
 
-    Deferred { blockers: SmallVec<[u32; 2]> },
+    Deferred {
+        blockers: SmallVec<[u32; 2]>,
+        declaration_blockers: SmallVec<[NodeId; 2]>,
+    },
 }
 
 impl FragmentDeclarationAsyncKind {

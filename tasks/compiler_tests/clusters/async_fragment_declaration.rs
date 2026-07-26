@@ -49,8 +49,24 @@ compiler_case!(
 compiler_case!(
     declaration_tag_outer_fragment_blocker,
     "async_fragment_declaration/declaration_tag_outer_fragment_blocker",
-    ignore =
-        "a declaration in a nested fragment does not block on the outer fragment's group member"
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    mixed_declaration_then_const,
+    "async_fragment_declaration/mixed_declaration_then_const",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    mixed_const_then_declaration,
+    "async_fragment_declaration/mixed_const_then_declaration",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    snippet_blocks_on_outer_fragment,
+    "async_fragment_declaration/snippet_blocks_on_outer_fragment",
+    [prod, dev, ssr_todo, ssr_dev_todo]
 );
 
 compiler_case!(

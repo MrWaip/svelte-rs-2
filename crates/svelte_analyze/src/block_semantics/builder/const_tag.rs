@@ -16,7 +16,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
     let Some(_) = declarator_from_stmt(stmt) else {
         return;
     };
-    let async_kind = super::common::async_kind_from_expression(ctx.expressions.get(tag.id));
+    let base = super::common::async_kind_from_expression(ctx.expressions.get(tag.id));
+    let async_kind = super::declaration_group::resolve(ctx, tag.id, tag.decl.id(), base);
 
     let order_rank = ctx
         .reactivity

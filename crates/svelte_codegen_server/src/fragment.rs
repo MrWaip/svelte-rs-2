@@ -193,44 +193,49 @@ impl<'a> ServerCodegen<'a> {
     }
 
     pub(crate) fn emit_fragment_declaration_tags(&mut self, id: FragmentId) -> Result<()> {
+        let group = self.fragment_declaration_group(id);
         let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
         let declaration_tags: Vec<NodeId> = node_ids
             .into_iter()
             .filter(|&nid| matches!(self.component.store.get(nid), Node::DeclarationTag(_)))
+            .filter(|nid| !group.contains(nid))
             .collect();
-        self.emit_declaration_tags(&declaration_tags)
+        for nid in declaration_tags {
+            self.declaration_tag(nid)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn fragment_declaration_group(&self, id: FragmentId) -> Vec<NodeId> {
+        if !self.experimental_async {
+            return Vec::new();
+        }
+        self.analysis.fragment_declaration_group(id).to_vec()
     }
 
     pub(crate) fn emit_fragment_const_tags_hoisted(&mut self, id: FragmentId) -> Result<()> {
+        let group = self.fragment_declaration_group(id);
         let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
 
-        let mut const_tags: Vec<(u32, NodeId, bool)> = node_ids
+        let mut const_tags: Vec<(u32, NodeId)> = node_ids
             .iter()
             .copied()
             .filter_map(|nid| match self.analysis.block_semantics(nid) {
-                BlockSemantics::ConstTag(sem) => {
-                    let is_async = !matches!(
-                        sem.async_kind,
-                        svelte_analyze::FragmentDeclarationAsyncKind::Sync
-                    );
-                    Some((sem.order_rank, nid, is_async))
-                }
+                BlockSemantics::ConstTag(sem) => Some((sem.order_rank, nid)),
                 _ => None,
             })
             .collect();
-        const_tags.sort_by_key(|(rank, _, _)| *rank);
-        let mut grouped: Vec<NodeId> = Vec::new();
-        for &(_, nid, is_async) in &const_tags {
-            if is_async {
-                grouped.push(nid);
+        const_tags.sort_by_key(|(rank, _)| *rank);
+        for &(_, nid) in &const_tags {
+            if group.contains(&nid) {
                 continue;
             }
             self.const_tag(nid)?;
         }
-        if !grouped.is_empty() {
-            self.emit_const_tags_async(&grouped)?;
+        if group.is_empty() {
+            return Ok(());
         }
-        Ok(())
+        self.emit_fragment_declaration_group(id, &group)
     }
 
     pub(crate) fn emit_fragment_snippets_debug_head(&mut self, id: FragmentId) -> Result<()> {

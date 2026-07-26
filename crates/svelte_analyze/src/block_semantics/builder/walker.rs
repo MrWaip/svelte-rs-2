@@ -4,11 +4,12 @@ use crate::types::data::{FragmentNamespaces, IgnoreData, JsAst};
 
 use super::super::{BlockSemanticsStore, SnippetPlacement};
 use super::common::declarator_from_stmt;
+use super::declaration_group::DeclarationOwner;
 
 use oxc_ast::ast::IdentifierReference;
 use oxc_ast_visit::Visit;
 use oxc_semantic::ScopeId;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use svelte_ast::{Attribute, BindDirective, Component, EachBlock, FragmentId, Node, NodeId};
 use svelte_component_semantics::{ComponentSemantics, ReferenceId, SymbolId, walk_bindings};
@@ -40,10 +41,14 @@ pub(super) fn populate(
         store,
         each_stack: SmallVec::new(),
         bind_group_hits: FxHashSet::default(),
+        declaration_owners: FxHashMap::default(),
+        declaration_group_stack: SmallVec::new(),
     };
+    ctx.enter_declaration_group();
     for &node_id in component.store.fragment_nodes(component.root) {
         ctx.visit_node(node_id);
     }
+    ctx.leave_declaration_group(component.root);
 
     finalize_hoistable(
         &ctx.snippet_scopes,
@@ -168,6 +173,10 @@ pub(super) struct Ctx<'c, 'a> {
     each_stack: SmallVec<[EachFrame; 4]>,
 
     bind_group_hits: FxHashSet<NodeId>,
+
+    pub(super) declaration_owners: FxHashMap<SymbolId, DeclarationOwner>,
+
+    declaration_group_stack: SmallVec<[SmallVec<[NodeId; 2]>; 4]>,
 }
 
 #[derive(Clone)]
@@ -230,12 +239,47 @@ impl<'a> Ctx<'_, 'a> {
         self.non_root_depth += 1;
         let prev_fragment_id = self.current_fragment_id;
         self.current_fragment_id = fragment_id;
+        self.enter_declaration_group();
         let component = self.component;
         for &id in component.fragment_nodes(fragment_id) {
             self.visit_node(id);
         }
+        self.leave_declaration_group(fragment_id);
         self.current_fragment_id = prev_fragment_id;
         self.non_root_depth -= 1;
+    }
+
+    pub(super) fn enter_declaration_group(&mut self) {
+        self.declaration_group_stack.push(SmallVec::new());
+    }
+
+    pub(super) fn leave_declaration_group(&mut self, fragment_id: svelte_ast::FragmentId) {
+        let Some(members) = self.declaration_group_stack.pop() else {
+            return;
+        };
+        if members.is_empty() {
+            return;
+        }
+        self.store
+            .set_fragment_declaration_group(fragment_id, members);
+    }
+
+    pub(super) fn declaration_group_is_open(&self) -> bool {
+        self.declaration_group_stack
+            .last()
+            .is_some_and(|members| !members.is_empty())
+    }
+
+    pub(super) fn push_declaration_group_member(&mut self, node_id: NodeId) {
+        let Some(members) = self.declaration_group_stack.last_mut() else {
+            return;
+        };
+        let opens_group = members.is_empty();
+        members.push(node_id);
+        if opens_group {
+            self.store
+                .open_fragment_declaration_group(self.current_fragment_id);
+        }
     }
 
     pub(super) fn push_each_frame(

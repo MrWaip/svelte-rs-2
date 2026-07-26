@@ -101,6 +101,10 @@ pub struct CodegenState<'a> {
 
     pub(crate) const_tag_blockers: FxHashMap<SymbolId, (String, usize)>,
 
+    pub(crate) declaration_blocker_slots: FxHashMap<NodeId, (String, usize)>,
+
+    pub(crate) declaration_group_idents: FxHashMap<svelte_ast::FragmentId, String>,
+
     pub(crate) each_item_writeback_places: Option<FxHashMap<SymbolId, Expression<'a>>>,
 
     pub(crate) hoisted_templates: FxHashMap<String, String>,
@@ -140,6 +144,8 @@ impl<'a> CodegenState<'a> {
             delegated_events_set: FxHashSet::default(),
             css_text,
             const_tag_blockers: FxHashMap::default(),
+            declaration_blocker_slots: FxHashMap::default(),
+            declaration_group_idents: FxHashMap::default(),
             each_item_writeback_places: None,
             hoisted_templates: FxHashMap::default(),
         }

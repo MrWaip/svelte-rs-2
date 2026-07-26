@@ -1,66 +1,109 @@
+use oxc_ast::ast::Statement;
 use smallvec::SmallVec;
-use svelte_ast::{Component, FragmentId, Node, NodeId};
+use svelte_ast::{FragmentId, NodeId};
+use svelte_component_semantics::{OxcNodeId, SymbolId, walk_bindings};
 
-use super::super::{
-    BlockSemantics, BlockSemanticsStore, ConstTagBlockSemantics, DeclarationTagBlockSemantics,
-    FragmentDeclarationAsyncKind,
-};
+use super::super::FragmentDeclarationAsyncKind;
+use super::walker::Ctx;
+use crate::expression_semantics::ExpressionSemantics;
 
-pub(super) fn populate(component: &Component, store: &mut BlockSemanticsStore) {
-    for index in 0..component.store.fragments_len() {
-        populate_fragment(component, FragmentId(index), store);
+pub(super) struct DeclarationOwner {
+    pub(super) fragment: FragmentId,
+    pub(super) node: NodeId,
+    pub(super) is_async: bool,
+}
+
+pub(super) fn resolve(
+    ctx: &mut Ctx<'_, '_>,
+    node_id: NodeId,
+    decl_stmt_id: OxcNodeId,
+    base: FragmentDeclarationAsyncKind,
+) -> FragmentDeclarationAsyncKind {
+    let declaration_blockers = outer_group_blockers(ctx, node_id);
+    let async_kind = join_group(base, declaration_blockers, ctx.declaration_group_is_open());
+    register_owners(ctx, node_id, decl_stmt_id, async_kind.is_async());
+    if async_kind.is_async() {
+        ctx.push_declaration_group_member(node_id);
+    }
+    async_kind
+}
+
+fn join_group(
+    base: FragmentDeclarationAsyncKind,
+    declaration_blockers: SmallVec<[NodeId; 2]>,
+    group_open: bool,
+) -> FragmentDeclarationAsyncKind {
+    match base {
+        FragmentDeclarationAsyncKind::Awaited { blockers, .. } => {
+            FragmentDeclarationAsyncKind::Awaited {
+                blockers,
+                declaration_blockers,
+            }
+        }
+        FragmentDeclarationAsyncKind::Deferred { blockers, .. } => {
+            FragmentDeclarationAsyncKind::Deferred {
+                blockers,
+                declaration_blockers,
+            }
+        }
+        FragmentDeclarationAsyncKind::Sync => {
+            if !group_open && declaration_blockers.is_empty() {
+                return FragmentDeclarationAsyncKind::Sync;
+            }
+            FragmentDeclarationAsyncKind::Deferred {
+                blockers: SmallVec::new(),
+                declaration_blockers,
+            }
+        }
     }
 }
 
-fn populate_fragment(component: &Component, fragment: FragmentId, store: &mut BlockSemanticsStore) {
-    let mut group_open = false;
-    for &node_id in component.store.fragment_nodes(fragment) {
-        if !matches!(
-            component.store.get(node_id),
-            Node::ConstTag(_) | Node::DeclarationTag(_)
-        ) {
-            continue;
-        }
-        let Some(async_kind) = declaration_async_kind(store, node_id) else {
+fn outer_group_blockers(ctx: &Ctx<'_, '_>, node_id: NodeId) -> SmallVec<[NodeId; 2]> {
+    let ExpressionSemantics::Expression(data) = ctx.expressions.get(node_id) else {
+        return SmallVec::new();
+    };
+    let mut blockers: SmallVec<[NodeId; 2]> = SmallVec::new();
+    for sym in &data.references {
+        let Some(owner) = ctx.declaration_owners.get(sym) else {
             continue;
         };
-        if async_kind.is_async() {
-            group_open = true;
+        if !owner.is_async {
             continue;
         }
-        if !group_open {
+        if owner.fragment == ctx.current_fragment_id {
             continue;
         }
-        defer_declaration(store, node_id);
+        if blockers.contains(&owner.node) {
+            continue;
+        }
+        blockers.push(owner.node);
     }
+    blockers
 }
 
-fn declaration_async_kind(
-    store: &BlockSemanticsStore,
+fn register_owners(
+    ctx: &mut Ctx<'_, '_>,
     node_id: NodeId,
-) -> Option<FragmentDeclarationAsyncKind> {
-    match store.get(node_id) {
-        BlockSemantics::ConstTag(sem) => Some(sem.async_kind.clone()),
-        BlockSemantics::DeclarationTag(sem) => Some(sem.async_kind.clone()),
-        _ => None,
+    decl_stmt_id: OxcNodeId,
+    is_async: bool,
+) {
+    let parsed = ctx.parsed;
+    let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(decl_stmt_id) else {
+        return;
+    };
+    let mut declared: SmallVec<[SymbolId; 2]> = SmallVec::new();
+    for declarator in &decl.declarations {
+        walk_bindings(&declarator.id, |v| declared.push(v.symbol));
     }
-}
-
-fn defer_declaration(store: &mut BlockSemanticsStore, node_id: NodeId) {
-    let deferred = FragmentDeclarationAsyncKind::Deferred {
-        blockers: SmallVec::new(),
-    };
-    let updated = match store.get(node_id) {
-        BlockSemantics::ConstTag(sem) => BlockSemantics::ConstTag(ConstTagBlockSemantics {
-            async_kind: deferred,
-            ..sem.clone()
-        }),
-        BlockSemantics::DeclarationTag(_) => {
-            BlockSemantics::DeclarationTag(DeclarationTagBlockSemantics {
-                async_kind: deferred,
-            })
-        }
-        _ => return,
-    };
-    store.set(node_id, updated);
+    let fragment = ctx.current_fragment_id;
+    for sym in declared {
+        ctx.declaration_owners.insert(
+            sym,
+            DeclarationOwner {
+                fragment,
+                node: node_id,
+                is_async,
+            },
+        );
+    }
 }

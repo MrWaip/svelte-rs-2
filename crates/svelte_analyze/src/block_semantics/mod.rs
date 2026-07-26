@@ -14,12 +14,15 @@ pub use data::{
 
 use crate::scope::SymbolId;
 use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
 use svelte_ast::NodeId;
 
 #[derive(Debug, Default, Clone)]
 pub struct BlockSemanticsStore {
     entries: FxHashMap<u32, BlockSemantics>,
     each_index_sym_to_block: FxHashMap<SymbolId, NodeId>,
+    fragment_declaration_groups: FxHashMap<u32, SmallVec<[NodeId; 2]>>,
+    fragment_declaration_group_order: Vec<svelte_ast::FragmentId>,
 }
 
 impl BlockSemanticsStore {
@@ -28,7 +31,31 @@ impl BlockSemanticsStore {
         Self {
             entries: FxHashMap::with_capacity_and_hasher(cap, Default::default()),
             each_index_sym_to_block: FxHashMap::default(),
+            fragment_declaration_groups: FxHashMap::default(),
+            fragment_declaration_group_order: Vec::new(),
         }
+    }
+
+    pub fn fragment_declaration_group(&self, id: svelte_ast::FragmentId) -> &[NodeId] {
+        self.fragment_declaration_groups
+            .get(&id.0)
+            .map_or(&[], SmallVec::as_slice)
+    }
+
+    pub fn fragment_declaration_group_order(&self) -> &[svelte_ast::FragmentId] {
+        &self.fragment_declaration_group_order
+    }
+
+    pub(crate) fn open_fragment_declaration_group(&mut self, id: svelte_ast::FragmentId) {
+        self.fragment_declaration_group_order.push(id);
+    }
+
+    pub(crate) fn set_fragment_declaration_group(
+        &mut self,
+        id: svelte_ast::FragmentId,
+        members: SmallVec<[NodeId; 2]>,
+    ) {
+        self.fragment_declaration_groups.insert(id.0, members);
     }
 
     pub fn get(&self, id: NodeId) -> &BlockSemantics {

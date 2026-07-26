@@ -36,7 +36,13 @@ const FROZEN_APIS: &[(&str, &str, &[&str])] = &[
     (
         "svelte_analyze",
         "BlockSemanticsStore",
-        &["get", "block_for_each_index_sym", "is_each_index_sym"],
+        &[
+            "get",
+            "block_for_each_index_sym",
+            "is_each_index_sym",
+            "fragment_declaration_group",
+            "fragment_declaration_group_order",
+        ],
     ),
     ("svelte_analyze", "AttributeSemanticsStore", &["get"]),
     (

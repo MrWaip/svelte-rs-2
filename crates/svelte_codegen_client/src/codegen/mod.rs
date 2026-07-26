@@ -21,6 +21,7 @@ use crate::context::Ctx;
 
 pub(crate) use data_structures::{CodegenError, CodegenResult, Result};
 pub(crate) use fragment::FragmentEmitKind;
+pub(crate) use hoisted::const_tag::prepare_declaration_groups;
 
 use data_structures::{EmitState, FragmentCtx};
 

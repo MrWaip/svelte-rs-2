@@ -32,6 +32,8 @@ pub(crate) struct ServerCodegen<'a> {
     pub promise_hoists: Option<Vec<Statement<'a>>>,
     pub promise_index: u32,
     pub const_tag_blockers: HashMap<SymbolId, (String, u32)>,
+    pub declaration_blocker_slots: HashMap<NodeId, (String, u32)>,
+    pub declaration_group_idents: HashMap<svelte_ast::FragmentId, String>,
     pub injected_css_text: Option<&'a str>,
     pub emitted_snippet_names: Vec<&'a str>,
 }
@@ -72,6 +74,8 @@ impl<'a> ServerCodegen<'a> {
             promise_hoists: None,
             promise_index: 0,
             const_tag_blockers: HashMap::new(),
+            declaration_blocker_slots: HashMap::new(),
+            declaration_group_idents: HashMap::new(),
             injected_css_text,
             emitted_snippet_names: Vec::new(),
         }

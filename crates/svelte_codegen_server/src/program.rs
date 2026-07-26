@@ -65,6 +65,7 @@ impl<'a> ServerCodegen<'a> {
         let runtime = self.analysis.runtime_semantics.query();
         let root = self.component.root;
         self.reserve_each_index_names();
+        self.prepare_declaration_groups();
         self.fragment(root, FragmentParent::Root)?;
         let mut template_body = self.take_render_hoists();
         template_body.extend(self.take_renderer_statements());

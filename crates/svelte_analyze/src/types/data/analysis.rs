@@ -303,6 +303,13 @@ impl<'a> AnalysisData<'a> {
     pub fn block_semantics(&self, id: NodeId) -> &BlockSemantics {
         self.block_semantics_store.get(id)
     }
+    pub fn fragment_declaration_group(&self, id: svelte_ast::FragmentId) -> &[NodeId] {
+        self.block_semantics_store.fragment_declaration_group(id)
+    }
+    pub fn fragment_declaration_group_order(&self) -> &[svelte_ast::FragmentId] {
+        self.block_semantics_store
+            .fragment_declaration_group_order()
+    }
     pub fn fragment_facts_by_id(&self, id: svelte_ast::FragmentId) -> Option<&FragmentFactsEntry> {
         self.template.fragment_facts.lookup_by_id(id)
     }

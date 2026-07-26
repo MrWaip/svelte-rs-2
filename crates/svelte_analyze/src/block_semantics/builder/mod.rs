@@ -41,6 +41,5 @@ pub fn build(
         dev,
         &mut store,
     );
-    declaration_group::populate(component, &mut store);
     store
 }

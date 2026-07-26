@@ -136,8 +136,20 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.emit_inline_snippet_block(state, id)?;
         }
 
+        let group: SmallVec<[NodeId; 4]> = match self.ctx.state.experimental_async {
+            true => self
+                .ctx
+                .query
+                .analysis
+                .fragment_declaration_group(fragment_id)
+                .iter()
+                .copied()
+                .collect(),
+            false => SmallVec::new(),
+        };
+
         {
-            use svelte_analyze::{BlockSemantics, FragmentDeclarationAsyncKind};
+            use svelte_analyze::BlockSemantics;
             let recording_slot_const_tags = state.legacy_slot_record_const_tag_end;
             if recording_slot_const_tags {
                 state.legacy_slot_const_tag_start = Some(state.init.len());
@@ -148,26 +160,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 _ => 0,
             });
             if !state.skip_const_tags {
-                let mut grouped: SmallVec<[NodeId; 4]> = SmallVec::new();
                 for &id in &ordered {
-                    if !self.ctx.state.experimental_async {
-                        self.emit_hoisted_const_tag(state, ctx, id)?;
+                    if group.contains(&id) {
                         continue;
                     }
-                    let BlockSemantics::ConstTag(sem) = self.ctx.query.analysis.block_semantics(id)
-                    else {
-                        return CodegenError::unexpected_block_semantics(id, "ConstTag expected");
-                    };
-                    match sem.async_kind {
-                        FragmentDeclarationAsyncKind::Sync => {
-                            self.emit_hoisted_const_tag(state, ctx, id)?
-                        }
-                        FragmentDeclarationAsyncKind::Awaited { .. }
-                        | FragmentDeclarationAsyncKind::Deferred { .. } => grouped.push(id),
-                    }
-                }
-                if !grouped.is_empty() {
-                    self.emit_const_tags_async_batch(state, &grouped)?;
+                    self.emit_hoisted_const_tag(state, ctx, id)?;
                 }
             }
             if recording_slot_const_tags {
@@ -176,9 +173,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        let declaration_tag_ids: SmallVec<[NodeId; 2]> =
-            bucket.declaration_tags.iter().copied().collect();
-        self.emit_declaration_tags(state, &declaration_tag_ids)?;
+        for &id in &bucket.declaration_tags {
+            if group.contains(&id) {
+                continue;
+            }
+            self.emit_hoisted_declaration_tag(state, id)?;
+        }
+
+        if !group.is_empty() {
+            self.emit_fragment_declaration_group(state, fragment_id, &group)?;
+        }
 
         let multi_first_is_block = matches!(
             &strategy,
