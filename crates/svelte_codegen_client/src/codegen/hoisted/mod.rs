@@ -1,4 +1,4 @@
-mod const_tag;
+pub(in crate::codegen) mod const_tag;
 mod debug_tag;
 mod declaration_tag;
 mod snippet;

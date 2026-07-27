@@ -4,12 +4,37 @@ use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_analyze::{
     AttributeSemantics, ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics,
-    ComponentPropSemantics, ComponentSpreadSemantics, EventModifier, EventSemantics,
+    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
+    ConcatPartEmit, EventModifier, EventSemantics,
 };
 use svelte_ast::{Attribute, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
+use super::super::async_values::AsyncValues;
 use super::super::{Codegen, CodegenError, Result};
+
+pub(in super::super) fn sync_memo_slots_of_prop(memo: ComponentPropMemo) -> u32 {
+    match memo {
+        ComponentPropMemo::Derived => 1,
+        ComponentPropMemo::Awaited | ComponentPropMemo::Getter | ComponentPropMemo::Inline => 0,
+    }
+}
+
+fn sync_memo_slots_of_part(emit: ConcatPartEmit) -> u32 {
+    match emit {
+        ConcatPartEmit::HoistDerived => 1,
+        ConcatPartEmit::Awaited | ConcatPartEmit::Inline | ConcatPartEmit::Static => 0,
+    }
+}
+
+fn sync_memo_slots_of_spread(emit: ComponentSpreadEmit) -> u32 {
+    match emit {
+        ComponentSpreadEmit::MemoThunk => 1,
+        ComponentSpreadEmit::AwaitedThunk
+        | ComponentSpreadEmit::Thunk
+        | ComponentSpreadEmit::Inline => 0,
+    }
+}
 
 pub(in super::super) enum PropOrSpread<'a> {
     Prop(ObjProp<'a>),
@@ -33,6 +58,8 @@ pub(in super::super) struct ComponentPropsOutput<'a> {
     pub ownership_bindings: Vec<OwnershipBinding<'a>>,
     pub bind_init_stmts: Vec<Statement<'a>>,
     pub validate_binding_stmts: Vec<Statement<'a>>,
+    pub async_values: AsyncValues<'a>,
+    pub css_props: Vec<ObjProp<'a>>,
 }
 
 pub(in super::super) struct OwnershipBinding<'a> {
@@ -49,7 +76,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn build_component_props(
         &mut self,
         el_id: NodeId,
-        initial_memo_counter: u32,
     ) -> Result<ComponentPropsOutput<'a>> {
         let mut out = ComponentPropsOutput {
             items: Vec::new(),
@@ -61,8 +87,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ownership_bindings: Vec::new(),
             bind_init_stmts: Vec::new(),
             validate_binding_stmts: Vec::new(),
+            async_values: AsyncValues::new(0),
+            css_props: Vec::new(),
         };
-        let mut memo_counter: u32 = initial_memo_counter;
+        let mut memo_counter: u32 = 0;
 
         let component = self.ctx.query.component;
         let attrs: &[Attribute] = match component.store.get(el_id).as_component_like() {
@@ -71,6 +99,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 return CodegenError::semantic_mismatch(el_id, "component-like node expected");
             }
         };
+        out.async_values = AsyncValues::new(self.count_sync_memos(attrs));
 
         for attr in attrs {
             let attr_id: NodeId = attr.id();
@@ -92,6 +121,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         &mut out.items,
                         &mut out.memo_decls,
                         &mut memo_counter,
+                        &mut out.async_values,
                     )?;
                 }
                 AttributeSemantics::ComponentAttach(ComponentAttachSemantics { emit }) => {
@@ -133,6 +163,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         &mut out.items,
                         &mut out.memo_decls,
                         &mut memo_counter,
+                        &mut out.async_values,
                     )?;
                 }
                 AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(c)) => {
@@ -151,6 +182,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         &mut out.items,
                         &mut out.memo_decls,
                         &mut memo_counter,
+                        &mut out.async_values,
                     )?;
                 }
                 AttributeSemantics::Event(EventSemantics { modifiers, .. }) => {
@@ -182,7 +214,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         );
                     }
                 },
-                AttributeSemantics::ComponentCssProp(_) => continue,
+                AttributeSemantics::ComponentCssProp(value) => {
+                    let value = value.clone();
+                    self.emit_component_css_prop(
+                        attr,
+                        &value,
+                        &mut out.css_props,
+                        &mut out.memo_decls,
+                        &mut memo_counter,
+                        &mut out.async_values,
+                    )?;
+                }
                 AttributeSemantics::Skip(_) => continue,
                 _ => {
                     return CodegenError::semantic_mismatch(
@@ -194,6 +236,46 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         out.items.append(&mut out.deferred_items);
         Ok(out)
+    }
+
+    fn count_sync_memos(&self, attrs: &[Attribute]) -> u32 {
+        attrs
+            .iter()
+            .map(
+                |attr| match self.ctx.query.analysis.attributes.get(attr.id()) {
+                    AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(e)) => {
+                        sync_memo_slots_of_prop(e.memo)
+                    }
+                    AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(c)) => {
+                        c.plan.iter().copied().map(sync_memo_slots_of_part).sum()
+                    }
+                    AttributeSemantics::ComponentSpread(ComponentSpreadSemantics { emit }) => {
+                        sync_memo_slots_of_spread(*emit)
+                    }
+                    AttributeSemantics::ComponentCssProp(value) => {
+                        self.sync_memo_slots_of_css_prop(attr.id(), value)
+                    }
+                    AttributeSemantics::ComponentBind(_)
+                    | AttributeSemantics::ComponentAttach(_)
+                    | AttributeSemantics::SvelteComponentThis(_)
+                    | AttributeSemantics::Event(_)
+                    | AttributeSemantics::Skip(_)
+                    | AttributeSemantics::NonSpecial
+                    | AttributeSemantics::ElementBind(_)
+                    | AttributeSemantics::WindowBind(_)
+                    | AttributeSemantics::DocumentBind(_)
+                    | AttributeSemantics::BoundaryProp(_)
+                    | AttributeSemantics::HtmlConcat(_)
+                    | AttributeSemantics::CannotBeStatic(_)
+                    | AttributeSemantics::StaticAttr
+                    | AttributeSemantics::SpecialValueAttr(_)
+                    | AttributeSemantics::Class(_)
+                    | AttributeSemantics::Style(_)
+                    | AttributeSemantics::Autofocus
+                    | AttributeSemantics::RuntimeBehavior => 0,
+                },
+            )
+            .sum()
     }
 
     pub(in super::super) fn build_props_expr(

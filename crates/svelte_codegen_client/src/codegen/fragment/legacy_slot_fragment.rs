@@ -60,7 +60,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
             n if n.as_component_like().is_some() => {
                 let let_stmts = self.emit_let_directive_legacy_stmts(slot_el_id)?;
-                inner_state.init.extend(let_stmts);
                 match (
                     n,
                     self.ctx.expression_data(slot_el_id).map(|d| d.volatility),
@@ -80,6 +79,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     _ => {
                         self.emit_element(&mut inner_state, &inner_ctx, slot_el_id, None)?;
                     }
+                }
+                let at = inner_state.legacy_slot_anchor_end.take().unwrap_or(0);
+                for (offset, stmt) in let_stmts.into_iter().enumerate() {
+                    inner_state.init.insert(at + offset, stmt);
                 }
             }
             _ => {}
@@ -111,6 +114,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let (_children, strategy) = prepare(
             self.ctx.query.component.fragment_nodes(fragment_id),
             &self.ctx.query.component.store,
+            &self.ctx.query.analysis.element_semantics,
             ctx,
             &mut bucket,
         );
@@ -118,16 +122,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     }
 
     fn has_let_directives(&self, owner_id: NodeId) -> bool {
-        let node = self.ctx.query.component.store.get(owner_id);
-        let attrs = match node {
-            Node::Element(el) => &el.attributes[..],
-            Node::SvelteFragmentLegacy(el) => &el.attributes[..],
-            _ => match node.as_component_like() {
-                Some(view) => view.attributes,
-                None => return false,
-            },
-        };
-        attrs
+        self.ctx
+            .query
+            .component
+            .store
+            .get(owner_id)
+            .attributes()
             .iter()
             .any(|a| matches!(a, svelte_ast::Attribute::LetDirectiveLegacy(_)))
     }

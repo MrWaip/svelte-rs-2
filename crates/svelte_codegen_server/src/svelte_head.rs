@@ -58,7 +58,7 @@ impl<'a> ServerCodegen<'a> {
                 | ElementSemantics::Boundary(_)
                 | ElementSemantics::SvelteElement(_)
                 | ElementSemantics::LegacySlot(_)
-                | ElementSemantics::LegacyComponentSlots(_) => {}
+                | ElementSemantics::Component(_) => {}
             }
         }
         Ok(())

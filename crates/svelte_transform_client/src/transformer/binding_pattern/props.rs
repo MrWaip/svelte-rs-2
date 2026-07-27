@@ -59,6 +59,20 @@ fn base_rest_excluded(emit_mode: PropEmitMode) -> Vec<String> {
     excluded
 }
 
+fn lazy_accessor_name(expr: &Expression<'_>) -> Option<String> {
+    let inner = expr.get_inner_expression();
+    let identifier = match inner {
+        Expression::CallExpression(call) if call.arguments.is_empty() => {
+            call.callee.get_inner_expression()
+        }
+        _ => inner,
+    };
+    match identifier {
+        Expression::Identifier(id) => Some(id.name.to_string()),
+        _ => None,
+    }
+}
+
 fn prop_assignment_default_expr<'a>(
     expr: Expression<'a>,
     bindable: bool,
@@ -183,7 +197,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     args.push(Arg::Str(name.to_string()));
                 }
                 let init = self.b.call_expr("$.rest_props", args);
-                declarators.push(self.props_declarator(decl_kind, name, init));
+                declarators.push(self.props_declarator_for(decl_kind, name, init, Some(v.symbol)));
                 return;
             }
 
@@ -269,20 +283,30 @@ impl<'a> ComponentTransformer<'_, 'a> {
                             } else {
                                 default_expr
                             };
-                            let default_expr = if matches!(default_lowering, PropDefaultKind::Eager)
-                            {
-                                default_expr
-                            } else {
-                                let lazy = super::derived::wrap_lazy(self.b, default_expr);
-                                self.b.seed_arrow_scope(&lazy, self.gen_arrow_scope);
-                                lazy
+                            let accessor =
+                                matches!(default_lowering, PropDefaultKind::LazyAccessor)
+                                    .then(|| lazy_accessor_name(&default_expr))
+                                    .flatten();
+                            let default_expr = match (default_lowering, accessor) {
+                                (PropDefaultKind::Eager | PropDefaultKind::None, _) => default_expr,
+                                (_, Some(name)) => self.b.rid_expr(&name),
+                                (PropDefaultKind::Lazy | PropDefaultKind::LazyAccessor, None) => {
+                                    let lazy = super::derived::wrap_lazy(self.b, default_expr);
+                                    self.b.seed_arrow_scope(&lazy, self.gen_arrow_scope);
+                                    lazy
+                                }
                             };
                             args.push(Arg::Expr(default_expr));
                         }
                     }
 
                     let init = self.b.call_expr("$.prop", args);
-                    declarators.push(self.props_declarator(decl_kind, local_name, init));
+                    declarators.push(self.props_declarator_for(
+                        decl_kind,
+                        local_name,
+                        init,
+                        Some(v.symbol),
+                    ));
                 }
             }
         });
@@ -329,13 +353,24 @@ impl<'a> ComponentTransformer<'_, 'a> {
         name: &'a str,
         init: Expression<'a>,
     ) -> VariableDeclarator<'a> {
-        self.b.ast.variable_declarator(
-            SPAN,
-            decl_kind,
-            self.b.ast.binding_pattern_binding_identifier(SPAN, name),
-            NONE,
-            Some(init),
-            false,
-        )
+        self.props_declarator_for(decl_kind, name, init, None)
+    }
+
+    fn props_declarator_for(
+        &self,
+        decl_kind: VariableDeclarationKind,
+        name: &'a str,
+        init: Expression<'a>,
+        symbol: Option<SymbolId>,
+    ) -> VariableDeclarator<'a> {
+        let pattern = self.b.ast.binding_pattern_binding_identifier(SPAN, name);
+        if let Some(symbol) = symbol
+            && let BindingPattern::BindingIdentifier(id) = &pattern
+        {
+            id.symbol_id.set(Some(symbol));
+        }
+        self.b
+            .ast
+            .variable_declarator(SPAN, decl_kind, pattern, NONE, Some(init), false)
     }
 }

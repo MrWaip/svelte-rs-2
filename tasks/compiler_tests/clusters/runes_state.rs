@@ -255,3 +255,8 @@ compiler_case!(
     "runes/state/declaration/single_array"
 );
 compiler_case!(declaration_string_key, "runes/state/declaration/string_key");
+compiler_case!(
+    class_private_field_needs_context,
+    "runes/state/class_private_field_needs_context",
+    [prod, dev, ssr, ssr_dev]
+);

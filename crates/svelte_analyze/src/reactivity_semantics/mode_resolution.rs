@@ -1,12 +1,11 @@
 use oxc_ast::ast::{
-    ArrowFunctionExpression, AwaitExpression, BindingPattern, Declaration, Expression,
-    ForOfStatement, Function, MethodDefinition, ModuleExportName, Program, Statement,
-    VariableDeclarationKind,
+    ArrowFunctionExpression, AwaitExpression, BindingPattern, Declaration, Expression, Function,
+    MethodDefinition, ModuleExportName, Program, Statement, VariableDeclarationKind,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_await_expression, walk_for_of_statement, walk_function,
-    walk_method_definition, walk_program,
+    walk_arrow_function_expression, walk_await_expression, walk_function, walk_method_definition,
+    walk_program,
 };
 use oxc_semantic::ScopeFlags;
 use rustc_hash::FxHashSet;
@@ -64,8 +63,7 @@ fn resolves_to_runes_via_signals(
     }) {
         return true;
     }
-    has_top_level_await(parsed.module_program.as_ref())
-        || has_top_level_await(parsed.program.as_ref())
+    has_instance_await(parsed) || has_template_await(parsed)
 }
 
 fn collect_top_level_non_rune_init_names(
@@ -219,24 +217,39 @@ fn collect_pattern_names<'a>(pattern: &'a BindingPattern<'a>, out: &mut FxHashSe
     }
 }
 
-fn has_top_level_await(program: Option<&Program<'_>>) -> bool {
-    let Some(program) = program else {
+fn has_instance_await(parsed: &JsAst<'_>) -> bool {
+    let Some(program) = parsed.program.as_ref() else {
         return false;
     };
-    let mut visitor = TopLevelAwaitVisitor {
-        depth: 0,
-        found: false,
-    };
+    let mut visitor = SuspendingAwaitVisitor::default();
     visitor.visit_program(program);
     visitor.found
 }
 
-struct TopLevelAwaitVisitor {
+fn has_template_await(parsed: &JsAst<'_>) -> bool {
+    let mut visitor = SuspendingAwaitVisitor::default();
+    for expr in parsed.iter_exprs() {
+        visitor.visit_expression(expr);
+        if visitor.found {
+            return true;
+        }
+    }
+    for stmt in parsed.iter_stmts() {
+        visitor.visit_statement(stmt);
+        if visitor.found {
+            return true;
+        }
+    }
+    false
+}
+
+#[derive(Default)]
+struct SuspendingAwaitVisitor {
     depth: u32,
     found: bool,
 }
 
-impl<'a> Visit<'a> for TopLevelAwaitVisitor {
+impl<'a> Visit<'a> for SuspendingAwaitVisitor {
     fn visit_program(&mut self, program: &Program<'a>) {
         walk_program(self, program);
     }
@@ -265,13 +278,5 @@ impl<'a> Visit<'a> for TopLevelAwaitVisitor {
             return;
         }
         walk_await_expression(self, expr);
-    }
-
-    fn visit_for_of_statement(&mut self, stmt: &ForOfStatement<'a>) {
-        if self.depth == 0 && stmt.r#await {
-            self.found = true;
-            return;
-        }
-        walk_for_of_statement(self, stmt);
     }
 }

@@ -49,6 +49,13 @@ macro_rules! compiler_case {
             assert_compiler_prod($case);
         }
     };
+    (@variant prod_todo, $case:expr) => {
+        #[test]
+        #[ignore = "prod parity not yet reached"]
+        fn prod() {
+            assert_compiler_prod($case);
+        }
+    };
     (@variant dev, $case:expr) => {
         #[test]
         fn dev() {
@@ -165,6 +172,22 @@ macro_rules! compiler_module_case {
         #[ignore = "ssr dev parity not yet reached"]
         fn ssr_dev() {
             assert_compiler_module_ssr_dev($path);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! preprocess_case {
+    ($name:ident) => {
+        $crate::preprocess_case!(@build $name, stringify!($name));
+    };
+    ($name:ident, $case:literal) => {
+        $crate::preprocess_case!(@build $name, $case);
+    };
+    (@build $name:ident, $case:expr) => {
+        #[test]
+        fn $name() {
+            assert_preprocess_case($case);
         }
     };
 }

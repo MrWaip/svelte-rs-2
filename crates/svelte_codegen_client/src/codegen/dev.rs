@@ -29,6 +29,14 @@ pub(in crate::codegen) fn getter_return_member<'a, 'b>(
 }
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
+    fn bind_each_item_store_backed(&self, bind: &BindDirective) -> bool {
+        match self.ctx.query.analysis.attributes.get(bind.id) {
+            AttributeSemantics::ElementBind(payload) => payload.each_item_store_backed,
+            AttributeSemantics::ComponentBind(payload) => payload.each_item_store_backed,
+            _ => false,
+        }
+    }
+
     fn bind_each_context_vars(&self, bind: &BindDirective) -> Vec<SymbolId> {
         match self.ctx.query.analysis.attributes.get(bind.id) {
             AttributeSemantics::ElementBind(payload) => payload.each_context_vars.to_vec(),
@@ -119,7 +127,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let source = self.ctx.query.component.source_text(bind.span).to_string();
         let (line, col) = self.ctx.state.line_index.line_col(bind.span.start);
-        let object_thunk = self.ctx.b.thunk(object);
+        let object_body = if self.bind_each_item_store_backed(bind) {
+            self.ctx
+                .b
+                .seq_expr([self.ctx.b.call_expr("$.mark_store_binding", []), object])
+        } else {
+            object
+        };
+        let object_thunk = self.ctx.b.thunk(object_body);
         let property_thunk = self.ctx.b.thunk(property);
         let empty = self.ctx.b.empty_array_expr();
         Some(self.ctx.b.call_stmt(

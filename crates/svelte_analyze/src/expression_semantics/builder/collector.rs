@@ -14,7 +14,7 @@ use oxc_ast_visit::walk::{
 };
 use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
-use svelte_component_semantics::{ComponentSemantics, SymbolId};
+use svelte_component_semantics::{ComponentSemantics, OxcNodeId, SymbolId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TopLevelForm {
@@ -28,11 +28,12 @@ pub(super) enum TopLevelForm {
 
 pub(super) struct ExprFacts {
     pub references: SmallVec<[SymbolId; 2]>,
-    pub top_level_reads: SmallVec<[SymbolId; 2]>,
+    pub evaluated_reads: SmallVec<[SymbolId; 2]>,
     pub member_or_call_roots: SmallVec<[SymbolId; 2]>,
     pub member_roots: SmallVec<[SymbolId; 2]>,
     pub top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
     pub has_await: bool,
+    pub awaits: SmallVec<[OxcNodeId; 2]>,
     pub has_call: bool,
     pub has_impure_call: bool,
     pub has_member: bool,
@@ -58,7 +59,7 @@ pub(super) fn collect<'a>(
         semantics,
         reactivity,
         references: SmallVec::new(),
-        top_level_reads: SmallVec::new(),
+        evaluated_reads: SmallVec::new(),
         member_or_call_roots: SmallVec::new(),
         member_roots: SmallVec::new(),
         top_member_or_call_roots: SmallVec::new(),
@@ -74,17 +75,19 @@ pub(super) fn collect<'a>(
         has_unsafe_member_root: false,
         has_unsafe_callee_or_new: false,
         has_await: false,
+        awaits: SmallVec::new(),
         fn_depth: 0,
         in_write_position: false,
     };
     visitor.visit_expression(expr);
     ExprFacts {
         references: visitor.references,
-        top_level_reads: visitor.top_level_reads,
+        evaluated_reads: visitor.evaluated_reads,
         member_or_call_roots: visitor.member_or_call_roots,
         member_roots: visitor.member_roots,
         top_member_or_call_roots: visitor.top_member_or_call_roots,
         has_await: visitor.has_await,
+        awaits: visitor.awaits,
         has_call: visitor.has_call,
         has_impure_call: visitor.has_impure_call,
         has_member: visitor.has_member,
@@ -264,7 +267,7 @@ struct Collector<'c, 'a> {
     semantics: &'c ComponentSemantics<'a>,
     reactivity: &'c ReactivitySemantics,
     references: SmallVec<[SymbolId; 2]>,
-    top_level_reads: SmallVec<[SymbolId; 2]>,
+    evaluated_reads: SmallVec<[SymbolId; 2]>,
     member_or_call_roots: SmallVec<[SymbolId; 2]>,
     member_roots: SmallVec<[SymbolId; 2]>,
     top_member_or_call_roots: SmallVec<[SymbolId; 2]>,
@@ -280,6 +283,7 @@ struct Collector<'c, 'a> {
     has_unsafe_member_root: bool,
     has_unsafe_callee_or_new: bool,
     has_await: bool,
+    awaits: SmallVec<[OxcNodeId; 2]>,
     fn_depth: u32,
     in_write_position: bool,
 }
@@ -369,7 +373,8 @@ impl<'a> Collector<'_, 'a> {
 impl<'a> Visit<'a> for Collector<'_, 'a> {
     fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
         let name = ident.name.as_str();
-        if name.starts_with('$') && name.len() > 1 && !name.starts_with("$$") {
+        if self.fn_depth == 0 && name.starts_with('$') && name.len() > 1 && !name.starts_with("$$")
+        {
             self.has_store_ref = true;
         }
         self.in_write_position = false;
@@ -381,11 +386,15 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
             | ReferenceSemantics::StoreWrite { symbol }
             | ReferenceSemantics::StoreUpdate { symbol } => Some(symbol),
             ReferenceSemantics::LegacyPropsIdentifierRead => {
-                self.reads_legacy_props = true;
+                if self.fn_depth == 0 {
+                    self.reads_legacy_props = true;
+                }
                 None
             }
             ReferenceSemantics::LegacyRestPropsIdentifierRead => {
-                self.reads_legacy_rest_props = true;
+                if self.fn_depth == 0 {
+                    self.reads_legacy_rest_props = true;
+                }
                 None
             }
             ReferenceSemantics::LegacySlotsIdentifierRead => None,
@@ -395,8 +404,8 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
         if !self.references.contains(&sym) {
             self.references.push(sym);
         }
-        if self.fn_depth == 0 && !self.top_level_reads.contains(&sym) {
-            self.top_level_reads.push(sym);
+        if self.fn_depth == 0 && !self.evaluated_reads.contains(&sym) {
+            self.evaluated_reads.push(sym);
         }
     }
 
@@ -505,6 +514,7 @@ impl<'a> Visit<'a> for Collector<'_, 'a> {
         if self.fn_depth == 0 {
             self.has_await = true;
         }
+        self.awaits.push(expr.node_id());
         walk_await_expression(self, expr);
     }
 

@@ -1,10 +1,14 @@
+use svelte_emit_builders::async_entry::{
+    EntryStatement, entry_thunk as async_entry_thunk, push_entry_statement,
+    statement_entry_location,
+};
 use svelte_emit_builders::store::build_store_base_read;
 pub(crate) mod codegen;
 mod context;
 mod custom_element;
 mod script;
 
-use oxc_allocator::Allocator;
+use oxc_allocator::{Allocator, CloneIn};
 use oxc_ast::ast::{
     AssignmentOperator, AssignmentTarget, BindingPattern, ExportDefaultDeclarationKind, Expression,
     Program, Statement,
@@ -16,8 +20,9 @@ use std::path::PathBuf;
 
 use svelte_analyze::reactivity_semantics::legacy_reactive::legacy_reactive_import_wrapper_name;
 use svelte_analyze::{
-    AnalysisData, BindingSemantics, ReferenceSemantics, SignalReferenceKind,
-    StateDeclarationSemantics, StateKind,
+    AnalysisData, AsyncEntryLocation, BindingSemantics, ComponentBindOwnership, ComponentFrame,
+    FunctionTracing, PropAccessors, PropsInput, ReferenceSemantics, SignalReadLocality,
+    SignalReferenceKind, StateDeclarationSemantics, StateKind, StoreBindings,
 };
 use svelte_ast_builder::{Arg, AssignLeft, Builder, ObjProp};
 use svelte_sourcemap::{JsOutput, SourcemapKind};
@@ -78,6 +83,7 @@ fn export_reactive_read<'a>(
         | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
         | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
         | ReferenceSemantics::EachItemIndexedLegacy { .. }
+        | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
         | ReferenceSemantics::IllegalWrite => None,
     }
 }
@@ -90,11 +96,13 @@ fn declaration_export_semantics(binding: BindingSemantics) -> ReferenceSemantics
         }) => ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(kind),
             safe: false,
+            locality: SignalReadLocality::Cell,
         },
         BindingSemantics::Derived(d) | BindingSemantics::OptimizedDerived(d) => {
             ReferenceSemantics::SignalRead {
                 kind: SignalReferenceKind::Derived(d.kind),
                 safe: false,
+                locality: SignalReadLocality::Cell,
             }
         }
         BindingSemantics::LegacyState(state) => ReferenceSemantics::LegacyStateRead {
@@ -119,9 +127,9 @@ pub fn generate<'a>(
     let script_output = script::gen_script(&mut ctx, dev);
     let script_imports = script_output.imports;
     let script_body = script_output.body;
-    let has_tracing = script_output.has_tracing;
     let needs_ownership_validator = script_output.needs_ownership_validator
-        || analysis.output.needs_component_bind_ownership
+        || analysis.runtime_semantics.query().component_bind_ownership
+            == ComponentBindOwnership::Tracked
         || ctx.transform_data.needs_ownership_validator;
     let mut script_comments = script_output.comments;
     let script_rest_excludes = script_output.rest_excludes;
@@ -139,6 +147,7 @@ pub fn generate<'a>(
             &mut *ctx.state.ident_gen,
             ctx.state.line_index,
             ctx.state.dev,
+            ctx.state.filename,
         );
 
         script_comments.extend(module_output.comments);
@@ -146,6 +155,7 @@ pub fn generate<'a>(
         module_body = module_output.body;
     }
 
+    codegen::prepare_declaration_groups(&mut ctx);
     let codegen_result = codegen::codegen_root_fragment(&mut ctx).expect("codegen failed");
     let hoisted = codegen_result.hoisted;
     let template_body = codegen_result.body;
@@ -173,7 +183,8 @@ pub fn generate<'a>(
     all_hoisted.append(&mut ctx.state.module_hoisted);
     all_hoisted.extend(hoisted);
 
-    let runtime = ctx.runtime_plan();
+    let runtime = ctx.runtime_semantics();
+    let has_stores = runtime.stores == StoreBindings::Present;
 
     let mut fn_body: Vec<Statement<'_>> = Vec::new();
 
@@ -229,7 +240,7 @@ pub fn generate<'a>(
         ));
     }
 
-    if runtime.needs_push {
+    if runtime.frame != ComponentFrame::Frameless {
         let mut push_args: Vec<Arg<'_, '_>> = vec![
             Arg::Ident("$$props"),
             Arg::Expr(ctx.b.bool_expr(ctx.query.runes())),
@@ -257,7 +268,7 @@ pub fn generate<'a>(
         );
     }
 
-    if runtime.has_stores {
+    if has_stores {
         let scoping = ctx.query.scoping();
         let stores: Vec<(&str, &str, svelte_component_semantics::SymbolId)> = ctx
             .query
@@ -338,14 +349,11 @@ pub fn generate<'a>(
         fn_body.extend(script_body);
     }
 
-    let has_explicit_exports =
-        runtime.has_exports || runtime.has_ce_props || runtime.has_legacy_accessor_props;
-    let dev_legacy_only = ctx.state.dev && runtime.needs_push;
     let mut bind_prop_stmts: Vec<Statement<'_>> = Vec::new();
-    if has_explicit_exports || dev_legacy_only {
+    if runtime.frame == ComponentFrame::Exposed {
         let mut export_props: Vec<ObjProp<'_>> = Vec::new();
 
-        if has_explicit_exports {
+        {
             for e in ctx.query.exports() {
                 let local_sym = e.local;
                 let name: &str = ctx.b.alloc_str(ctx.query.symbol_name(local_sym));
@@ -419,7 +427,7 @@ pub fn generate<'a>(
                 }
             }
 
-            if ctx.query.accessors() || runtime.has_ce_props {
+            if runtime.prop_accessors == PropAccessors::Exposed {
                 for prop in ctx.query.component_prop_accessors() {
                     let key: &str = ctx.b.alloc_str(&prop.key);
                     let local: &str = ctx.b.alloc_str(prop.local);
@@ -493,29 +501,33 @@ pub fn generate<'a>(
 
     fn_body.extend(bind_prop_stmts);
 
-    if runtime.needs_push {
-        if runtime.needs_pop_with_return && runtime.has_stores {
+    match runtime.frame {
+        ComponentFrame::Exposed if has_stores => {
             let pop_call = ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")]);
             fn_body.push(ctx.b.var_stmt("$$pop", pop_call));
             fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
             fn_body.push(ctx.b.return_stmt(ctx.b.rid_expr("$$pop")));
-        } else if runtime.needs_pop_with_return {
+        }
+        ComponentFrame::Exposed => {
             fn_body.push(
                 ctx.b
                     .return_stmt(ctx.b.call_expr("$.pop", [Arg::Ident("$$exports")])),
             );
-        } else {
+        }
+        ComponentFrame::Scoped => {
             fn_body.push(
                 ctx.b
                     .expr_stmt(ctx.b.call_expr("$.pop", empty::<Arg<'_, '_>>())),
             );
 
-            if runtime.has_stores {
+            if has_stores {
                 fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
             }
         }
-    } else if runtime.has_stores {
-        fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
+        ComponentFrame::Frameless if has_stores => {
+            fn_body.push(ctx.b.call_stmt("$$cleanup", empty::<Arg<'_, '_>>()));
+        }
+        ComponentFrame::Frameless => {}
     }
 
     let mut delegate_stmts: Vec<Statement<'_>> = Vec::new();
@@ -536,7 +548,7 @@ pub fn generate<'a>(
 
     let import_svelte = b.import_all("$", "svelte/internal/client");
 
-    let fn_params = if runtime.needs_props_param {
+    let fn_params = if runtime.props_input == PropsInput::Consumed {
         b.params(["$$anchor", "$$props"])
     } else {
         b.params(["$$anchor"])
@@ -599,14 +611,16 @@ pub fn generate<'a>(
     if ctx.state.disclose_version {
         program_body.push(b.bare_import("svelte/internal/disclose-version"));
     }
-    if ctx.state.experimental_async {
-        program_body.push(b.bare_import("svelte/internal/flags/async"));
+    if ctx.state.dev
+        && analysis.runtime_semantics.query().function_tracing == FunctionTracing::Traced
+    {
+        program_body.push(b.bare_import("svelte/internal/flags/tracing"));
     }
     if !ctx.query.runes() {
         program_body.push(b.bare_import("svelte/internal/flags/legacy"));
     }
-    if has_tracing || ctx.state.has_tracing {
-        program_body.push(b.bare_import("svelte/internal/flags/tracing"));
+    if ctx.state.experimental_async {
+        program_body.push(b.bare_import("svelte/internal/flags/async"));
     }
     if ctx.state.dev {
         let left = AssignLeft::ComputedMember(b.computed_member(
@@ -704,28 +718,15 @@ fn split_async_instance_body<'a>(
     body: Vec<Statement<'a>>,
     blocker_data: &svelte_analyze::BlockerData,
 ) -> Vec<Statement<'a>> {
-    let first_await_idx = match blocker_data.first_await_index() {
-        Some(idx) => idx,
-        None => return body,
-    };
+    if blocker_data.first_await_index().is_none() {
+        return body;
+    }
 
+    let entries = blocker_data.entries();
     let mut result = Vec::new();
-    let mut hoisted_names: Vec<&str> = Vec::new();
-    let mut thunks: Vec<Expression<'a>> = Vec::new();
+    let mut buckets: Vec<Vec<EntryStatement<'a>>> = entries.iter().map(|_| Vec::new()).collect();
 
     for (i, stmt) in body.into_iter().enumerate() {
-        if i < first_await_idx {
-            result.push(stmt);
-            continue;
-        }
-
-        let meta = blocker_data.stmt_meta(i).expect("stmt_meta out of range");
-        let has_await = meta.has_await();
-
-        for name in meta.hoist_names() {
-            hoisted_names.push(b.alloc_str(name));
-        }
-
         let stmt = match stmt {
             Statement::ExportNamedDeclaration(export) => {
                 if let Some(decl) = export.unbox().declaration {
@@ -740,19 +741,30 @@ fn split_async_instance_body<'a>(
         match stmt {
             Statement::VariableDeclaration(var_decl) => {
                 let var_decl = var_decl.unbox();
-                for declarator in var_decl.declarations {
-                    if matches!(
-                        declarator.init.as_ref().map(|e| e.get_inner_expression()),
-                        Some(
-                            Expression::ArrowFunctionExpression(_)
-                                | Expression::FunctionExpression(_)
-                        )
-                    ) {
-                        result.push(b.var_init_stmt(declarator));
+                let declarators: Vec<_> = var_decl.declarations.into_iter().collect();
+                let locations: Vec<Option<AsyncEntryLocation>> = declarators
+                    .iter()
+                    .map(|declarator| {
+                        blocker_data
+                            .entry_location(declarator.node_id())
+                            .or_else(|| declarator_symbol_location(blocker_data, &declarator.id))
+                    })
+                    .collect();
+                let shared = locations.iter().flatten().next().copied();
+                for (declarator, own) in declarators.into_iter().zip(locations) {
+                    let location = own.or(shared);
+                    let Some(location) = location else {
+                        result.push(b.declarator_stmt(declarator));
+                        continue;
+                    };
+                    if own.is_none() {
+                        buckets[location.entry]
+                            .push(EntryStatement::Plain(b.var_init_stmt(declarator)));
                         continue;
                     }
 
-                    if let Some(assign_target) = try_binding_to_assignment(&declarator.id, b) {
+                    let pattern = declarator.id.clone_in(b.ast.allocator);
+                    if let Some(assign_target) = try_binding_to_assignment(pattern, b) {
                         let init = declarator.init.unwrap_or_else(|| b.void_zero_expr());
                         let assign = b.ast.expression_assignment(
                             oxc_span::SPAN,
@@ -760,44 +772,38 @@ fn split_async_instance_body<'a>(
                             assign_target,
                             init,
                         );
-                        if has_await {
-                            thunks.push(b.async_arrow_expr_body(assign));
-                        } else {
-                            thunks.push(b.thunk(assign));
-                        }
+                        buckets[location.entry].push(EntryStatement::Value(assign));
                     } else {
-                        let var_stmt = b.var_init_stmt(declarator);
-                        if has_await {
-                            thunks.push(b.async_thunk_block(vec![var_stmt]));
-                        } else {
-                            thunks.push(b.thunk_block(vec![var_stmt]));
-                        }
+                        buckets[location.entry]
+                            .push(EntryStatement::Plain(b.var_init_stmt(declarator)));
                     }
                 }
             }
-            Statement::FunctionDeclaration(_) => {
-                result.push(stmt);
-            }
-            _ => {
-                if has_await {
-                    if let Statement::BlockStatement(block) = stmt {
-                        let block = block.unbox();
-                        thunks.push(b.async_thunk_block(block.body.into_iter().collect()));
-                    } else {
-                        thunks.push(b.async_thunk_block(vec![stmt]));
-                    }
-                } else {
-                    thunks.push(b.thunk_block(vec![stmt]));
-                }
+            Statement::FunctionDeclaration(_) => result.push(stmt),
+            other => {
+                let Some(location) = statement_entry_location(blocker_data, &other, i) else {
+                    result.push(other);
+                    continue;
+                };
+                push_entry_statement(b, &mut buckets[location.entry], other, location.kind);
             }
         }
     }
 
+    let hoisted_names: Vec<&str> = blocker_data
+        .hoisted_names()
+        .iter()
+        .map(|name| b.alloc_str(name))
+        .collect();
     if !hoisted_names.is_empty() {
         result.push(b.var_multi_stmt(&hoisted_names));
     }
 
-    if !thunks.is_empty() {
+    if !entries.is_empty() {
+        let mut thunks: Vec<Expression<'a>> = Vec::with_capacity(entries.len());
+        for (entry, statements) in entries.iter().zip(buckets) {
+            thunks.push(async_entry_thunk(b, entry, statements));
+        }
         let thunk_array = b.array_expr(thunks);
         let run_call = b.call_expr("$.run", [Arg::Expr(thunk_array)]);
         result.push(b.var_stmt("$$promises", run_call));
@@ -807,16 +813,10 @@ fn split_async_instance_body<'a>(
 }
 
 fn try_binding_to_assignment<'a>(
-    pat: &BindingPattern<'a>,
+    pat: BindingPattern<'a>,
     b: &Builder<'a>,
 ) -> Option<AssignmentTarget<'a>> {
-    match pat {
-        BindingPattern::BindingIdentifier(id) => {
-            let ident = b.ast.identifier_reference(oxc_span::SPAN, id.name.as_str());
-            Some(AssignmentTarget::AssignmentTargetIdentifier(b.alloc(ident)))
-        }
-        _ => None,
-    }
+    b.binding_pattern_to_assignment_target(pat)
 }
 
 pub fn generate_module<'a>(
@@ -839,6 +839,7 @@ pub fn generate_module<'a>(
         &mut ident_gen,
         line_index,
         dev,
+        filename,
     );
 
     let b = Builder::new(alloc);
@@ -856,4 +857,17 @@ pub fn generate_module<'a>(
         script_output.program_span_end,
     );
     build_codegen_output(&program, kind, filename, source_text)
+}
+
+fn declarator_symbol_location(
+    blocker_data: &svelte_analyze::BlockerData,
+    pattern: &BindingPattern<'_>,
+) -> Option<svelte_analyze::AsyncEntryLocation> {
+    let mut found = None;
+    svelte_component_semantics::walk_bindings(pattern, |v| {
+        if found.is_none() {
+            found = blocker_data.entry_location_of_symbol(v.symbol);
+        }
+    });
+    found
 }

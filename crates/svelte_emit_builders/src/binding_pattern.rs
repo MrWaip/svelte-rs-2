@@ -3,9 +3,19 @@ use oxc_ast::ast::{Expression, PropertyKey};
 use oxc_span::GetSpan;
 use oxc_syntax::scope::ScopeId;
 use svelte_ast_builder::{Arg, Builder};
-use svelte_component_semantics::{Access, Step};
+use svelte_component_semantics::{Access, BindingVisit, Step};
 
 use crate::runtime::is_simple_expression;
+
+pub fn has_each_item_writeback_place(v: &BindingVisit<'_, '_>) -> bool {
+    if v.is_rest {
+        return false;
+    }
+    match v.path.last().map(|step| step.access) {
+        Some(Access::Slice { .. }) => false,
+        Some(Access::Key { .. }) | Some(Access::Index { .. }) | None => true,
+    }
+}
 
 pub fn member_access<'a>(
     b: &Builder<'a>,

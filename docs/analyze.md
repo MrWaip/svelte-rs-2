@@ -15,8 +15,8 @@ topics: analyze, smart analyzer, passes, dynamism, build order, analyze phases, 
 
 Анализ делится на два класса:
 
-- **3.A семантические подсистемы** — `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, `AttributeSemantics`, `BlockSemantics`, `FragmentSemantics`, `RuntimeSemantics`. Каждая поглощает несколько raw-индексов внутри и выдаёт query-API на один конкретный вопрос за вызов. Не течёт raw-флагами наружу.
-- **3.B аналитические side-таблицы** — `ScriptAnalysis`, `ElementAnalysis`, `TemplateAnalysis`, `BlockAnalysis`, `OutputPlanData`, `DynamismData`, `PickledAwaits`. Плоские таблицы на `AnalysisData`, ещё не свёрнутые в 3.A-подсистему. Трекаются в `debt.md`.
+- **3.A семантические подсистемы** — `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, `AttributeSemantics`, `BlockSemantics`, `FragmentSemantics`, `RuntimeSemantics`, `AwaitSemantics`. Каждая поглощает несколько raw-индексов внутри и выдаёт query-API на один конкретный вопрос за вызов. Не течёт raw-флагами наружу.
+- **3.B аналитические side-таблицы** — `ScriptAnalysis`, `ElementAnalysis`, `TemplateAnalysis`, `BlockAnalysis`, `OutputPlanData`, `DynamismData`. Плоские таблицы на `AnalysisData`, ещё не свёрнутые в 3.A-подсистему. Трекаются в `debt.md`.
 
 Новые факты идут в 3.A-подсистему (или мотивируют новую), **никогда** не в 3.B.
 
@@ -78,7 +78,7 @@ ComponentSemantics
 ## Связь с другими документами
 
 - `context.md` §«Принципы», §«Кросс-каттинг» (диагностики).
-- `component-semantics.md`, `reactivity-semantics.md`, `expression-semantics.md`, `attribute-semantics.md`, `block-semantics.md` — 3.A-подсистемы.
+- `component-semantics.md`, `reactivity-semantics.md`, `expression-semantics.md`, `attribute-semantics.md`, `block-semantics.md`, `await-semantics.md` — 3.A-подсистемы.
 - `parser.md` — граница парсер ↔ анализ.
 - `transform.md`, `codegen.md` — потребители анализа.
 - `bindings-and-references.md` — `walk_bindings`, идентификаторы.

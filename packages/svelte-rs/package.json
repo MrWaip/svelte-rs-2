@@ -1,0 +1,52 @@
+{
+  "name": "@mrwaip/svelte-rs",
+  "version": "0.0.0-canary.0",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "README.md",
+    "compiler"
+  ],
+  "exports": {
+    "./compiler": {
+      "types": "./compiler/index.d.ts",
+      "default": "./compiler/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MrWaip/svelte-rs"
+  },
+  "scripts": {
+    "build": "napi build --manifest-path ../../crates/napi_compiler/Cargo.toml -p napi_compiler --platform --output-dir compiler/native --js binding.cjs --dts binding.d.ts",
+    "build:release": "napi build --manifest-path ../../crates/napi_compiler/Cargo.toml -p napi_compiler --platform --output-dir compiler/native --js binding.cjs --dts binding.d.ts --release --strip",
+    "smoke": "node ./scripts/smoke.mjs"
+  },
+  "napi": {
+    "binaryName": "svelte-rs",
+    "packageName": "@mrwaip/svelte-rs",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-musl",
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc"
+    ]
+  },
+  "optionalDependencies": {
+    "@mrwaip/svelte-rs-darwin-arm64": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs-darwin-x64": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs-linux-x64-gnu": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs-linux-arm64-gnu": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs-linux-x64-musl": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs-linux-arm64-musl": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs-win32-x64-msvc": "0.0.0-canary.0",
+    "@mrwaip/svelte-rs-win32-arm64-msvc": "0.0.0-canary.0"
+  }
+}

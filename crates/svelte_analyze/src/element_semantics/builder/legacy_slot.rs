@@ -1,16 +1,23 @@
-use svelte_ast::{Attribute, Component, FragmentId, Node, NodeId, SlotElementLegacy};
+use smallvec::SmallVec;
+use svelte_ast::{
+    Attribute, Component, FragmentId, Node, NodeId, SLOT_ATTRIBUTE, SlotElementLegacy,
+};
 
-use super::super::{LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics};
+use super::super::{
+    ElementAsyncKind, LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics,
+};
 
 pub(super) fn classify_slot(
     el: &SlotElementLegacy,
     component: &Component,
     source: &str,
+    async_kind: ElementAsyncKind,
 ) -> LegacySlotSemantics {
     let has_fallback = !component.store.fragment(el.fragment).nodes.is_empty();
     LegacySlotSemantics {
         name: slot_name(&el.attributes, source).to_string(),
         has_fallback,
+        async_kind,
     }
 }
 
@@ -20,9 +27,20 @@ pub(super) fn classify_component_slots(
     component: &Component,
     source: &str,
 ) -> LegacyComponentSlotsSemantics {
+    let default_let_scope_owners = default_let_scope_owners(fragment, component);
+    let slotted_let_owner = default_let_scope_owners
+        .iter()
+        .copied()
+        .find(|&id| element_has_default_slot_attribute(id, component, source));
+    let default_slot = default_slot_form(attributes, fragment, component, slotted_let_owner);
     LegacyComponentSlotsSemantics {
-        default_slot: default_slot_form(attributes, fragment, component),
+        default_slot,
         default_wrapper: lone_default_svelte_fragment(fragment, component, source),
+        default_let_owner: match default_slot {
+            LegacyDefaultSlot::SlotDefaultSlottedLet => slotted_let_owner,
+            _ => None,
+        },
+        default_let_scope_owners,
     }
 }
 
@@ -41,6 +59,7 @@ fn default_slot_form(
     attributes: &[Attribute],
     fragment: FragmentId,
     component: &Component,
+    slotted_let_owner: Option<NodeId>,
 ) -> LegacyDefaultSlot {
     if has_named_attribute(attributes, "children") {
         return LegacyDefaultSlot::SlotDefault;
@@ -49,12 +68,48 @@ fn default_slot_form(
         return LegacyDefaultSlot::SlotDefaultInvalid;
     }
     if has_let_directive(attributes) {
-        if has_named_attribute(attributes, "slot") {
+        if has_named_attribute(attributes, SLOT_ATTRIBUTE) {
             return LegacyDefaultSlot::OwnLetDisplaced;
         }
         return LegacyDefaultSlot::SlotDefaultInvalid;
     }
+    if slotted_let_owner.is_some() {
+        return LegacyDefaultSlot::SlotDefaultSlottedLet;
+    }
     LegacyDefaultSlot::ChildrenProp
+}
+
+fn default_let_scope_owners(fragment: FragmentId, component: &Component) -> SmallVec<[NodeId; 2]> {
+    let mut owners = SmallVec::new();
+    for &child_id in &component.store.fragment(fragment).nodes {
+        let attrs = match component.store.get(child_id) {
+            Node::Element(el) => &el.attributes,
+            Node::SvelteElement(el) => &el.attributes,
+            _ => continue,
+        };
+        if has_let_directive(attrs) {
+            owners.push(child_id);
+        }
+    }
+    owners
+}
+
+fn element_has_default_slot_attribute(
+    child_id: NodeId,
+    component: &Component,
+    source: &str,
+) -> bool {
+    let attrs = match component.store.get(child_id) {
+        Node::Element(el) => &el.attributes,
+        Node::SvelteElement(el) => &el.attributes,
+        _ => return false,
+    };
+    attrs.iter().any(|a| match a {
+        Attribute::StringAttribute(sa) => {
+            sa.name == SLOT_ATTRIBUTE && sa.value(source) == "default"
+        }
+        _ => false,
+    })
 }
 
 fn has_named_attribute(attributes: &[Attribute], target: &str) -> bool {

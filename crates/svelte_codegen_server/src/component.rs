@@ -21,6 +21,23 @@ enum ComponentAttrRouting {
     Skip,
     Bind,
     NonBind,
+    CssProp,
+}
+
+struct ComponentInvocation<'a> {
+    call: Statement<'a>,
+    snippet_decls: Vec<Statement<'a>>,
+    css_props: Vec<ObjProp<'a>>,
+}
+
+struct ComponentEmit<'a> {
+    id: NodeId,
+    fragment: FragmentId,
+    attributes: &'a [Attribute],
+    legacy_slots: &'a [LegacySlot],
+    callee: Expression<'a>,
+    dynamic_test: Option<Expression<'a>>,
+    is_standalone: bool,
 }
 
 impl<'a> ServerCodegen<'a> {
@@ -30,69 +47,32 @@ impl<'a> ServerCodegen<'a> {
         is_standalone: bool,
     ) -> Result<()> {
         let callee = self.take_expression(cn.id, &cn.name)?;
-
-        if self.analysis.has_component_css_props(cn.id) {
-            return self.emit_component_css_props(
-                cn.id,
-                cn.fragment,
-                &cn.attributes,
-                &cn.legacy_slots,
-                callee,
-                None,
-            );
-        }
-
-        if self.expression_is_volatile(cn.id) {
-            return self.emit_dynamic_component(
-                cn.id,
-                cn.fragment,
-                &cn.attributes,
-                &cn.legacy_slots,
-                callee,
-            );
-        }
-
-        let (call_stmt, snippet_decls) = self.build_component_invocation(
-            cn.id,
-            cn.fragment,
-            &cn.attributes,
-            &cn.legacy_slots,
+        let dynamic_test = self
+            .expression_is_volatile(cn.id)
+            .then(|| self.b.clone_expr(&callee));
+        self.emit_component_like(ComponentEmit {
+            id: cn.id,
+            fragment: cn.fragment,
+            attributes: &cn.attributes,
+            legacy_slots: &cn.legacy_slots,
             callee,
-        )?;
-        self.push_component_call(call_stmt, snippet_decls);
-
-        if !is_standalone {
-            self.push_text("<!---->");
-        }
-        Ok(())
+            dynamic_test,
+            is_standalone,
+        })
     }
 
     pub(crate) fn svelte_self(&mut self, node: &'a SvelteSelf, is_standalone: bool) -> Result<()> {
         let name: &'a str = self.b.alloc_str(self.analysis.component_name());
         let callee = self.b.rid_expr(name);
-        if self.analysis.has_component_css_props(node.id) {
-            return self.emit_component_css_props(
-                node.id,
-                node.fragment,
-                &node.attributes,
-                &node.legacy_slots,
-                callee,
-                None,
-            );
-        }
-        let (call_stmt, snippet_decls) = self.build_component_invocation(
-            node.id,
-            node.fragment,
-            &node.attributes,
-            &node.legacy_slots,
+        self.emit_component_like(ComponentEmit {
+            id: node.id,
+            fragment: node.fragment,
+            attributes: &node.attributes,
+            legacy_slots: &node.legacy_slots,
             callee,
-        )?;
-        self.push_component_call(call_stmt, snippet_decls);
-
-        if !is_standalone {
-            self.push_text("<!---->");
-        }
-        Ok(())
+            dynamic_test: None,
+            is_standalone,
+        })
     }
 
     pub(crate) fn svelte_component_legacy(
@@ -106,65 +86,138 @@ impl<'a> ServerCodegen<'a> {
                     "svelte:component without this",
                 ))?;
         let this_expr = self.take_expr_by_oxc_id(node.id, this_expr_id)?;
-
-        if self.analysis.has_component_css_props(node.id) {
-            let callee = self.b.clone_expr(&this_expr);
-            return self.emit_component_css_props(
-                node.id,
-                node.fragment,
-                &node.attributes,
-                &node.legacy_slots,
-                callee,
-                Some(this_expr),
-            );
-        }
-
-        self.emit_dynamic_component(
-            node.id,
-            node.fragment,
-            &node.attributes,
-            &node.legacy_slots,
-            this_expr,
-        )
+        let callee = self.b.clone_expr(&this_expr);
+        self.emit_component_like(ComponentEmit {
+            id: node.id,
+            fragment: node.fragment,
+            attributes: &node.attributes,
+            legacy_slots: &node.legacy_slots,
+            callee,
+            dynamic_test: Some(this_expr),
+            is_standalone: false,
+        })
     }
 
-    fn emit_dynamic_component(
-        &mut self,
-        id: NodeId,
-        fragment: FragmentId,
-        attributes: &'a [Attribute],
-        legacy_slots: &'a [LegacySlot],
-        this_expr: Expression<'a>,
-    ) -> Result<()> {
-        let callee = self.b.clone_expr(&this_expr);
-        let (call_stmt, snippet_decls) =
-            self.build_component_invocation(id, fragment, attributes, legacy_slots, callee)?;
+    fn emit_component_like(&mut self, emit: ComponentEmit<'a>) -> Result<()> {
+        let ComponentEmit {
+            id,
+            fragment,
+            attributes,
+            legacy_slots,
+            callee,
+            dynamic_test,
+            is_standalone,
+        } = emit;
+        let async_kind = self
+            .analysis
+            .element_semantics
+            .query(id)
+            .async_kind()
+            .clone();
+        let is_dynamic = dynamic_test.is_some();
 
-        let consequent = vec![
-            self.renderer_push_string_stmt("<!--[-->"),
-            call_stmt,
-            self.renderer_push_string_stmt("<!--]-->"),
-        ];
+        let (built, hoists) = self.with_promise_hoisting(|cg| {
+            let invocation =
+                cg.build_component_invocation(id, fragment, attributes, legacy_slots, callee)?;
+            cg.assemble_component_statement(id, invocation, dynamic_test)
+        });
+        let statement = built?;
 
-        let alternate = vec![
-            self.renderer_push_string_stmt("<!--[!-->"),
-            self.renderer_push_string_stmt("<!--]-->"),
-        ];
+        if !async_kind.is_sync() {
+            let mut body = hoists;
+            body.push(statement);
+            let wrapped =
+                self.wrap_async_block_flagged(body, async_kind.blockers(), async_kind.awaited());
+            self.push_stmt(wrapped);
+            return Ok(());
+        }
 
-        let if_stmt = self.b.if_stmt(
-            this_expr,
-            self.b.block_stmt(consequent),
-            Some(self.b.block_stmt(alternate)),
-        );
-
-        if snippet_decls.is_empty() {
-            self.push_stmt(if_stmt);
-        } else {
-            let mut block = snippet_decls;
-            block.push(if_stmt);
-            self.push_stmt(self.b.block_stmt(block));
+        for hoist in hoists {
+            self.push_stmt(hoist);
+        }
+        self.push_stmt(statement);
+        if self.component_call_needs_marker(id, is_dynamic, is_standalone) {
+            self.push_text("<!---->");
         }
         Ok(())
+    }
+
+    fn component_call_needs_marker(
+        &self,
+        id: NodeId,
+        is_dynamic: bool,
+        is_standalone: bool,
+    ) -> bool {
+        if is_dynamic {
+            return false;
+        }
+        if is_standalone {
+            return false;
+        }
+        !self.analysis.has_component_css_props(id)
+    }
+
+    fn assemble_component_statement(
+        &mut self,
+        id: NodeId,
+        invocation: ComponentInvocation<'a>,
+        dynamic_test: Option<Expression<'a>>,
+    ) -> Result<Statement<'a>> {
+        let ComponentInvocation {
+            call,
+            snippet_decls,
+            css_props,
+        } = invocation;
+
+        let is_dynamic = dynamic_test.is_some();
+        let mut statement = match dynamic_test {
+            Some(test) => {
+                let consequent = vec![
+                    self.renderer_push_string_stmt("<!--[-->"),
+                    call,
+                    self.renderer_push_string_stmt("<!--]-->"),
+                ];
+                let alternate = vec![
+                    self.renderer_push_string_stmt("<!--[!-->"),
+                    self.renderer_push_string_stmt("<!--]-->"),
+                ];
+                self.b.if_stmt(
+                    test,
+                    self.b.block_stmt(consequent),
+                    Some(self.b.block_stmt(alternate)),
+                )
+            }
+            None => call,
+        };
+
+        if !snippet_decls.is_empty() {
+            let mut block = snippet_decls;
+            block.push(statement);
+            statement = self.b.block_stmt(block);
+        }
+
+        if css_props.is_empty() {
+            return Ok(statement);
+        }
+
+        let is_html = match self.analysis.namespace(id) {
+            None
+            | Some(NamespaceKind::Html)
+            | Some(NamespaceKind::ForeignObject)
+            | Some(NamespaceKind::AnnotationXml) => true,
+            Some(NamespaceKind::Svg) | Some(NamespaceKind::MathMl) => false,
+        };
+        let arrow = self.b.arrow_block_expr(self.b.no_params(), vec![statement]);
+        let mut args = vec![
+            Arg::Ident("$$renderer"),
+            Arg::Bool(is_html),
+            Arg::Expr(self.b.object_expr(css_props)),
+            Arg::Expr(arrow),
+        ];
+        if is_dynamic {
+            args.push(Arg::Bool(true));
+        }
+        Ok(self.b.expr_stmt(self.b.call_expr("$.css_props", args)))
     }
 
     fn svelte_component_this_id(&self, attributes: &'a [Attribute]) -> Option<OxcNodeId> {
@@ -178,117 +231,40 @@ impl<'a> ServerCodegen<'a> {
         None
     }
 
-    fn push_component_call(
-        &mut self,
-        call_stmt: Statement<'a>,
-        mut snippet_decls: Vec<Statement<'a>>,
-    ) {
-        if snippet_decls.is_empty() {
-            self.push_stmt(call_stmt);
-        } else {
-            snippet_decls.push(call_stmt);
-            self.push_stmt(self.b.block_stmt(snippet_decls));
-        }
-    }
-
-    fn emit_component_css_props(
+    fn build_css_prop(
         &mut self,
         id: NodeId,
-        fragment: FragmentId,
-        attributes: &'a [Attribute],
-        legacy_slots: &'a [LegacySlot],
-        callee: Expression<'a>,
-        dynamic_test: Option<Expression<'a>>,
+        attr: &'a Attribute,
+        props: &mut Vec<ObjProp<'a>>,
     ) -> Result<()> {
-        let (call_stmt, snippet_decls) =
-            self.build_component_invocation(id, fragment, attributes, legacy_slots, callee)?;
-        let props_obj = self.build_css_props_object(id, attributes)?;
-        let is_html = match self.analysis.namespace(id) {
-            None
-            | Some(NamespaceKind::Html)
-            | Some(NamespaceKind::ForeignObject)
-            | Some(NamespaceKind::AnnotationXml) => true,
-            Some(NamespaceKind::Svg) | Some(NamespaceKind::MathMl) => false,
+        let AttributeSemantics::ComponentCssProp(value) = self.analysis.attributes.get(attr.id())
+        else {
+            return Ok(());
         };
-
-        let is_dynamic = dynamic_test.is_some();
-        let tail_stmt = match dynamic_test {
-            Some(test) => {
-                let consequent = vec![
-                    self.renderer_push_string_stmt("<!--[-->"),
-                    call_stmt,
-                    self.renderer_push_string_stmt("<!--]-->"),
-                ];
-                let alternate = vec![
-                    self.renderer_push_string_stmt("<!--[!-->"),
-                    self.renderer_push_string_stmt("<!--]-->"),
-                ];
-                self.b.if_stmt(
-                    test,
-                    self.b.block_stmt(consequent),
-                    Some(self.b.block_stmt(alternate)),
-                )
+        let value = value.clone();
+        let Some(name) = attr.name() else {
+            return Ok(());
+        };
+        let key: &'a str = self.b.alloc_str(name);
+        let expr = match value {
+            ComponentCssPropValue::Expression(oxc_id) => {
+                let expr = self.take_expr_by_oxc_id(id, oxc_id)?;
+                self.maybe_hoist_async_expr(attr.id(), expr)
             }
-            None => call_stmt,
+            ComponentCssPropValue::StaticString(span) => {
+                let text: &'a str = self.b.alloc_str(self.component.source_text(span));
+                self.b.str_expr(text)
+            }
+            ComponentCssPropValue::Boolean => self.b.bool_expr(true),
+            ComponentCssPropValue::Concatenation(_) => {
+                let Attribute::ConcatenationAttribute(ca) = attr else {
+                    return Err(CodegenError::Unsupported(id, "css prop concatenation"));
+                };
+                self.concat_value_expr(&ca.parts)?
+            }
         };
-
-        let body = if snippet_decls.is_empty() {
-            vec![tail_stmt]
-        } else {
-            let mut inner = snippet_decls;
-            inner.push(tail_stmt);
-            vec![self.b.block_stmt(inner)]
-        };
-
-        let arrow = self.b.arrow_block_expr(self.b.no_params(), body);
-        let mut args = vec![
-            Arg::Ident("$$renderer"),
-            Arg::Bool(is_html),
-            Arg::Expr(props_obj),
-            Arg::Expr(arrow),
-        ];
-        if is_dynamic {
-            args.push(Arg::Bool(true));
-        }
-        let call = self.b.call_expr("$.css_props", args);
-        self.push_stmt(self.b.expr_stmt(call));
+        props.push(ObjProp::KeyValue(key, expr));
         Ok(())
-    }
-
-    fn build_css_props_object(
-        &mut self,
-        id: NodeId,
-        attributes: &'a [Attribute],
-    ) -> Result<Expression<'a>> {
-        let mut props: Vec<ObjProp<'a>> = Vec::new();
-        for attr in attributes {
-            let value = match self.analysis.attributes.get(attr.id()) {
-                AttributeSemantics::ComponentCssProp(value) => value.clone(),
-                _ => continue,
-            };
-            let Some(name) = attr.name() else {
-                continue;
-            };
-            let key: &'a str = self.b.alloc_str(name);
-            let expr = match value {
-                ComponentCssPropValue::Expression(oxc_id) => {
-                    self.take_expr_by_oxc_id(id, oxc_id)?
-                }
-                ComponentCssPropValue::StaticString(span) => {
-                    let text: &'a str = self.b.alloc_str(self.component.source_text(span));
-                    self.b.str_expr(text)
-                }
-                ComponentCssPropValue::Boolean => self.b.bool_expr(true),
-                ComponentCssPropValue::Concatenation(_) => {
-                    let Attribute::ConcatenationAttribute(ca) = attr else {
-                        return Err(CodegenError::Unsupported(id, "css prop concatenation"));
-                    };
-                    self.concat_value_expr(&ca.parts)?
-                }
-            };
-            props.push(ObjProp::KeyValue(key, expr));
-        }
-        Ok(self.b.object_expr(props))
     }
 
     fn component_attr_routing(&self, attr: &'a Attribute) -> ComponentAttrRouting {
@@ -301,9 +277,9 @@ impl<'a> ServerCodegen<'a> {
                 | ComponentBindKind::StoreSubscribed { .. }
                 | ComponentBindKind::StoreMemberMutation { .. } => ComponentAttrRouting::Bind,
             },
+            AttributeSemantics::ComponentCssProp(_) => ComponentAttrRouting::CssProp,
             AttributeSemantics::SvelteComponentThis(_)
             | AttributeSemantics::ComponentAttach(_)
-            | AttributeSemantics::ComponentCssProp(_)
             | AttributeSemantics::Event(_)
             | AttributeSemantics::Skip(_) => ComponentAttrRouting::Skip,
             _ => ComponentAttrRouting::NonBind,
@@ -317,21 +293,25 @@ impl<'a> ServerCodegen<'a> {
         attributes: &'a [Attribute],
         legacy_slots: &'a [LegacySlot],
         callee: Expression<'a>,
-    ) -> Result<(Statement<'a>, Vec<Statement<'a>>)> {
+    ) -> Result<ComponentInvocation<'a>> {
         let mut items: Vec<PropOrSpread<'a>> = Vec::new();
+        let mut css_props: Vec<ObjProp<'a>> = Vec::new();
         for pass in [ComponentAttrPass::NonBind, ComponentAttrPass::Bind] {
             for attr in attributes {
-                let wanted = match (&pass, self.component_attr_routing(attr)) {
-                    (ComponentAttrPass::NonBind, ComponentAttrRouting::NonBind) => true,
-                    (ComponentAttrPass::Bind, ComponentAttrRouting::Bind) => true,
+                let routing = self.component_attr_routing(attr);
+                match (&pass, routing) {
+                    (ComponentAttrPass::NonBind, ComponentAttrRouting::NonBind)
+                    | (ComponentAttrPass::Bind, ComponentAttrRouting::Bind) => {
+                        self.emit_component_attribute(attr, &mut items)?;
+                    }
+                    (ComponentAttrPass::NonBind, ComponentAttrRouting::CssProp) => {
+                        self.build_css_prop(id, attr, &mut css_props)?;
+                    }
                     (ComponentAttrPass::NonBind, ComponentAttrRouting::Bind)
                     | (ComponentAttrPass::Bind, ComponentAttrRouting::NonBind)
-                    | (_, ComponentAttrRouting::Skip) => false,
-                };
-                if !wanted {
-                    continue;
+                    | (ComponentAttrPass::Bind, ComponentAttrRouting::CssProp)
+                    | (_, ComponentAttrRouting::Skip) => {}
                 }
-                self.emit_component_attribute(attr, &mut items)?;
             }
         }
 
@@ -357,7 +337,11 @@ impl<'a> ServerCodegen<'a> {
         let call = self
             .b
             .call_expr_callee(callee, [Arg::Ident("$$renderer"), Arg::Expr(props_expr)]);
-        Ok((self.b.expr_stmt(call), snippet_decls))
+        Ok(ComponentInvocation {
+            call: self.b.expr_stmt(call),
+            snippet_decls,
+            css_props,
+        })
     }
 
     fn build_component_children(
@@ -407,17 +391,25 @@ impl<'a> ServerCodegen<'a> {
         items: &mut Vec<PropOrSpread<'a>>,
         slot_entries: &mut Vec<ObjProp<'a>>,
     ) -> Result<()> {
-        let (default_slot, default_wrapper) = match self.analysis.element_semantics.query(id) {
-            ElementSemantics::LegacyComponentSlots(sem) => (sem.default_slot, sem.default_wrapper),
-            _ => (LegacyDefaultSlot::ChildrenProp, None),
-        };
+        let (default_slot, default_wrapper, default_let_owner) =
+            match self.analysis.element_semantics.query(id) {
+                ElementSemantics::Component(sem) => (
+                    sem.legacy_slots.default_slot,
+                    sem.legacy_slots.default_wrapper,
+                    sem.legacy_slots.default_let_owner,
+                ),
+                _ => (LegacyDefaultSlot::ChildrenProp, None, None),
+            };
 
-        let (owner_id, fragment, wrap_block) = match default_wrapper {
-            Some(wrapper_id) => match self.component.store.get(wrapper_id) {
-                Node::SvelteFragmentLegacy(el) => (wrapper_id, el.fragment, true),
-                _ => (id, node_fragment, false),
+        let (owner_id, fragment, wrap_block) = match default_let_owner {
+            Some(let_owner) => (let_owner, node_fragment, false),
+            None => match default_wrapper {
+                Some(wrapper_id) => match self.component.store.get(wrapper_id) {
+                    Node::SvelteFragmentLegacy(el) => (wrapper_id, el.fragment, true),
+                    _ => (id, node_fragment, false),
+                },
+                None => (id, node_fragment, false),
             },
-            None => (id, node_fragment, false),
         };
 
         let apply_let_scope = !matches!(
@@ -441,7 +433,7 @@ impl<'a> ServerCodegen<'a> {
                 items.push(PropOrSpread::Prop(ObjProp::KeyValue("children", arrow)));
                 slot_entries.push(ObjProp::KeyValue("default", self.b.bool_expr(true)));
             }
-            LegacyDefaultSlot::SlotDefaultInvalid => {
+            LegacyDefaultSlot::SlotDefaultInvalid | LegacyDefaultSlot::SlotDefaultSlottedLet => {
                 items.push(PropOrSpread::Prop(ObjProp::KeyValue(
                     "children",
                     self.b

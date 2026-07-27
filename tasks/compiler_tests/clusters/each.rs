@@ -268,3 +268,31 @@ compiler_case!(
     keyed_key_is_item_prop_collection_immutable_guard,
     "each/keyed_key_is_item_prop_collection_immutable_guard"
 );
+compiler_case!(
+    animate_declaration_tag_sibling,
+    "each/animate_declaration_tag_sibling",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    async_fallback,
+    "each/async_fallback",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    async_deferred_collection,
+    "each/async_deferred_collection",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    fallback_const_scope,
+    "each/fallback_const_scope",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    nested_each_in_fallback,
+    "each/nested_each_in_fallback",
+    [prod, dev, ssr, ssr_dev]
+);

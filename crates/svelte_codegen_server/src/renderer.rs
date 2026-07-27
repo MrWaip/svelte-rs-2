@@ -75,7 +75,7 @@ impl<'a> ServerCodegen<'a> {
     }
 }
 
-fn leading_declaration_count(statements: &[Statement<'_>]) -> usize {
+pub(crate) fn leading_declaration_count(statements: &[Statement<'_>]) -> usize {
     statements
         .iter()
         .take_while(|stmt| matches!(stmt, Statement::VariableDeclaration(_)))

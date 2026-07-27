@@ -1,0 +1,1 @@
+<C>foo<x slot="s">y</x>bar</C>

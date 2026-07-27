@@ -33,11 +33,7 @@ fn element_needs_var(el: &Element, data: &AnalysisData, store: &AstStore) -> boo
         return true;
     }
 
-    if data.is_custom_element(id) && !el.attributes.is_empty() {
-        return true;
-    }
-
-    if el.name == "img" && el.attributes.iter().any(|a| a.name() == Some("loading")) {
+    if data.is_custom_element(id) {
         return true;
     }
 
@@ -58,6 +54,10 @@ fn element_needs_var(el: &Element, data: &AnalysisData, store: &AstStore) -> boo
         return true;
     }
 
+    if data.fragment_has_direct_snippet_child_by_id(el.fragment) {
+        return true;
+    }
+
     let lf = fragment_topology::fragment_items(store, el.fragment);
     lf.iter()
         .any(|&item_id| item_needs_var(item_id, data, store))
@@ -68,6 +68,7 @@ fn item_needs_var(id: NodeId, data: &AnalysisData, store: &AstStore) -> bool {
         Node::Text(_) => false,
         Node::ExpressionTag(_) => true,
         Node::Element(_) => data.elements.flags.needs_var.contains(&id),
+        Node::DeclarationTag(_) => true,
         Node::SlotElementLegacy(_) => true,
         Node::SvelteFragmentLegacy(el) => {
             let fragment = fragment_topology::fragment_items(store, el.fragment);

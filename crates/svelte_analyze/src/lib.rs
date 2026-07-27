@@ -1,9 +1,11 @@
 pub mod attribute_semantics;
+pub mod await_semantics;
 pub mod block_semantics;
 pub(crate) mod css;
 pub mod element_semantics;
 pub mod expression_semantics;
 pub mod fragment_semantics;
+pub(crate) mod js_walker;
 pub(crate) mod passes;
 pub mod reactivity_semantics;
 pub mod runtime_semantics;
@@ -22,7 +24,7 @@ pub use attribute_semantics::{
 };
 pub use expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, KnownValue,
-    LegacyWrap, SyntheticPropsCarrier, ValueClass, Volatility,
+    LegacyWrap, Suspension, SyntheticPropsCarrier, ValueClass, Volatility,
 };
 
 pub use css::head_hash;
@@ -33,43 +35,50 @@ pub(crate) mod utils;
 pub(crate) mod validate;
 pub(crate) mod walker;
 
+pub use await_semantics::{AwaitSemantics, AwaitSemanticsStore};
 pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagBlockSemantics, DeclarationTagBlockSemantics, EachAsyncKind,
     EachBlockSemantics, EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
-    EachItemKind, EachKeyKind, FragmentDeclarationAsyncKind, HtmlTagAsyncKind, IfAlternate,
-    IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind, KeyBlockSemantics,
-    RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics,
-    SnippetParam, SnippetPlacement, SnippetSlotKey,
+    EachItemKind, EachKeyKind, ExpressionBlocker, FragmentDeclarationAsyncKind, HtmlTagAsyncKind,
+    IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind,
+    KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics,
+    SnippetBlockSemantics, SnippetParam, SnippetPlacement, SnippetSlotKey,
 };
 pub use element_semantics::{
-    BoundaryBranch, BoundarySemantics, ElementAsyncKind, ElementReplayEvent, ElementSemantics,
-    ElementSemanticsStore, ElementValueRole, LegacyComponentSlotsSemantics, LegacyDefaultSlot,
-    LegacySlotSemantics, RegularElementSemantics, SvelteElementSemantics, TextareaBody,
-    TextareaSegment,
+    BoundaryBranch, BoundarySemantics, ComponentElementSemantics, ElementAsyncKind,
+    ElementPropertyReset, ElementReplayEvent, ElementSemantics, ElementSemanticsStore,
+    ElementValueRole, LegacyComponentSlotsSemantics, LegacyDefaultSlot, LegacySlotSemantics,
+    RegularElementSemantics, SvelteElementSemantics, TextareaBody, TextareaSegment,
 };
-pub use fragment_semantics::{FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace};
-pub use runtime_semantics::{ChildPropMode, RuntimeSemantics, RuntimeSemanticsStore};
+pub use fragment_semantics::{
+    FragmentContent, FragmentSemantics, FragmentSemanticsStore, FragmentWhitespace,
+};
+pub use runtime_semantics::{
+    ChildPropMode, ComponentBindOwnership, ComponentFrame, ContextScope, FunctionTracing,
+    LegacyInit, LegacySlotSanitization, PropAccessors, PropsInput, RuntimeSemantics,
+    RuntimeSemanticsStore, StoreBindings,
+};
 pub use scope::ComponentScoping;
 pub use types::data::{
-    AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
-    BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
-    ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
-    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagSemantics,
+    AnalysisData, ApiExport, AsyncEntry, AsyncEntryLocation, AsyncEntryMemberKind, AttrIndex,
+    BindHostKind, BindPropertyKind, BindSource, BindTargetSemantics, BindingSemantics,
+    BlockAnalysis, BlockerData, BlockerSlot, CarrierMemberReadSemantics, ClassDirectiveInfo,
+    ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics, CodegenView,
+    ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind, ContextualReadSemantics,
     CssAnalysis, DeclaratorGroup, DeclaratorSemantics, DerivedAsyncKind,
     DerivedDeclarationSemantics, DerivedKind, DerivedSource, DocumentBindKind, EachIndexStrategy,
     EachItemStrategy, ElementAnalysis, ElementFacts, ElementFactsEntry, ElementFlags,
     ElementSizeKind, EventHandlerMode, EventModifier, FragmentFacts, FragmentFactsEntry,
     IgnoreData, ImageNaturalSizeKind, JsAst, LegacyBindablePropSemantics, LegacyDependency,
-    LegacyInit, LegacySummary, MediaBindKind, NamespaceKind, OptimizedRuneSemantics, OutputData,
-    ParentKind, ParentRef, PickledAwaits, PropBindingKind, PropBindingSemantics, PropDefaultKind,
-    PropEmitMode, PropReferenceSemantics, PropsSummary, ReactivitySemantics, ReactivitySummary,
-    ReferenceSemantics, ResizeObserverKind, RichContentFacts, RichContentFactsEntry,
-    RichContentParentKind, RuntimeInfo, RuntimeRuneKind, ScriptAnalysis, SignalReferenceKind,
-    SnippetData, SnippetParamStrategy, StateDeclarationSemantics, StateKind, StoreBindingSemantics,
-    SvelteElementTag, TemplateAnalysis, TemplateElementEntry, TemplateElementIndex,
-    TemplateTopology, WindowBindKind,
+    LegacySummary, MediaBindKind, NamespaceKind, OptimizedRuneSemantics, ParentKind, ParentRef,
+    PropBindingKind, PropBindingSemantics, PropDefaultKind, PropEmitMode, PropReferenceSemantics,
+    PropsSummary, ReactivitySemantics, ReactivitySummary, ReferenceSemantics, ResizeObserverKind,
+    RichContentFacts, RichContentFactsEntry, RichContentParentKind, RuntimeRuneKind,
+    ScriptAnalysis, SignalReadLocality, SignalReferenceKind, SnippetData, SnippetParamStrategy,
+    StateDeclarationSemantics, StateKind, StoreBindingSemantics, SvelteElementTag,
+    TemplateAnalysis, TemplateElementEntry, TemplateElementIndex, TemplateTopology, WindowBindKind,
 };
 
 bitflags::bitflags! {
@@ -152,14 +161,14 @@ pub fn analyze_with_options<'a>(
     data.script.preserve_whitespace = options.preserve_whitespace;
     data.script.preserve_comments = options.preserve_comments;
     data.script.dev = options.dev;
-    data.output.custom_element_compile_flag = options.custom_element;
-    data.output.is_custom_element_target = options.custom_element
+    data.custom_element.compile_flag = options.custom_element;
+    data.custom_element.is_target = options.custom_element
         || component
             .options
             .as_ref()
             .and_then(|opts| opts.custom_element.as_ref())
             .is_some();
-    data.output.component_name = options.component_name.clone();
+    data.component_name = options.component_name.clone();
     data.script.experimental_async = options.experimental_async;
     debug_assert_eq!(
         passes::resolve_default_execution_order()
@@ -189,8 +198,6 @@ pub fn analyze_with_options<'a>(
         diags.retain(|d| d.severity != Severity::Warning || filter(d));
     }
 
-    data.output.runtime_plan = build_runtime_info(component, &data, options.dev);
-
     (data, parsed, diags)
 }
 
@@ -215,6 +222,7 @@ pub fn analyze_module<'a>(
 
             data.scoping = scoping;
             data.script.runes_mode = svelte_ast::RunesMode::Runes;
+            data.script.is_standalone_module = true;
 
             parsed.program = Some(program);
             let stub_component =
@@ -244,15 +252,18 @@ pub fn analyze_module<'a>(
             data.script.dev = dev;
             if dev {
                 if let Some(program) = parsed.program.as_ref() {
-                    data.output
-                        .ignore_data
-                        .scan_program_comments(program, source, true);
+                    data.ignore.scan_program_comments(program, source, true);
                 }
-                data.value_evaluation = value_evaluation::build_module_console_calls(
+                let value_evaluation = value_evaluation::build(
                     &parsed,
+                    &stub_component,
                     &data.scoping,
                     data.scoping.semantics(),
+                    &data.template.snippets,
+                    &data.reactivity,
+                    dev,
                 );
+                data.value_evaluation = value_evaluation;
             }
 
             if let Some(program) = parsed.program.as_ref() {
@@ -264,147 +275,5 @@ pub fn analyze_module<'a>(
 
     (data, parsed, diags)
 }
-fn build_runtime_info(
-    component: &svelte_ast::Component,
-    data: &AnalysisData<'_>,
-    dev: bool,
-) -> RuntimeInfo {
-    let summary = data.reactivity.summary();
-    let has_exports = !data.output.api_exports.is_empty();
-    let needs_push = needs_push(data, summary, has_exports, dev);
-    let has_legacy_accessor_props = has_legacy_accessor_props(data);
-    let has_component_exports =
-        has_exports || summary.props.has_custom_element || has_legacy_accessor_props || dev;
-    let needs_props_param = needs_props_param(component, data, summary, needs_push);
-
-    RuntimeInfo {
-        needs_push,
-        has_component_exports,
-        has_exports,
-        has_bindable: summary.props.has_bindable,
-        has_stores: summary.has_store_bindings,
-        has_ce_props: summary.props.has_custom_element,
-        has_legacy_accessor_props,
-        needs_props_param,
-        needs_pop_with_return: needs_push && has_component_exports,
-        legacy_init: legacy_init(data, summary.legacy),
-    }
-}
-
-fn needs_push(
-    data: &AnalysisData<'_>,
-    summary: ReactivitySummary,
-    has_exports: bool,
-    dev: bool,
-) -> bool {
-    if summary.props.has_bindable || summary.props.has_custom_element {
-        return true;
-    }
-    if has_exports {
-        return true;
-    }
-    if data.output.needs_context {
-        return true;
-    }
-    if dev {
-        return true;
-    }
-    if data.uses_runes() {
-        return false;
-    }
-    if has_legacy_accessor_props(data) {
-        return true;
-    }
-    if summary.legacy.has_member_mutated {
-        return true;
-    }
-    has_legacy_reactive_statements(data)
-}
-
-fn has_legacy_reactive_statements(data: &AnalysisData<'_>) -> bool {
-    data.reactivity
-        .legacy_reactive()
-        .iter_statements_topo()
-        .next()
-        .is_some()
-}
-
-fn has_legacy_accessor_props(data: &AnalysisData<'_>) -> bool {
-    if data.uses_runes() {
-        return false;
-    }
-    if !data.script.accessors {
-        return false;
-    }
-    data.reactivity
-        .iter_legacy_bindable_prop_symbols()
-        .any(|sym| !legacy_bindable_prop_key(data, sym).starts_with("$$"))
-}
-
-fn legacy_bindable_prop_key<'d>(
-    data: &'d AnalysisData<'_>,
-    sym: svelte_component_semantics::SymbolId,
-) -> &'d str {
-    match data.reactivity.legacy_bindable_prop_alias(sym) {
-        Some(alias) => alias,
-        None => data.scoping.symbol_name(sym),
-    }
-}
-
-fn needs_props_param(
-    component: &svelte_ast::Component,
-    data: &AnalysisData<'_>,
-    summary: ReactivitySummary,
-    needs_push: bool,
-) -> bool {
-    if needs_push || summary.props.has_props {
-        return true;
-    }
-    if summary.legacy.has_bindable_prop {
-        return true;
-    }
-    if summary.legacy.reads_props_object || summary.legacy.reads_rest_props_object {
-        return true;
-    }
-    if data.output.legacy_has_export_declaration {
-        return true;
-    }
-    if data.output.renders_legacy_slot || data.output.needs_sanitized_legacy_slots {
-        return true;
-    }
-    has_legacy_event_forward(component)
-}
-
-fn has_legacy_event_forward(component: &svelte_ast::Component) -> bool {
-    for raw in 0..component.node_count() {
-        let id = svelte_ast::NodeId(raw);
-        let node = component.store.get(id);
-        let forwards = node.attributes().iter().any(|a| {
-            matches!(
-                a,
-                svelte_ast::Attribute::OnDirectiveLegacy(od) if od.expression.is_none()
-            )
-        });
-        if forwards {
-            return true;
-        }
-    }
-    false
-}
-
-fn legacy_init(data: &AnalysisData<'_>, legacy: LegacySummary) -> LegacyInit {
-    if data.uses_runes() {
-        return LegacyInit::None;
-    }
-    let needs_init = legacy.has_member_mutated || data.output.needs_context;
-    if !needs_init {
-        return LegacyInit::None;
-    }
-    if data.script.immutable {
-        return LegacyInit::Immutable;
-    }
-    LegacyInit::Plain
-}
-
 #[cfg(test)]
 pub(crate) mod tests;

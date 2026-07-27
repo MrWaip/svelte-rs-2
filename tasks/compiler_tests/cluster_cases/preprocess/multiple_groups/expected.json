@@ -1,0 +1,8 @@
+{
+  "code": "<script lang=\"ts\">let x = 1;\n</script>\n\n<style lang=\"scss\">.a .b {\n  color: red;\n}</style>\n\n<p class=\"a\"><span class=\"b\">{x}</span></p>\n",
+  "dependencies": [],
+  "mapSources": [
+    "multiple_groups.svelte",
+    "file:///multiple_groups.svelte"
+  ]
+}

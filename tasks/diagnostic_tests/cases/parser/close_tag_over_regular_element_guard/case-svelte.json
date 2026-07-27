@@ -1,0 +1,8 @@
+[
+  {
+    "code": "element_implicitly_closed",
+    "end": 11,
+    "severity": "warning",
+    "start": 5
+  }
+]

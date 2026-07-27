@@ -1,4 +1,5 @@
 mod async_wrap;
+pub(in crate::codegen) use async_wrap::owns_fragment_anchor;
 mod await_block;
 mod dispatch;
 mod each_block;

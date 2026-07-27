@@ -2,13 +2,14 @@ use super::AttributeSemanticsStore;
 use super::data::{
     AttributeSemantics, BoundaryPropSemantics, ClassSemantics, ComponentAttachEmit,
     ComponentAttachSemantics, ComponentBindKind, ComponentBindSemantics, ComponentBindTarget,
-    ComponentCssPropValue, ComponentPropConcatSemantics, ComponentPropExpressionSemantics,
-    ComponentPropMemo, ComponentPropSemantics, ComponentSpreadEmit, ComponentSpreadSemantics,
-    ConcatPartEmit, DefaultAttrKind, DefaultAttrSemantics, DocumentBindSemantics,
-    ElementBindPropertyKind, ElementBindSemantics, EventHandler, EventSemantics, GroupBindValue,
-    GroupReflection, HandlerEffect, HtmlBindKind, HtmlConcatPart, HtmlConcatSemantics, SkipCause,
-    SpecialValueKind, SpecialValueSemantics, StyleSemantics, SvelteComponentThisSemantics,
-    TemplateEffect, WindowBindSemantics, is_component_css_property,
+    ComponentCssPropValue, ComponentPropCarrier, ComponentPropConcatSemantics,
+    ComponentPropExpressionSemantics, ComponentPropMemo, ComponentPropSemantics,
+    ComponentSpreadEmit, ComponentSpreadSemantics, ConcatPartEmit, DefaultAttrKind,
+    DefaultAttrSemantics, DocumentBindSemantics, ElementBindPropertyKind, ElementBindSemantics,
+    EventHandler, EventSemantics, GroupBindValue, GroupReflection, HandlerEffect, HtmlBindKind,
+    HtmlConcatPart, HtmlConcatSemantics, SkipCause, SpecialValueKind, SpecialValueSemantics,
+    StyleSemantics, SvelteComponentThisSemantics, TemplateEffect, WindowBindSemantics,
+    is_component_css_property,
 };
 use crate::expression_semantics::{
     Evaluation, ExpressionData, ExpressionSemantics, ExpressionSemanticsStore, LegacyWrap,
@@ -42,8 +43,8 @@ use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 use svelte_ast::{
     AttachTag, Attribute, BindDirective, Component, ConcatPart, Element, ExpressionAttribute,
-    FragmentId, Node, NodeId, OnDirectiveLegacy, OxcNodeId, StyleDirective, SvelteBody,
-    SvelteBoundary, SvelteDocument, SvelteWindow,
+    FragmentId, Node, NodeId, OnDirectiveLegacy, OxcNodeId, SLOT_ATTRIBUTE, StyleDirective,
+    SvelteBody, SvelteBoundary, SvelteDocument, SvelteWindow,
 };
 use svelte_component_semantics::{ComponentSemantics, SymbolFlags};
 
@@ -269,7 +270,9 @@ fn reference_symbol_needs_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData, sym: Sy
         BindingSemantics::Contextual(ContextualBindingSemantics::EachIndex(
             EachIndexStrategy::Direct,
         )) => false,
-        BindingSemantics::NonReactive | BindingSemantics::LegacyApiExport => {
+        BindingSemantics::NonReactive
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyPropsObject => {
             if ctx.snippets.snippet_by_symbol(sym).is_some() {
                 return true;
             }
@@ -303,13 +306,13 @@ fn reference_symbol_needs_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData, sym: Sy
 
 fn references_need_wrap(ctx: &Ctx<'_, '_>, data: &ExpressionData) -> bool {
     match data.volatility {
-        Volatility::Reactive if data.references.is_empty() => return true,
+        Volatility::Reactive if data.evaluated_reads.is_empty() => return true,
         Volatility::Static
         | Volatility::Reactive
         | Volatility::Heavy
         | Volatility::Asynchronous => {}
     }
-    data.references
+    data.evaluated_reads
         .iter()
         .any(|&sym| reference_symbol_needs_wrap(ctx, data, sym))
 }
@@ -349,6 +352,7 @@ fn handler_reads_through_contextual_getter(semantics: BindingSemantics) -> bool 
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -462,7 +466,7 @@ fn walk_fragment(
                     &cn.attributes,
                     store,
                     groups,
-                    ComponentPropCarrier::Component,
+                    ComponentPropCarrier::SvelteSelf,
                 );
                 walk_fragment(ctx, state, cn.fragment, store, groups);
                 for slot in &cn.legacy_slots {
@@ -606,6 +610,10 @@ fn classify_element_attrs(
                         groups.assign(d.id, derive_group_key(ctx, state, d));
                     }
                     let reflects_as_attribute = bind_reflects_as_attribute(ctx, el, property);
+                    let each_item_store_backed = needs_binding_validation
+                        && state.each_stack.last().is_some_and(|&each_id| {
+                            ctx.reactivity.each_block_iterates_store(each_id)
+                        });
                     store.set(
                         d.id,
                         AttributeSemantics::ElementBind(ElementBindSemantics {
@@ -618,6 +626,7 @@ fn classify_element_attrs(
                             group_reflection,
                             group_id: None,
                             needs_binding_validation,
+                            each_item_store_backed,
                             reflects_as_attribute,
                         }),
                     );
@@ -1013,14 +1022,17 @@ fn derive_blockers(ctx: &Ctx<'_, '_>, d: &BindDirective) -> SmallVec<[u32; 2]> {
     let Some(data) = ctx.expression_data(d.id) else {
         return result;
     };
+    let mut seen: SmallVec<[u32; 2]> = SmallVec::new();
     for &sym in &data.references {
-        if let Some(idx) = ctx.blockers.symbol_blocker(sym)
-            && !result.contains(&idx)
-        {
-            result.push(idx);
+        let Some(slot) = ctx.blockers.symbol_blocker(sym) else {
+            continue;
+        };
+        if seen.contains(&slot.member) {
+            continue;
         }
+        seen.push(slot.member);
+        result.push(slot.entry);
     }
-    result.sort_unstable();
     result
 }
 
@@ -1195,6 +1207,7 @@ fn find_group_bind_value(el: &Element) -> Option<GroupBindValue> {
         Attribute::StringAttribute(a) if a.name == "value" => {
             Some(GroupBindValue::Static { node: a.id })
         }
+        Attribute::BooleanAttribute(a) if a.name == "value" => Some(GroupBindValue::Boolean),
         Attribute::ExpressionAttribute(a) if a.name == "value" => {
             Some(GroupBindValue::Expression {
                 expression: a.expression.id(),
@@ -1300,6 +1313,7 @@ fn classify_identifier_kind(
         | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
         | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
         | ReferenceSemantics::EachItemIndexedLegacy { .. }
+        | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
         | ReferenceSemantics::IllegalWrite
         | ReferenceSemantics::Unresolved => HtmlBindKind::Plain,
     }
@@ -1516,13 +1530,6 @@ fn element_property(name: &str) -> Option<ElementBindPropertyKind> {
     })
 }
 
-#[derive(Copy, Clone)]
-enum ComponentPropCarrier {
-    Component,
-    SvelteComponentLegacy,
-    SlotLegacy,
-}
-
 fn classify_component_attrs(
     ctx: &Ctx<'_, '_>,
     state: &WalkState,
@@ -1571,6 +1578,12 @@ fn classify_component_attrs(
                 }
                 let ownership_root = derive_component_bind_ownership_root(ctx, d);
                 let each_item_store_backed = each_item_store_backed(ctx, &each_context_vars);
+                let needs_binding_validation = d.name == "this"
+                    && ctx.reactivity.uses_runes()
+                    && bind_expr_is_member(ctx, d)
+                    && !ctx
+                        .ignore_data
+                        .is_ignored_warning(d.id, crate::WarningCode::BindingPropertyNonReactive);
                 store.set(
                     d.id,
                     AttributeSemantics::ComponentBind(ComponentBindSemantics {
@@ -1578,6 +1591,7 @@ fn classify_component_attrs(
                         each_context_vars,
                         ownership_root,
                         each_item_store_backed,
+                        needs_binding_validation,
                     }),
                 );
             }
@@ -1598,7 +1612,11 @@ fn classify_component_attrs(
                 store.set(
                     ea.id,
                     AttributeSemantics::ComponentProp(ComponentPropSemantics::Expression(
-                        ComponentPropExpressionSemantics { memo, shorthand },
+                        ComponentPropExpressionSemantics {
+                            memo,
+                            shorthand,
+                            carrier,
+                        },
                     )),
                 );
             }
@@ -1619,7 +1637,11 @@ fn classify_component_attrs(
                 store.set(
                     ca.id,
                     AttributeSemantics::ComponentProp(ComponentPropSemantics::Concat(
-                        ComponentPropConcatSemantics { memo, plan },
+                        ComponentPropConcatSemantics {
+                            memo,
+                            plan,
+                            carrier,
+                        },
                     )),
                 );
             }
@@ -1667,7 +1689,7 @@ fn is_slot_meta_attribute(attr: &Attribute) -> bool {
     let Some(name) = attr.name() else {
         return false;
     };
-    name == "name" || name == "slot"
+    name == "name" || name == SLOT_ATTRIBUTE
 }
 
 fn parse_event_modifiers(modifiers: &[String]) -> EventModifier {
@@ -1747,23 +1769,14 @@ fn derive_html_concat_semantics(
                 };
                 if !single && let Evaluation::Known(_) = &data.evaluation {
                     let text = data.evaluation.known_str().unwrap_or_default();
-                    parts.push(HtmlConcatPart::StaticText(text.into()));
+                    parts.push(HtmlConcatPart::FoldedText {
+                        text: text.into(),
+                        part_id: *id,
+                    });
                     continue;
                 }
                 let defined = matches!(data.evaluation, Evaluation::Defined { .. });
                 let wrap = data.legacy_wrap;
-                if !data.blockers.is_empty() {
-                    let index = async_index;
-                    async_index += 1;
-                    has_async = true;
-                    parts.push(HtmlConcatPart::AsyncMemoSlot {
-                        index,
-                        part_id: *id,
-                        defined,
-                        wrap,
-                    });
-                    continue;
-                }
                 match data.volatility {
                     Volatility::Asynchronous => {
                         let index = async_index;
@@ -1832,6 +1845,7 @@ fn derive_component_concat_semantics(
     {
         let memo = derive_component_prop_memo_core(ctx, expr_raw, data, carrier);
         let emit = match memo {
+            ComponentPropMemo::Awaited => ConcatPartEmit::Awaited,
             ComponentPropMemo::Derived => ConcatPartEmit::HoistDerived,
             ComponentPropMemo::Getter | ComponentPropMemo::Inline => ConcatPartEmit::Inline,
         };
@@ -1847,9 +1861,6 @@ fn derive_component_concat_semantics(
         match data.volatility {
             Volatility::Heavy | Volatility::Asynchronous => true,
             Volatility::Static | Volatility::Reactive => {
-                if !data.blockers.is_empty() {
-                    return true;
-                }
                 let Some(e) = ctx.parsed.expr(expr.id()) else {
                     return false;
                 };
@@ -1874,23 +1885,16 @@ fn derive_component_concat_semantics(
                 Evaluation::Known(_) => ConcatPartEmit::Static,
                 Evaluation::Defined { .. } | Evaluation::MaybeNullish { .. } => {
                     match data.volatility {
-                        Volatility::Heavy | Volatility::Asynchronous => {
-                            ConcatPartEmit::HoistDerived
-                        }
+                        Volatility::Asynchronous => ConcatPartEmit::Awaited,
+                        Volatility::Heavy => ConcatPartEmit::HoistDerived,
                         Volatility::Reactive => {
-                            if !data.blockers.is_empty() || forces_wrap {
+                            if forces_wrap {
                                 ConcatPartEmit::HoistDerived
                             } else {
                                 ConcatPartEmit::Inline
                             }
                         }
-                        Volatility::Static => {
-                            if data.blockers.is_empty() {
-                                ConcatPartEmit::Inline
-                            } else {
-                                ConcatPartEmit::HoistDerived
-                            }
-                        }
+                        Volatility::Static => ConcatPartEmit::Inline,
                     }
                 }
             }
@@ -1906,16 +1910,24 @@ fn component_prop_memo(
     parts: &[ConcatPart],
     plan: &[ConcatPartEmit],
 ) -> ComponentPropMemo {
+    let has_await = plan
+        .iter()
+        .any(|emit| matches!(emit, ConcatPartEmit::Awaited));
+    if has_await {
+        return ComponentPropMemo::Awaited;
+    }
     let has_hoist = plan.iter().any(|emit| match emit {
         ConcatPartEmit::HoistDerived => true,
-        ConcatPartEmit::Inline | ConcatPartEmit::Static => false,
+        ConcatPartEmit::Awaited | ConcatPartEmit::Inline | ConcatPartEmit::Static => false,
     });
     if has_hoist {
         return ComponentPropMemo::Derived;
     }
     for (part, emit) in parts.iter().zip(plan.iter()) {
         match emit {
-            ConcatPartEmit::HoistDerived | ConcatPartEmit::Static => continue,
+            ConcatPartEmit::HoistDerived | ConcatPartEmit::Awaited | ConcatPartEmit::Static => {
+                continue;
+            }
             ConcatPartEmit::Inline => {}
         }
         let ConcatPart::Dynamic { id, .. } = part else {
@@ -1957,11 +1969,9 @@ fn derive_component_spread_emit(ctx: &Ctx<'_, '_>, attr_id: NodeId) -> Component
         return ComponentSpreadEmit::Inline;
     };
     match data.volatility {
-        Volatility::Heavy | Volatility::Asynchronous => return ComponentSpreadEmit::MemoThunk,
+        Volatility::Asynchronous => return ComponentSpreadEmit::AwaitedThunk,
+        Volatility::Heavy => return ComponentSpreadEmit::MemoThunk,
         Volatility::Static | Volatility::Reactive => {}
-    }
-    if !data.blockers.is_empty() {
-        return ComponentSpreadEmit::MemoThunk;
     }
     if references_need_wrap(ctx, data) {
         ComponentSpreadEmit::Thunk
@@ -1991,16 +2001,20 @@ fn derive_component_prop_memo_core(
     carrier: ComponentPropCarrier,
 ) -> ComponentPropMemo {
     let expr = expr_raw.get_inner_expression();
-    if matches!(
-        expr,
-        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
-    ) {
+    if data.blockers.is_empty()
+        && matches!(
+            expr,
+            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+        )
+    {
         return ComponentPropMemo::Inline;
     }
-    if matches!(
-        expr,
-        Expression::ObjectExpression(_) | Expression::ArrayExpression(_)
-    ) && object_array_literal_is_inline(ctx, expr)
+    if data.blockers.is_empty()
+        && matches!(
+            expr,
+            Expression::ObjectExpression(_) | Expression::ArrayExpression(_)
+        )
+        && object_array_literal_is_inline(ctx, expr)
     {
         return ComponentPropMemo::Inline;
     }
@@ -2011,19 +2025,17 @@ fn derive_component_prop_memo_core(
             | Expression::ComputedMemberExpression(_)
     );
     let needs_wrap = references_need_wrap(ctx, data);
-    if matches!(
-        data.volatility,
-        Volatility::Heavy | Volatility::Asynchronous
-    ) || !data.blockers.is_empty()
-    {
+    if data.volatility.is_asynchronous() {
+        ComponentPropMemo::Awaited
+    } else if matches!(data.volatility, Volatility::Heavy) {
         ComponentPropMemo::Derived
-    } else if needs_wrap && simple_shape {
+    } else if (needs_wrap && simple_shape) || (!needs_wrap && !data.blockers.is_empty()) {
         ComponentPropMemo::Getter
     } else if needs_wrap {
         match carrier {
-            ComponentPropCarrier::Component | ComponentPropCarrier::SvelteComponentLegacy => {
-                ComponentPropMemo::Derived
-            }
+            ComponentPropCarrier::Component
+            | ComponentPropCarrier::SvelteSelf
+            | ComponentPropCarrier::SvelteComponentLegacy => ComponentPropMemo::Derived,
             ComponentPropCarrier::SlotLegacy => ComponentPropMemo::Getter,
         }
     } else {
@@ -2125,6 +2137,7 @@ fn derive_each_context_vars(ctx: &Ctx<'_, '_>, d: &BindDirective) -> SmallVec<[S
             | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::LegacyApiExport
             | BindingSemantics::Unresolved => false,
         };

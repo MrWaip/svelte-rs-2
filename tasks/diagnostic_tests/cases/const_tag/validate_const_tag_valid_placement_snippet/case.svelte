@@ -1,0 +1,1 @@
+{#snippet t()}{@const x = 1}<p>{x}</p>{/snippet}{@render t()}

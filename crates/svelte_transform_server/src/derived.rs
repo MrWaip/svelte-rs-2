@@ -13,6 +13,7 @@ use svelte_analyze::{
 };
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::{Access, SymbolId, walk_bindings};
+use svelte_emit_builders::async_entry::suspending_arrow_body;
 
 use crate::model::ServerTransform;
 
@@ -30,7 +31,8 @@ impl<'a> ServerTransform<'_, 'a> {
         let Some(Expression::CallExpression(call)) = declarator.init.as_mut() else {
             return;
         };
-        let value = self.take_first_arg(call);
+        let mut value = self.take_first_arg(call);
+        self.rewrite_await(&mut value);
         if matches!(kind, DerivedKind::Derived)
             && matches!(async_kind, DerivedAsyncKind::Sync)
             && let Expression::Identifier(id) = value.get_inner_expression()
@@ -177,8 +179,8 @@ pub(crate) fn build_derived_init<'a>(
     match kind {
         DerivedKind::DerivedBy => b.call_expr("$.derived", [Arg::Expr(value)]),
         DerivedKind::Derived => match async_kind {
-            DerivedAsyncKind::Async => {
-                let thunk = b.async_thunk(unwrap_wrappers(value));
+            DerivedAsyncKind::Async { suspension } => {
+                let thunk = suspending_arrow_body(b, unwrap_wrappers(value), suspension);
                 b.await_expr(b.call_expr("$.async_derived", [Arg::Expr(thunk)]))
             }
             DerivedAsyncKind::Sync => b.call_expr("$.derived", [Arg::Expr(b.thunk(value))]),

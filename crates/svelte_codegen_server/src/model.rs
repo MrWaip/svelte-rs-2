@@ -1,7 +1,7 @@
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use std::collections::HashMap;
-use svelte_analyze::{AnalysisData, IdentGen, JsAst};
+use svelte_analyze::{AnalysisData, ExpressionBlocker, IdentGen, JsAst};
 use svelte_ast::{Component, ExprRef, NodeId};
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::SymbolId;
@@ -29,10 +29,15 @@ pub(crate) struct ServerCodegen<'a> {
     pub bind_pair_names: HashMap<NodeId, (String, String)>,
     pub svelte_element_tag_refs: HashMap<NodeId, String>,
     pub save_block_awaits: bool,
-    pub promise_hoists: Option<Vec<Statement<'a>>>,
-    pub promise_index: u32,
+    pub promise_hoists: Option<Vec<Expression<'a>>>,
+    pub emitted_blockers: Option<Vec<(u32, u32)>>,
+    pub pending_group_declarations: Vec<String>,
+    pub suppress_async_hoist: bool,
     pub const_tag_blockers: HashMap<SymbolId, (String, u32)>,
+    pub declaration_blocker_slots: HashMap<NodeId, (String, u32)>,
+    pub declaration_group_idents: HashMap<svelte_ast::FragmentId, String>,
     pub injected_css_text: Option<&'a str>,
+    pub emitted_snippet_names: Vec<&'a str>,
 }
 
 pub(crate) enum AsyncInterpolation<'a> {
@@ -69,9 +74,14 @@ impl<'a> ServerCodegen<'a> {
             svelte_element_tag_refs: HashMap::new(),
             save_block_awaits: false,
             promise_hoists: None,
-            promise_index: 0,
+            emitted_blockers: None,
+            pending_group_declarations: Vec::new(),
+            suppress_async_hoist: false,
             const_tag_blockers: HashMap::new(),
+            declaration_blocker_slots: HashMap::new(),
+            declaration_group_idents: HashMap::new(),
             injected_css_text,
+            emitted_snippet_names: Vec::new(),
         }
     }
 
@@ -92,6 +102,7 @@ impl<'a> ServerCodegen<'a> {
         node_id: NodeId,
         oxc_id: OxcNodeId,
     ) -> Result<Expression<'a>> {
+        self.record_emitted_blockers(node_id);
         self.js_arena
             .take_expr(oxc_id)
             .ok_or(CodegenError::MissingExpression(node_id))
@@ -108,7 +119,7 @@ impl<'a> ServerCodegen<'a> {
         node_id: NodeId,
         expr: Expression<'a>,
     ) -> Expression<'a> {
-        if self.promise_hoists.is_none() {
+        if self.suppress_async_hoist || self.promise_hoists.is_none() {
             return expr;
         }
         let is_async = self
@@ -118,12 +129,38 @@ impl<'a> ServerCodegen<'a> {
         if !is_async {
             return expr;
         }
-        let name = format!("$${}", self.promise_index);
-        self.promise_index += 1;
-        let decl = self.b.const_stmt(&name, expr);
-        if let Some(hoists) = self.promise_hoists.as_mut() {
-            hoists.push(decl);
+        self.push_promise_hoist(expr)
+    }
+
+    fn record_emitted_blockers(&mut self, node_id: NodeId) {
+        if self.emitted_blockers.is_none() {
+            return;
         }
+        let Some(data) = self.analysis.expression_data(node_id) else {
+            return;
+        };
+        let blocker_data = self.analysis.blocker_data();
+        let Some(mut recorded) = self.emitted_blockers.take() else {
+            return;
+        };
+        for sym in &data.blocker_references {
+            let Some(slot) = blocker_data.symbol_blocker(*sym) else {
+                continue;
+            };
+            if recorded.iter().any(|(member, _)| *member == slot.member) {
+                continue;
+            }
+            recorded.push((slot.member, slot.entry));
+        }
+        self.emitted_blockers = Some(recorded);
+    }
+
+    fn push_promise_hoist(&mut self, expr: Expression<'a>) -> Expression<'a> {
+        let Some(hoists) = self.promise_hoists.as_mut() else {
+            return expr;
+        };
+        let name = format!("$${}", hoists.len());
+        hoists.push(expr);
         self.b.rid_expr(&name)
     }
 
@@ -131,15 +168,52 @@ impl<'a> ServerCodegen<'a> {
         &mut self,
         f: impl FnOnce(&mut Self) -> T,
     ) -> (T, Vec<Statement<'a>>) {
-        let prev_hoists = self.promise_hoists.take();
-        let prev_index = self.promise_index;
-        self.promise_hoists = Some(Vec::new());
-        self.promise_index = 0;
+        let prev_hoists = self.promise_hoists.replace(Vec::new());
         let out = f(self);
-        let hoists = self.promise_hoists.take().unwrap_or_default();
+        let hoisted = self.promise_hoists.take().unwrap_or_default();
         self.promise_hoists = prev_hoists;
-        self.promise_index = prev_index;
-        (out, hoists)
+        (out, self.apply_promise_hoists(hoisted))
+    }
+
+    pub(crate) fn without_emitted_blockers<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let previous = self.emitted_blockers.take();
+        let out = f(self);
+        self.emitted_blockers = previous;
+        out
+    }
+
+    pub(crate) fn with_emitted_blockers<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> (T, Vec<u32>) {
+        let previous = self.emitted_blockers.replace(Vec::new());
+        let out = f(self);
+        let recorded = self.emitted_blockers.take().unwrap_or_default();
+        self.emitted_blockers = previous;
+        (out, recorded.into_iter().map(|(_, entry)| entry).collect())
+    }
+
+    fn apply_promise_hoists(&self, hoisted: Vec<Expression<'a>>) -> Vec<Statement<'a>> {
+        if hoisted.is_empty() {
+            return Vec::new();
+        }
+        if hoisted.len() == 1 {
+            let mut hoisted = hoisted;
+            return vec![self.b.const_stmt("$$0", hoisted.remove(0))];
+        }
+        let names: Vec<String> = (0..hoisted.len()).map(|i| format!("$${i}")).collect();
+        let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let mut members: Vec<Expression<'a>> = Vec::with_capacity(hoisted.len());
+        for expr in hoisted {
+            let thunk = self.b.async_arrow_expr_body(expr);
+            members.push(self.b.call_expr_callee(thunk, []));
+        }
+        let all = self
+            .b
+            .call_expr("Promise.all", [Arg::Expr(self.b.array_expr(members))]);
+        let save = self.b.call_expr("$.save", [Arg::Expr(all)]);
+        let settled = self.b.call_expr_callee(self.b.await_expr(save), []);
+        vec![self.b.const_array_destruct_stmt(&name_refs, settled)]
     }
 
     pub(crate) fn blocker_member(&self, idx: u32) -> Expression<'a> {
@@ -163,6 +237,27 @@ impl<'a> ServerCodegen<'a> {
         } else {
             None
         }
+    }
+
+    pub(crate) fn blocker_exprs(&self, blockers: &[ExpressionBlocker]) -> Vec<Expression<'a>> {
+        let mut result = Vec::new();
+        for blocker in blockers {
+            match blocker {
+                ExpressionBlocker::Script { entry } => result.push(self.blocker_member(*entry)),
+                ExpressionBlocker::FragmentDeclaration { node } => {
+                    let Some((name, idx)) = self.declaration_blocker_slots.get(node) else {
+                        continue;
+                    };
+                    result.push(
+                        self.b.computed_member_expr(
+                            self.b.rid_expr(name),
+                            self.b.num_expr(*idx as f64),
+                        ),
+                    );
+                }
+            }
+        }
+        result
     }
 
     pub(crate) fn const_tag_blocker_exprs(&self, node_id: NodeId) -> Vec<Expression<'a>> {
@@ -191,16 +286,10 @@ impl<'a> ServerCodegen<'a> {
                 if call.arguments.is_empty()
                     && matches!(call.callee.get_inner_expression(), Expression::AwaitExpression(_))
         );
-        if !is_awaited_call || self.promise_hoists.is_none() {
+        if !is_awaited_call {
             return expr;
         }
-        let name = format!("$${}", self.promise_index);
-        self.promise_index += 1;
-        let decl = self.b.const_stmt(&name, expr);
-        if let Some(hoists) = self.promise_hoists.as_mut() {
-            hoists.push(decl);
-        }
-        self.b.rid_expr(&name)
+        self.push_promise_hoist(expr)
     }
 
     pub(crate) fn save_block_await(&self, expr: Expression<'a>) -> Expression<'a> {
@@ -212,12 +301,25 @@ impl<'a> ServerCodegen<'a> {
         self.b.call_expr_callee(self.b.await_expr(save), [])
     }
 
-    pub(crate) fn wrap_async_block(
+    pub(crate) fn wrap_async_block_exprs(
         &self,
         statements: Vec<Statement<'a>>,
-        blockers: &[u32],
+        blockers: Vec<Expression<'a>>,
+        is_async: bool,
     ) -> Statement<'a> {
-        self.wrap_async_block_flagged(statements, blockers, true)
+        let arrow =
+            self.b
+                .arrow_block_expr_async(self.b.params(["$$renderer"]), statements, is_async);
+        if blockers.is_empty() {
+            return self
+                .b
+                .call_stmt("$$renderer.child_block", [Arg::Expr(arrow)]);
+        }
+        let promises = self.b.array_expr(blockers);
+        self.b.call_stmt(
+            "$$renderer.async_block",
+            [Arg::Expr(promises), Arg::Expr(arrow)],
+        )
     }
 
     pub(crate) fn wrap_async_block_flagged(

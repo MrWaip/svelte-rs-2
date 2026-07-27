@@ -30,7 +30,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         state: &mut EmitState<'a>,
         id: NodeId,
     ) -> Result<()> {
-        if state.skip_snippets {
+        if state.skip_snippets || state.skip_snippet_ids.contains(&id) {
             return Ok(());
         }
         let sem = match self.ctx.query.analysis.block_semantics(id) {

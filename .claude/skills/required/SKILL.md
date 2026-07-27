@@ -1,6 +1,6 @@
 ---
 name: required
-description: Use when starting any compiler task or session before touching parser/analyze/transform/ast/codegen/css/diagnostics code, before proposing a design or writing code, and when the task grows into a new layer and you need its PRD invariants.
+description: Routes a compiler task to the PRDs that own its terms through the `topics:` contract. Use at the start of any compiler task, before touching parser/analyze/transform/ast/codegen/css/diagnostics code or proposing a design, and when the task grows into a new layer.
 allowed-tools: Read, Bash
 ---
 

@@ -287,35 +287,59 @@ impl<'a> Parser<'a> {
             component.store.replace(id, node);
         }
     }
-    pub(crate) fn convert_slot_element_legacy(store: &mut AstStore, node_ids: &[NodeId]) {
+    pub(crate) fn convert_slot_element_legacy(
+        store: &mut AstStore,
+        node_ids: &[NodeId],
+        inside_shadowroot: bool,
+    ) {
         let mut next_level = Vec::new();
+        let mut next_level_shadowroot = Vec::new();
         for &id in node_ids {
-            if store
-                .get(id)
-                .as_element()
-                .is_some_and(|el| el.name == "slot")
-            {
-                let Node::Element(el) = store.take(id) else {
-                    unreachable!()
-                };
-                let inner_nodes = store.fragment_nodes(el.fragment).to_vec();
-                Self::convert_slot_element_legacy(store, &inner_nodes);
-                store.replace(
-                    id,
-                    Node::SlotElementLegacy(SlotElementLegacy {
-                        id: el.id,
-                        span: el.span,
-                        attributes: el.attributes,
-                        fragment: el.fragment,
-                    }),
+            let element = store.get(id).as_element().map(|el| {
+                (
+                    el.name == "slot",
+                    inside_shadowroot || has_shadowrootmode_attribute(el),
+                )
+            });
+            let Some((is_slot, child_inside_shadowroot)) = element else {
+                let target = pick_level(
+                    inside_shadowroot,
+                    &mut next_level,
+                    &mut next_level_shadowroot,
                 );
-            } else {
-                let node = store.get(id);
-                extend_child_node_ids(store, node, &mut next_level);
+                extend_child_node_ids(store, store.get(id), target);
+                continue;
+            };
+            let convert_this_slot = is_slot && !inside_shadowroot;
+            if !convert_this_slot {
+                let target = pick_level(
+                    child_inside_shadowroot,
+                    &mut next_level,
+                    &mut next_level_shadowroot,
+                );
+                extend_child_node_ids(store, store.get(id), target);
+                continue;
             }
+            let Node::Element(el) = store.take(id) else {
+                continue;
+            };
+            let inner_nodes = store.fragment_nodes(el.fragment).to_vec();
+            Self::convert_slot_element_legacy(store, &inner_nodes, child_inside_shadowroot);
+            store.replace(
+                id,
+                Node::SlotElementLegacy(SlotElementLegacy {
+                    id: el.id,
+                    span: el.span,
+                    attributes: el.attributes,
+                    fragment: el.fragment,
+                }),
+            );
         }
         if !next_level.is_empty() {
-            Self::convert_slot_element_legacy(store, &next_level);
+            Self::convert_slot_element_legacy(store, &next_level, false);
+        }
+        if !next_level_shadowroot.is_empty() {
+            Self::convert_slot_element_legacy(store, &next_level_shadowroot, true);
         }
     }
     pub(crate) fn convert_svelte_fragment_legacy(store: &mut AstStore, node_ids: &[NodeId]) {
@@ -501,4 +525,25 @@ fn extend_child_node_ids(store: &AstStore, node: &Node, buf: &mut Vec<NodeId>) {
     for_each_child_fragment(node, |fid| {
         buf.extend_from_slice(&store.fragment(fid).nodes);
     });
+}
+
+fn has_shadowrootmode_attribute(el: &Element) -> bool {
+    for attribute in &el.attributes {
+        if attribute.html_name() == "shadowrootmode" {
+            return true;
+        }
+    }
+    false
+}
+
+fn pick_level<'v>(
+    inside_shadowroot: bool,
+    normal: &'v mut Vec<NodeId>,
+    shadowroot: &'v mut Vec<NodeId>,
+) -> &'v mut Vec<NodeId> {
+    if inside_shadowroot {
+        shadowroot
+    } else {
+        normal
+    }
 }

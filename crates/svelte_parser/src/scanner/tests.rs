@@ -209,6 +209,188 @@ fn unquoted_attribute_value_keeps_bare_slash_not_before_gt() {
 }
 
 #[test]
+fn unquoted_attribute_value_of_slash_before_gt_does_not_self_close() {
+    let source = "<a href=/>home</a>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "a", vec![("href", "/")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_of_slash_before_gt_after_whitespace() {
+    let source = "<a href = />home</a>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "a", vec![("href", "/")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_keeps_leading_slash() {
+    let source = "<a href=/foo>home</a>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "a", vec![("href", "/foo")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_of_bare_slash_stops_at_whitespace() {
+    let source = "<div foo=/ ></div>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("foo", "/")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_stops_at_equals() {
+    let source = "<div foo=a=b></div>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("foo", "a")], false);
+}
+
+#[test]
+fn unquoted_attribute_value_stops_at_quote() {
+    let source = "<div foo=a'b></div>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("foo", "a")], false);
+}
+
+#[test]
+fn start_tag_missing_close_reports_expected_token() {
+    let (_, diagnostics) = Scanner::new("<div foo=a'b></div>").scan_tokens();
+
+    assert_has_diagnostic(
+        &diagnostics,
+        DiagnosticKind::ExpectedToken { token: ">".into() },
+    );
+}
+
+#[test]
+fn tag_line_comment_between_attributes() {
+    let source = "<div\n\ta=\"1\"\n\t// a line comment\n\tb=\"2\"\n>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(
+        source,
+        &tokens[0],
+        "div",
+        vec![("a", "1"), ("b", "2")],
+        false,
+    );
+}
+
+#[test]
+fn tag_block_comment_between_attributes() {
+    let source = "<div a=\"1\" /* a block comment */ b=\"2\">";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(
+        source,
+        &tokens[0],
+        "div",
+        vec![("a", "1"), ("b", "2")],
+        false,
+    );
+}
+
+#[test]
+fn tag_block_comment_spanning_multiple_lines() {
+    let source = "<div a=\"1\" /* one\n\ttwo\n\tthree */ b=\"2\">";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(
+        source,
+        &tokens[0],
+        "div",
+        vec![("a", "1"), ("b", "2")],
+        false,
+    );
+}
+
+#[test]
+fn tag_comment_right_after_name() {
+    let source = "<div /* c */ a=\"1\">";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("a", "1")], false);
+}
+
+#[test]
+fn tag_comment_right_before_close() {
+    let source = "<div a=\"1\" /* trailing */>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "div", vec![("a", "1")], false);
+}
+
+#[test]
+fn tag_comment_before_self_close() {
+    let source = "<input /* c */ value=\"a\" />";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "input", vec![("value", "a")], true);
+}
+
+#[test]
+fn tag_multiple_consecutive_comments() {
+    let source = "<span /* one */ // two\n x=\"1\">";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "span", vec![("x", "1")], false);
+}
+
+#[test]
+fn tag_comment_on_component() {
+    let source = "<Comp /* c */ prop=\"a\" />";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[0], "Comp", vec![("prop", "a")], true);
+}
+
+#[test]
+fn tag_unclosed_block_comment_reaches_end_of_file() {
+    let (_, diagnostics) = Scanner::new("<div /* unclosed").scan_tokens();
+
+    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+}
+
+#[test]
+fn tag_line_comment_eats_close_to_end_of_file() {
+    let (_, diagnostics) = Scanner::new("<div a=\"1\" // no newline before gt>").scan_tokens();
+
+    assert_has_diagnostic(&diagnostics, DiagnosticKind::UnexpectedEndOfFile);
+}
+
+#[test]
+fn top_level_script_tag_does_not_treat_comment_as_whitespace() {
+    let (_, diagnostics) = Scanner::new("<script /* c */>const x = 1;</script>").scan_tokens();
+
+    assert_has_diagnostic(
+        &diagnostics,
+        DiagnosticKind::ExpectedToken { token: ">".into() },
+    );
+}
+
+#[test]
+fn top_level_style_tag_does_not_treat_comment_as_whitespace() {
+    let (_, diagnostics) = Scanner::new("<style /* c */>a{}</style>").scan_tokens();
+
+    assert_has_diagnostic(
+        &diagnostics,
+        DiagnosticKind::ExpectedToken { token: ">".into() },
+    );
+}
+
+#[test]
+fn nested_script_tag_allows_comment_between_attributes() {
+    let source = "<div><script /* c */ src=\"a\"></script></div>";
+    let tokens = Scanner::new(source).scan_tokens().0;
+
+    assert_start_tag(source, &tokens[1], "script", vec![("src", "a")], false);
+}
+
+#[test]
 fn attribute_tokens_capture_full_source_spans() {
     let source = "<div class='x' {...props} let:item={slotProps} on:click|once={handler} style:color|important {@attach attach} />";
     let mut scanner = Scanner::new(source);
@@ -532,6 +714,7 @@ fn each_block_no_as_with_index_and_key() {
     assert!(tokens[1].token_type == TokenType::EOF);
 }
 
+#[track_caller]
 fn assert_has_diagnostic(diagnostics: &[Diagnostic], err_kind: DiagnosticKind) {
     assert!(
         diagnostics.iter().any(|d| d.kind == err_kind),
@@ -1121,7 +1304,7 @@ fn recovery_unclosed_script_tag() {
     let (tokens, diagnostics) = scanner.scan_tokens();
     assert!(matches!(tokens[0].token_type, TokenType::ScriptTag(_)));
     if let TokenType::ScriptTag(ref st) = tokens[0].token_type {
-        assert_eq!(st.content_span.source_text(source), "code");
+        assert_eq!(st.content_span.source_text(source), "");
     }
     assert!(tokens.last().expect("test invariant").token_type == TokenType::EOF);
     assert_has_diagnostic(
@@ -1445,4 +1628,63 @@ fn assert_recovers(tokens: &[Token], diagnostics: &[Diagnostic], err_kind: Diagn
         "recovery must still terminate with EOF, got: {:?}",
         tokens.last().map(|t| &t.token_type)
     );
+}
+
+fn scan_js_comment_starts(source: &str) -> Vec<u32> {
+    let mut scanner = Scanner::new(source);
+    let _ = scanner.scan_tokens();
+    let mut starts = scanner.take_js_comment_expr_starts();
+    starts.sort_unstable();
+    starts
+}
+
+#[track_caller]
+fn assert_comment_expr_starts(source: &str, expected_prefixes: &[&str]) {
+    let starts = scan_js_comment_starts(source);
+    assert_eq!(
+        starts.len(),
+        expected_prefixes.len(),
+        "comment-bearing expr count: expected {} ({expected_prefixes:?}), got {} ({starts:?})",
+        expected_prefixes.len(),
+        starts.len(),
+    );
+    for (&start, prefix) in starts.iter().zip(expected_prefixes) {
+        let slice = &source[start as usize..];
+        assert!(
+            slice.starts_with(prefix),
+            "expr recorded at {start}: expected to start with {prefix:?}, got {:?}",
+            &slice[..prefix.len().min(slice.len())],
+        );
+    }
+}
+
+#[test]
+fn records_interpolation_line_comment() {
+    assert_comment_expr_starts("{ a // }\n + b }", &["a // }"]);
+}
+
+#[test]
+fn records_interpolation_block_comment() {
+    assert_comment_expr_starts("{ a /* } */ + b }", &["a /* } */"]);
+}
+
+#[test]
+fn records_event_handler_comment() {
+    let source = "<button onclick={() => {\n\t// svelte-ignore x\n\tfoo.bar = 1;\n}}></button>";
+    assert_comment_expr_starts(source, &["() =>"]);
+}
+
+#[test]
+fn ignores_expression_without_comment() {
+    assert_comment_expr_starts("{ a + b }", &[]);
+}
+
+#[test]
+fn records_only_comment_bearing_expression() {
+    assert_comment_expr_starts("{ x } { y /* c */ }", &["y /* c */"]);
+}
+
+#[test]
+fn ignores_comment_marker_inside_string() {
+    assert_comment_expr_starts(r#"{ "http://x" }"#, &[]);
 }

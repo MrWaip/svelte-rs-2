@@ -15,7 +15,6 @@ pub enum Severity {
 pub enum DiagnosticKind {
     UnexpectedEndOfFile,
     InvalidTagName,
-    UnterminatedStartTag,
     InvalidAttributeName,
     UnexpectedToken,
     UnexpectedKeyword,
@@ -530,7 +529,6 @@ impl DiagnosticKind {
         match self {
             Self::UnexpectedEndOfFile => "unexpected_eof",
             Self::InvalidTagName => "tag_invalid_name",
-            Self::UnterminatedStartTag => "unterminated_start_tag",
             Self::InvalidAttributeName => "attribute_invalid_name",
             Self::UnexpectedToken => "unexpected_token",
             Self::UnexpectedKeyword => "unexpected_reserved_word",
@@ -841,7 +839,6 @@ impl DiagnosticKind {
         match self {
             Self::UnexpectedEndOfFile => "Unexpected end of input".into(),
             Self::InvalidTagName => "Expected a valid element or component name. Components must have a valid variable name or dot notation expression".into(),
-            Self::UnterminatedStartTag => "Start tag is not terminated".into(),
             Self::InvalidAttributeName => "Invalid attribute name".into(),
             Self::UnexpectedToken => "Unexpected token".into(),
             Self::UnexpectedKeyword => "Unexpected reserved word".into(),
@@ -1351,10 +1348,6 @@ impl Diagnostic {
 
     pub fn invalid_tag_name(span: Span) -> Self {
         Self::error(DiagnosticKind::InvalidTagName, span)
-    }
-
-    pub fn unterminated_start_tag(span: Span) -> Self {
-        Self::error(DiagnosticKind::UnterminatedStartTag, span)
     }
 
     pub fn invalid_attribute_name(span: Span) -> Self {

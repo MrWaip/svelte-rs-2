@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use smallvec::SmallVec;
+use svelte_analyze::ElementSemanticsStore;
 use svelte_ast::{AstStore, Node, NodeId};
 use svelte_span::Span;
 
@@ -12,16 +13,13 @@ use crate::codegen::{
 pub(super) fn prepare<'a>(
     raw: &[NodeId],
     store: &'a AstStore,
+    elements: &ElementSemanticsStore,
     ctx: &FragmentCtx<'a>,
     bucket: &mut HoistedBucket,
 ) -> (Vec<Child>, ContentStrategy) {
-    let exclude_slotted = ctx.role == svelte_ast::FragmentRole::ComponentChildren;
     let mut filtered: SmallVec<[&Node; 8]> = SmallVec::with_capacity(raw.len());
     for &id in raw {
         let node = store.get(id);
-        if exclude_slotted && node_has_slot_attribute(node) {
-            continue;
-        }
         if matches!(node, Node::Comment(_)) && !ctx.preserve_comments {
             continue;
         }
@@ -180,11 +178,7 @@ pub(super) fn prepare<'a>(
                         Cow::Owned(s) => ConcatPart::StaticOwned(s),
                     }
                 };
-                if let Some(BufItem::Text(prev_part)) = buf.last_mut() {
-                    *prev_part = merge_static_parts(ctx, prev_part, &part);
-                } else {
-                    buf.push(BufItem::Text(part));
-                }
+                buf.push(BufItem::Text(part));
             }
             Node::ExpressionTag(tag) => {
                 prev_text_ends_ws = false;
@@ -192,25 +186,24 @@ pub(super) fn prepare<'a>(
             }
             Node::Comment(comment) => {
                 prev_text_ends_ws = false;
-                flush_buf(&mut buf, &mut children, &mut flags);
+                flush_buf(ctx, &mut buf, &mut children, &mut flags);
                 let data = comment.data(ctx.source).to_string();
                 children.push(Child::Comment(data));
                 flags.insert(ChildrenFlags::HAS_COMMENT);
             }
             _ => {
                 prev_text_ends_ws = false;
-                flush_buf(&mut buf, &mut children, &mut flags);
+                flush_buf(ctx, &mut buf, &mut children, &mut flags);
                 children.push(Child::Node(node.node_id()));
                 mark_node_flag(&mut flags, node);
             }
         }
     }
-    flush_buf(&mut buf, &mut children, &mut flags);
+    flush_buf(ctx, &mut buf, &mut children, &mut flags);
 
     if children.len() == 1
         && let Child::Node(nid) = children[0]
-        && let Node::Element(el) = store.get(nid)
-        && el.name == "script"
+        && elements.query(nid).is_script()
     {
         children.push(Child::Comment(String::new()));
         flags.insert(ChildrenFlags::HAS_COMMENT);
@@ -260,21 +253,6 @@ fn classify(flags: ChildrenFlags, children: &[Child], store: &AstStore) -> Conte
     }
 }
 
-fn node_has_slot_attribute(node: &Node) -> bool {
-    use svelte_ast::Attribute;
-    let attrs: &[Attribute] = match node {
-        Node::Element(el) => &el.attributes,
-        Node::SvelteFragmentLegacy(el) => &el.attributes,
-        _ => match node.as_component_like() {
-            Some(view) => view.attributes,
-            None => return false,
-        },
-    };
-    attrs
-        .iter()
-        .any(|attr| matches!(attr, Attribute::StringAttribute(sa) if sa.name == "slot"))
-}
-
 fn hoisted_kind(node: &Node, inside_head: bool) -> HoistedKind {
     match node {
         Node::Error(_) => HoistedKind::Error,
@@ -292,6 +270,7 @@ fn hoisted_kind(node: &Node, inside_head: bool) -> HoistedKind {
 }
 
 fn flush_buf(
+    ctx: &FragmentCtx<'_>,
     buf: &mut SmallVec<[BufItem; 4]>,
     children: &mut Vec<Child>,
     flags: &mut ChildrenFlags,
@@ -313,16 +292,31 @@ fn flush_buf(
                 flags.insert(ChildrenFlags::HAS_EXPR);
             }
         }
-    } else {
-        let parts: SmallVec<[ConcatPart; 4]> = buf
-            .drain(..)
-            .map(|item| match item {
-                BufItem::Text(part) => part,
-                BufItem::Expr(id) => ConcatPart::Expr(id),
-            })
-            .collect();
+        return;
+    }
+    let has_expr = buf.iter().any(|item| matches!(item, BufItem::Expr(_)));
+    if has_expr {
+        let mut parts: SmallVec<[ConcatPart; 4]> = SmallVec::new();
+        for item in buf.drain(..) {
+            match item {
+                BufItem::Text(part) => match parts.last_mut() {
+                    Some(prev) if !matches!(prev, ConcatPart::Expr(_)) => {
+                        *prev = merge_static_parts(ctx, prev, &part);
+                    }
+                    _ => parts.push(part),
+                },
+                BufItem::Expr(id) => parts.push(ConcatPart::Expr(id)),
+            }
+        }
         children.push(Child::Concat(parts));
         flags.insert(ChildrenFlags::HAS_CONCAT);
+    } else {
+        for item in buf.drain(..) {
+            if let BufItem::Text(part) = item {
+                children.push(Child::Text(part));
+                flags.insert(ChildrenFlags::HAS_TEXT);
+            }
+        }
     }
 }
 

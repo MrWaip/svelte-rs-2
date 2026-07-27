@@ -1,8 +1,7 @@
 use std::marker::PhantomData;
 
-use oxc_ast::ast::{AssignmentExpression, Program, SimpleAssignmentTarget, UpdateExpression};
-use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::{walk_assignment_expression, walk_update_expression};
+use oxc_ast::ast::SimpleAssignmentTarget;
+use oxc_ast::{AstKind, AstType};
 use oxc_syntax::reference::ReferenceId;
 use oxc_syntax::symbol::{SymbolFlags, SymbolId};
 use svelte_component_semantics::walk_assignment_target_idents;
@@ -10,20 +9,19 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::AnalysisData;
+use crate::js_walker::{JsFlow, JsNodeMask, JsVisitor, JsWalk};
 use crate::reactivity_semantics::data::{BindingSemantics, ContextualBindingSemantics};
 use crate::types::data::JsAst;
 
-pub(super) fn validate(
-    data: &AnalysisData<'_>,
-    program: &Program<'_>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    let mut v = ConstAssignValidator {
+pub(super) fn new_validator<'a, 'b>(
+    data: &'b AnalysisData<'a>,
+    diags: &'b mut Vec<Diagnostic>,
+) -> ConstAssignValidator<'a, 'b> {
+    ConstAssignValidator {
         data,
         diags,
         _phantom: PhantomData,
-    };
-    v.visit_program(program);
+    }
 }
 
 pub(super) fn validate_template(
@@ -31,13 +29,11 @@ pub(super) fn validate_template(
     parsed: &JsAst<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let mut v = ConstAssignValidator {
-        data,
-        diags,
-        _phantom: PhantomData,
-    };
+    let mut v = new_validator(data, diags);
+    let mut visitors: [&mut dyn JsVisitor; 1] = [&mut v];
+    let mut walk = JsWalk::new(&mut visitors);
     for expr in parsed.iter_exprs() {
-        v.visit_expression(expr);
+        walk.walk_expression(expr);
     }
 }
 
@@ -63,7 +59,7 @@ pub(crate) fn constant_kind(data: &AnalysisData<'_>, symbol_id: SymbolId) -> Opt
     None
 }
 
-struct ConstAssignValidator<'a, 'b> {
+pub(super) struct ConstAssignValidator<'a, 'b> {
     data: &'b AnalysisData<'a>,
     diags: &'b mut Vec<Diagnostic>,
     _phantom: PhantomData<&'a ()>,
@@ -91,28 +87,38 @@ impl ConstAssignValidator<'_, '_> {
     }
 }
 
-impl<'a> Visit<'a> for ConstAssignValidator<'a, '_> {
-    fn visit_assignment_expression(&mut self, it: &AssignmentExpression<'a>) {
-        let span = Span::new(it.span.start, it.span.end);
-        let mut targets: Vec<Option<SymbolId>> = Vec::new();
-        walk_assignment_target_idents(&it.left, |id| {
-            if !id.name.starts_with('$') {
-                targets.push(self.resolve(id.reference_id.get()));
-            }
-        });
-        for symbol in targets {
-            self.check(symbol, span);
-        }
-        walk_assignment_expression(self, it);
+const CONST_ASSIGN_INTERESTS: JsNodeMask =
+    JsNodeMask::new(&[AstType::AssignmentExpression, AstType::UpdateExpression]);
+
+impl<'a> JsVisitor<'a> for ConstAssignValidator<'a, '_> {
+    fn enter_interests(&self) -> JsNodeMask {
+        CONST_ASSIGN_INTERESTS
     }
 
-    fn visit_update_expression(&mut self, it: &UpdateExpression<'a>) {
-        if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &it.argument
-            && !id.name.starts_with('$')
-        {
-            let symbol = self.resolve(id.reference_id.get());
-            self.check(symbol, Span::new(it.span.start, it.span.end));
+    fn enter_js_node(&mut self, kind: AstKind<'a>) -> JsFlow {
+        match kind {
+            AstKind::AssignmentExpression(it) => {
+                let span = Span::new(it.span.start, it.span.end);
+                let mut targets: Vec<Option<SymbolId>> = Vec::new();
+                walk_assignment_target_idents(&it.left, |id| {
+                    if !id.name.starts_with('$') {
+                        targets.push(self.resolve(id.reference_id.get()));
+                    }
+                });
+                for symbol in targets {
+                    self.check(symbol, span);
+                }
+            }
+            AstKind::UpdateExpression(it) => {
+                if let SimpleAssignmentTarget::AssignmentTargetIdentifier(id) = &it.argument
+                    && !id.name.starts_with('$')
+                {
+                    let symbol = self.resolve(id.reference_id.get());
+                    self.check(symbol, Span::new(it.span.start, it.span.end));
+                }
+            }
+            _ => {}
         }
-        walk_update_expression(self, it);
+        JsFlow::Continue
     }
 }

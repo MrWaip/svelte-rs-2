@@ -49,6 +49,7 @@ impl<'a> ServerCodegen<'a> {
         let name: &'a str = self
             .b
             .alloc_str(self.analysis.scoping.symbol_name(sem.name));
+        self.emitted_snippet_names.push(name);
         let function = self.build_snippet_function(id, name)?;
         if self.dev {
             out.push(

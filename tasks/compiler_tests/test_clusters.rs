@@ -1,14 +1,64 @@
 use compiler_tests::harness::{
     assert_compiler_dev, assert_compiler_module_dev, assert_compiler_module_prod,
-    assert_compiler_prod, assert_compiler_ssr, assert_compiler_ssr_dev,
+    assert_compiler_module_ssr, assert_compiler_module_ssr_dev, assert_compiler_prod,
+    assert_compiler_ssr, assert_compiler_ssr_dev,
 };
-use compiler_tests::{compiler_case, compiler_module_case};
+use compiler_tests::preprocess_harness::assert_preprocess_case;
+use compiler_tests::{compiler_case, compiler_module_case, preprocess_case};
+
+#[path = "clusters/preprocess.rs"]
+mod preprocess;
+
+#[path = "clusters/value_evaluation.rs"]
+mod value_evaluation;
 
 #[path = "clusters/comments.rs"]
 mod comments;
 
 #[path = "clusters/empty_statement.rs"]
 mod empty_statement;
+
+#[path = "clusters/paren_strip.rs"]
+mod paren_strip;
+
+#[path = "clusters/prop_default_store.rs"]
+mod prop_default_store;
+
+#[path = "clusters/attribute_template_literal.rs"]
+mod attribute_template_literal;
+
+#[path = "clusters/bind_store_each.rs"]
+mod bind_store_each;
+
+#[path = "clusters/destructure_fallback.rs"]
+mod destructure_fallback;
+
+#[path = "clusters/store_module.rs"]
+mod store_module;
+
+#[path = "clusters/module_reactive.rs"]
+mod module_reactive;
+
+#[path = "clusters/dynamic_component_ssr.rs"]
+mod dynamic_component_ssr;
+
+#[path = "clusters/ident_gen.rs"]
+mod ident_gen;
+
+#[path = "clusters/bind_this_function_pair.rs"]
+mod bind_this_function_pair;
+
+#[path = "clusters/custom_element_var.rs"]
+mod custom_element_var;
+
+#[path = "clusters/assign_async.rs"]
+mod assign_async;
+
+#[path = "clusters/destructure_async.rs"]
+mod destructure_async;
+
+#[path = "clusters/snapshot_ignore_ssr.rs"]
+mod snapshot_ignore_ssr;
 
 #[path = "clusters/events.rs"]
 mod events;
@@ -28,6 +78,12 @@ mod element_name_casing;
 #[path = "clusters/dev_element_locations.rs"]
 mod dev_element_locations;
 
+#[path = "clusters/dev_location.rs"]
+mod dev_location;
+
+#[path = "clusters/doctype.rs"]
+mod doctype;
+
 #[path = "clusters/set_class_scope_hash.rs"]
 mod set_class_scope_hash;
 
@@ -43,10 +99,16 @@ mod hmr;
 #[path = "clusters/disclose_version.rs"]
 mod disclose_version;
 
+#[path = "clusters/fragment_static_text.rs"]
+mod fragment_static_text;
+
 #[path = "clusters/spread_class.rs"]
 mod spread_class;
 #[path = "clusters/spread_default_value.rs"]
 mod spread_default_value;
+
+#[path = "clusters/flag_imports.rs"]
+mod flag_imports;
 
 #[path = "clusters/head_title.rs"]
 mod head_title;
@@ -120,6 +182,9 @@ mod css_escaped_identifier;
 #[path = "clusters/css_brace_whitespace.rs"]
 mod css_brace_whitespace;
 
+#[path = "clusters/css_declaration_no_colon.rs"]
+mod css_declaration_no_colon;
+
 #[path = "clusters/css_injected.rs"]
 mod css_injected;
 
@@ -149,6 +214,9 @@ mod runes_derived;
 
 #[path = "clusters/runes_props.rs"]
 mod runes_props;
+
+#[path = "clusters/runes_mode.rs"]
+mod runes_mode;
 
 #[path = "clusters/legacy_state.rs"]
 mod legacy_state;
@@ -305,3 +373,30 @@ mod declaration_tag;
 
 #[path = "clusters/element_block_scope.rs"]
 mod element_block_scope;
+
+#[path = "clusters/script_element.rs"]
+mod script_element;
+
+#[path = "clusters/module_props.rs"]
+mod module_props;
+
+#[path = "clusters/closure_volatility.rs"]
+mod closure_volatility;
+
+#[path = "clusters/async_expression_tag.rs"]
+mod async_expression_tag;
+
+#[path = "clusters/async_fragment_declaration.rs"]
+mod async_fragment_declaration;
+
+#[path = "clusters/async_await_position.rs"]
+mod async_await_position;
+
+#[path = "clusters/async_block_thunk.rs"]
+mod async_block_thunk;
+
+#[path = "clusters/async_instance_blockers.rs"]
+mod async_instance_blockers;
+
+#[path = "clusters/async_construct_wrap.rs"]
+mod async_construct_wrap;

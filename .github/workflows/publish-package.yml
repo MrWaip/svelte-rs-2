@@ -22,7 +22,7 @@ permissions:
 
 env:
   NODE_VERSION: '22.13.0'
-  RUST_CHANNEL: '1.94.1'
+  RUST_CHANNEL: '1.97.1'
 
 jobs:
   version:
@@ -57,9 +57,11 @@ jobs:
           - target: aarch64-apple-darwin
             label: darwin-arm64
             runner: macos-latest
+            pgo: native
           - target: x86_64-pc-windows-msvc
             label: win32-x64-msvc
             runner: windows-latest
+            pgo: native
           - target: aarch64-pc-windows-msvc
             label: win32-arm64-msvc
             runner: windows-latest
@@ -67,6 +69,7 @@ jobs:
             label: linux-x64-gnu
             runner: ubuntu-24.04
             cross: napi-cross
+            pgo: native
           - target: aarch64-unknown-linux-gnu
             label: linux-arm64-gnu
             runner: ubuntu-24.04
@@ -88,6 +91,7 @@ jobs:
           cache-target: release
           channel: ${{ env.RUST_CHANNEL }}
           targets: ${{ matrix.target }}
+          components: ${{ matrix.pgo && 'llvm-tools-preview' || '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
@@ -114,34 +118,21 @@ jobs:
 
       - name: Build release addon
         shell: bash
-        run: |
-          FLAG=""
-          case "${{ matrix.cross }}" in
-            napi-cross) FLAG="--use-napi-cross" ;;
-            zig) FLAG="--cross-compile" ;;
-          esac
-          node_modules/.bin/napi build \
-            --manifest-path crates/napi_compiler/Cargo.toml \
-            -p napi_compiler \
-            --package-json-path packages/svelte-rs2/package.json \
-            --platform \
-            --output-dir packages/svelte-rs2/compiler/native \
-            --js binding.cjs \
-            --dts binding.d.ts \
-            --release \
-            --strip \
-            --target ${{ matrix.target }} \
-            $FLAG
+        env:
+          NAPI_TARGET: ${{ matrix.target }}
+          NAPI_CROSS: ${{ matrix.cross }}
+          PGO: ${{ matrix.pgo }}
+        run: bash scripts/ci-build-addon.sh
 
       - name: Verify addon was produced
         shell: bash
-        run: ls -la packages/svelte-rs2/compiler/native/svelte-rs2.*.node
+        run: ls -la packages/svelte-rs/compiler/native/svelte-rs.*.node
 
       - name: Upload addon
         uses: actions/upload-artifact@v6
         with:
           name: bindings-${{ matrix.target }}
-          path: packages/svelte-rs2/compiler/native/svelte-rs2.*.node
+          path: packages/svelte-rs/compiler/native/svelte-rs.*.node
           if-no-files-found: error
 
   publish:
@@ -177,19 +168,19 @@ jobs:
       - name: Assemble platform packages
         run: |
           node_modules/.bin/napi create-npm-dirs \
-            --package-json-path packages/svelte-rs2/package.json \
-            --npm-dir packages/svelte-rs2/npm
+            --package-json-path packages/svelte-rs/package.json \
+            --npm-dir packages/svelte-rs/npm
           node_modules/.bin/napi artifacts \
-            --package-json-path packages/svelte-rs2/package.json \
+            --package-json-path packages/svelte-rs/package.json \
             --output-dir artifacts \
-            --npm-dir packages/svelte-rs2/npm
+            --npm-dir packages/svelte-rs/npm
 
       - name: Verify every platform package carries its addon
         shell: bash
         run: |
           missing=0
-          for dir in packages/svelte-rs2/npm/*/; do
-            if ! ls "$dir"/svelte-rs2.*.node >/dev/null 2>&1; then
+          for dir in packages/svelte-rs/npm/*/; do
+            if ! ls "$dir"/svelte-rs.*.node >/dev/null 2>&1; then
               echo "Missing native addon in $dir" >&2
               missing=1
             fi
@@ -199,9 +190,9 @@ jobs:
       - name: Verify main package carries the loader
         shell: bash
         run: |
-          test -f packages/svelte-rs2/compiler/native/binding.cjs
-          test -f packages/svelte-rs2/compiler/index.js
-          test -f packages/svelte-rs2/compiler/index.d.ts
+          test -f packages/svelte-rs/compiler/native/binding.cjs
+          test -f packages/svelte-rs/compiler/index.js
+          test -f packages/svelte-rs/compiler/index.d.ts
 
       - name: Verify npm authentication is configured
         shell: bash
@@ -218,7 +209,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
-          for dir in packages/svelte-rs2/npm/*/; do
+          for dir in packages/svelte-rs/npm/*/; do
             echo "Publishing $dir"
             npm publish "$dir" --tag "${{ inputs.dist_tag }}" --provenance --access public
           done
@@ -228,5 +219,5 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
-          echo "Publishing packages/svelte-rs2"
-          npm publish ./packages/svelte-rs2 --tag "${{ inputs.dist_tag }}" --provenance --access public
+          echo "Publishing packages/svelte-rs"
+          npm publish ./packages/svelte-rs --tag "${{ inputs.dist_tag }}" --provenance --access public

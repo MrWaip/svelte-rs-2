@@ -8,7 +8,7 @@ description: Sweep a directory of Svelte files for parity divergences against sv
 A sweep compiles every `.svelte` / `.svelte.js` / `.svelte.ts` under a directory with both our compiler and `svelte/compiler`, then buckets the mismatches. It is the directory-scale sibling of `/quick-check`: same reference and same normalizers, many files at once, in parallel.
 
 ```bash
-just sweep-run <dir> [--mode=auto|runes|legacy] [--chunk=N] [--print-diffs] [--out=<file>]
+just sweep-run <dir> [--mode=auto|runes|legacy] [--async] [--chunk=N] [--print-diffs] [--out=<file>]
 ```
 
 Needs `node_modules` (run `npm install` if absent) — the reference side is `svelte/compiler`.
@@ -22,6 +22,7 @@ Needs `node_modules` (run `npm install` if absent) — the reference side is `sv
 ## Flags
 
 - `--mode=auto|runes|legacy` — force the runes verdict on both sides. Default `auto`.
+- `--async` — `experimental.async` on both sides. Off by default, so an `await` component errors on both sides and the file reports as **matched** — its output divergence stays invisible. Pass it to sweep an async tree. Components only.
 - `--chunk=N` — files per reference (node) batch, run in parallel. Default 300. Lower it if node runs out of memory on a huge tree.
 - `--print-diffs` — append a unified `reference` vs `rust` diff per `js`/`css` mismatch.
 - `--out=<file>` — write the full detail (buckets + diffs) to a file; the terminal keeps only the summary table.
@@ -57,7 +58,7 @@ A sweep uses the **same normalizers as the harness** (`test_support`), so a swee
 
 From a sweep result, narrow to one file before fixing:
 
-- reproduce it alone with `/quick-check <file>` — add `--generate=server` for a `[server]`/`[server-dev]` tag, `--dev` for a dev cell.
+- reproduce it alone with `/quick-check <file>` — add `--generate=server` for a `[server]`/`[server-dev]` tag, `--dev` for a dev cell, `--async` if the sweep used it.
 - hand a confirmed, persistent divergence to `/dig-better` (it owns cluster-picking), or a permanent case to `/add-test` / `/add-diagnostic-test`.
 
 ## Not for

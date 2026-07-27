@@ -1,28 +1,30 @@
-pub(crate) enum TemplateNode {
+use std::borrow::Cow;
+
+use svelte_ast::is_void;
+
+pub(crate) enum TemplateNode<'a> {
     Text(String),
     Comment(Option<String>),
     Element {
-        name: String,
-        attributes: Vec<(String, Option<String>)>,
-        children: Vec<TemplateNode>,
+        name: Cow<'a, str>,
+        attributes: Vec<(Cow<'a, str>, Option<Cow<'a, str>>)>,
+        children: Vec<TemplateNode<'a>>,
         is_html: bool,
     },
 }
 
-pub(crate) struct Template {
-    nodes: Vec<TemplateNode>,
-    stack: Vec<Vec<TemplateNode>>,
+pub(crate) struct Template<'a> {
+    nodes: Vec<TemplateNode<'a>>,
+    stack: Vec<Vec<TemplateNode<'a>>>,
     pub needs_import_node: bool,
-    pub contains_script_tag: bool,
 }
 
-impl Template {
+impl<'a> Template<'a> {
     pub fn new() -> Self {
         Self {
             nodes: Vec::new(),
             stack: Vec::new(),
             needs_import_node: false,
-            contains_script_tag: false,
         }
     }
 
@@ -30,9 +32,9 @@ impl Template {
         self.nodes.is_empty() && self.stack.is_empty()
     }
 
-    pub fn push_element(&mut self, name: &str, is_html: bool) {
+    pub fn push_element(&mut self, name: impl Into<Cow<'a, str>>, is_html: bool) {
         let el = TemplateNode::Element {
-            name: name.to_string(),
+            name: name.into(),
             attributes: Vec::new(),
             children: Vec::new(),
             is_html,
@@ -67,23 +69,24 @@ impl Template {
         self.current_mut().push(TemplateNode::Comment(data));
     }
 
-    pub fn set_attribute(&mut self, key: &str, value: Option<String>) {
+    pub fn set_attribute(&mut self, key: impl Into<Cow<'a, str>>, value: Option<Cow<'a, str>>) {
+        let key = key.into();
         let owner_slot = self.current_open_element_slot();
         let Some(last) = owner_slot.and_then(|slot| slot.last_mut()) else {
             return;
         };
         if let TemplateNode::Element { attributes, .. } = last {
             for (k, v) in attributes.iter_mut() {
-                if k == key {
+                if *k == key {
                     *v = value;
                     return;
                 }
             }
-            attributes.push((key.to_string(), value));
+            attributes.push((key, value));
         }
     }
 
-    fn current_open_element_slot(&mut self) -> Option<&mut Vec<TemplateNode>> {
+    fn current_open_element_slot(&mut self) -> Option<&mut Vec<TemplateNode<'a>>> {
         let depth = self.stack.len();
         if depth == 0 {
             return Some(&mut self.nodes);
@@ -106,7 +109,7 @@ impl Template {
         estimate_nodes(&self.nodes)
     }
 
-    fn current_mut(&mut self) -> &mut Vec<TemplateNode> {
+    fn current_mut(&mut self) -> &mut Vec<TemplateNode<'a>> {
         if let Some(top) = self.stack.last_mut() {
             top
         } else {
@@ -115,13 +118,13 @@ impl Template {
     }
 }
 
-impl Default for Template {
+impl Default for Template<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-fn estimate_nodes(nodes: &[TemplateNode]) -> usize {
+fn estimate_nodes(nodes: &[TemplateNode<'_>]) -> usize {
     let mut size = 0;
     for node in nodes {
         match node {
@@ -149,7 +152,7 @@ fn estimate_nodes(nodes: &[TemplateNode]) -> usize {
 }
 
 #[inline]
-fn stringify(node: &TemplateNode, out: &mut String) {
+fn stringify(node: &TemplateNode<'_>, out: &mut String) {
     match node {
         TemplateNode::Text(s) => out.push_str(s),
         TemplateNode::Comment(Some(data)) if !data.is_empty() => {
@@ -215,45 +218,23 @@ fn push_ascii_lowercase(out: &mut String, s: &str) {
 
 #[inline]
 fn escape_html_attr_into(s: &str, out: &mut String) {
-    if !s.bytes().any(|b| b == b'&' || b == b'"' || b == b'<') {
-        out.push_str(s);
-        return;
+    let bytes = s.as_bytes();
+    let mut start = 0;
+    while let Some(off) = memchr::memchr3(b'&', b'"', b'<', &bytes[start..]) {
+        let pos = start + off;
+        out.push_str(&s[start..pos]);
+        out.push_str(match bytes[pos] {
+            b'&' => "&amp;",
+            b'"' => "&quot;",
+            _ => "&lt;",
+        });
+        start = pos + 1;
     }
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '"' => out.push_str("&quot;"),
-            '<' => out.push_str("&lt;"),
-            _ => out.push(ch),
-        }
-    }
+    out.push_str(&s[start..]);
 }
 
 pub(crate) fn escape_html_attr(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     escape_html_attr_into(s, &mut out);
     out
-}
-
-#[inline]
-fn is_void(name: &str) -> bool {
-    matches!(
-        name,
-        "area"
-            | "base"
-            | "br"
-            | "col"
-            | "command"
-            | "embed"
-            | "hr"
-            | "img"
-            | "input"
-            | "keygen"
-            | "link"
-            | "meta"
-            | "param"
-            | "source"
-            | "track"
-            | "wbr"
-    )
 }

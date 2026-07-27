@@ -9,6 +9,7 @@ pub(crate) fn dispatch_expr(
     ctx: &mut VisitContext<'_, '_>,
 ) {
     let span = expr_ref.span;
+    ctx.record_ignore_for_span(span.start);
     for v in visitors.iter_mut() {
         v.visit_expression(id, span, ctx);
     }

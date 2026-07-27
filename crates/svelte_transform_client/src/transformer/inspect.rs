@@ -100,7 +100,6 @@ impl<'a> ComponentTransformer<'_, 'a> {
             trace_call
         };
         body.statements.push(self.b.return_stmt(return_expr));
-        self.has_tracing = true;
     }
 
     pub(crate) fn transform_inspect(&self, node: &mut Expression<'a>) -> Option<Expression<'a>> {

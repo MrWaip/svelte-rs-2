@@ -52,6 +52,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             .parsed
                             .replace_expr(attr.expression.id(), backup);
                     }
+                    let val = match self.ctx.expression_data(attr.id).cloned() {
+                        Some(data) => self.defer_memo_value(state, attr.id, &data, val),
+                        None => val,
+                    };
                     self.emit_bind_group_value(state, owner_var, attr.id, val);
                     return Ok(());
                 }
@@ -62,6 +66,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         coarse_wrap(self.ctx, val, data.as_ref())
                     };
                     let form = OptionValueForm::Reflected { coalesce };
+                    let val = match self.ctx.expression_data(attr.id).cloned() {
+                        Some(data) => self.defer_memo_value(state, attr.id, &data, val),
+                        None => val,
+                    };
                     self.emit_option_value(state, owner_var, val, form, volatile);
                     return Ok(());
                 }
@@ -71,7 +79,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 SpecialValueKind::InputBindChecked => {
                     let val = self.take_attr_expr(attr.id, &attr.expression)?;
-                    self.emit_input_value(state, owner_var, val, coalesce);
+                    let val = match self.ctx.expression_data(attr.id).cloned() {
+                        Some(data) => self.defer_memo_value(state, attr.id, &data, val),
+                        None => val,
+                    };
+                    self.emit_input_value(state, owner_var, val, coalesce, volatile);
                     return Ok(());
                 }
             }
@@ -121,6 +133,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 );
             }
             Some(Volatility::Reactive) => {
+                state.shared_memo.push_node_deps(self.ctx, attr_id);
                 self.push_regular_attr_update(
                     &mut state.update,
                     owner_var,

@@ -650,6 +650,38 @@ mod attributes {
         event_handler_concat_value_errors,
         "attributes/event_handler_concat_value_errors"
     );
+    diagnostic_case!(
+        unquoted_value_single_quote_terminator,
+        "attributes/unquoted_value_single_quote_terminator"
+    );
+    diagnostic_case!(
+        unquoted_value_double_quote_terminator,
+        "attributes/unquoted_value_double_quote_terminator"
+    );
+    diagnostic_case!(
+        unquoted_value_equals_terminator,
+        "attributes/unquoted_value_equals_terminator"
+    );
+    diagnostic_case!(
+        unquoted_value_ws_slash_gt_unclosed,
+        "attributes/unquoted_value_ws_slash_gt_unclosed"
+    );
+    diagnostic_case!(
+        unquoted_value_empty_guard,
+        "attributes/unquoted_value_empty_guard"
+    );
+    diagnostic_case!(
+        regular_element_unquoted_sequence_legacy_allowed,
+        "attributes/regular_element_unquoted_sequence_legacy_allowed"
+    );
+    diagnostic_case!(
+        component_unquoted_sequence_legacy_allowed,
+        "attributes/component_unquoted_sequence_legacy_allowed"
+    );
+    diagnostic_case!(
+        attribute_quoted_legacy_no_warn_guard,
+        "attributes/attribute_quoted_legacy_no_warn_guard"
+    );
 }
 
 mod css {
@@ -2039,6 +2071,58 @@ mod slots {
     );
     diagnostic_case!(slot_snippet_conflict, "slots/slot_snippet_conflict");
     diagnostic_case!(
+        slot_snippet_conflict_render_tag_before_slot,
+        "slots/slot_snippet_conflict_render_tag_before_slot"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_custom_element_ok,
+        "slots/slot_snippet_conflict_custom_element_ok"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_template,
+        "slots/slot_snippet_conflict_dollar_slots_template"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_script,
+        "slots/slot_snippet_conflict_dollar_slots_script"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_custom_element,
+        "slots/slot_snippet_conflict_dollar_slots_custom_element"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_slot_and_dollar_slots,
+        "slots/slot_snippet_conflict_slot_and_dollar_slots"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_slot_and_dollar_slots_custom_element,
+        "slots/slot_snippet_conflict_slot_and_dollar_slots_custom_element"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_without_render_tag_ok,
+        "slots/slot_snippet_conflict_dollar_slots_without_render_tag_ok"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_not_a_reference_ok,
+        "slots/slot_snippet_conflict_dollar_slots_not_a_reference_ok"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_position_first_dollar_slot_text,
+        "slots/slot_snippet_conflict_position_first_dollar_slot_text"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_dollar_slots_local_binding,
+        "slots/slot_snippet_conflict_dollar_slots_local_binding"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_repeated_default_slots,
+        "slots/slot_snippet_conflict_repeated_default_slots"
+    );
+    diagnostic_case!(
+        slot_snippet_conflict_repeated_named_slots,
+        "slots/slot_snippet_conflict_repeated_named_slots"
+    );
+    diagnostic_case!(
         svelte_fragment_invalid_placement_root,
         "slots/svelte_fragment_invalid_placement_root"
     );
@@ -2069,6 +2153,10 @@ mod slots {
     diagnostic_case!(
         let_directive_on_svelte_self,
         "slots/let_directive_on_svelte_self"
+    );
+    diagnostic_case!(
+        slot_attribute_invalid_on_svelte_element,
+        "slots/slot_attribute_invalid_on_svelte_element"
     );
 }
 
@@ -2102,6 +2190,54 @@ mod const_tag {
     diagnostic_case!(
         validate_const_tag_valid_placement_key,
         "const_tag/validate_const_tag_valid_placement_key"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_else,
+        "const_tag/validate_const_tag_valid_placement_else"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_await_then,
+        "const_tag/validate_const_tag_valid_placement_await_then"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_await_catch,
+        "const_tag/validate_const_tag_valid_placement_await_catch"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_snippet,
+        "const_tag/validate_const_tag_valid_placement_snippet"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_component,
+        "const_tag/validate_const_tag_valid_placement_component"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_svelte_component,
+        "const_tag/validate_const_tag_valid_placement_svelte_component"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_svelte_fragment,
+        "const_tag/validate_const_tag_valid_placement_svelte_fragment"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_svelte_boundary,
+        "const_tag/validate_const_tag_valid_placement_svelte_boundary"
+    );
+    diagnostic_case!(
+        validate_const_tag_valid_placement_svelte_element_slot,
+        "const_tag/validate_const_tag_valid_placement_svelte_element_slot"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_placement_svelte_element_no_slot,
+        "const_tag/validate_const_tag_invalid_placement_svelte_element_no_slot"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_placement_svelte_head,
+        "const_tag/validate_const_tag_invalid_placement_svelte_head"
+    );
+    diagnostic_case!(
+        validate_const_tag_invalid_placement_slot_element,
+        "const_tag/validate_const_tag_invalid_placement_slot_element"
     );
     diagnostic_case!(
         validate_const_tag_invalid_expression,
@@ -2162,6 +2298,10 @@ mod each {
         "each/validate_each_animation_invalid_placement"
     );
     diagnostic_case!(
+        animate_nontrivial_sibling_invalid,
+        "each/animate_nontrivial_sibling_invalid"
+    );
+    diagnostic_case!(
         validate_each_animation_duplicate,
         "each/validate_each_animation_duplicate"
     );
@@ -2206,6 +2346,14 @@ mod snippets {
     diagnostic_case!(
         snippet_name_duplicate_instance_binding,
         "snippets/snippet_name_duplicate_instance_binding"
+    );
+    diagnostic_case!(
+        snippet_duplicate_same_element,
+        "snippets/snippet_duplicate_same_element"
+    );
+    diagnostic_case!(
+        snippet_duplicate_top_level,
+        "snippets/snippet_duplicate_top_level"
     );
     diagnostic_case!(
         validate_snippet_parameter_assignment,
@@ -2511,6 +2659,14 @@ mod await_ {
         "await/validate_if_block_test_illegal_await_expression"
     );
     diagnostic_case!(
+        validate_template_await_legacy_option_invalid,
+        "await/validate_template_await_legacy_option_invalid"
+    );
+    diagnostic_case!(
+        validate_instance_await_inline_legacy_option_invalid,
+        "await/validate_instance_await_inline_legacy_option_invalid"
+    );
+    diagnostic_case!(
         validate_each_block_collection_illegal_await_expression,
         "await/validate_each_block_collection_illegal_await_expression"
     );
@@ -2710,12 +2866,215 @@ mod compiler_errors {
         "compiler_errors/dollar-binding-import"
     );
     diagnostic_case!(
+        dollar_prefix_component_catch_param,
+        "compiler_errors/dollar-prefix-component-catch-param"
+    );
+    diagnostic_case!(
+        dollar_prefix_component_legacy_nested_allowed,
+        "compiler_errors/dollar-prefix-component-legacy-nested-allowed"
+    );
+    diagnostic_case!(
+        dollar_prefix_component_module_block_nested,
+        "compiler_errors/dollar-prefix-component-module-block-nested"
+    );
+    diagnostic_case!(
+        dollar_prefix_component_object_pattern,
+        "compiler_errors/dollar-prefix-component-object-pattern"
+    );
+    diagnostic_case!(
+        dollar_prefix_component_runes_nested_catch_allowed,
+        "compiler_errors/dollar-prefix-component-runes-nested-catch-allowed"
+    );
+    diagnostic_case!(
+        dollar_prefix_component_runes_nested_function,
+        "compiler_errors/dollar-prefix-component-runes-nested-function"
+    );
+    diagnostic_case!(
+        dollar_prefix_component_runes_nested_pattern,
+        "compiler_errors/dollar-prefix-component-runes-nested-pattern"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_array_pattern,
+        "compiler_errors/dollar-prefix-module-array-pattern"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_block_arrow_catch_allowed,
+        "compiler_errors/dollar-prefix-module-block-arrow-catch-allowed"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_catch_param,
+        "compiler_errors/dollar-prefix-module-catch-param"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_concise_arrow_catch,
+        "compiler_errors/dollar-prefix-module-concise-arrow-catch"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_concise_arrow_import_depth,
+        "compiler_errors/dollar-prefix-module-concise-arrow-import-depth"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_catch_param_pattern,
+        "compiler_errors/dollar-prefix-module-catch-param-pattern"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_default_pattern,
+        "compiler_errors/dollar-prefix-module-default-pattern"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_for_of_pattern,
+        "compiler_errors/dollar-prefix-module-for-of-pattern"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_nested_arrow,
+        "compiler_errors/dollar-prefix-module-nested-arrow"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_nested_catch_allowed,
+        "compiler_errors/dollar-prefix-module-nested-catch-allowed"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_nested_class,
+        "compiler_errors/dollar-prefix-module-nested-class"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_nested_dollar_binding,
+        "compiler_errors/dollar-prefix-module-nested-dollar-binding"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_nested_function,
+        "compiler_errors/dollar-prefix-module-nested-function"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_nested_function_declaration,
+        "compiler_errors/dollar-prefix-module-nested-function-declaration"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_nested_pattern,
+        "compiler_errors/dollar-prefix-module-nested-pattern"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_nested_var,
+        "compiler_errors/dollar-prefix-module-nested-var"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_object_pattern,
+        "compiler_errors/dollar-prefix-module-object-pattern"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_params_allowed,
+        "compiler_errors/dollar-prefix-module-params-allowed"
+    );
+    diagnostic_case!(
+        dollar_prefix_module_rest_pattern,
+        "compiler_errors/dollar-prefix-module-rest-pattern"
+    );
+    diagnostic_case!(
         dynamic_element_binding_invalid,
         "compiler_errors/dynamic-element-binding-invalid"
     );
     diagnostic_case!(each_key_without_as, "compiler_errors/each-key-without-as");
     diagnostic_case!(effect_active_rune, "compiler_errors/effect-active-rune");
     diagnostic_case!(element_invalid_name, "compiler_errors/element-invalid-name");
+    diagnostic_case!(
+        script_self_closing_expected_token,
+        "parser/script_self_closing_expected_token"
+    );
+    diagnostic_case!(
+        style_self_closing_expected_token,
+        "parser/style_self_closing_expected_token"
+    );
+    diagnostic_case!(
+        doctype_invalid_name_digit,
+        "parser/doctype_invalid_name_digit"
+    );
+    diagnostic_case!(
+        doctype_invalid_name_empty,
+        "parser/doctype_invalid_name_empty"
+    );
+    diagnostic_case!(
+        doctype_invalid_name_dotted,
+        "parser/doctype_invalid_name_dotted"
+    );
+    diagnostic_case!(doctype_closing_tag_void, "parser/doctype_closing_tag_void");
+    diagnostic_case!(bang_element_unclosed, "parser/bang_element_unclosed");
+    diagnostic_case!(
+        block_if_empty_expression,
+        "parser/block_if_empty_expression"
+    );
+    diagnostic_case!(
+        block_each_empty_expression,
+        "parser/block_each_empty_expression"
+    );
+    diagnostic_case!(
+        block_key_empty_expression,
+        "parser/block_key_empty_expression"
+    );
+    diagnostic_case!(
+        block_await_empty_expression,
+        "parser/block_await_empty_expression"
+    );
+    diagnostic_case!(
+        block_if_expression_guard,
+        "parser/block_if_expression_guard"
+    );
+    diagnostic_case!(script_unparsable_js, "parser/script_unparsable_js");
+    diagnostic_case!(close_tag_over_component, "parser/close_tag_over_component");
+    diagnostic_case!(
+        close_tag_over_svelte_element,
+        "parser/close_tag_over_svelte_element"
+    );
+    diagnostic_case!(
+        close_tag_over_svelte_fragment,
+        "parser/close_tag_over_svelte_fragment"
+    );
+    diagnostic_case!(close_tag_over_slot, "parser/close_tag_over_slot");
+    diagnostic_case!(
+        close_tag_matches_nothing,
+        "parser/close_tag_matches_nothing"
+    );
+    diagnostic_case!(
+        close_tag_over_regular_element_guard,
+        "parser/close_tag_over_regular_element_guard"
+    );
+    diagnostic_case!(
+        close_tag_implicit_open_guard,
+        "parser/close_tag_implicit_open_guard"
+    );
+    diagnostic_case!(
+        close_tag_repeated_li_guard,
+        "parser/close_tag_repeated_li_guard"
+    );
+    diagnostic_case!(
+        snippet_header_missing_whitespace,
+        "parser/snippet_header_missing_whitespace"
+    );
+    diagnostic_case!(
+        snippet_header_missing_name,
+        "parser/snippet_header_missing_name"
+    );
+    diagnostic_case!(
+        snippet_header_non_identifier_name,
+        "parser/snippet_header_non_identifier_name"
+    );
+    diagnostic_case!(
+        snippet_header_missing_parameters,
+        "parser/snippet_header_missing_parameters"
+    );
+    diagnostic_case!(snippet_header_guard, "parser/snippet_header_guard");
+    diagnostic_case!(earliest_error_wins, "parser/earliest_error_wins");
+    diagnostic_case!(
+        script_unclosed_no_js_error,
+        "parser/script_unclosed_no_js_error"
+    );
+    diagnostic_case!(
+        script_generics_unparsable_js,
+        "parser/script_generics_unparsable_js"
+    );
+    diagnostic_case!(
+        doctype_public_identifier,
+        "parser/doctype_public_identifier"
+    );
     diagnostic_case!(else_before_closing, "compiler_errors/else-before-closing");
     diagnostic_case!(
         else_before_closing_2,
@@ -2792,8 +3151,6 @@ mod compiler_errors {
         legacy_no_const_update,
         "compiler_errors/legacy-no-const-update"
     );
-    diagnostic_case!(malformed_snippet, "compiler_errors/malformed-snippet");
-    diagnostic_case!(malformed_snippet_2, "compiler_errors/malformed-snippet-2");
     diagnostic_case!(multiple_styles, "compiler_errors/multiple-styles");
     diagnostic_case!(options_children, "compiler_errors/options-children");
     diagnostic_case!(

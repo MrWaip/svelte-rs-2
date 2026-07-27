@@ -2,9 +2,10 @@ use crate::passes::fragment_topology::fragment_items as fragment_items_fn;
 use crate::reactivity_semantics::data::PropDefaultKind;
 use crate::types::data::{BindTargetSemantics, BindingSemantics, ConstTagSemantics, ParentKind};
 use crate::{
-    AttributeSemantics, BlockSemantics, ClassSemantics, EachIndexStrategy, EachItemStrategy,
-    GroupBindValue, OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, RenderCallKind,
-    SnippetParamStrategy,
+    AttributeSemantics, BlockSemantics, ClassSemantics, ComponentFrame, ContextScope,
+    EachIndexStrategy, EachItemStrategy, GroupBindValue, LegacySlotSanitization,
+    OptimizedRuneSemantics, PROPS_IS_BINDABLE, PROPS_IS_UPDATED, PropAccessors, PropsInput,
+    RenderCallKind, SnippetParamStrategy, StoreBindings,
 };
 use oxc_ast::ast::{
     BindingPattern, Expression, IdentifierReference, PrivateFieldExpression, Program, Statement,
@@ -542,35 +543,36 @@ fn find_each_block<'a>(
 fn find_snippet_block<'a>(
     fragment: FragmentId,
     component: &'a Component,
+    data: &AnalysisData<'_>,
     name: &str,
 ) -> Option<&'a svelte_ast::SnippetBlock> {
     for id in frag_nodes(component, fragment) {
         match component.store.get(id) {
-            Node::SnippetBlock(block) if block.name(&component.source) == name => {
+            Node::SnippetBlock(block) if snippet_block_name(data, block.id) == Some(name) => {
                 return Some(block);
             }
             Node::ComponentNode(node) => {
-                if let Some(block) = find_snippet_block(node.fragment, component, name) {
+                if let Some(block) = find_snippet_block(node.fragment, component, data, name) {
                     return Some(block);
                 }
             }
             Node::Element(el) => {
-                if let Some(block) = find_snippet_block(el.fragment, component, name) {
+                if let Some(block) = find_snippet_block(el.fragment, component, data, name) {
                     return Some(block);
                 }
             }
             Node::IfBlock(b) => {
-                if let Some(block) = find_snippet_block(b.consequent, component, name) {
+                if let Some(block) = find_snippet_block(b.consequent, component, data, name) {
                     return Some(block);
                 }
                 if let Some(alt) = b.alternate
-                    && let Some(block) = find_snippet_block(alt, component, name)
+                    && let Some(block) = find_snippet_block(alt, component, data, name)
                 {
                     return Some(block);
                 }
             }
             Node::EachBlock(b) => {
-                if let Some(block) = find_snippet_block(b.body, component, name) {
+                if let Some(block) = find_snippet_block(b.body, component, data, name) {
                     return Some(block);
                 }
             }
@@ -578,6 +580,13 @@ fn find_snippet_block<'a>(
         }
     }
     None
+}
+
+fn snippet_block_name<'a>(data: &'a AnalysisData<'_>, id: svelte_ast::NodeId) -> Option<&'a str> {
+    match data.block_semantics(id) {
+        BlockSemantics::Snippet(sem) => Some(data.scoping.semantics().symbol_name(sem.name)),
+        _ => None,
+    }
 }
 
 fn collect_runtime_behavior_directives(
@@ -748,6 +757,21 @@ fn analyze_source_with_diags(
     );
     let (data, _parsed, diags) = analyze(&component, js_result);
     (component, data, diags)
+}
+
+fn analyze_source_legacy_with_diags(source: &str) -> Vec<svelte_diagnostics::Diagnostic> {
+    let alloc = Box::leak(Box::new(oxc_allocator::Allocator::default()));
+    let (component, js_result, parse_diags) = svelte_parser::parse_with_js(alloc, source);
+    assert!(
+        parse_diags.is_empty(),
+        "unexpected parse diagnostics: {parse_diags:?}"
+    );
+    let options = AnalyzeOptions {
+        runes: svelte_ast::RunesOption::Legacy,
+        ..AnalyzeOptions::default()
+    };
+    let (_data, _parsed, diags) = analyze_with_options(&component, js_result, &options);
+    diags
 }
 
 fn assert_symbol(data: &AnalysisData, name: &str) {
@@ -1262,7 +1286,7 @@ fn assert_snippet_hoistable(
     expected: bool,
 ) {
     use crate::BlockSemantics;
-    let block = find_snippet_block(component.root, component, name)
+    let block = find_snippet_block(component.root, component, data, name)
         .unwrap_or_else(|| panic!("no SnippetBlock named '{name}'"));
     let actual = match data.block_semantics(block.id) {
         BlockSemantics::Snippet(s) => s.placement.is_module_level(),
@@ -2316,7 +2340,7 @@ fn bind_group_records_expression_value_attr_only() {
         AttributeSemantics::ElementBind(b) => match b.group_value {
             Some(GroupBindValue::Expression { data, .. }) => Some(data),
             Some(GroupBindValue::Static { node }) => Some(node),
-            None => None,
+            Some(GroupBindValue::Boolean) | None => None,
         },
         _ => None,
     };
@@ -2773,7 +2797,7 @@ fn assert_symbol_blocker(data: &AnalysisData, name: &str, expected_index: u32) {
         .blocker_data()
         .symbol_blocker(sym)
         .unwrap_or_else(|| panic!("symbol '{name}' has no blocker"));
-    assert_eq!(actual, expected_index, "blocker index for '{name}'");
+    assert_eq!(actual.entry, expected_index, "blocker index for '{name}'");
 }
 
 fn assert_no_symbol_blocker(data: &AnalysisData, name: &str) {
@@ -2788,33 +2812,31 @@ fn assert_no_symbol_blocker(data: &AnalysisData, name: &str) {
     );
 }
 
-fn assert_stmt_meta_count(data: &AnalysisData, expected: usize) {
+fn assert_async_entry_count(data: &AnalysisData, expected: usize) {
     assert_eq!(
-        data.blocker_data().stmt_metas.len(),
+        data.blocker_data().entries().len(),
         expected,
-        "stmt_metas count mismatch"
+        "async entry count mismatch"
     );
 }
 
-fn assert_stmt_meta_has_await(data: &AnalysisData, stmt_index: usize, expected: bool) {
-    let meta = data
+fn assert_async_entry_suspends(data: &AnalysisData, entry_index: usize, expected: bool) {
+    let entry = data
         .blocker_data()
-        .stmt_meta(stmt_index)
-        .unwrap_or_else(|| panic!("no stmt_meta at index {stmt_index}"));
-    assert_eq!(
-        meta.has_await(),
-        expected,
-        "stmt_meta[{stmt_index}].has_await"
-    );
+        .entries()
+        .get(entry_index)
+        .unwrap_or_else(|| panic!("no async entry at index {entry_index}"));
+    assert_eq!(entry.suspends(), expected, "entry[{entry_index}].suspends");
 }
 
-fn assert_stmt_meta_hoist_names(data: &AnalysisData, stmt_index: usize, expected: &[&str]) {
-    let meta = data
+fn assert_hoisted_names(data: &AnalysisData, expected: &[&str]) {
+    let actual: Vec<&str> = data
         .blocker_data()
-        .stmt_meta(stmt_index)
-        .unwrap_or_else(|| panic!("no stmt_meta at index {stmt_index}"));
-    let actual: Vec<&str> = meta.hoist_names().iter().map(|s| s.as_str()).collect();
-    assert_eq!(actual, expected, "stmt_meta[{stmt_index}].hoist_names");
+        .hoisted_names()
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    assert_eq!(actual, expected, "hoisted_names");
 }
 
 fn assert_expr_tag_has_blockers(data: &AnalysisData, component: &Component, expr_text: &str) {
@@ -2896,7 +2918,7 @@ let b = await fetch('/b');
 }
 
 #[test]
-fn blocker_fragment_indices_are_sorted_and_unique() {
+fn blocker_fragment_indices_follow_encounter_order_and_are_unique() {
     let (component, data) = analyze_source_with_options(
         r#"<script>
 let a = await fetch('/a');
@@ -2910,10 +2932,13 @@ let b = await fetch('/b');
     );
     let paragraph =
         find_element(component.root, &component, "p").unwrap_or_else(|| panic!("no <p> element"));
-    assert_eq!(
-        data.template.fragment_blockers_by_id(paragraph.fragment),
-        &[0, 1]
-    );
+    let entries: Vec<u32> = data
+        .template
+        .fragment_blockers_by_id(paragraph.fragment)
+        .iter()
+        .map(|slot| slot.entry)
+        .collect();
+    assert_eq!(entries, vec![1, 0]);
 }
 
 fn is_head_title(data: &crate::AnalysisData, id: NodeId) -> bool {
@@ -2924,7 +2949,7 @@ fn is_head_title(data: &crate::AnalysisData, id: NodeId) -> bool {
         | crate::ElementSemantics::Boundary(_)
         | crate::ElementSemantics::SvelteElement(_)
         | crate::ElementSemantics::LegacySlot(_)
-        | crate::ElementSemantics::LegacyComponentSlots(_) => false,
+        | crate::ElementSemantics::Component(_) => false,
     }
 }
 
@@ -3045,7 +3070,10 @@ fn legacy_slots_template_reads_require_sanitized_slots_binding() {
         },
     );
 
-    assert!(data.output.needs_sanitized_legacy_slots);
+    assert_eq!(
+        data.runtime_semantics.query().sanitized_legacy_slots,
+        LegacySlotSanitization::Needed
+    );
 }
 
 #[test]
@@ -3058,7 +3086,10 @@ fn legacy_slot_elements_do_not_require_sanitized_slots_binding() {
         },
     );
 
-    assert!(!data.output.needs_sanitized_legacy_slots);
+    assert_eq!(
+        data.runtime_semantics.query().sanitized_legacy_slots,
+        LegacySlotSanitization::Unneeded
+    );
 }
 
 #[test]
@@ -3071,7 +3102,10 @@ fn legacy_slots_script_reads_require_sanitized_slots_binding() {
         },
     );
 
-    assert!(data.output.needs_sanitized_legacy_slots);
+    assert_eq!(
+        data.runtime_semantics.query().sanitized_legacy_slots,
+        LegacySlotSanitization::Needed
+    );
 }
 
 #[test]
@@ -3585,7 +3619,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "async_total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            async_kind: DerivedAsyncKind::Async,
+            async_kind: DerivedAsyncKind::Async { .. },
             ..
         })
     ));
@@ -3770,6 +3804,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(StateKind::State),
             safe: true,
+            locality: SignalReadLocality::Cell,
         }
     );
     assert_eq!(
@@ -3794,6 +3829,7 @@ fn reactivity_semantics_v2_reference_semantics_cover_first_cluster() {
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::Derived(DerivedKind::Derived),
             safe: false,
+            locality: SignalReadLocality::Cell,
         }
     );
     assert_eq!(
@@ -3932,6 +3968,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(StateKind::State),
             safe: false,
+            locality: SignalReadLocality::Cell,
         }
     );
     assert_eq!(
@@ -3948,6 +3985,7 @@ fn reactivity_semantics_v2_state_references_distinguish_plain_and_mutated_reads(
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(StateKind::State),
             safe: true,
+            locality: SignalReadLocality::Cell,
         }
     );
 }
@@ -4002,6 +4040,7 @@ fn reactivity_semantics_v2_state_raw_distinguishes_plain_and_mutated_bindings() 
         ReferenceSemantics::SignalRead {
             kind: SignalReferenceKind::State(StateKind::StateRaw),
             safe: true,
+            locality: SignalReadLocality::Cell,
         }
     );
     assert_eq!(
@@ -4095,7 +4134,7 @@ function helper() { return data; }
     );
     assert_has_async(&data);
     assert_symbol_blocker(&data, "data", 0);
-    assert_stmt_meta_count(&data, 2); // data decl + function decl
+    assert_async_entry_count(&data, 1);
 }
 
 #[test]
@@ -4113,7 +4152,8 @@ let fn1 = () => data;
     );
     assert_has_async(&data);
     assert_symbol_blocker(&data, "data", 0);
-    assert_no_symbol_blocker(&data, "fn1");
+    assert_async_entry_count(&data, 1);
+    assert_symbol_blocker(&data, "fn1", 0);
 }
 
 #[test]
@@ -4131,10 +4171,9 @@ let y = data.length;
     );
     assert_has_async(&data);
     assert_first_await_index(&data, 0);
-    assert_stmt_meta_has_await(&data, 0, true);
-    assert_stmt_meta_hoist_names(&data, 0, &["data"]);
-    assert_stmt_meta_has_await(&data, 1, false);
-    assert_stmt_meta_hoist_names(&data, 1, &["y"]);
+    assert_async_entry_suspends(&data, 0, true);
+    assert_async_entry_suspends(&data, 1, false);
+    assert_hoisted_names(&data, &["data", "y"]);
 }
 
 #[test]
@@ -4200,16 +4239,12 @@ let data = await fetch('/api');
 #[test]
 fn runtime_plan_basic_component_is_minimal() {
     let (_c, data) = analyze_source("<script>let count = 1;</script><p>{count}</p>");
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(!plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(!plan.has_exports);
-    assert!(!plan.has_bindable);
-    assert!(!plan.has_stores);
-    assert!(!plan.has_ce_props);
-    assert!(!plan.needs_props_param);
-    assert!(!plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Frameless);
+    assert_eq!(plan.stores, StoreBindings::Absent);
+    assert_eq!(plan.prop_accessors, PropAccessors::Hidden);
+    assert_eq!(plan.props_input, PropsInput::Ignored);
 }
 
 #[test]
@@ -4239,47 +4274,35 @@ fn runtime_plan_dev_custom_element_uses_exports_and_props() {
             warning_filter: None,
         },
     );
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(plan.has_component_exports);
-    assert!(plan.has_exports);
-    assert!(!plan.has_bindable);
-    assert!(plan.has_ce_props);
-    assert!(plan.needs_props_param);
-    assert!(plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Exposed);
+    assert_eq!(plan.prop_accessors, PropAccessors::Exposed);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
 }
 
 #[test]
 fn runtime_plan_bindable_props_require_push_without_component_exports() {
     let (_c, data) =
         analyze_source("<script>let { value = $bindable() } = $props();</script><p>{value}</p>");
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(!plan.has_exports);
-    assert!(plan.has_bindable);
-    assert!(!plan.has_stores);
-    assert!(!plan.has_ce_props);
-    assert!(plan.needs_props_param);
-    assert!(!plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Scoped);
+    assert_eq!(plan.stores, StoreBindings::Absent);
+    assert_eq!(plan.prop_accessors, PropAccessors::Hidden);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
 }
 
 #[test]
 fn runtime_plan_store_subscriptions_do_not_force_push() {
     let (_c, data) =
         analyze_source("<script>import { count } from './stores';</script><p>{$count}</p>");
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(!plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(!plan.has_exports);
-    assert!(!plan.has_bindable);
-    assert!(plan.has_stores);
-    assert!(!plan.has_ce_props);
-    assert!(!plan.needs_props_param);
-    assert!(!plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Frameless);
+    assert_eq!(plan.stores, StoreBindings::Present);
+    assert_eq!(plan.prop_accessors, PropAccessors::Hidden);
+    assert_eq!(plan.props_input, PropsInput::Ignored);
 }
 
 #[test]
@@ -4315,22 +4338,24 @@ fn runtime_plan_synthetic_store_subscriptions_do_not_force_push() {
             ..AnalyzeOptions::default()
         },
     );
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.has_stores, "synthetic store bindings expected");
-    assert!(
-        !data.script.has_store_member_mutations,
-        "no real store member mutations in source"
+    assert_eq!(
+        plan.stores,
+        StoreBindings::Present,
+        "synthetic store bindings expected"
     );
-    assert!(
-        !data.output.needs_context,
-        "needs_context must stay false: synthetic store callees should not be classified as unsafe by NeedsContextVisitor"
+    assert_eq!(
+        plan.context_ssr,
+        ContextScope::Direct,
+        "context must stay unobserved: synthetic store callees should not be classified as unsafe"
     );
-    assert!(
-        !plan.needs_push,
+    assert_eq!(
+        plan.frame,
+        ComponentFrame::Frameless,
         "synthetic store subscriptions in non-runes must not force push"
     );
-    assert!(!plan.needs_props_param);
+    assert_eq!(plan.props_input, PropsInput::Ignored);
 }
 
 #[test]
@@ -4342,9 +4367,10 @@ fn needs_context_set_by_member_access_on_legacy_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.needs_context,
-        "$$props.member must drive needs_context = true via NeedsContextVisitor"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Wrapped,
+        "$$props.member must drive context observation"
     );
 }
 
@@ -4357,9 +4383,10 @@ fn needs_context_set_by_member_access_on_legacy_rest_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.needs_context,
-        "$$restProps.member must drive needs_context = true via NeedsContextVisitor"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Wrapped,
+        "$$restProps.member must drive context observation"
     );
 }
 
@@ -4372,9 +4399,10 @@ fn needs_context_set_by_template_member_access_on_legacy_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.needs_context,
-        "template-side $$props.member must drive needs_context = true via ExpressionSemantics::REST_PROP_MEMBER"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Wrapped,
+        "template-side $$props.member must drive context observation via ExpressionSemantics::REST_PROP_MEMBER"
     );
 }
 
@@ -4387,9 +4415,10 @@ fn needs_context_set_by_template_member_access_on_legacy_rest_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.needs_context,
-        "template-side $$restProps.member must drive needs_context = true via ExpressionSemantics::REST_PROP_MEMBER"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Wrapped,
+        "template-side $$restProps.member must drive context observation via ExpressionSemantics::REST_PROP_MEMBER"
     );
 }
 
@@ -4402,8 +4431,9 @@ fn needs_props_param_set_by_template_only_legacy_rest_props() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        data.output.runtime_plan.needs_props_param,
+    assert_eq!(
+        data.runtime_semantics.query().props_input,
+        PropsInput::Consumed,
         "template-only $$restProps must force $$props parameter on the component function"
     );
 }
@@ -4417,7 +4447,7 @@ fn assert_needs_props_param(source: &str, expected: bool) {
             ..AnalyzeOptions::default()
         },
     );
-    let got = data.output.runtime_plan.needs_props_param;
+    let got = data.runtime_semantics.query().props_input == PropsInput::Consumed;
     assert_eq!(
         got, expected,
         "needs_props_param for {source:?}: expected {expected}, got {got}"
@@ -4474,9 +4504,10 @@ fn needs_context_stays_false_for_bare_legacy_props_identifier_read() {
             ..AnalyzeOptions::default()
         },
     );
-    assert!(
-        !data.output.needs_context,
-        "bare $$props identifier read (no member access) must keep needs_context = false"
+    assert_eq!(
+        data.runtime_semantics.query().context_ssr,
+        ContextScope::Direct,
+        "bare $$props identifier read (no member access) must keep context unobserved"
     );
 }
 
@@ -4491,14 +4522,13 @@ fn legacy_export_let_becomes_props_when_runes_disabled() {
     );
 
     assert!(
-        data.output.api_exports.is_empty(),
+        data.api_exports.is_empty(),
         "legacy export let should not remain a component export"
     );
 
-    let plan = data.output.runtime_plan;
-    assert!(!plan.needs_push);
-    assert!(plan.needs_props_param);
-    assert!(!plan.has_exports);
+    let plan = data.runtime_semantics.query();
+    assert_eq!(plan.frame, ComponentFrame::Frameless);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
 }
 
 fn assert_legacy_bindable_prop(
@@ -5178,10 +5208,11 @@ fn legacy_two_export_let_props_both_promote_with_legacy_reactive_block() {
         .collect();
     assert!(syms.contains(&items_sym), "items in symbols set");
     assert!(syms.contains(&extra_sym), "extra in symbols set");
-    let runtime = &data.output.runtime_plan;
-    assert!(
-        !runtime.has_exports,
-        "two pure bindable props should not produce $$exports object (got has_exports=true)"
+    let runtime = data.runtime_semantics.query();
+    assert_ne!(
+        runtime.frame,
+        ComponentFrame::Exposed,
+        "two pure bindable props should not produce $$exports object"
     );
 }
 
@@ -5230,11 +5261,10 @@ fn runtime_plan_accessors_require_push_and_exports() {
             ..AnalyzeOptions::default()
         },
     );
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(plan.has_component_exports);
-    assert!(plan.needs_props_param);
+    assert_eq!(plan.frame, ComponentFrame::Exposed);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
     assert!(data.script.accessors);
 }
 
@@ -5248,27 +5278,22 @@ fn runtime_plan_immutable_legacy_requires_push() {
             ..AnalyzeOptions::default()
         },
     );
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(plan.needs_props_param);
+    assert_eq!(plan.frame, ComponentFrame::Scoped);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
     assert!(data.script.immutable);
 }
 
 #[test]
 fn runtime_plan_needs_context_without_exports_skips_pop_return() {
     let (_c, data) = analyze_source("<script>$effect(() => {});</script><p>ok</p>");
-    let plan = data.output.runtime_plan;
+    let plan = data.runtime_semantics.query();
 
-    assert!(plan.needs_push);
-    assert!(!plan.has_component_exports);
-    assert!(!plan.has_exports);
-    assert!(!plan.has_bindable);
-    assert!(!plan.has_stores);
-    assert!(!plan.has_ce_props);
-    assert!(plan.needs_props_param);
-    assert!(!plan.needs_pop_with_return);
+    assert_eq!(plan.frame, ComponentFrame::Scoped);
+    assert_eq!(plan.stores, StoreBindings::Absent);
+    assert_eq!(plan.prop_accessors, PropAccessors::Hidden);
+    assert_eq!(plan.props_input, PropsInput::Consumed);
 }
 
 #[test]
@@ -5395,8 +5420,8 @@ fn fragment_facts_track_non_trivial_child_counts() {
         Node::ComponentNode(cn) => cn.fragment,
         _ => unreachable!(),
     };
-    let children_snippet =
-        find_snippet_block(component.root, &component, "children").expect("expected snippet");
+    let children_snippet = find_snippet_block(component.root, &component, &data, "children")
+        .expect("expected snippet");
     let span = find_element(component.root, &component, "span").expect("expected span");
     assert_eq!(data.fragment_child_count_by_id(widget_fragment_id), 7);
     assert!(data.fragment_has_non_trivial_children_by_id(widget_fragment_id));
@@ -5930,6 +5955,26 @@ fn bind_group_to_snippet_parameter_reports_assignment_error_first() {
     );
 
     assert_diag_codes(&diags, &["snippet_parameter_assignment"]);
+}
+
+#[test]
+fn unquoted_attribute_sequence_errors_in_runes_mode() {
+    let (_component, _data, diags) = analyze_source_with_diags(
+        r#"<script>let value = $state('x');</script>
+<div foo=a{value}></div>"#,
+    );
+
+    assert_diag_codes(&diags, &["attribute_unquoted_sequence"]);
+}
+
+#[test]
+fn unquoted_attribute_sequence_allowed_outside_runes_mode() {
+    let diags = analyze_source_legacy_with_diags(
+        r#"<script>export let value;</script>
+<div foo=a{value}></div>"#,
+    );
+
+    assert_diag_codes(&diags, &[]);
 }
 
 #[test]
@@ -7760,87 +7805,75 @@ mod expression_semantics_tests {
     };
 
     #[test]
-    fn t12_pickled_await_non_tail_position() {
-        use oxc_ast::ast::Expression;
-        use oxc_ast_visit::Visit;
-        use oxc_ast_visit::walk::walk_expression;
-
-        let source = r#"<script>
-async function foo(a, b) { return a + b; }
-async function bar() { return 1; }
-async function baz() { return 2; }
-</script>
-<p>{await foo(await bar(), await baz())}</p>"#;
-        let (_component, data, parsed) = analyze_with_async(source);
-
-        struct InnerAwaitFinder {
-            depth: u32,
-            inner_node_ids: Vec<OxcNodeId>,
-        }
-        impl<'a> Visit<'a> for InnerAwaitFinder {
-            fn visit_expression(&mut self, expr: &Expression<'a>) {
-                if let Expression::AwaitExpression(a) = expr {
-                    self.depth += 1;
-                    if self.depth >= 2 {
-                        self.inner_node_ids.push(a.node_id());
-                    }
-                    walk_expression(self, expr);
-                    self.depth -= 1;
-                } else {
-                    walk_expression(self, expr);
-                }
-            }
-        }
-        let mut finder = InnerAwaitFinder {
-            depth: 0,
-            inner_node_ids: Vec::new(),
-        };
-        for expr in parsed.iter_exprs() {
-            finder.visit_expression(expr);
-        }
-        assert!(
-            !finder.inner_node_ids.is_empty(),
-            "expected nested awaits in source"
-        );
-        assert!(
-            finder
-                .inner_node_ids
-                .iter()
-                .any(|nid| data.pickled_awaits.contains(*nid)),
-            "at least one non-tail await must be pickled"
+    fn await_in_fragment_interpolation_is_terminal_there() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script>{await p}"#,
+            &[crate::AwaitSemantics::TerminalInFragmentInterpolation],
         );
     }
 
     #[test]
-    fn t12_pickled_await_tail_position_not_pickled() {
-        use oxc_ast::ast::Expression;
-        use oxc_ast_visit::Visit;
-        use oxc_ast_visit::walk::walk_expression;
+    fn await_in_element_interpolation_is_terminal_in_construct() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script><p>{await p}</p>"#,
+            &[crate::AwaitSemantics::TerminalInConstruct],
+        );
+    }
 
-        let source = r#"<script>let p = Promise.resolve(1);</script><p>{await p}</p>"#;
-        let (_component, data, parsed) = analyze_with_async(source);
+    #[test]
+    fn await_in_attribute_is_terminal_in_construct() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script><div title={await p}></div>"#,
+            &[crate::AwaitSemantics::TerminalInConstruct],
+        );
+    }
 
-        struct AwaitFinder {
-            node_id: Option<OxcNodeId>,
-        }
-        impl<'a> Visit<'a> for AwaitFinder {
-            fn visit_expression(&mut self, expr: &Expression<'a>) {
-                if let Expression::AwaitExpression(a) = expr
-                    && self.node_id.is_none()
-                {
-                    self.node_id = Some(a.node_id());
-                }
-                walk_expression(self, expr);
-            }
-        }
-        let mut finder = AwaitFinder { node_id: None };
-        for expr in parsed.iter_exprs() {
-            finder.visit_expression(expr);
-        }
-        let nid = finder.node_id.expect("await expression");
-        assert!(
-            !data.pickled_awaits.contains(nid),
-            "tail-position await must not be pickled"
+    #[test]
+    fn await_followed_by_more_of_the_expression_is_non_terminal() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script>{(await p) + 1}"#,
+            &[crate::AwaitSemantics::NonTerminal],
+        );
+    }
+
+    #[test]
+    fn await_inside_nested_function_is_detached() {
+        assert_await_semantics(
+            r#"<script>let p = Promise.resolve(1);</script><button onclick={async () => await p}>go</button>"#,
+            &[crate::AwaitSemantics::Detached],
+        );
+    }
+
+    #[test]
+    fn only_the_argument_evaluated_last_stays_terminal() {
+        assert_await_semantics(
+            r#"<script>
+async function foo(a, b) { return a + b; }
+async function bar() { return 1; }
+async function baz() { return 2; }
+</script>
+{foo(await bar(), await baz())}"#,
+            &[
+                crate::AwaitSemantics::NonTerminal,
+                crate::AwaitSemantics::TerminalInFragmentInterpolation,
+            ],
+        );
+    }
+
+    #[test]
+    fn arguments_under_an_enclosing_await_are_all_non_terminal() {
+        assert_await_semantics(
+            r#"<script>
+async function foo(a, b) { return a + b; }
+async function bar() { return 1; }
+async function baz() { return 2; }
+</script>
+{await foo(await bar(), await baz())}"#,
+            &[
+                crate::AwaitSemantics::TerminalInFragmentInterpolation,
+                crate::AwaitSemantics::NonTerminal,
+                crate::AwaitSemantics::NonTerminal,
+            ],
         );
     }
 
@@ -7878,7 +7911,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -7914,7 +7949,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -7961,6 +7998,32 @@ async function baz() { return 2; }
         let source = "<script>const greeting = 'hi';</script><p>{greeting}</p>";
         let ev = evaluate_first_expr(source, "greeting");
         assert_eq!(ev, Evaluation::Known(KnownValue::Str("hi".into())));
+    }
+
+    fn reconverging_const_chain(depth: usize) -> &'static str {
+        let mut source = String::from("<script>const a0 = 1;");
+        for step in 1..=depth {
+            let prev = step - 1;
+            source.push_str(&format!("const a{step} = a{prev} + a{prev};"));
+        }
+        source.push_str("</script><p>{a0}</p>");
+        Box::leak(source.into_boxed_str())
+    }
+
+    #[track_caller]
+    fn assert_binding_evaluates_to_number(source: &'static str, name: &str, expected: f64) {
+        let evaluation = evaluate_binding_init(source, name);
+        assert_eq!(
+            evaluation,
+            Evaluation::Known(KnownValue::Num(expected)),
+            "{name}: expected Known(Num({expected})), got {evaluation:?}"
+        );
+    }
+
+    #[test]
+    fn evaluation_folds_reconverging_binding_chain_in_linear_time() {
+        let source = reconverging_const_chain(30);
+        assert_binding_evaluates_to_number(source, "a30", 1_073_741_824.0);
     }
 
     #[test]
@@ -8220,6 +8283,43 @@ async function baz() { return 2; }
         )
     }
 
+    #[track_caller]
+    fn assert_await_semantics(source: &'static str, expected: &[crate::AwaitSemantics]) {
+        use oxc_ast::ast::Expression;
+        use oxc_ast_visit::Visit;
+        use oxc_ast_visit::walk::walk_expression;
+
+        struct AwaitIds(Vec<OxcNodeId>);
+        impl<'a> Visit<'a> for AwaitIds {
+            fn visit_expression(&mut self, expr: &Expression<'a>) {
+                if let Expression::AwaitExpression(await_expr) = expr {
+                    self.0.push(await_expr.node_id());
+                }
+                walk_expression(self, expr);
+            }
+        }
+
+        let (_component, data, parsed) = analyze_with_async(source);
+        let mut ids = AwaitIds(Vec::new());
+        for expr in parsed.iter_exprs() {
+            ids.visit_expression(expr);
+        }
+        for stmt in parsed.iter_stmts() {
+            ids.visit_statement(stmt);
+        }
+        assert!(!ids.0.is_empty(), "source declares no await expression");
+        let actual: Vec<crate::AwaitSemantics> = ids
+            .0
+            .iter()
+            .map(|id| data.await_semantics.query(*id))
+            .collect();
+        assert_eq!(
+            actual.as_slice(),
+            expected,
+            "await semantics: expected {expected:?}, got {actual:?}"
+        );
+    }
+
     fn analyze_with_opts(
         source: &'static str,
         options: AnalyzeOptions,
@@ -8257,7 +8357,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8311,7 +8413,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8378,7 +8482,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8421,7 +8527,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8459,7 +8567,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8516,7 +8626,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8547,7 +8659,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8583,7 +8697,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,
@@ -8624,7 +8740,9 @@ async function baz() { return 2; }
             &data.template.snippets,
             &data.value_evaluation,
             data.script.has_class_state_fields,
+            data.script.observes_context,
             data.blocker_data(),
+            &data.await_semantics,
             data.script.runes_mode,
             component.node_count(),
             false,

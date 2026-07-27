@@ -1,9 +1,21 @@
 use compact_str::CompactString;
 use oxc_ast::ast::Expression;
-use svelte_ast_builder::Arg;
+use svelte_ast_builder::{Arg, Builder};
 
 use super::data_structures::{EmitState, FragmentAnchor, FragmentCtx, PreAnchor};
 use super::{Codegen, CodegenError, Result};
+
+pub(in crate::codegen) fn child_anchor_arg<'a>(
+    b: &Builder<'a>,
+    parent_var: &str,
+    parent_is_content: bool,
+) -> Expression<'a> {
+    let parent = b.rid_expr(parent_var);
+    if parent_is_content {
+        return b.static_member_expr(parent, "content");
+    }
+    parent
+}
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn reserve_comment_anchor_pre(
@@ -37,6 +49,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     needs_template_comment: false,
                     is_child: false,
                     parent_var: None,
+                    parent_is_content: false,
                     callback_param: None,
                     sibling_var: None,
                 }
@@ -52,6 +65,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     needs_template_comment: true,
                     is_child: false,
                     parent_var: None,
+                    parent_is_content: false,
                     callback_param: Some(name.clone()),
                     sibling_var: None,
                 }
@@ -65,6 +79,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     needs_template_comment: true,
                     is_child: true,
                     parent_var: Some(parent_var.clone()),
+                    parent_is_content: matches!(
+                        ctx.anchor,
+                        FragmentAnchor::ElementContentChild { .. }
+                    ),
                     callback_param: None,
                     sibling_var: None,
                 }
@@ -75,6 +93,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 needs_template_comment: false,
                 is_child: false,
                 parent_var: None,
+                parent_is_content: false,
                 callback_param: None,
                 sibling_var: Some(var.clone()),
             },
@@ -103,6 +122,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 &pre.node_name,
                 b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
             ));
+            if state.legacy_slot_anchor_end.is_none() {
+                state.legacy_slot_anchor_end = Some(state.init.len());
+            }
             let node_name: String = pre.node_name.into();
             state.root_var = Some(frag_name);
             return Ok(node_name);
@@ -118,9 +140,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             return CodegenError::unexpected_child("parent_var or callback_param", "neither");
         };
         let b = &self.ctx.state.b;
+        let parent_arg = child_anchor_arg(b, &parent, pre.parent_is_content);
         state.init.push(b.var_stmt(
             &pre.node_name,
-            b.call_expr("$.child", [Arg::Ident(&parent)]),
+            b.call_expr("$.child", [Arg::Expr(parent_arg)]),
         ));
         let _ = pre.is_child;
         Ok(pre.node_name.into())
@@ -162,6 +185,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     &node_name,
                     b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
                 ));
+                if state.legacy_slot_anchor_end.is_none() {
+                    state.legacy_slot_anchor_end = Some(state.init.len());
+                }
                 state.root_var = Some(frag_name);
                 Ok(node_name.into())
             }
@@ -182,11 +208,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             | FragmentAnchor::ElementContentChild { parent_var } => {
                 state.template.push_comment(None);
                 let node_name = self.ctx.state.gen_ident("node");
-                let parent = parent_var.clone();
+                let parent_is_content =
+                    matches!(ctx.anchor, FragmentAnchor::ElementContentChild { .. });
                 let b = &self.ctx.state.b;
+                let parent_arg = child_anchor_arg(b, parent_var, parent_is_content);
                 state
                     .init
-                    .push(b.var_stmt(&node_name, b.call_expr("$.child", [Arg::Ident(&parent)])));
+                    .push(b.var_stmt(&node_name, b.call_expr("$.child", [Arg::Expr(parent_arg)])));
                 Ok(node_name)
             }
             FragmentAnchor::SiblingVar { var } => Ok(var.to_string()),
@@ -228,6 +256,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     &node_name,
                     b.call_expr("$.first_child", [Arg::Ident(&frag_name)]),
                 ));
+                if state.legacy_slot_anchor_end.is_none() {
+                    state.legacy_slot_anchor_end = Some(state.init.len());
+                }
                 state.root_var = Some(frag_name);
                 Ok(b.rid_expr(&node_name))
             }
@@ -235,11 +266,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             | FragmentAnchor::ElementContentChild { parent_var } => {
                 state.template.push_comment(None);
                 let node_name = self.ctx.state.gen_ident("node");
-                let parent = parent_var.clone();
+                let parent_is_content =
+                    matches!(ctx.anchor, FragmentAnchor::ElementContentChild { .. });
                 let b = &self.ctx.state.b;
+                let parent_arg = child_anchor_arg(b, parent_var, parent_is_content);
                 state
                     .init
-                    .push(b.var_stmt(&node_name, b.call_expr("$.child", [Arg::Ident(&parent)])));
+                    .push(b.var_stmt(&node_name, b.call_expr("$.child", [Arg::Expr(parent_arg)])));
                 Ok(b.rid_expr(&node_name))
             }
             FragmentAnchor::SiblingVar { var } => Ok(self.ctx.b.rid_expr(var)),

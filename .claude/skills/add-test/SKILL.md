@@ -1,6 +1,6 @@
 ---
 name: add-test
-description: Use whenever adding an e2e compiler-output test (our JS vs the reference compiler) — a new cluster case under `tasks/compiler_tests/`.
+description: Cluster case — the sanctioned path to an e2e compiler-output test, our JS against the reference compiler. Use when adding a case under `tasks/compiler_tests/`.
 ---
 
 # Add Compiler Test

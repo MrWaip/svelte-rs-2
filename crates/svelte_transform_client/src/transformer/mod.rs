@@ -32,8 +32,8 @@ pub(crate) use svelte_analyze::{
 
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, Class, ClassBody, Expression, ForOfStatement, Function, FunctionBody,
-    ObjectProperty, Statement, VariableDeclarator,
+    ArrowFunctionExpression, BindingIdentifier, Class, ClassBody, Expression, ForOfStatement,
+    Function, FunctionBody, ObjectProperty, Statement, VariableDeclarator,
 };
 use oxc_span::{GetSpan, SPAN};
 use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
@@ -41,6 +41,22 @@ use oxc_traverse::{Ancestor, Traverse, TraverseCtx};
 use model::{ComponentTransformer, FunctionInfo};
 
 impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
+    fn enter_binding_identifier(
+        &mut self,
+        node: &mut BindingIdentifier<'a>,
+        _ctx: &mut TraverseCtx<'a, ()>,
+    ) {
+        let Some(analysis) = self.analysis else {
+            return;
+        };
+        let Some(sym) = node.symbol_id.get() else {
+            return;
+        };
+        if analysis.binding_semantics(sym).is_legacy_props_object() {
+            node.name = self.b.alloc_str("$$sanitized_props").into();
+        }
+    }
+
     fn exit_class_body(&mut self, node: &mut ClassBody<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
             return;
@@ -104,9 +120,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
-            if !self.function_info_stack.is_empty() || self.rewrite_top_level_declarations {
-                self.rewrite_binding_declarations(stmts, ctx);
-            }
             return;
         }
         if ctx.current_scope_id() == ctx.scoping().root_scope_id() {
@@ -118,9 +131,12 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     fn exit_statements(
         &mut self,
         stmts: &mut OxcVec<'a, Statement<'a>>,
-        _ctx: &mut TraverseCtx<'a, ()>,
+        ctx: &mut TraverseCtx<'a, ()>,
     ) {
         if self.mode == model::TransformMode::Template {
+            if !self.function_info_stack.is_empty() || self.rewrite_top_level_declarations {
+                self.rewrite_binding_declarations(stmts, ctx);
+            }
             self.strip_inspect_trace_statements(stmts);
             return;
         }
@@ -156,6 +172,7 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
 
     fn enter_statement(&mut self, node: &mut Statement<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
         if self.mode == model::TransformMode::Template {
+            self.enclosing_stmt_start.push(node.span().start);
             return;
         }
         if !self.runes
@@ -168,9 +185,6 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
     }
 
     fn exit_statement(&mut self, _node: &mut Statement<'a>, _ctx: &mut TraverseCtx<'a, ()>) {
-        if self.mode == model::TransformMode::Template {
-            return;
-        }
         self.enclosing_stmt_start.pop();
     }
 
@@ -247,6 +261,9 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
             return;
         }
         if self.rewrite_private_read_exit(node) {
+            return;
+        }
+        if self.rewrite_script_await_save(node) {
             return;
         }
         if self.dev {

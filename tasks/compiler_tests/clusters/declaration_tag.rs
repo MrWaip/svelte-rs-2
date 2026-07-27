@@ -34,3 +34,13 @@ compiler_case!(
     identifier_type_keyword_guard,
     "declaration_tag/identifier_type_keyword_guard"
 );
+compiler_case!(
+    derived_read_element_scope_server,
+    "declaration_tag/derived_read_element_scope_server",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    derived_read_element_scope_nested_fn,
+    "declaration_tag/derived_read_element_scope_nested_fn",
+    [prod, dev, ssr, ssr_dev]
+);

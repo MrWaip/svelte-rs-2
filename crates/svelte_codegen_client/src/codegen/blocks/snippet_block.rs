@@ -24,7 +24,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         id: NodeId,
         sem: SnippetBlockSemantics,
     ) -> Result<()> {
-        if state.skip_snippets {
+        if state.skip_snippets || state.skip_snippet_ids.contains(&id) {
             return Ok(());
         }
         let stmt = self.build_snippet_const(id, &sem)?;

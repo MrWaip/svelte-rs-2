@@ -125,22 +125,32 @@ impl<'d, 'a> VisitContext<'d, 'a> {
     }
 
     pub fn record_ignore_for_node(&mut self, node_id: NodeId) {
-        if self.ignore_current.is_empty() {
+        let Some(idx) = self.current_ignore_idx() else {
             return;
+        };
+        self.data.ignore.set_snapshot(node_id, idx);
+    }
+
+    pub fn record_ignore_for_span(&mut self, span_start: u32) {
+        let Some(idx) = self.current_ignore_idx() else {
+            return;
+        };
+        self.data.ignore.set_span_snapshot(span_start, idx);
+    }
+
+    fn current_ignore_idx(&mut self) -> Option<u32> {
+        if self.ignore_current.is_empty() {
+            return None;
         }
         let idx = match self.ignore_current_idx {
             Some(idx) => idx,
             None => {
-                let idx = self
-                    .data
-                    .output
-                    .ignore_data
-                    .intern_snapshot(&self.ignore_current);
+                let idx = self.data.ignore.intern_snapshot(&self.ignore_current);
                 self.ignore_current_idx = Some(idx);
                 idx
             }
         };
-        self.data.output.ignore_data.set_snapshot(node_id, idx);
+        Some(idx)
     }
 
     pub fn take_warnings(&mut self) -> Vec<Diagnostic> {
@@ -153,12 +163,7 @@ impl<'d, 'a> VisitContext<'d, 'a> {
         kind: DiagnosticKind,
         span: Span,
     ) {
-        if self
-            .data
-            .output
-            .ignore_data
-            .is_ignored(node_id, kind.code())
-        {
+        if self.data.ignore.is_ignored(node_id, kind.code()) {
             return;
         }
 

@@ -3,6 +3,7 @@ use crate::attribute_semantics::{
     AttributeSemanticsStore,
     data::{AttributeSemantics, ComponentPropMemo, ComponentPropSemantics},
 };
+use crate::await_semantics::AwaitSemanticsStore;
 use crate::block_semantics::{BlockSemantics, BlockSemanticsStore, EachIndexKind, EachItemKind};
 use crate::element_semantics::ElementSemanticsStore;
 use crate::expression_semantics::{ExpressionData, ExpressionSemantics, ExpressionSemanticsStore};
@@ -25,7 +26,7 @@ use svelte_component_semantics::{OriginKind, OxcNodeId, ReferenceId};
 pub struct ScriptAnalysis {
     pub props_id: Option<SymbolId>,
     pub has_class_state_fields: bool,
-    pub has_store_member_mutations: bool,
+    pub observes_context: bool,
     pub runes_mode: RunesMode,
     pub accessors: bool,
     pub immutable: bool,
@@ -33,6 +34,7 @@ pub struct ScriptAnalysis {
     pub preserve_comments: bool,
     pub experimental_async: bool,
     pub dev: bool,
+    pub is_standalone_module: bool,
     pub ce_config: Option<svelte_parser::ParsedCeConfig>,
     pub blocker_data: BlockerData,
 }
@@ -42,7 +44,7 @@ impl ScriptAnalysis {
         Self {
             props_id: None,
             has_class_state_fields: false,
-            has_store_member_mutations: false,
+            observes_context: false,
             runes_mode: RunesMode::Runes,
             accessors: false,
             immutable: false,
@@ -50,6 +52,7 @@ impl ScriptAnalysis {
             preserve_comments: false,
             experimental_async: false,
             dev: false,
+            is_standalone_module: false,
             ce_config: None,
             blocker_data: BlockerData::default(),
         }
@@ -71,6 +74,11 @@ impl ScriptAnalysis {
 pub struct ElementAnalysis {
     pub(crate) facts: ElementFacts,
     pub flags: ElementFlags,
+    pub legacy_slots_by_name: Vec<(String, Span)>,
+    pub has_render_tag: bool,
+    pub needs_component_bind_ownership: bool,
+    pub has_child_component_bind: bool,
+    pub has_legacy_event_forward: bool,
 }
 
 impl ElementAnalysis {
@@ -78,6 +86,11 @@ impl ElementAnalysis {
         Self {
             facts: ElementFacts::new(node_count),
             flags: ElementFlags::new(node_count),
+            legacy_slots_by_name: Vec::new(),
+            has_render_tag: false,
+            needs_component_bind_ownership: false,
+            has_child_component_bind: false,
+            has_legacy_event_forward: false,
         }
     }
 }
@@ -86,7 +99,7 @@ pub struct TemplateAnalysis {
     pub fragment_facts: FragmentFacts,
     pub fragment_namespaces: FragmentNamespaces,
     pub rich_content_facts: RichContentFacts,
-    pub(crate) fragment_blockers: Vec<Option<SmallVec<[u32; 2]>>>,
+    pub(crate) fragment_blockers: Vec<Option<SmallVec<[BlockerSlot; 2]>>>,
     pub snippets: SnippetData,
     pub template_topology: TemplateTopology,
     pub template_elements: TemplateElementIndex,
@@ -111,7 +124,7 @@ impl TemplateAnalysis {
         }
     }
 
-    pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[u32] {
+    pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[BlockerSlot] {
         self.fragment_blockers
             .get(id.0 as usize)
             .and_then(|o| o.as_ref())
@@ -121,7 +134,7 @@ impl TemplateAnalysis {
     pub(crate) fn insert_fragment_blockers_by_id(
         &mut self,
         id: svelte_ast::FragmentId,
-        blockers: SmallVec<[u32; 2]>,
+        blockers: SmallVec<[BlockerSlot; 2]>,
     ) {
         let idx = id.0 as usize;
         if self.fragment_blockers.len() <= idx {
@@ -146,59 +159,35 @@ pub struct ApiExport {
     pub alias: Option<compact_str::CompactString>,
 }
 
-pub struct OutputData {
-    pub needs_context: bool,
-    pub needs_sanitized_legacy_slots: bool,
-    pub renders_legacy_slot: bool,
-    pub custom_element_slot_names: Vec<String>,
-    pub component_name: String,
-    pub is_custom_element_target: bool,
-    pub custom_element_compile_flag: bool,
-    pub runtime_plan: RuntimeInfo,
-    pub ignore_data: IgnoreData,
-    pub needs_component_bind_ownership: bool,
-    pub api_exports: Vec<ApiExport>,
-    pub legacy_has_export_declaration: bool,
-
-    pub css: CssAnalysis,
-}
-
-impl OutputData {
-    fn new(node_count: u32) -> Self {
-        Self {
-            needs_context: false,
-            needs_sanitized_legacy_slots: false,
-            renders_legacy_slot: false,
-            custom_element_slot_names: Vec::new(),
-            component_name: String::new(),
-            is_custom_element_target: false,
-            custom_element_compile_flag: false,
-            runtime_plan: RuntimeInfo::default(),
-            ignore_data: IgnoreData::new(),
-            needs_component_bind_ownership: false,
-            api_exports: Vec::new(),
-            legacy_has_export_declaration: false,
-            css: CssAnalysis::empty(node_count),
-        }
-    }
+#[derive(Default)]
+pub struct CustomElement {
+    pub is_target: bool,
+    pub compile_flag: bool,
+    pub slot_names: Vec<String>,
 }
 
 pub struct AnalysisData<'a> {
     pub expressions_v2: ExpressionSemanticsStore,
     pub attributes: AttributeSemanticsStore,
-    pub pickled_awaits: PickledAwaits,
+    pub await_semantics: AwaitSemanticsStore,
     pub scoping: ComponentScoping<'a>,
     pub script: ScriptAnalysis,
     pub elements: ElementAnalysis,
     pub template: TemplateAnalysis,
     pub blocks: BlockAnalysis,
-    pub output: OutputData,
     pub reactivity: ReactivitySemantics,
     pub(crate) block_semantics_store: BlockSemanticsStore,
     pub element_semantics: ElementSemanticsStore,
     pub fragment_semantics: FragmentSemanticsStore,
     pub runtime_semantics: RuntimeSemanticsStore,
     pub(crate) value_evaluation: ValueEvaluation,
+
+    pub component_name: String,
+    pub custom_element: CustomElement,
+    pub api_exports: Vec<ApiExport>,
+    pub legacy_has_export_declaration: bool,
+    pub ignore: IgnoreData,
+    pub css: CssAnalysis,
 }
 
 impl<'a> AnalysisData<'a> {
@@ -206,19 +195,24 @@ impl<'a> AnalysisData<'a> {
         Self {
             expressions_v2: ExpressionSemanticsStore::new(node_count),
             attributes: AttributeSemanticsStore::new(node_count),
-            pickled_awaits: PickledAwaits::new(),
+            await_semantics: AwaitSemanticsStore::new(),
             scoping: ComponentScoping::with_capacity(node_count as usize),
             script: ScriptAnalysis::new(),
             elements: ElementAnalysis::new(node_count),
             template: TemplateAnalysis::new(node_count),
             blocks: BlockAnalysis::new(node_count),
-            output: OutputData::new(node_count),
             reactivity: ReactivitySemantics::new(node_count),
             block_semantics_store: BlockSemanticsStore::new(node_count),
             element_semantics: ElementSemanticsStore::new(node_count),
             fragment_semantics: FragmentSemanticsStore::new(),
             runtime_semantics: RuntimeSemanticsStore::new(),
             value_evaluation: ValueEvaluation::default(),
+            component_name: String::new(),
+            custom_element: CustomElement::default(),
+            api_exports: Vec::new(),
+            legacy_has_export_declaration: false,
+            ignore: IgnoreData::new(),
+            css: CssAnalysis::empty(node_count),
         }
     }
 }
@@ -231,7 +225,7 @@ impl<'a> AnalysisData<'a> {
         &self.script.blocker_data
     }
     pub fn component_name(&self) -> &str {
-        &self.output.component_name
+        &self.component_name
     }
     pub fn expression_data(&self, id: NodeId) -> Option<&ExpressionData> {
         match self.expressions_v2.get(id) {
@@ -309,6 +303,13 @@ impl<'a> AnalysisData<'a> {
     pub fn block_semantics(&self, id: NodeId) -> &BlockSemantics {
         self.block_semantics_store.get(id)
     }
+    pub fn fragment_declaration_group(&self, id: svelte_ast::FragmentId) -> &[NodeId] {
+        self.block_semantics_store.fragment_declaration_group(id)
+    }
+    pub fn fragment_declaration_group_order(&self) -> &[svelte_ast::FragmentId] {
+        self.block_semantics_store
+            .fragment_declaration_group_order()
+    }
     pub fn fragment_facts_by_id(&self, id: svelte_ast::FragmentId) -> Option<&FragmentFactsEntry> {
         self.template.fragment_facts.lookup_by_id(id)
     }
@@ -331,7 +332,7 @@ impl<'a> AnalysisData<'a> {
             .and_then(FragmentFactsEntry::single_child)
     }
     pub fn custom_element_slot_names(&self) -> &[String] {
-        &self.output.custom_element_slot_names
+        &self.custom_element.slot_names
     }
     pub fn fragment_non_trivial_child_count_by_id(&self, id: svelte_ast::FragmentId) -> u32 {
         self.template
@@ -582,13 +583,13 @@ impl<'a> AnalysisData<'a> {
         )
     }
     pub fn css_hash(&self) -> &str {
-        &self.output.css.hash
+        &self.css.hash
     }
     pub fn is_css_scoped(&self, id: NodeId) -> bool {
-        self.output.css.scoped_elements.contains(&id)
+        self.css.scoped_elements.contains(&id)
     }
     pub fn inject_styles(&self) -> bool {
-        self.output.css.inject_styles
+        self.css.inject_styles
     }
     pub fn node_ref_symbols(&self, id: NodeId) -> &[SymbolId] {
         self.template.template_semantics.node_ref_symbols(id)

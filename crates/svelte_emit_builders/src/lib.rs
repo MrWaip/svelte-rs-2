@@ -1,3 +1,4 @@
+pub mod async_entry;
 pub mod binding;
 pub mod binding_pattern;
 pub mod each_item;

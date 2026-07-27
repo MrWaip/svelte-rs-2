@@ -19,19 +19,66 @@ pub enum ElementSemantics {
 
     LegacySlot(LegacySlotSemantics),
 
-    LegacyComponentSlots(LegacyComponentSlotsSemantics),
+    Component(ComponentElementSemantics),
+}
+
+impl ElementSemantics {
+    pub fn property_reset(&self) -> ElementPropertyReset {
+        match self {
+            ElementSemantics::RegularElement(sem) => sem.property_reset,
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_)
+            | ElementSemantics::SvelteElement(_)
+            | ElementSemantics::LegacySlot(_)
+            | ElementSemantics::Component(_) => ElementPropertyReset::None,
+        }
+    }
+
+    pub fn is_script(&self) -> bool {
+        match self {
+            ElementSemantics::RegularElement(sem) => sem.is_script,
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_)
+            | ElementSemantics::SvelteElement(_)
+            | ElementSemantics::LegacySlot(_)
+            | ElementSemantics::Component(_) => false,
+        }
+    }
+
+    pub fn async_kind(&self) -> &ElementAsyncKind {
+        match self {
+            ElementSemantics::RegularElement(sem) => &sem.async_kind,
+            ElementSemantics::SvelteElement(sem) => &sem.tag_async_kind,
+            ElementSemantics::Component(sem) => &sem.async_kind,
+            ElementSemantics::LegacySlot(sem) => &sem.async_kind,
+            ElementSemantics::None
+            | ElementSemantics::HeadTitle
+            | ElementSemantics::Boundary(_) => &ElementAsyncKind::Sync,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LegacySlotSemantics {
     pub name: String,
     pub has_fallback: bool,
+    pub async_kind: ElementAsyncKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComponentElementSemantics {
+    pub async_kind: ElementAsyncKind,
+    pub legacy_slots: LegacyComponentSlotsSemantics,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LegacyComponentSlotsSemantics {
     pub default_slot: LegacyDefaultSlot,
     pub default_wrapper: Option<NodeId>,
+    pub default_let_owner: Option<NodeId>,
+    pub default_let_scope_owners: SmallVec<[NodeId; 2]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -41,6 +88,7 @@ pub enum LegacyDefaultSlot {
     SlotDefaultInvalid,
     SlotDefault,
     OwnLetDisplaced,
+    SlotDefaultSlottedLet,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50,6 +98,15 @@ pub struct RegularElementSemantics {
     pub value_role: ElementValueRole,
     pub replay_events: SmallVec<[ElementReplayEvent; 2]>,
     pub opaque_content: bool,
+    pub property_reset: ElementPropertyReset,
+    pub is_script: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ElementPropertyReset {
+    None,
+    Dir,
+    LazyLoadingImg,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -91,7 +148,7 @@ pub enum ElementValueRole {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextareaBody {
-    Single(OxcNodeId),
+    Single { node_id: NodeId, oxc_id: OxcNodeId },
     Static(String),
     Segments(Vec<TextareaSegment>),
 }
@@ -104,7 +161,8 @@ pub enum TextareaSegment {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SvelteElementSemantics {
-    pub async_kind: ElementAsyncKind,
+    pub tag_async_kind: ElementAsyncKind,
+    pub attributes_async_kind: ElementAsyncKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -139,6 +197,15 @@ impl ElementAsyncKind {
 pub struct BoundarySemantics {
     pub failed: BoundaryBranch,
     pub pending: BoundaryBranch,
+    pub pending_needs_nullish_guard: bool,
+    pub failed_snippet: Option<NodeId>,
+    pub pending_snippet: Option<NodeId>,
+}
+
+impl BoundarySemantics {
+    pub fn is_prop_snippet(&self, id: NodeId) -> bool {
+        self.failed_snippet == Some(id) || self.pending_snippet == Some(id)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

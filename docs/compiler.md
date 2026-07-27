@@ -36,8 +36,16 @@ Public entry: `compile(source, &CompileOptions) -> CompileResult`. Module entry:
 - Аллокация второго `Allocator` посреди пайплайна.
 - Инлайн логики анализа / трансформа / кодгена в entry-crate.
 
+## Релизная сборка
+
+Публикуемый napi-аддон собирается с PGO: `just build-napi-pgo` (инструментированная сборка →
+тренировка на корпусе репозитория → `-Cprofile-use`). Даёт −12,5% времени компиляции на корпусе
+реального приложения. Инструментировать и оптимизировать нужно одним и тем же вызовом cargo —
+иначе профиль не матчится по mangled-именам; причина, замеры и границы — `adr/0007-pgo-release-build.md`.
+
 ## Связь с другими документами
 
 - `context.md` §«Слои крэйтов», §«Кросс-каттинг» (standalone-модули, диагностики).
 - `parser.md`, `analyze.md`, `transform.md`, `codegen.md` — фазы, которые оркестрирует.
 - `supporting-crates.md` — `svelte_transform_css` (CSS-шаг пайплайна).
+- `adr/0007-pgo-release-build.md` — почему релизный аддон собирается с PGO.

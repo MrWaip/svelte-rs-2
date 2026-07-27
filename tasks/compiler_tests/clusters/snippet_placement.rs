@@ -30,3 +30,28 @@ compiler_case!(
     guard_toplevel_instance,
     "snippet_placement/guard_toplevel_instance"
 );
+compiler_case!(
+    component_binding_hoists_snippet,
+    "snippet_placement/component_binding_hoists_snippet",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    component_binding_hoists_multiple_snippets,
+    "snippet_placement/component_binding_hoists_multiple_snippets",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    component_binding_no_snippet_guard,
+    "snippet_placement/component_binding_no_snippet_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    snippet_no_component_binding_guard,
+    "snippet_placement/snippet_no_component_binding_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    component_binding_hoistable_snippet_guard,
+    "snippet_placement/component_binding_hoistable_snippet_guard",
+    [prod, dev, ssr, ssr_dev]
+);

@@ -5,14 +5,15 @@ use oxc_allocator::{CloneIn, Vec as OxcVec};
 use oxc_ast::ast::{Argument, ChainElement, Expression, Statement};
 use oxc_span::GetSpan;
 
-use crate::context::Ctx;
-
-use svelte_analyze::{RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics};
+use svelte_analyze::{
+    RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics, Suspension,
+};
 use svelte_ast::NodeId;
 use svelte_ast_builder::Arg;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::effect::suspending_thunk;
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -102,7 +103,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
 
         let mut memo_stmts: Vec<Statement<'a>> = Vec::new();
-        let mut async_values: Vec<Expression<'a>> = Vec::new();
+        let mut async_values: Vec<(Expression<'a>, Suspension)> = Vec::new();
         let arg_thunks = self.build_render_arg_thunks(
             id,
             arguments,
@@ -150,7 +151,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         state: &mut EmitState<'a>,
         blockers: &[u32],
-        async_values: Vec<Expression<'a>>,
+        async_values: Vec<(Expression<'a>, Suspension)>,
         anchor_name: &str,
         sync_memo_count: u32,
         async_memo_count: u32,
@@ -177,7 +178,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             let thunks: Vec<Expression<'a>> = async_values
                 .into_iter()
-                .map(|e| async_value_thunk(self.ctx, e))
+                .map(|(e, suspension)| suspending_thunk(self.ctx, e, suspension))
                 .collect();
             self.ctx.b.array_expr(thunks)
         };
@@ -215,7 +216,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         arguments: OxcVec<'alloc, Argument<'a>>,
         sem: &RenderTagBlockSemantics,
         memo_stmts: &mut Vec<Statement<'a>>,
-        async_values: &mut Vec<Expression<'a>>,
+        async_values: &mut Vec<(Expression<'a>, Suspension)>,
         sync_memo_count: u32,
     ) -> Result<Vec<Arg<'a, 'static>>> {
         let mut thunks: Vec<Arg<'a, 'static>> = Vec::with_capacity(sem.args.len());
@@ -243,8 +244,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .arrow_expr(self.ctx.b.no_params(), [self.ctx.b.expr_stmt(get)]);
                     thunks.push(Arg::Expr(read_thunk));
                 }
-                RenderArgKind::AwaitMemo { .. } => {
-                    async_values.push(self.ctx.b.clone_expr(&arg_expr));
+                RenderArgKind::AwaitMemo { suspension, .. } => {
+                    async_values.push((self.ctx.b.clone_expr(&arg_expr), suspension));
                     let param_name = format!("${}", sync_memo_count + async_seen);
                     async_seen += 1;
                     let param_ref = self.ctx.b.alloc_str(&param_name);
@@ -261,16 +262,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
         Ok(thunks)
-    }
-}
-
-fn async_value_thunk<'a>(ctx: &mut Ctx<'a>, expr: Expression<'a>) -> Expression<'a> {
-    if let Expression::AwaitExpression(await_expr) = expr {
-        let inner = await_expr.unbox().argument;
-        ctx.b
-            .arrow_expr(ctx.b.no_params(), [ctx.b.expr_stmt(inner)])
-    } else {
-        ctx.b.async_arrow_expr_body(expr)
     }
 }
 

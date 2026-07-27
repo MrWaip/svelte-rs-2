@@ -583,7 +583,8 @@ pub(super) fn is_reactive_legacy_dep(semantics: BindingSemantics) -> bool {
     match semantics {
         BindingSemantics::NonReactive
         | BindingSemantics::Unresolved
-        | BindingSemantics::LegacyApiExport => false,
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyPropsObject => false,
         BindingSemantics::MaybeReactive
         | BindingSemantics::State(_)
         | BindingSemantics::Derived(_)

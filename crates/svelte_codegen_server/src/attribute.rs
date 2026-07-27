@@ -102,11 +102,7 @@ impl<'a> ServerCodegen<'a> {
                     self.emit_group_value_attribute(attr)?;
                 }
                 AttributeSemantics::SpecialValueAttr(sem)
-                    if matches!(sem.kind, SpecialValueKind::InputBindChecked)
-                        && matches!(
-                            attr,
-                            Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
-                        ) =>
+                    if matches!(sem.kind, SpecialValueKind::InputBindChecked) =>
                 {
                     self.emit_plain_attribute(owner_id, attr)?;
                 }
@@ -180,26 +176,6 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    fn take_class_template_literal(
-        &mut self,
-        class_attr_id: Option<NodeId>,
-        attributes: &'a [Attribute],
-    ) -> Option<Expression<'a>> {
-        let attr = class_attr_id.and_then(|id| self.find_attribute(attributes, id))?;
-        let Attribute::ExpressionAttribute(a) = attr else {
-            return None;
-        };
-        if !matches!(
-            self.js_arena.expr(a.expression.id()),
-            Some(Expression::TemplateLiteral(_))
-        ) {
-            return None;
-        }
-        let node_id = a.id;
-        let oxc_id = a.expression.id();
-        self.take_expr_by_oxc_id(node_id, oxc_id).ok()
-    }
-
     fn push_named_value(&mut self, name: &str, value: AttrValue<'a>) {
         match value {
             AttrValue::Static(s) => {
@@ -225,7 +201,13 @@ impl<'a> ServerCodegen<'a> {
             .attr
             .and_then(|id| self.find_attribute(attributes, id))
         {
-            Some(attr) => self.attr_value_of(attr, true)?,
+            Some(attr) => {
+                let previous = self.suppress_async_hoist;
+                self.suppress_async_hoist = class.needs_clsx;
+                let value = self.attr_value_of(attr, true);
+                self.suppress_async_hoist = previous;
+                value?
+            }
             None => match &class.static_base {
                 Some(base) => {
                     AttrValue::Static(collapse_attribute_whitespace(base).trim().to_string())
@@ -249,16 +231,15 @@ impl<'a> ServerCodegen<'a> {
             return Ok(());
         }
 
-        let template_expr = self.take_class_template_literal(class.attr, attributes);
-        let mut value_expr = match template_expr {
-            Some(expr) => expr,
-            None => match value {
-                AttrValue::Static(s) => self.b.str_expr(&s),
-                AttrValue::Dynamic(expr) => expr,
-            },
+        let mut value_expr = match value {
+            AttrValue::Static(s) => self.b.str_expr(&s),
+            AttrValue::Dynamic(expr) => expr,
         };
         if class.needs_clsx {
             value_expr = self.b.call_expr("$.clsx", [Arg::Expr(value_expr)]);
+            if let Some(attr_id) = class.attr {
+                value_expr = self.maybe_hoist_async_expr(attr_id, value_expr);
+            }
         }
 
         let value_is_expr_string_literal = matches!(
@@ -355,7 +336,10 @@ impl<'a> ServerCodegen<'a> {
         let mut props: Vec<ObjProp<'a>> = Vec::new();
         for directive in directives {
             let value = match self.find_class_directive(attributes, directive.id) {
-                Some(cd) => self.take_expression(cd.id, &cd.expression)?,
+                Some(cd) => {
+                    let expr = self.take_expression(cd.id, &cd.expression)?;
+                    self.maybe_hoist_async_expr(cd.id, expr)
+                }
                 None => self.b.rid_expr(&directive.name),
             };
             if quoted {
@@ -402,7 +386,8 @@ impl<'a> ServerCodegen<'a> {
     fn style_directive_value(&mut self, directive: &StyleDirective) -> Result<Expression<'a>> {
         match &directive.value {
             StyleDirectiveValue::Expression => {
-                self.take_expression(directive.id, &directive.expression)
+                let expr = self.take_expression(directive.id, &directive.expression)?;
+                Ok(self.maybe_hoist_async_expr(directive.id, expr))
             }
             StyleDirectiveValue::String(s) => {
                 let text = collapse_attribute_whitespace(s.trim());
@@ -667,6 +652,7 @@ impl<'a> ServerCodegen<'a> {
                     self.b.str_expr(text)
                 }))
             }
+            Some(GroupBindValue::Boolean) => Ok(Some(self.b.bool_expr(true))),
             None => Ok(None),
         }
     }
@@ -752,15 +738,37 @@ impl<'a> ServerCodegen<'a> {
         );
 
         let (class_attr_id, class_needs_clsx) = match self.find_class_semantics(attributes) {
-            Some(class) => (class.attr, class.needs_clsx),
+            Some(class) => (class.attr, class.needs_clsx && !is_select_or_option),
             None => (None, false),
+        };
+
+        let class = self.find_class_semantics(attributes);
+        let style = self.find_style_semantics(attributes);
+        let classes = match class.as_ref() {
+            Some(class) if !class.directives.is_empty() => {
+                Some(self.build_class_directives_object(attributes, &class.directives, false)?)
+            }
+            _ => None,
+        };
+        let styles = match style.as_ref() {
+            Some(style) if !style.directives.is_empty() => {
+                Some(self.build_style_directives_object(&style.directives)?)
+            }
+            _ => None,
         };
 
         for attr in attributes {
             if matches!(
                 self.analysis.attributes.get(attr.id()),
-                AttributeSemantics::Skip(_) | AttributeSemantics::Event(_)
+                AttributeSemantics::Skip(_)
             ) {
+                continue;
+            }
+            if matches!(
+                self.analysis.attributes.get(attr.id()),
+                AttributeSemantics::Event(_)
+            ) && !is_select_or_option
+            {
                 continue;
             }
             if let AttributeSemantics::CannotBeStatic(sem) = self.analysis.attributes.get(attr.id())
@@ -777,6 +785,7 @@ impl<'a> ServerCodegen<'a> {
             match attr {
                 Attribute::SpreadAttribute(sa) => {
                     let expr = self.take_expression(sa.id, &sa.expression)?;
+                    let expr = self.maybe_hoist_async_expr(sa.id, expr);
                     props.push(ObjProp::Spread(expr));
                 }
                 Attribute::StringAttribute(a) => {
@@ -802,12 +811,14 @@ impl<'a> ServerCodegen<'a> {
                     let key = self.b.alloc_str(&name);
                     if class_needs_clsx && class_attr_id == Some(a.id) {
                         expr = self.b.call_expr("$.clsx", [Arg::Expr(expr)]);
+                        expr = self.maybe_hoist_async_expr(a.id, expr);
                         props.push(ObjProp::KeyValue(key, expr));
                     } else if self.analysis.elements.flags.is_expression_shorthand(a.id)
                         && expr_is_ident_named(&expr, &name)
                     {
                         props.push(ObjProp::Shorthand(key));
                     } else {
+                        let expr = self.maybe_hoist_async_expr(a.id, expr);
                         props.push(ObjProp::KeyValue(key, expr));
                     }
                 }
@@ -877,21 +888,6 @@ impl<'a> ServerCodegen<'a> {
 
         let object = self.b.object_expr(props);
 
-        let class = self.find_class_semantics(attributes);
-        let style = self.find_style_semantics(attributes);
-        let classes = match class.as_ref() {
-            Some(class) if !class.directives.is_empty() => {
-                Some(self.build_class_directives_object(attributes, &class.directives, false)?)
-            }
-            _ => None,
-        };
-        let styles = match style.as_ref() {
-            Some(style) if !style.directives.is_empty() => {
-                Some(self.build_style_directives_object(&style.directives)?)
-            }
-            _ => None,
-        };
-
         let hash = self.analysis.css_hash().to_string();
         let css_hash = if self.analysis.is_css_scoped(owner_id) && !hash.is_empty() {
             Some(self.b.str_expr(&hash))
@@ -937,11 +933,16 @@ impl<'a> ServerCodegen<'a> {
     }
 
     fn attr_value_single(&mut self, attr_id: NodeId, expr_ref: &ExprRef) -> Result<AttrValue<'a>> {
-        if let Some(value) = self.analysis.expression_data(attr_id).and_then(|data| {
-            (data.references.is_empty() && data.declared_evaluation.is_defined_string())
-                .then(|| data.declared_evaluation.known_str())
-                .flatten()
-        }) {
+        let is_string_literal = self.js_arena.expr(expr_ref.id()).is_some_and(|expr| {
+            matches!(expr.get_inner_expression(), Expression::StringLiteral(_))
+        });
+        if is_string_literal
+            && let Some(value) = self.analysis.expression_data(attr_id).and_then(|data| {
+                (data.references.is_empty() && data.declared_evaluation.is_defined_string())
+                    .then(|| data.declared_evaluation.known_str())
+                    .flatten()
+            })
+        {
             return Ok(AttrValue::Static(value));
         }
         let expr = self.take_expression(attr_id, expr_ref)?;
@@ -994,6 +995,7 @@ impl<'a> ServerCodegen<'a> {
                     let is_defined_string =
                         evaluation.as_ref().is_some_and(|e| e.is_defined_string());
                     let value = self.take_expression(*id, expr)?;
+                    let value = self.maybe_hoist_async_expr(*id, value);
                     segments.push(TemplatePart::Expr(value, is_defined_string));
                 }
             }
@@ -1106,6 +1108,7 @@ impl<'a> ServerCodegen<'a> {
                 };
                 let key: &'a str = self.b.alloc_str(&ea.name);
                 let value = self.take_expression(attr_id, &ea.expression)?;
+                let value = self.maybe_hoist_async_expr(attr_id, value);
                 items.push(PropOrSpread::Prop(prop_kv(key, value)));
                 Ok(())
             }
@@ -1126,6 +1129,7 @@ impl<'a> ServerCodegen<'a> {
                     return Err(CodegenError::Unsupported(attr_id, "component spread"));
                 };
                 let value = self.take_expression(attr_id, &sa.expression)?;
+                let value = self.maybe_hoist_async_expr(attr_id, value);
                 items.push(PropOrSpread::Spread(value));
                 Ok(())
             }

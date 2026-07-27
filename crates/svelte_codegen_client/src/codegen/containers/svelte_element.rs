@@ -10,6 +10,7 @@ use super::super::attributes::AttributeOwnerKind;
 use super::super::data_structures::AsyncEmission;
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::effect::suspending_block_thunk;
 use super::super::{Codegen, CodegenError, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -23,6 +24,22 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
             }
             None => CodegenError::missing_expression(el_id),
+        }
+    }
+
+    fn svelte_element_tag_read(
+        &self,
+        plan: &AsyncEmission,
+        tag_expr: &Expression<'a>,
+    ) -> Expression<'a> {
+        match plan {
+            AsyncEmission::Awaited { .. } | AsyncEmission::Deferred { .. } => {
+                rune_get(&self.ctx.b, "$$tag")
+            }
+            AsyncEmission::Sync => {
+                use oxc_allocator::CloneIn;
+                tag_expr.clone_in(self.ctx.b.ast.allocator)
+            }
         }
     }
 
@@ -59,35 +76,30 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             None
         };
 
-        let mut dev_stmts: Vec<Statement<'a>> = Vec::new();
-        let dev_void_tag_clone: Option<Expression<'a>> = if self.ctx.state.dev {
-            use oxc_allocator::CloneIn;
-            let validate_tag = tag_expr.clone_in(self.ctx.b.ast.allocator);
-            let validate_thunk = self.ctx.b.thunk(validate_tag);
-            dev_stmts.push(self.ctx.b.call_stmt(
-                "$.validate_dynamic_element_tag",
-                [Arg::Expr(validate_thunk)],
-            ));
-            Some(tag_expr.clone_in(self.ctx.b.ast.allocator))
-        } else {
-            None
-        };
-
         let tag_async_thunk: Option<Expression<'a>> = match &tag_async_plan {
             AsyncEmission::Awaited { .. } => {
                 use oxc_allocator::CloneIn;
                 let cloned = tag_expr.clone_in(self.ctx.b.ast.allocator);
-                Some(self.ctx.b.async_thunk(cloned))
+                let suspension = self.ctx.expression_suspension(el_id);
+                Some(suspending_block_thunk(self.ctx, cloned, suspension))
             }
             AsyncEmission::Deferred { .. } | AsyncEmission::Sync => None,
         };
 
-        let get_tag = match &tag_async_plan {
-            AsyncEmission::Awaited { .. } | AsyncEmission::Deferred { .. } => {
-                self.ctx.b.thunk(rune_get(&self.ctx.b, "$$tag"))
-            }
-            AsyncEmission::Sync => self.ctx.b.thunk(tag_expr),
-        };
+        let mut dev_stmts: Vec<Statement<'a>> = Vec::new();
+        if self.ctx.state.dev {
+            let tag_read = self.svelte_element_tag_read(&tag_async_plan, &tag_expr);
+            let validate_thunk = self.ctx.b.thunk(tag_read);
+            dev_stmts.push(self.ctx.b.call_stmt(
+                "$.validate_dynamic_element_tag",
+                [Arg::Expr(validate_thunk)],
+            ));
+        }
+
+        let get_tag = self
+            .ctx
+            .b
+            .thunk(self.svelte_element_tag_read(&tag_async_plan, &tag_expr));
 
         let is_svg_or_mathml = matches!(
             self.ctx.query.view.namespace(el_id),
@@ -203,8 +215,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .query
             .analysis
             .fragment_has_children_by_id(svelte_el_fragment);
-        if has_child_nodes && let Some(void_tag) = dev_void_tag_clone {
-            let void_thunk = self.ctx.b.thunk(void_tag);
+        if has_child_nodes && self.ctx.state.dev {
+            let tag_read = self.svelte_element_tag_read(&tag_async_plan, &tag_expr);
+            let void_thunk = self.ctx.b.thunk(tag_read);
             dev_stmts.push(
                 self.ctx
                     .b
@@ -216,10 +229,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let needs_ns = ns_thunk.is_some() || needs_loc;
         let needs_cb = callback.is_some() || needs_ns;
 
-        let element_anchor_ident = match &tag_async_plan {
-            AsyncEmission::Awaited { .. } | AsyncEmission::Deferred { .. } => "node",
-            AsyncEmission::Sync => anchor_node.as_str(),
-        };
+        let element_anchor_ident = anchor_node.as_str();
         let mut args: Vec<Arg<'a, '_>> = vec![
             Arg::Ident(element_anchor_ident),
             Arg::Expr(get_tag),
@@ -257,9 +267,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     dev_stmts
                 };
                 self.emit_async_call_stmt(
-                    &blockers,
+                    self.ctx.script_blocker_exprs(&blockers),
                     anchor_expr,
-                    "node",
+                    anchor_node.as_str(),
                     "$$tag",
                     tag_async_thunk,
                     inner_stmts,

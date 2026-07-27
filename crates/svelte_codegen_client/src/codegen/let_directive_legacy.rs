@@ -1,5 +1,5 @@
 use oxc_ast::ast::{BindingPattern, Statement};
-use svelte_ast::{Attribute, Node, NodeId};
+use svelte_ast::{Attribute, NodeId};
 
 use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
 
@@ -10,17 +10,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &mut self,
         owner_id: NodeId,
     ) -> Result<Vec<Statement<'a>>> {
-        let node = self.ctx.query.component.store.get(owner_id);
-        let attrs: &[Attribute] = match node {
-            Node::Element(el) => &el.attributes,
-            Node::SlotElementLegacy(el) => &el.attributes,
-            Node::SvelteFragmentLegacy(el) => &el.attributes,
-            _ => match node.as_component_like() {
-                Some(view) => view.attributes,
-                None => return Ok(Vec::new()),
-            },
-        };
-        let let_dirs: Vec<svelte_ast::LetDirectiveLegacy> = attrs
+        let let_dirs: Vec<svelte_ast::LetDirectiveLegacy> = self
+            .ctx
+            .query
+            .component
+            .store
+            .get(owner_id)
+            .attributes()
             .iter()
             .filter_map(|a| match a {
                 Attribute::LetDirectiveLegacy(d) => Some(d.clone()),

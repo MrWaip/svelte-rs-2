@@ -1,7 +1,8 @@
 use super::super::Evaluation;
-use super::super::data::{LegacyWrap, SyntheticPropsCarrier, Volatility};
+use super::super::data::{LegacyWrap, Suspension, SyntheticPropsCarrier, Volatility};
 use super::collector::{ExprFacts, TopLevelForm};
 use super::walker::Ctx;
+use crate::await_semantics::{AwaitSemantics, AwaitSemanticsStore};
 use crate::reactivity_semantics::builder_v2::expression_root_reference_id;
 use crate::reactivity_semantics::data::ContextualBindingSemantics;
 use crate::reactivity_semantics::data::ReactivitySemantics;
@@ -19,7 +20,7 @@ pub(super) fn needs_context(facts: &ExprFacts, reactivity: &ReactivitySemantics)
         return false;
     }
     facts
-        .references
+        .evaluated_reads
         .iter()
         .any(|&sym| binding_reads_through_props_object(reactivity.binding_semantics(sym)))
 }
@@ -45,6 +46,7 @@ fn binding_reads_through_props_object(semantics: BindingSemantics) -> bool {
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -64,16 +66,16 @@ pub(super) fn is_reactive_template(facts: &ExprFacts, ctx: &Ctx<'_, '_>) -> bool
                 return true;
             }
             facts
-                .top_level_reads
+                .evaluated_reads
                 .iter()
                 .any(|&sym| call_root_is_reactive(ctx, sym))
         }
-        TopLevelForm::Member => facts.has_runtime_root || !facts.top_level_reads.is_empty(),
+        TopLevelForm::Member => facts.has_runtime_root || !facts.evaluated_reads.is_empty(),
         TopLevelForm::Identifier
         | TopLevelForm::Assignment
         | TopLevelForm::Update
         | TopLevelForm::Other => facts
-            .top_level_reads
+            .evaluated_reads
             .iter()
             .any(|&sym| identifier_read_is_reactive(ctx, sym)),
     }
@@ -117,7 +119,7 @@ pub(super) fn symbol_is_volatile(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
         BindingSemantics::Const(_) | BindingSemantics::DeclarationTag => true,
         BindingSemantics::OptimizedConst(_) | BindingSemantics::OptimizedDeclarationTag => false,
         BindingSemantics::OptimizedRune(opt) if opt.proxy_init => true,
-        BindingSemantics::NonReactive => {
+        BindingSemantics::NonReactive | BindingSemantics::LegacyPropsObject => {
             if !ctx.scoping.is_component_top_level_symbol(sym) {
                 return true;
             }
@@ -138,6 +140,7 @@ fn reads_legacy_props_object(facts: &ExprFacts) -> bool {
 fn is_unified_plain_symbol(reactivity: &ReactivitySemantics, sym_id: SymbolId) -> bool {
     match reactivity.binding_semantics(sym_id) {
         BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::Const(_)
         | BindingSemantics::OptimizedConst(_)
         | BindingSemantics::DeclarationTag
@@ -159,7 +162,7 @@ fn is_unified_plain_symbol(reactivity: &ReactivitySemantics, sym_id: SymbolId) -
 }
 
 fn call_has_dynamic_input(facts: &ExprFacts) -> bool {
-    !facts.references.is_empty() || facts.has_impure_call || reads_legacy_props_object(facts)
+    !facts.evaluated_reads.is_empty() || facts.has_impure_call || reads_legacy_props_object(facts)
 }
 
 pub(super) fn is_heavy(facts: &ExprFacts) -> bool {
@@ -178,16 +181,45 @@ pub(super) fn volatility(reactive_gate: bool, facts: &ExprFacts) -> Volatility {
     }
 }
 
-pub(super) fn blockers(facts: &ExprFacts, blocker_data: &BlockerData) -> SmallVec<[u32; 2]> {
-    let mut out: SmallVec<[u32; 2]> = SmallVec::new();
-    for sym in &facts.references {
-        if let Some(idx) = blocker_data.symbol_blocker(*sym)
-            && !out.contains(&idx)
-        {
-            out.push(idx);
-        }
+pub(super) fn suspension(
+    expr: &Expression<'_>,
+    volatility: Volatility,
+    facts: &ExprFacts,
+    await_semantics: &AwaitSemanticsStore,
+) -> Suspension {
+    if !volatility.is_asynchronous() {
+        return Suspension::None;
     }
-    out.sort_unstable();
+    let Expression::AwaitExpression(outermost) = expr.get_inner_expression() else {
+        return Suspension::Interleaved;
+    };
+    let outermost_id = outermost.node_id();
+    let operand_suspends = facts.awaits.iter().any(|&id| {
+        id != outermost_id && !matches!(await_semantics.query(id), AwaitSemantics::Detached)
+    });
+    if operand_suspends {
+        Suspension::Interleaved
+    } else {
+        Suspension::Outermost
+    }
+}
+
+pub(super) fn blockers_of(
+    references: &[SymbolId],
+    blocker_data: &BlockerData,
+) -> SmallVec<[u32; 2]> {
+    let mut out: SmallVec<[u32; 2]> = SmallVec::new();
+    let mut seen: SmallVec<[u32; 2]> = SmallVec::new();
+    for sym in references {
+        let Some(slot) = blocker_data.symbol_blocker(*sym) else {
+            continue;
+        };
+        if seen.contains(&slot.member) {
+            continue;
+        }
+        seen.push(slot.member);
+        out.push(slot.entry);
+    }
     out
 }
 
@@ -246,6 +278,7 @@ fn attr_read_is_volatile(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     };
@@ -280,6 +313,7 @@ fn is_reactive_component_binding(reactivity: &ReactivitySemantics, sym: SymbolId
     match reactivity.binding_semantics(sym) {
         BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::Unresolved => false,
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
@@ -301,7 +335,7 @@ fn is_reactive_component_binding(reactivity: &ReactivitySemantics, sym: SymbolId
 
 fn references_optimized_rune(facts: &ExprFacts, reactivity: &ReactivitySemantics) -> bool {
     facts
-        .references
+        .evaluated_reads
         .iter()
         .any(|&sym| reactivity.binding_semantics(sym).is_optimized_rune())
 }
@@ -315,7 +349,7 @@ pub(super) fn legacy_wrap(
         return LegacyWrap::None;
     }
     let call_is_reactive =
-        facts.has_impure_call || (facts.has_call && !facts.references.is_empty());
+        facts.has_impure_call || (facts.has_call && !facts.evaluated_reads.is_empty());
     let needs_coarse = call_is_reactive
         || facts.has_member
         || matches!(

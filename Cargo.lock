@@ -916,8 +916,12 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "svelte_ast",
  "svelte_compiler",
  "svelte_diagnostics",
+ "svelte_parser",
+ "svelte_sourcemap",
+ "svelte_span",
 ]
 
 [[package]]
@@ -1906,6 +1910,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
+ "oxc_ecmascript",
  "oxc_index",
  "oxc_parser",
  "oxc_semantic",
@@ -1950,8 +1955,10 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "compact_str",
+ "memchr",
  "oxc_allocator",
  "oxc_ast",
+ "oxc_ast_visit",
  "oxc_codegen",
  "oxc_parser",
  "oxc_semantic",
@@ -2074,6 +2081,7 @@ dependencies = [
  "oxc_allocator",
  "oxc_ast",
  "oxc_ast_visit",
+ "oxc_diagnostics",
  "oxc_estree",
  "oxc_parser",
  "oxc_span",
@@ -2092,6 +2100,7 @@ version = "0.1.0"
 dependencies = [
  "oxc_sourcemap",
  "serde_json",
+ "svelte_span",
 ]
 
 [[package]]

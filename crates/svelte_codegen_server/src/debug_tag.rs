@@ -3,7 +3,7 @@ use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
 use crate::error::{CodegenError, Result};
-use crate::model::ServerCodegen;
+use crate::model::{AsyncInterpolation, ServerCodegen};
 
 impl<'a> ServerCodegen<'a> {
     pub(crate) fn debug_tag(&mut self, id: NodeId) -> Result<()> {
@@ -28,9 +28,29 @@ impl<'a> ServerCodegen<'a> {
 
         let obj = self.b.object_expr(props);
         let log = self.b.call_stmt("console.log", [Arg::Expr(obj)]);
-        self.push_stmt(log);
         let debugger = self.b.debugger_stmt();
-        self.push_stmt(debugger);
+
+        let blockers = match self.async_interpolation(id) {
+            Some(AsyncInterpolation::Awaited { blockers })
+            | Some(AsyncInterpolation::Deferred { blockers }) => blockers,
+            None => Vec::new(),
+        };
+        if blockers.is_empty() {
+            self.push_stmt(log);
+            self.push_stmt(debugger);
+            return Ok(());
+        }
+        let arrow = self.b.arrow_block_expr_async(
+            self.b.params(["$$renderer"]),
+            vec![log, debugger],
+            false,
+        );
+        let promises = self.b.array_expr(blockers);
+        let call = self.b.call_stmt(
+            "$$renderer.async_block",
+            [Arg::Expr(promises), Arg::Expr(arrow)],
+        );
+        self.push_stmt(call);
         Ok(())
     }
 }

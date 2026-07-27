@@ -39,6 +39,8 @@ pub struct ScriptTag {
 
     pub context_deprecated: bool,
     pub invalid_context: Option<Span>,
+
+    pub attributes: Vec<Attribute>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -252,6 +254,7 @@ impl GetSpan for Attribute {
 #[derive(Debug, PartialEq, Eq)]
 pub struct StyleTag {
     pub content_span: Span,
+    pub attributes: Vec<Attribute>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

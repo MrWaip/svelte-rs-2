@@ -56,8 +56,7 @@ compiler_case!(
 );
 compiler_case!(
     attr_input_group_boolean,
-    "select_value_dispatch/attr_input_group_boolean",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    "select_value_dispatch/attr_input_group_boolean"
 );
 compiler_case!(
     attr_input_checked_static_string,
@@ -74,4 +73,20 @@ compiler_case!(
 compiler_case!(
     attr_input_group_dynamic_guard,
     "select_value_dispatch/attr_input_group_dynamic_guard"
+);
+compiler_case!(
+    attr_input_group_radio_boolean,
+    "select_value_dispatch/attr_input_group_radio_boolean"
+);
+compiler_case!(
+    attr_input_group_radio_static_string_guard,
+    "select_value_dispatch/attr_input_group_radio_static_string_guard"
+);
+compiler_case!(
+    attr_input_group_radio_dynamic_guard,
+    "select_value_dispatch/attr_input_group_radio_dynamic_guard"
+);
+compiler_case!(
+    attr_input_group_no_value_guard,
+    "select_value_dispatch/attr_input_group_no_value_guard"
 );

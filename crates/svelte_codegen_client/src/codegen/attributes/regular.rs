@@ -1,9 +1,10 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{Evaluation, KnownValue, NamespaceKind};
+use svelte_analyze::{ExpressionData, NamespaceKind, Volatility};
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
+use super::super::data_structures::{DeferredMemoValue, EmitState};
 use super::super::expr::evaluation_is_defined;
 use super::super::{Codegen, CodegenError, Result};
 
@@ -25,6 +26,72 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 | Some(NamespaceKind::MathMl)
                 | Some(NamespaceKind::AnnotationXml)
         )
+    }
+
+    pub(super) fn defer_blockers(
+        &self,
+        state: &mut EmitState<'a>,
+        node: NodeId,
+        data: &ExpressionData,
+    ) {
+        state.deferred_memo_values.push(DeferredMemoValue {
+            node,
+            late_id: None,
+            data: data.clone(),
+            expr: None,
+        });
+    }
+
+    pub(super) fn defer_memo_value(
+        &mut self,
+        state: &mut EmitState<'a>,
+        node: NodeId,
+        data: &ExpressionData,
+        expr: Expression<'a>,
+    ) -> Expression<'a> {
+        match data.volatility {
+            Volatility::Heavy | Volatility::Asynchronous => {}
+            Volatility::Static | Volatility::Reactive => {
+                self.defer_blockers(state, node, data);
+                return expr;
+            }
+        }
+        let late_id = state.shared_memo.reserve_late();
+        state.deferred_memo_values.push(DeferredMemoValue {
+            node,
+            late_id: Some(late_id),
+            data: data.clone(),
+            expr: Some(expr),
+        });
+        state.shared_memo.late_param_expr(self.ctx, late_id)
+    }
+
+    pub(in super::super) fn flush_deferred_memo_values(
+        &mut self,
+        state: &mut EmitState<'a>,
+        start: usize,
+    ) -> Result<()> {
+        let deferred: Vec<DeferredMemoValue<'a>> =
+            state.deferred_memo_values.drain(start..).collect();
+        for entry in deferred {
+            let (Some(late_id), Some(expr)) = (entry.late_id, entry.expr) else {
+                state
+                    .shared_memo
+                    .push_expression_data(self.ctx, &entry.data);
+                continue;
+            };
+            let Some(slot) = state
+                .shared_memo
+                .add_memoized_expr(self.ctx, &entry.data, expr)
+            else {
+                return CodegenError::semantic_mismatch(
+                    entry.node,
+                    "deferred memo value reserved a slot but did not memoize",
+                );
+            };
+            state.shared_memo.resolve_late(late_id, Some(slot));
+        }
+        Ok(())
     }
 
     pub(super) fn attr_blockers(&self, attr_id: NodeId) -> Vec<u32> {
@@ -171,9 +238,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     }
 
                     let data = self.ctx.expression_data(*part_id).cloned();
-                    if let Some(d) = data.as_ref()
-                        && let Some(s) = known_evaluation_as_chunk_string(&d.evaluation)
-                    {
+                    if let Some(s) = data.as_ref().and_then(|d| d.evaluation.known_str()) {
                         push_template_str(&mut tpl_parts, s);
                         continue;
                     }
@@ -198,35 +263,6 @@ fn push_template_str<'a>(tpl_parts: &mut Vec<TemplatePart<'a>>, value: String) {
         prev.push_str(&value);
     } else {
         tpl_parts.push(TemplatePart::Str(value));
-    }
-}
-
-fn known_evaluation_as_chunk_string(eval: &Evaluation) -> Option<String> {
-    let Evaluation::Known(v) = eval else {
-        return None;
-    };
-    Some(match v {
-        KnownValue::Null | KnownValue::Undefined => String::new(),
-        KnownValue::Str(s) => s.to_string(),
-        KnownValue::Bool(b) => b.to_string(),
-        KnownValue::Num(n) => format_js_number(*n),
-        KnownValue::BigInt => return None,
-    })
-}
-
-fn format_js_number(n: f64) -> String {
-    if n.is_nan() {
-        "NaN".to_string()
-    } else if n.is_infinite() {
-        if n > 0.0 {
-            "Infinity".to_string()
-        } else {
-            "-Infinity".to_string()
-        }
-    } else if n == n.trunc() && n.abs() < 1e21 {
-        format!("{}", n as i64)
-    } else {
-        format!("{n}")
     }
 }
 

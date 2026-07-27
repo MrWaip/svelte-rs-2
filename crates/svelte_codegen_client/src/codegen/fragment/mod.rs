@@ -1,16 +1,14 @@
-use crate::codegen::expr::coarse_wrap;
-use svelte_emit_builders::runes::rune_get;
 mod legacy_slot_fragment;
 mod prepare;
 mod process_children;
 mod types;
 
 use compact_str::CompactString;
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::Expression;
 use std::iter::empty;
-use svelte_analyze::{AttributeSemantics, ComponentCssPropValue, SnippetPlacement, Volatility};
+use svelte_analyze::{SnippetPlacement, Volatility};
 use svelte_ast::{FragmentRole, NodeId};
-use svelte_ast_builder::{Arg, ObjProp};
+use svelte_ast_builder::Arg;
 
 use crate::codegen::concatenation::ConcatenationAnchor;
 use crate::codegen::fragment::prepare::prepare;
@@ -29,6 +27,7 @@ use crate::codegen::CodegenError;
 
 pub(in crate::codegen) use legacy_slot_fragment::SlotFragmentOutcome;
 
+use super::anchor::child_anchor_arg;
 use super::data_structures::EmitState;
 use super::data_structures::{ConcatPart, FragmentAnchor, FragmentCtx};
 use super::{Codegen, Result};
@@ -80,7 +79,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let mut bucket = HoistedBucket::default();
         let component = self.ctx.query.component;
         let fragment_nodes: &'a [NodeId] = &component.store.fragment(fragment_id).nodes;
-        let (children, raw_strategy) = prepare(fragment_nodes, &component.store, ctx, &mut bucket);
+        let (children, raw_strategy) = prepare(
+            fragment_nodes,
+            &component.store,
+            &self.ctx.query.analysis.element_semantics,
+            ctx,
+            &mut bucket,
+        );
         let strategy = self.refine_strategy(raw_strategy, ctx);
 
         let bucket_effectively_empty = if state.skip_snippets {
@@ -129,36 +134,35 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             self.emit_inline_snippet_block(state, id)?;
         }
 
+        let group: SmallVec<[NodeId; 4]> = match self.ctx.state.experimental_async {
+            true => self
+                .ctx
+                .query
+                .analysis
+                .fragment_declaration_group(fragment_id)
+                .iter()
+                .copied()
+                .collect(),
+            false => SmallVec::new(),
+        };
+
         {
-            use svelte_analyze::{BlockSemantics, FragmentDeclarationAsyncKind};
+            use svelte_analyze::BlockSemantics;
             let recording_slot_const_tags = state.legacy_slot_record_const_tag_end;
             if recording_slot_const_tags {
                 state.legacy_slot_const_tag_start = Some(state.init.len());
             }
-            let has_async = self.ctx.state.experimental_async
-                && bucket.const_tags.iter().any(|&id| {
-                    let BlockSemantics::ConstTag(s) = self.ctx.query.analysis.block_semantics(id)
-                    else {
-                        return false;
-                    };
-                    match s.async_kind {
-                        FragmentDeclarationAsyncKind::Awaited { .. }
-                        | FragmentDeclarationAsyncKind::Deferred { .. } => true,
-                        FragmentDeclarationAsyncKind::Sync => false,
-                    }
-                });
             let mut ordered: SmallVec<[NodeId; 4]> = bucket.const_tags.iter().copied().collect();
             ordered.sort_by_key(|&id| match self.ctx.query.analysis.block_semantics(id) {
                 BlockSemantics::ConstTag(s) => s.order_rank,
                 _ => 0,
             });
             if !state.skip_const_tags {
-                if has_async {
-                    self.emit_const_tags_async_batch(state, &ordered)?;
-                } else {
-                    for &id in &ordered {
-                        self.emit_hoisted_const_tag(state, ctx, id)?;
+                for &id in &ordered {
+                    if group.contains(&id) {
+                        continue;
                     }
+                    self.emit_hoisted_const_tag(state, ctx, id)?;
                 }
             }
             if recording_slot_const_tags {
@@ -167,9 +171,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
-        let declaration_tag_ids: SmallVec<[NodeId; 2]> =
-            bucket.declaration_tags.iter().copied().collect();
-        self.emit_declaration_tags(state, &declaration_tag_ids)?;
+        for &id in &bucket.declaration_tags {
+            if group.contains(&id) {
+                continue;
+            }
+            self.emit_hoisted_declaration_tag(state, id)?;
+        }
+
+        if !group.is_empty() {
+            self.emit_fragment_declaration_group(state, fragment_id, &group)?;
+        }
 
         let multi_first_is_block = matches!(
             &strategy,
@@ -366,6 +377,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     self.process_children_with_prefix(state, ctx, &children, emitted_prefix_next)?;
                     needs_reset = state.last_fragment_needs_reset;
                 } else {
+                    if self.render_tag_uses_direct_anchor(id)
+                        && matches!(ctx.anchor, FragmentAnchor::CallbackParam { .. })
+                    {
+                        let _ = self.ctx.state.gen_ident_compact("fragment");
+                    }
                     let standalone = self.standalone_ctx_for_single(ctx, id);
                     let use_ctx = standalone.as_ref().unwrap_or(ctx);
                     self.emit_fragment_child(state, use_ctx, id)?;
@@ -667,7 +683,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.template.push_element("svelte-css-wrapper", true);
                 state
                     .template
-                    .set_attribute("style", Some("display: contents".to_string()));
+                    .set_attribute("style", Some("display: contents".into()));
             }
             state.template.push_comment(None);
             state.template.pop_element();
@@ -725,7 +741,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             from_call
         };
-        let tpl_name = self.hoist_template_dedup(dedup_key, from_call);
+        let tpl_name = self.hoist_template_dedup(dedup_key, "root", from_call);
         state.init.insert(
             frag_stmt_idx,
             self.ctx
@@ -757,153 +773,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         node_ident: &str,
         namespace: svelte_ast::Namespace,
     ) -> Result<()> {
-        let css_props: Vec<(NodeId, String, ComponentCssPropValue)> = {
-            let Some(view) = self
-                .ctx
-                .query
-                .component
-                .store
-                .get(component_id)
-                .as_component_like()
-            else {
-                return CodegenError::semantic_mismatch(
-                    component_id,
-                    "component-like node expected",
-                );
-            };
-            view.attributes
-                .iter()
-                .filter_map(|attribute| {
-                    let attribute_id = attribute.id();
-                    match self.ctx.query.analysis.attributes.get(attribute_id) {
-                        AttributeSemantics::ComponentCssProp(value) => {
-                            Some((attribute_id, attribute.name()?.to_string(), value.clone()))
-                        }
-                        _ => None,
-                    }
-                })
-                .collect()
-        };
-        let mut prop_items: Vec<ObjProp<'a>> = Vec::with_capacity(css_props.len());
-        let mut css_memo_decls: Vec<Statement<'a>> = Vec::new();
-        let mut memo_counter: u32 = 0;
-        for (attribute_id, name, value) in css_props {
-            let key = self.ctx.b.alloc_str(&name);
-            let expr = match value {
-                ComponentCssPropValue::Expression(expression_id) => {
-                    let Some(expression) = self.ctx.state.parsed.take_expr(expression_id) else {
-                        return CodegenError::missing_expression(attribute_id);
-                    };
-                    let expression_data = self.ctx.expression_data(attribute_id).cloned();
-                    let expression = coarse_wrap(self.ctx, expression, expression_data.as_ref());
-                    let volatility = expression_data
-                        .as_ref()
-                        .map(|data| data.volatility)
-                        .unwrap_or(Volatility::Static);
-                    match volatility {
-                        Volatility::Heavy | Volatility::Asynchronous => {
-                            let helper = self.ctx.query.view.derived_helper();
-                            let memo_name = format!("${memo_counter}");
-                            memo_counter += 1;
-                            let thunk = self.ctx.b.thunk(expression);
-                            let derived = self.ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
-                            css_memo_decls.push(self.ctx.b.let_init_stmt(&memo_name, derived));
-                            let memo_ref = self.ctx.b.alloc_str(&memo_name);
-                            rune_get(&self.ctx.b, memo_ref)
-                        }
-                        Volatility::Static | Volatility::Reactive => expression,
-                    }
-                }
-                ComponentCssPropValue::StaticString(span) => {
-                    let value = self.ctx.query.component.source_text(span);
-                    self.ctx.b.str_expr(value)
-                }
-                ComponentCssPropValue::Concatenation(plan) => {
-                    let Some(view) = self
-                        .ctx
-                        .query
-                        .component
-                        .store
-                        .get(component_id)
-                        .as_component_like()
-                    else {
-                        return CodegenError::missing_expression(attribute_id);
-                    };
-                    let Some(svelte_ast::Attribute::ConcatenationAttribute(concat)) =
-                        view.attributes.iter().find(|a| a.id() == attribute_id)
-                    else {
-                        return CodegenError::missing_expression(attribute_id);
-                    };
-                    self.build_concat_expr_from_plan(
-                        attribute_id,
-                        &concat.parts,
-                        &plan,
-                        &mut css_memo_decls,
-                        &mut memo_counter,
-                    )?
-                }
-                ComponentCssPropValue::Boolean => self.ctx.b.bool_expr(true),
-            };
-            prop_items.push(ObjProp::KeyValue(key, expr));
-        }
-        let props_obj = self.ctx.b.object_expr(prop_items);
-        let props_thunk = self.ctx.b.thunk(props_obj);
-
-        let prev_init_len = state.init.len();
         let mut wrapper_ctx = ctx.clone();
-        wrapper_ctx.anchor = FragmentAnchor::sibling_var(format!("{}.lastChild", node_ident));
+        wrapper_ctx.anchor = FragmentAnchor::sibling_var(format!("{node_ident}.lastChild"));
         wrapper_ctx.namespace = namespace;
-        self.emit_component_inline_memo(state, &wrapper_ctx, component_id, memo_counter)?;
-        let mut component_stmts: Vec<_> = state.init.drain(prev_init_len..).collect();
-
-        let css_props_call = self.ctx.b.call_stmt(
-            "$.css_props",
-            [Arg::Ident(node_ident), Arg::Expr(props_thunk)],
-        );
-
-        let mut block: Vec<Statement<'a>> = Vec::new();
-        block.extend(css_memo_decls);
-
-        let inner_block = if component_stmts.len() == 1 {
-            match component_stmts.pop() {
-                Some(Statement::BlockStatement(inner)) => {
-                    Some(inner.unbox().body.into_iter().collect::<Vec<_>>())
-                }
-                Some(other) => {
-                    component_stmts.push(other);
-                    None
-                }
-                None => None,
-            }
-        } else {
-            None
-        };
-
-        if let Some(mut inner) = inner_block {
-            let component_call = inner.pop();
-            block.extend(inner);
-            block.push(css_props_call);
-            if let Some(call) = component_call {
-                block.push(call);
-            }
-        } else {
-            block.push(css_props_call);
-            block.extend(component_stmts);
-        }
-
-        block.push(self.ctx.b.call_stmt("$.reset", [Arg::Ident(node_ident)]));
-
-        state.init.push(self.ctx.b.block_stmt(block));
-        Ok(())
+        self.emit_component_css_wrapped(state, &wrapper_ctx, component_id, node_ident)
     }
 
     fn render_tag_uses_direct_anchor(&self, id: NodeId) -> bool {
-        if !matches!(
-            self.ctx.query.component.store.get(id),
-            svelte_ast::Node::RenderTag(_)
-        ) {
-            return false;
-        }
         match self.ctx.query.analysis.block_semantics(id) {
             svelte_analyze::BlockSemantics::Render(sem) => !sem.callee_volatility.is_volatile(),
             _ => false,
@@ -969,9 +845,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             (StrategyKind::SingleElement, false) => 0,
         };
 
-        let dedup_key =
-            (!self.ctx.state.dev).then(|| format!("{from_fn}\u{0}{flags}\u{0}{html_str}"));
-
         let mut from_html = {
             let b = &self.ctx.state.b;
             let tpl_expr = b.template_str_expr(&html_str);
@@ -981,7 +854,26 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 b.call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags as f64)])
             }
         };
-        if state.template.contains_script_tag {
+
+        let dedup_key = if self.ctx.state.dev {
+            None
+        } else {
+            let mut key = html_str;
+            key.push('\u{0}');
+            key.push_str(from_fn);
+            key.push('\u{0}');
+            key.push_str(&flags.to_string());
+            Some(key)
+        };
+        if self
+            .ctx
+            .query
+            .analysis
+            .fragment_semantics
+            .query(fragment_id)
+            .script
+            .has_script()
+        {
             from_html = self
                 .ctx
                 .state
@@ -997,7 +889,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 from_html = self.wrap_add_locations(from_html, locs);
             }
         }
-        let tpl_name = self.hoist_template_dedup(dedup_key, from_html);
+        let tpl_name = self.hoist_template_dedup(dedup_key, "root", from_html);
 
         let var_name = match state.root_var.take() {
             Some(name) => name,
@@ -1020,9 +912,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         Ok(())
     }
 
-    fn hoist_template_dedup(
+    pub(in crate::codegen) fn hoist_template_dedup(
         &mut self,
         dedup_key: Option<String>,
+        base_name: &str,
         from_html: Expression<'a>,
     ) -> String {
         if let Some(name) = dedup_key
@@ -1031,7 +924,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         {
             return name;
         }
-        let name = self.ctx.state.gen_ident("root");
+        let name = self.ctx.state.gen_ident(base_name);
         let tpl_stmt = self.ctx.state.b.var_stmt(&name, from_html);
         self.hoist(tpl_stmt);
         if let Some(key) = dedup_key {
@@ -1117,8 +1010,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         match &ctx.anchor {
             FragmentAnchor::Root | FragmentAnchor::CallbackParam { .. } => {
                 if is_html_element {
-                    let el_name = self.emit_element(state, ctx, el_id, None)?;
-                    state.root_var = Some(CompactString::from(el_name.as_str()));
+                    if state.suppress_root_finalize && !self.ctx.needs_var(el_id) {
+                        self.emit_element(state, ctx, el_id, Some(""))?;
+                    } else {
+                        let el_name = self.emit_element(state, ctx, el_id, None)?;
+                        state.root_var = Some(CompactString::from(el_name.as_str()));
+                    }
                 } else {
                     self.emit_element(state, ctx, el_id, None)?;
                 }
@@ -1133,9 +1030,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         let el_name_hint = el.name.clone();
                         let prefix = self.element_ident_prefix(&el_name_hint);
                         let el_name = self.ctx.state.gen_ident(&prefix);
+                        let parent_is_content =
+                            matches!(ctx.anchor, FragmentAnchor::ElementContentChild { .. });
                         let b = &self.ctx.state.b;
+                        let parent_arg = child_anchor_arg(b, parent_var, parent_is_content);
                         state.init.push(
-                            b.var_stmt(&el_name, b.call_expr("$.child", [Arg::Ident(parent_var)])),
+                            b.var_stmt(&el_name, b.call_expr("$.child", [Arg::Expr(parent_arg)])),
                         );
                         self.emit_element(state, ctx, el_id, Some(&el_name))?;
                         state.last_fragment_needs_reset = true;

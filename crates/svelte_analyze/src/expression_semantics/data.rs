@@ -10,14 +10,63 @@ pub enum ExpressionSemantics {
     Expression(ExpressionData),
 }
 
+impl ExpressionSemantics {
+    pub fn data(&self) -> Option<&ExpressionData> {
+        match self {
+            Self::NonSpecial => None,
+            Self::Expression(data) => Some(data),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExpressionData {
     pub volatility: Volatility,
+    pub suspension: Suspension,
     pub evaluation: Evaluation,
     pub declared_evaluation: Evaluation,
     pub blockers: SmallVec<[u32; 2]>,
     pub legacy_wrap: LegacyWrap,
     pub references: SmallVec<[SymbolId; 2]>,
+    pub blocker_references: SmallVec<[SymbolId; 2]>,
+    pub evaluated_reads: SmallVec<[SymbolId; 2]>,
+}
+
+impl ExpressionData {
+    pub fn is_blocked(&self) -> bool {
+        !self.blockers.is_empty()
+    }
+
+    pub fn unblocked_declared_str(&self) -> Option<String> {
+        if self.is_blocked() {
+            return None;
+        }
+        self.declared_evaluation.known_str()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Suspension {
+    #[default]
+    None,
+    Outermost,
+    Interleaved,
+}
+
+impl Suspension {
+    pub fn suspends(&self) -> bool {
+        match self {
+            Suspension::None => false,
+            Suspension::Outermost | Suspension::Interleaved => true,
+        }
+    }
+
+    pub fn is_outermost(&self) -> bool {
+        match self {
+            Suspension::Outermost => true,
+            Suspension::None | Suspension::Interleaved => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]

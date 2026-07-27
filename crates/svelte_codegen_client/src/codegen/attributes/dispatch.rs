@@ -216,8 +216,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 },
                 AttributeSemantics::StaticAttr => {
                     if let Attribute::StringAttribute(a) = attr {
-                        let val = a.value(&self.ctx.query.component.source).to_string();
-                        state.template.set_attribute(&a.name, Some(val));
+                        let val = a.value_cow(&self.ctx.query.component.source);
+                        state.template.set_attribute(a.name.to_string(), Some(val));
                     }
                 }
                 AttributeSemantics::CannotBeStatic(sem) => {
@@ -309,7 +309,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                                     base
                                 };
                                 if !full.is_empty() {
-                                    state.template.set_attribute("class", Some(full));
+                                    state.template.set_attribute("class", Some(full.into()));
                                 }
                             }
                         }
@@ -380,11 +380,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
                 AttributeSemantics::NonSpecial => match attr {
                     Attribute::StringAttribute(a) => {
-                        let val = a.value(&self.ctx.query.component.source);
-                        state.template.set_attribute(&a.name, Some(val.to_string()));
+                        let val = a.value_cow(&self.ctx.query.component.source);
+                        state.template.set_attribute(a.name.clone(), Some(val));
                     }
                     Attribute::BooleanAttribute(a) => {
-                        state.template.set_attribute(&a.name, Some(String::new()));
+                        state
+                            .template
+                            .set_attribute(a.name.clone(), Some("".into()));
                     }
                     Attribute::ExpressionAttribute(a) => {
                         self.emit_attr_expression(state, owner_id, owner_tag, owner_var, a)?;
@@ -438,7 +440,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     state.init.push(self.ctx.b.expr_stmt(call));
                 }
             } else {
-                state.template.set_attribute("class", Some(css_hash));
+                state.template.set_attribute("class", Some(css_hash.into()));
             }
         }
 

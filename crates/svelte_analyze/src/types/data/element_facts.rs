@@ -34,6 +34,7 @@ impl NamespaceKind {
 pub struct ElementFactsEntry {
     attr_index: AttrIndex,
     has_spread: bool,
+    has_selector_directive: bool,
     has_runtime_attrs: bool,
     namespace: NamespaceKind,
     creation_namespace: Namespace,
@@ -57,6 +58,7 @@ impl ElementFactsEntry {
         is_input: bool,
     ) -> Self {
         let mut has_spread = false;
+        let mut has_selector_directive = false;
         let mut has_runtime_attrs = false;
         let mut static_id = None;
         let mut static_classes = SmallVec::new();
@@ -64,6 +66,14 @@ impl ElementFactsEntry {
         let mut has_dynamic_class = false;
 
         for attr in attrs {
+            if matches!(
+                attr,
+                Attribute::BindDirective(_)
+                    | Attribute::StyleDirective(_)
+                    | Attribute::ClassDirective(_)
+            ) {
+                has_selector_directive = true;
+            }
             match attr {
                 Attribute::StringAttribute(attr) if attr.name == "id" => {
                     static_id = Some(CompactString::new(attr.value(source)));
@@ -122,6 +132,7 @@ impl ElementFactsEntry {
         Self {
             attr_index,
             has_spread,
+            has_selector_directive,
             has_runtime_attrs,
             namespace,
             creation_namespace,
@@ -141,6 +152,10 @@ impl ElementFactsEntry {
 
     pub fn has_spread(&self) -> bool {
         self.has_spread
+    }
+
+    pub fn has_selector_directive(&self) -> bool {
+        self.has_selector_directive
     }
 
     pub fn has_runtime_attrs(&self) -> bool {
@@ -213,6 +228,11 @@ impl ElementFacts {
 
     pub fn has_spread(&self, id: NodeId) -> bool {
         self.entry(id).is_some_and(ElementFactsEntry::has_spread)
+    }
+
+    pub fn has_selector_directive(&self, id: NodeId) -> bool {
+        self.entry(id)
+            .is_some_and(ElementFactsEntry::has_selector_directive)
     }
 
     pub fn has_runtime_attrs(&self, id: NodeId) -> bool {

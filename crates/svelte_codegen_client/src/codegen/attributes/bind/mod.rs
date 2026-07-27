@@ -136,7 +136,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let bind_blockers = payload.blockers.to_vec();
 
         if payload.property.is_this() {
-            return self.emit_bind_this(bind, el_name, tag_name);
+            let placement = self.emit_bind_this(bind, el_name, tag_name)?;
+            return Ok(placement.map(|placement| match placement {
+                BindPlacement::Init(stmt) => {
+                    BindPlacement::Init(self.wrap_run_after_blockers(stmt, &bind_blockers))
+                }
+                BindPlacement::AfterUpdate(stmt) => {
+                    BindPlacement::AfterUpdate(self.wrap_run_after_blockers(stmt, &bind_blockers))
+                }
+            }));
         }
 
         let stmt = match payload.kind {
@@ -381,7 +389,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let has_value_attr = match self.ctx.query.analysis.attributes.get(bind.id) {
                     AttributeSemantics::ElementBind(b) => match b.group_value {
                         Some(GroupBindValue::Expression { .. }) => true,
-                        Some(GroupBindValue::Static { .. }) | None => false,
+                        Some(GroupBindValue::Static { .. } | GroupBindValue::Boolean) | None => {
+                            false
+                        }
                     },
                     _ => false,
                 };

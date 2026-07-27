@@ -76,7 +76,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .b
                     .arrow_block_expr(self.ctx.b.no_params(), vec![val_stmt, return_stmt])
             }
-            Some(GroupBindValue::Static { .. }) | None => get_fn,
+            Some(GroupBindValue::Static { .. } | GroupBindValue::Boolean) | None => get_fn,
         };
 
         Ok(self.ctx.b.call_stmt(

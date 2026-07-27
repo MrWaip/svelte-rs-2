@@ -1,5 +1,6 @@
 use super::super::{
-    BlockSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind,
+    BlockSemantics, ExpressionBlocker, IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch,
+    IfConditionKind,
 };
 use super::walker::Ctx;
 use crate::expression_semantics::{ExpressionSemantics, Volatility};
@@ -57,19 +58,25 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
     };
 
     let async_kind = match root_volatility {
-        Volatility::Asynchronous => IfAsyncKind::Awaited {
-            blockers: root_blockers,
-        },
+        Volatility::Asynchronous => IfAsyncKind::Awaited,
         Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
             if root_blockers.is_empty() {
                 IfAsyncKind::Sync
             } else {
-                IfAsyncKind::Deferred {
-                    blockers: root_blockers,
-                }
+                IfAsyncKind::Deferred
             }
         }
     };
+
+    let mut blockers: SmallVec<[ExpressionBlocker; 2]> = SmallVec::new();
+    for branch in &branches {
+        for blocker in super::declaration_group::expression_blockers(ctx, branch.block_id) {
+            if blockers.contains(&blocker) {
+                continue;
+            }
+            blockers.push(blocker);
+        }
+    }
 
     ctx.store.set(
         block.id,
@@ -78,6 +85,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
             final_alternate,
             is_elseif_root: block.elseif,
             async_kind,
+            blockers,
         }),
     );
 
@@ -290,12 +298,8 @@ mod tests {
             r#"<script>let p = Promise.resolve(true);</script>{#if await p}<p></p>{/if}"#,
             |sem| {
                 assert_eq!(sem.branches[0].condition, IfConditionKind::AsyncParam);
-                match &sem.async_kind {
-                    IfAsyncKind::Awaited { blockers } => {
-                        assert!(blockers.is_empty());
-                    }
-                    other => panic!("expected Awaited, got {other:?}"),
-                }
+                assert!(matches!(sem.async_kind, IfAsyncKind::Awaited));
+                assert!(sem.blockers.is_empty());
             },
         );
     }
@@ -329,7 +333,7 @@ let q = Promise.resolve(true);
             BlockSemantics::If(sem) => {
                 assert!(sem.is_elseif_root);
                 assert_eq!(sem.branches[0].condition, IfConditionKind::AsyncParam);
-                assert!(matches!(sem.async_kind, IfAsyncKind::Awaited { .. }));
+                assert!(matches!(sem.async_kind, IfAsyncKind::Awaited));
             }
             other => panic!("inner expected If, got {other:?}"),
         }

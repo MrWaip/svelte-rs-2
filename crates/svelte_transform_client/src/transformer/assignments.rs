@@ -7,7 +7,7 @@ use oxc_ast::ast::{
 };
 use oxc_span::GetSpan;
 use oxc_traverse::{Ancestor, TraverseCtx};
-use svelte_analyze::{ClassFieldSemantics, ReferenceSemantics, WarningCode};
+use svelte_analyze::{AwaitSemantics, ClassFieldSemantics, ReferenceSemantics, WarningCode};
 use svelte_component_semantics::ReferenceId;
 
 use svelte_ast_builder::Arg;
@@ -83,7 +83,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        if !analysis.attributes.get(owner).is_event_or_binding() {
+        if !analysis
+            .attributes
+            .get(owner)
+            .skips_member_write_instrumentation()
+        {
             return false;
         }
         for ancestor in ctx.ancestors() {
@@ -373,14 +377,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         let scope = ctx.current_scope_id();
         let value_expr = if needs_lazy_getter {
-            if needs_async {
-                self.b.async_arrow_body_in_scope(assign.right, scope)
-            } else {
-                self.b.arrow_in_scope_expr(
-                    self.b.no_params(),
-                    [self.b.expr_stmt(assign.right)],
-                    scope,
-                )
+            match (needs_async, assign.right) {
+                (true, Expression::AwaitExpression(await_expr)) => {
+                    let inner = await_expr.unbox().argument;
+                    self.b
+                        .arrow_in_scope_expr(self.b.no_params(), [self.b.expr_stmt(inner)], scope)
+                }
+                (true, right) => self.b.async_arrow_body_in_scope(right, scope),
+                (false, right) => {
+                    self.b
+                        .arrow_in_scope_expr(self.b.no_params(), [self.b.expr_stmt(right)], scope)
+                }
             }
         } else {
             assign.right
@@ -710,14 +717,17 @@ impl<'a> ComponentTransformer<'_, 'a> {
         };
         let scope = ctx.current_scope_id();
         let value_expr = if needs_lazy_getter {
-            if needs_async {
-                self.b.async_arrow_body_in_scope(assign.right, scope)
-            } else {
-                self.b.arrow_in_scope_expr(
-                    self.b.no_params(),
-                    [self.b.expr_stmt(assign.right)],
-                    scope,
-                )
+            match (needs_async, assign.right) {
+                (true, Expression::AwaitExpression(await_expr)) => {
+                    let inner = await_expr.unbox().argument;
+                    self.b
+                        .arrow_in_scope_expr(self.b.no_params(), [self.b.expr_stmt(inner)], scope)
+                }
+                (true, right) => self.b.async_arrow_body_in_scope(right, scope),
+                (false, right) => {
+                    self.b
+                        .arrow_in_scope_expr(self.b.no_params(), [self.b.expr_stmt(right)], scope)
+                }
             }
         } else {
             assign.right
@@ -881,6 +891,32 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 true
             }
         }
+    }
+
+    pub(crate) fn rewrite_script_await_save(&self, node: &mut Expression<'a>) -> bool {
+        let Expression::AwaitExpression(await_expr) = node else {
+            return false;
+        };
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let needs_save = match analysis.await_semantics.query(await_expr.node_id()) {
+            AwaitSemantics::NonTerminal => true,
+            AwaitSemantics::TerminalInFragmentInterpolation
+            | AwaitSemantics::TerminalInConstruct
+            | AwaitSemantics::TerminalInReactiveDeclaration
+            | AwaitSemantics::Detached => false,
+        };
+        if !needs_save {
+            return false;
+        }
+        let arg = self.b.move_expr(&mut await_expr.argument);
+        let saved = self.b.call_expr("$.save", [Arg::Expr(arg)]);
+        let awaited = self.b.await_expr(saved);
+        *node = self
+            .b
+            .call_expr_callee(awaited, iter::empty::<Arg<'a, '_>>());
+        true
     }
 
     pub(crate) fn rewrite_dev_await_tracking(&self, node: &mut Expression<'a>) {

@@ -1,7 +1,7 @@
 # PRD: Destructuring
 
 label: destructuring
-topics: destructuring, destructure patterns, BindingPattern, AssignmentTarget, walk_bindings, walk_assignment_targets, destructure declaration unfold, destructure assignment, object-rest/array-rest, default/alias/computed key, props destructure/alias, binding_origin_key, OriginKind, each-item/await/snippet/const/let destructure
+topics: destructuring, destructure patterns, BindingPattern, AssignmentTarget, walk_bindings, walk_assignment_targets, destructure declaration unfold, destructure assignment, object-rest/array-rest, default/alias/computed key, props destructure/alias, binding_origin_key, OriginKind, each-item/await/snippet/const/let destructure, writeback, each-item writeback place
 
 Child PRD of `reactivity-semantics`, sibling to `state-rune`. One compiler answer to "how do I reach the
 value of each binding/target of a destructuring pattern, and what do I do with it" across three axes:
@@ -162,6 +162,16 @@ A computed key (`let { [expr]: x } = $props()`) is a separate validation error, 
    dumb access-form builders in `svelte_emit_builders` (`$.to_array` / `$.fallback` /
    `$.exclude_from_object` / carrier expressions). No shared unfold procedure and no dispatch trait — the
    stage outputs are incompatible (transform emits statements, codegen emits block runtime).
+8. **The each-item writeback place is one shape both stages agree on up front.** A legacy `{#each}`
+   destructured binding is written back through the place assembled from its path — and two stages emit it:
+   the transform for an identifier assignment (`count = 5` in a handler), codegen for a `bind:` setter. So
+   the carrier identifiers the place names are reserved once in `TransformData` before the transform runs
+   and both stages read them; generating them per stage puts the same each-block behind two different
+   `$$array` names. Representability is one predicate, `has_each_item_writeback_place` (a rest leaf or a
+   slice-terminated path gets no place — `adr/0008`); a second copy per stage drifts from the ADR.
+   A computed key prints **raw** in the place while the read prints the transformed key —
+   `$.get($$item)[key] = v` next to `let value = () => $.get($$item)[key()]` — a fork of the Original's
+   `extract_paths`, which builds its `update_expression` from the untransformed key.
 
 ## Client emit
 

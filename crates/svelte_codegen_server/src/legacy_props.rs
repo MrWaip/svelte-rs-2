@@ -46,7 +46,7 @@ impl<'a> ServerCodegen<'a> {
             let local = self.analysis.scoping.symbol_name(symbol).to_string();
             props.push(self.prop_entry(&key, &local));
         }
-        for export in &self.analysis.output.api_exports {
+        for export in &self.analysis.api_exports {
             let local = self.api_export_local(export);
             let key = self.api_export_key(export);
             props.push(self.prop_entry(&key, &local));
@@ -85,10 +85,6 @@ impl<'a> ServerCodegen<'a> {
         Some(self.b.object_expr(props))
     }
 
-    pub(crate) fn has_runes_bind_props(&self) -> bool {
-        !self.runes_bind_props_entries().is_empty()
-    }
-
     fn prop_entry(&self, key: &str, local: &str) -> ObjProp<'a> {
         if key == local {
             ObjProp::Shorthand(self.b.alloc_str(local))
@@ -99,7 +95,7 @@ impl<'a> ServerCodegen<'a> {
 
     pub(crate) fn legacy_rest_props_keys(&self) -> Vec<Expression<'a>> {
         let mut keys: Vec<Expression<'a>> = Vec::new();
-        for export in &self.analysis.output.api_exports {
+        for export in &self.analysis.api_exports {
             keys.push(self.b.str_expr(&self.api_export_key(export)));
         }
         for symbol in self.analysis.reactivity.iter_legacy_bindable_prop_symbols() {

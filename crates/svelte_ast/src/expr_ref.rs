@@ -51,9 +51,7 @@ impl StmtRef {
     }
 
     pub fn id(&self) -> OxcNodeId {
-        let id = self.oxc_id.get();
-        debug_assert!(id != OxcNodeId::DUMMY, "StmtRef not bound to OxcNodeId");
-        id
+        self.oxc_id.get()
     }
 
     pub fn bind(&self, id: OxcNodeId) {

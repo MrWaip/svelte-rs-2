@@ -1,0 +1,8 @@
+[
+  {
+    "code": "tag_invalid_name",
+    "end": 2,
+    "severity": "error",
+    "start": 1
+  }
+]

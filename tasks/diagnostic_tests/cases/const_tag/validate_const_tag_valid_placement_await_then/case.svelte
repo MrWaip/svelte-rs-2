@@ -1,0 +1,1 @@
+{#await promise then v}{@const x = v}<p>{x}</p>{/await}

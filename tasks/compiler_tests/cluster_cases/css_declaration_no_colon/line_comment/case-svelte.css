@@ -1,0 +1,6 @@
+
+	.row.svelte-9ma9ug {
+		margin-top: 4px;
+		// for the progress bar
+		--barHeight: 10px;
+	}

@@ -228,7 +228,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         expr: Expression<'a>,
         fallback: &Expression<'w>,
     ) -> Expression<'a> {
-        if is_simple_expression(fallback) {
+        if fallback_is_simple(fallback) {
             let fallback = fallback.clone_in(self.b.ast.allocator);
             return self
                 .b
@@ -236,13 +236,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
         }
         if let Some(inner) = extract_dev_tracked_await(fallback) {
             let call = self.build_await_fallback_call(expr, inner);
-            let mut awaited = self.b.await_expr(call);
-            self.rewrite_dev_await_tracking(&mut awaited);
-            return awaited;
+            return self.await_fallback_tracked(call);
         }
         if let Expression::AwaitExpression(aw) = fallback {
             let call = self.build_await_fallback_call(expr, &aw.argument);
-            return self.b.await_expr(call);
+            return self.await_fallback_tracked(call);
         }
         if is_expression_async(fallback) {
             let thunk = self
@@ -252,7 +250,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 "$.fallback",
                 [Arg::Expr(expr), Arg::Expr(thunk), Arg::Bool(true)],
             );
-            return self.b.await_expr(call);
+            return self.await_fallback_tracked(call);
         }
         let thunk = self.b.thunk(fallback.clone_in(self.b.ast.allocator));
         self.b.call_expr(
@@ -261,12 +259,24 @@ impl<'a> ComponentTransformer<'_, 'a> {
         )
     }
 
+    fn await_fallback_tracked(&self, call: Expression<'a>) -> Expression<'a> {
+        if !self.dev {
+            return self.b.await_expr(call);
+        }
+        let track_call = self
+            .b
+            .call_expr("$.track_reactivity_loss", [Arg::Expr(call)]);
+        let awaited = self.b.await_expr(track_call);
+        self.b
+            .call_expr_callee(awaited, iter::empty::<Arg<'a, '_>>())
+    }
+
     fn build_await_fallback_call<'w>(
         &mut self,
         expr: Expression<'a>,
         arg: &Expression<'w>,
     ) -> Expression<'a> {
-        if is_simple_expression(arg) {
+        if fallback_is_simple(arg) {
             let arg = arg.clone_in(self.b.ast.allocator);
             return self
                 .b
@@ -351,6 +361,30 @@ fn ancestor_is_statement(a: Ancestor<'_, '_>) -> bool {
         || a.is_labeled_statement()
         || a.is_block_statement()
         || a.is_try_statement()
+}
+
+fn fallback_is_simple(expr: &Expression<'_>) -> bool {
+    if is_simple_expression(expr) {
+        return true;
+    }
+    let Expression::CallExpression(call) = expr.get_inner_expression() else {
+        return false;
+    };
+    if call.arguments.len() != 1 {
+        return false;
+    }
+    let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() else {
+        return false;
+    };
+    let Expression::Identifier(object) = member.object.get_inner_expression() else {
+        return false;
+    };
+    if object.name != "$" || member.property.name != "get" {
+        return false;
+    }
+    call.arguments[0]
+        .as_expression()
+        .is_some_and(is_simple_expression)
 }
 
 fn serialize_prefix(prefix: &[WriteStep<'_>]) -> String {

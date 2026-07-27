@@ -1,0 +1,4 @@
+{
+  "runes": false,
+  "experimental": { "async": true }
+}

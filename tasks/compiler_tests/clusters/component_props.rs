@@ -1,6 +1,16 @@
 use super::*;
 
 compiler_case!(
+    const_tag_value_known_shorthand,
+    "component_props/const_tag_value_known_shorthand",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    const_tag_shorthand_guard,
+    "component_props/const_tag_shorthand_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
     exported_fn_prop_inline,
     "component_props/exported_fn_prop_inline"
 );
@@ -121,4 +131,37 @@ compiler_case!(
 compiler_case!(
     bind_store_member_no_ownership,
     "component_props/bind_store_member_no_ownership"
+);
+
+compiler_case!(
+    reexport_prop_no_default,
+    "component_props/reexport_prop_no_default"
+);
+compiler_case!(
+    reexport_prop_with_sibling_default,
+    "component_props/reexport_prop_with_sibling_default"
+);
+compiler_case!(
+    reexport_prop_aliased,
+    "component_props/reexport_prop_aliased"
+);
+compiler_case!(
+    reexport_bindable_no_default,
+    "component_props/reexport_bindable_no_default"
+);
+compiler_case!(
+    reexport_prop_default_guard,
+    "component_props/reexport_prop_default_guard"
+);
+compiler_case!(
+    reexport_prop_mutated_guard,
+    "component_props/reexport_prop_mutated_guard"
+);
+compiler_case!(
+    prop_no_export_inline_guard,
+    "component_props/prop_no_export_inline_guard"
+);
+compiler_case!(
+    accessors_option_export_let_guard,
+    "component_props/accessors_option_export_let_guard"
 );

@@ -41,3 +41,33 @@ compiler_case!(
     global_root_expr_guard,
     "member_assign/global_root_expr_guard"
 );
+
+compiler_case!(
+    svelte_element_event_arrow_guard,
+    "member_assign/svelte_element_event_arrow_guard"
+);
+compiler_case!(
+    bind_setter_arrow_guard,
+    "member_assign/bind_setter_arrow_guard"
+);
+compiler_case!(
+    component_bind_setter_arrow_guard,
+    "member_assign/component_bind_setter_arrow_guard"
+);
+compiler_case!(
+    component_prop_assign_guard,
+    "member_assign/component_prop_assign_guard"
+);
+compiler_case!(
+    svelte_component_prop_arrow_guard,
+    "member_assign/svelte_component_prop_arrow_guard"
+);
+compiler_case!(
+    component_self_prop_arrow_guard,
+    "member_assign/component_self_prop_arrow_guard"
+);
+compiler_case!(component_prop_arrow, "member_assign/component_prop_arrow");
+compiler_case!(
+    component_prop_arrow_static,
+    "member_assign/component_prop_arrow_static"
+);

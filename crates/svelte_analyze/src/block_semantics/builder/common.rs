@@ -1,4 +1,5 @@
 use oxc_ast::ast::{BindingIdentifier, BindingPattern, Statement, VariableDeclarator};
+use smallvec::SmallVec;
 use svelte_component_semantics::OxcNodeId;
 
 use super::super::FragmentDeclarationAsyncKind;
@@ -12,12 +13,18 @@ pub(super) fn async_kind_from_expression(
     };
     let blockers = data.blockers.clone();
     match data.volatility {
-        Volatility::Asynchronous => FragmentDeclarationAsyncKind::Awaited { blockers },
+        Volatility::Asynchronous => FragmentDeclarationAsyncKind::Awaited {
+            blockers,
+            declaration_blockers: SmallVec::new(),
+        },
         Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
             if blockers.is_empty() {
                 FragmentDeclarationAsyncKind::Sync
             } else {
-                FragmentDeclarationAsyncKind::Deferred { blockers }
+                FragmentDeclarationAsyncKind::Deferred {
+                    blockers,
+                    declaration_blockers: SmallVec::new(),
+                }
             }
         }
     }

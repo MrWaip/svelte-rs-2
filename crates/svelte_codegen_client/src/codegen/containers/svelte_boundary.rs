@@ -1,7 +1,7 @@
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::Statement;
 use oxc_syntax::node::NodeId as OxcNodeId;
-use svelte_analyze::{AttributeSemantics, BoundaryPropSemantics, Volatility};
+use svelte_analyze::{AttributeSemantics, BoundaryPropSemantics, ElementSemantics, Volatility};
 use svelte_ast::{Attribute, Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -18,6 +18,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         _existing_var: Option<&str>,
     ) -> Result<String> {
         let boundary = self.ctx.query.svelte_boundary(el_id);
+
+        let boundary_sem = match self.ctx.query.analysis.element_semantics.query(el_id) {
+            ElementSemantics::Boundary(sem) => *sem,
+            _ => return CodegenError::unexpected_node(el_id, "SvelteBoundary"),
+        };
 
         let snippet_children: Vec<(NodeId, String)> = self
             .ctx
@@ -87,11 +92,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 }
             }
         }
-        for (_, snippet_name) in &snippet_children {
-            if snippet_name == "failed" || snippet_name == "pending" {
-                let key = self.ctx.b.alloc_str(snippet_name);
-                props.push(ObjProp::KeyValue(key, self.ctx.b.rid_expr(key)));
+        for (snippet_id, snippet_name) in &snippet_children {
+            if !boundary_sem.is_prop_snippet(*snippet_id) {
+                continue;
             }
+            let key = self.ctx.b.alloc_str(snippet_name);
+            props.push(ObjProp::KeyValue(key, self.ctx.b.rid_expr(key)));
         }
         let props_expr = self.ctx.b.object_expr(props);
 
@@ -132,8 +138,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Vec::new()
         };
 
+        let declares_local = self
+            .ctx
+            .query
+            .analysis
+            .fragment_semantics
+            .query(boundary.fragment)
+            .bindings
+            .declares_local();
+        let keep_snippets_inside =
+            self.ctx.state.experimental_async && (!const_tag_ids.is_empty() || declares_local);
+        let hoisted_snippets: Vec<(NodeId, String)> = snippet_children
+            .iter()
+            .filter(|(id, _)| !keep_snippets_inside || boundary_sem.is_prop_snippet(*id))
+            .cloned()
+            .collect();
+
         let mut snippet_decls: Vec<Statement<'a>> = Vec::new();
-        for (snippet_id, _) in &snippet_children {
+        for (snippet_id, _) in &hoisted_snippets {
             let sem = match self.ctx.query.analysis.block_semantics(*snippet_id) {
                 svelte_analyze::BlockSemantics::Snippet(s) => s.clone(),
                 _ => {
@@ -152,7 +174,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         let mut inner_state = EmitState::new();
-        inner_state.skip_snippets = true;
+        if keep_snippets_inside {
+            inner_state.skip_snippet_ids = hoisted_snippets.iter().map(|(id, _)| *id).collect();
+        } else {
+            inner_state.skip_snippets = true;
+        }
         inner_state.skip_const_tags = duplicate_consts;
         self.emit_fragment(&mut inner_state, &inner_ctx, boundary.fragment)?;
         if duplicate_consts {

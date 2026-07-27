@@ -1,13 +1,17 @@
+use std::iter;
+
 use oxc_ast::ast::{Expression, Statement};
 use svelte_ast_builder::Arg;
 
+use super::super::async_values::AsyncValues;
+use super::super::data_structures::{EmitState, FragmentAnchor, FragmentCtx};
 use super::super::{Codegen, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn emit_async_call_stmt(
         &mut self,
-        blockers: &[u32],
+        blockers: Vec<Expression<'a>>,
         anchor: Expression<'a>,
         node_param: &str,
         condition_param: &str,
@@ -17,7 +21,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let blockers_expr = if blockers.is_empty() {
             self.ctx.b.empty_array_expr()
         } else {
-            self.ctx.b.promises_array(blockers)
+            self.ctx.b.array_expr(blockers)
         };
         let (async_values, callback_params) = match thunk {
             Some(thunk) => (
@@ -40,4 +44,64 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ],
         ))
     }
+
+    pub(in crate::codegen) fn emit_async_wrapped(
+        &mut self,
+        state: &mut EmitState<'a>,
+        blockers: &[u32],
+        async_values: AsyncValues<'a>,
+        anchor: Expression<'a>,
+        anchor_param: &str,
+        emit_next: bool,
+        inner_stmts: Vec<Statement<'a>>,
+    ) {
+        let blockers_expr = if blockers.is_empty() {
+            self.ctx.b.void_zero_expr()
+        } else {
+            self.ctx.b.promises_array(blockers)
+        };
+
+        let mut param_names = vec![anchor_param.to_string()];
+        param_names.extend(async_values.ids());
+        let values_expr = if async_values.is_empty() {
+            self.ctx.b.void_zero_expr()
+        } else {
+            self.ctx.b.array_expr(async_values.into_thunks(self.ctx))
+        };
+
+        let callback = self.ctx.b.arrow_block_expr(
+            self.ctx.b.params(param_names.iter().map(|s| s.as_str())),
+            inner_stmts,
+        );
+
+        let async_stmt = self.ctx.b.call_stmt(
+            "$.async",
+            [
+                Arg::Expr(anchor),
+                Arg::Expr(blockers_expr),
+                Arg::Expr(values_expr),
+                Arg::Expr(callback),
+            ],
+        );
+
+        if emit_next {
+            let next_stmt = self.ctx.b.call_stmt("$.next", iter::empty::<Arg>());
+            state
+                .init
+                .push(self.ctx.b.block_stmt(vec![async_stmt, next_stmt]));
+        } else {
+            state.init.push(async_stmt);
+        }
+    }
+}
+
+pub(in crate::codegen) fn owns_fragment_anchor(ctx: &FragmentCtx<'_>) -> bool {
+    matches!(
+        ctx.anchor,
+        FragmentAnchor::Root
+            | FragmentAnchor::CallbackParam {
+                append_inside: true,
+                ..
+            }
+    )
 }

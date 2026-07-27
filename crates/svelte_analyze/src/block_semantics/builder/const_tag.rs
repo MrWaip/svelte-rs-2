@@ -16,7 +16,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, tag: &ConstTag) {
     let Some(_) = declarator_from_stmt(stmt) else {
         return;
     };
-    let async_kind = super::common::async_kind_from_expression(ctx.expressions.get(tag.id));
+    let base = super::common::async_kind_from_expression(ctx.expressions.get(tag.id));
+    let async_kind = super::declaration_group::resolve(ctx, tag.id, tag.decl.id(), base);
 
     let order_rank = ctx
         .reactivity
@@ -208,12 +209,12 @@ mod tests {
         with_const_tag_async(
             r#"{#if true}{@const x = await foo()}<p>{x}</p>{/if}"#,
             |sem, data| {
-                assert_eq!(
+                assert!(matches!(
                     data.declarator_semantics(sem.decl_node_id),
                     DeclaratorSemantics::ConstTag {
-                        async_kind: DerivedAsyncKind::Async
+                        async_kind: DerivedAsyncKind::Async { .. }
                     }
-                );
+                ));
             },
         );
     }

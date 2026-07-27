@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::reactivity_semantics::data::{
@@ -14,6 +14,7 @@ use oxc_ast::ast::{
     UnaryExpression, VariableDeclaration,
 };
 use oxc_ast_visit::{Visit, walk};
+use oxc_ecmascript::StringToNumber;
 use oxc_syntax::node::NodeId as OxcNodeId;
 use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -36,6 +37,7 @@ pub enum KnownValue {
     Bool(bool),
     Num(f64),
     Str(CompactString),
+    Regex(CompactString),
     BigInt,
 }
 
@@ -76,8 +78,10 @@ impl Evaluation {
     }
 
     pub fn known_str(&self) -> Option<String> {
-        let v = self.known_value()?;
-        Some(known_value_to_concat_str(v))
+        match self.known_value()? {
+            KnownValue::BigInt => None,
+            v => Some(known_value_to_concat_str(v)),
+        }
     }
 
     pub(crate) fn is_defined(&self) -> bool {
@@ -137,6 +141,7 @@ fn known_value_to_concat_str(v: &KnownValue) -> String {
         KnownValue::Null | KnownValue::Undefined => String::new(),
         KnownValue::Bool(b) => b.to_string(),
         KnownValue::Str(s) => s.to_string(),
+        KnownValue::Regex(s) => s.to_string(),
         KnownValue::Num(n) => format_js_number(*n),
         KnownValue::BigInt => String::new(),
     }
@@ -144,7 +149,7 @@ fn known_value_to_concat_str(v: &KnownValue) -> String {
 
 fn known_value_class(v: &KnownValue) -> ValueClass {
     match v {
-        KnownValue::Null | KnownValue::Undefined => ValueClass::Object,
+        KnownValue::Null | KnownValue::Undefined | KnownValue::Regex(_) => ValueClass::Object,
         KnownValue::Bool(_) => ValueClass::Boolean,
         KnownValue::Num(_) => ValueClass::Number,
         KnownValue::Str(_) => ValueClass::String,
@@ -168,6 +173,8 @@ pub struct ValueEvaluator<'c, 'a> {
     read_context: ReadContext,
     dev: bool,
     binding_depth: Cell<u32>,
+    binding_memo: RefCell<FxHashMap<SymbolId, EvalSet>>,
+    cycle_truncated: Cell<bool>,
 }
 
 impl<'c, 'a> ValueEvaluator<'c, 'a> {
@@ -192,6 +199,8 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
             read_context,
             dev,
             binding_depth: Cell::new(0),
+            binding_memo: RefCell::default(),
+            cycle_truncated: Cell::new(false),
         }
     }
 
@@ -206,6 +215,8 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
             read_context,
             dev: self.dev,
             binding_depth: Cell::new(0),
+            binding_memo: RefCell::default(),
+            cycle_truncated: Cell::new(false),
         }
     }
 
@@ -256,6 +267,7 @@ impl<'c, 'a> ValueEvaluator<'c, 'a> {
                 }
             }
         }
+        self.binding_memo.get_mut().clear();
     }
 }
 
@@ -291,6 +303,7 @@ fn reads_opaque(semantics: &BindingSemantics, context: ReadContext) -> bool {
         | BindingSemantics::OptimizedDerived(_)
         | BindingSemantics::LegacyState(_) => context == ReadContext::Runtime,
         BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::OptimizedRune(_)
         | BindingSemantics::Const(_)
         | BindingSemantics::OptimizedConst(_)
@@ -493,26 +506,11 @@ pub(crate) fn build<'a>(
     }
 
     let (console_state_calls, non_primitive_assignment_values) = if dev {
-        collect_value_eval_facts(parsed, scoping, semantics, &by_symbol, Some(&evaluator))
+        collect_value_eval_facts(parsed, &evaluator)
     } else {
         (FxHashSet::default(), FxHashSet::default())
     };
 
-    ValueEvaluation {
-        by_symbol,
-        console_state_calls,
-        non_primitive_assignment_values,
-    }
-}
-
-pub(crate) fn build_module_console_calls<'a>(
-    parsed: &JsAst<'a>,
-    scoping: &ComponentScoping<'a>,
-    semantics: &ComponentSemantics<'a>,
-) -> ValueEvaluation {
-    let by_symbol = FxHashMap::default();
-    let (console_state_calls, non_primitive_assignment_values) =
-        collect_value_eval_facts(parsed, scoping, semantics, &by_symbol, None);
     ValueEvaluation {
         by_symbol,
         console_state_calls,
@@ -533,10 +531,7 @@ const CONSOLE_STATE_METHODS: [&str; 9] = [
 ];
 
 struct ConsoleStateWalk<'e, 'a> {
-    scoping: &'e ComponentScoping<'a>,
-    semantics: &'e ComponentSemantics<'a>,
-    by_symbol: &'e FxHashMap<SymbolId, Evaluation>,
-    evaluator: Option<&'e ValueEvaluator<'e, 'a>>,
+    evaluator: &'e ValueEvaluator<'e, 'a>,
     calls: FxHashSet<OxcNodeId>,
     non_primitive_assignments: FxHashSet<OxcNodeId>,
 }
@@ -551,8 +546,7 @@ impl<'e, 'a> Visit<'a> for ConsoleStateWalk<'e, 'a> {
 
     fn visit_assignment_expression(&mut self, assign: &AssignmentExpression<'a>) {
         if assign.left.as_member_expression().is_some()
-            && let Some(evaluator) = self.evaluator
-            && evaluator.evaluate(&assign.right).has_unknown()
+            && self.evaluator.evaluate(&assign.right).has_unknown()
         {
             self.non_primitive_assignments.insert(assign.node_id());
         }
@@ -581,46 +575,15 @@ impl<'e, 'a> ConsoleStateWalk<'e, 'a> {
     }
 
     fn arg_has_unknown(&self, expr: &Expression<'a>) -> bool {
-        if let Some(evaluator) = self.evaluator {
-            return evaluator.evaluate(expr).has_unknown();
-        }
-        match expr.get_inner_expression() {
-            Expression::StringLiteral(_)
-            | Expression::NumericLiteral(_)
-            | Expression::BooleanLiteral(_)
-            | Expression::NullLiteral(_)
-            | Expression::BigIntLiteral(_)
-            | Expression::TemplateLiteral(_) => false,
-            Expression::Identifier(id) => id
-                .reference_id
-                .get()
-                .and_then(|ref_id| self.scoping.symbol_for_reference(ref_id))
-                .map(|sym| self.evaluation(sym).has_unknown() || self.semantics.is_mutated(sym))
-                .unwrap_or(true),
-            Expression::UnaryExpression(_) | Expression::BinaryExpression(_) => false,
-            _ => true,
-        }
-    }
-
-    fn evaluation(&self, symbol: SymbolId) -> Evaluation {
-        match self.by_symbol.get(&symbol) {
-            Some(evaluation) => evaluation.clone(),
-            None => Evaluation::unknown(),
-        }
+        self.evaluator.evaluate(expr).has_unknown()
     }
 }
 
 fn collect_value_eval_facts<'e, 'a>(
     parsed: &JsAst<'a>,
-    scoping: &'e ComponentScoping<'a>,
-    semantics: &'e ComponentSemantics<'a>,
-    by_symbol: &'e FxHashMap<SymbolId, Evaluation>,
-    evaluator: Option<&'e ValueEvaluator<'e, 'a>>,
+    evaluator: &'e ValueEvaluator<'e, 'a>,
 ) -> (FxHashSet<OxcNodeId>, FxHashSet<OxcNodeId>) {
     let mut walker = ConsoleStateWalk {
-        scoping,
-        semantics,
-        by_symbol,
         evaluator,
         calls: FxHashSet::default(),
         non_primitive_assignments: FxHashSet::default(),
@@ -667,6 +630,12 @@ fn eval_set(
         Expression::BinaryExpression(bin) => eval_binary(bin, ctx, guard),
         Expression::LogicalExpression(le) => eval_logical(le, ctx, guard),
         Expression::ConditionalExpression(c) => eval_conditional(c, ctx, guard),
+        Expression::RegExpLiteral(re) => match re.raw.as_ref() {
+            Some(raw) => smallvec![EvalAtom::Known(KnownValue::Regex(CompactString::from(
+                raw.as_str()
+            )))],
+            None => smallvec![EvalAtom::Unknown],
+        },
         Expression::UnaryExpression(u) => eval_unary(u, ctx, guard),
         Expression::FunctionExpression(_)
         | Expression::ArrowFunctionExpression(_)
@@ -1022,6 +991,7 @@ fn eval_template_literal(
 fn known_to_string(v: &KnownValue) -> Option<String> {
     match v {
         KnownValue::Str(s) => Some(s.to_string()),
+        KnownValue::Regex(s) => Some(s.to_string()),
         KnownValue::Num(n) => Some(format_js_number(*n)),
         KnownValue::Bool(b) => Some(b.to_string()),
         KnownValue::Null => Some("null".to_string()),
@@ -1079,7 +1049,7 @@ fn fold_unary_known(op: UnaryOperator, v: &KnownValue) -> Option<KnownValue> {
 
 fn known_typeof(v: &KnownValue) -> &'static str {
     match v {
-        KnownValue::Null => "object",
+        KnownValue::Null | KnownValue::Regex(_) => "object",
         KnownValue::Undefined => "undefined",
         KnownValue::Bool(_) => "boolean",
         KnownValue::Num(_) => "number",
@@ -1107,12 +1077,8 @@ fn known_to_number(v: &KnownValue) -> Option<f64> {
         KnownValue::Bool(false) => Some(0.0),
         KnownValue::Null => Some(0.0),
         KnownValue::Undefined => Some(f64::NAN),
-        KnownValue::Str(s) => {
-            s.trim()
-                .parse::<f64>()
-                .ok()
-                .or(if s.trim().is_empty() { Some(0.0) } else { None })
-        }
+        KnownValue::Str(s) => Some(s.as_str().string_to_number()),
+        KnownValue::Regex(_) => Some(f64::NAN),
         KnownValue::BigInt => None,
     }
 }
@@ -1187,13 +1153,20 @@ fn eval_identifier(
     let Some(&init_expr) = ctx.bindings_init.get(&sym) else {
         return smallvec![EvalAtom::Unknown];
     };
+    if let Some(cached) = ctx.binding_memo.borrow().get(&sym) {
+        return cached.clone();
+    }
     let init_node_id = expression_node_id(init_expr);
     if !guard.insert(init_node_id) {
+        ctx.cycle_truncated.set(true);
         return smallvec![EvalAtom::Unknown];
     }
+    let outer_truncated = ctx.cycle_truncated.replace(false);
     ctx.binding_depth.set(ctx.binding_depth.get() + 1);
     let result = eval_binding_init(sym, init_expr, ctx, guard);
     ctx.binding_depth.set(ctx.binding_depth.get() - 1);
+    let truncated = ctx.cycle_truncated.get();
+    ctx.cycle_truncated.set(outer_truncated || truncated);
     guard.remove(&init_node_id);
     let runtime_rune = match ctx.reactivity.binding_semantics(sym) {
         BindingSemantics::RuntimeRune { .. } => true,
@@ -1212,16 +1185,22 @@ fn eval_identifier(
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     };
-    if ctx.read_context == ReadContext::Runtime
+    let result = if ctx.read_context == ReadContext::Runtime
         && runtime_rune
         && result
             .iter()
             .all(|a| matches!(a, EvalAtom::Known(KnownValue::Undefined)))
     {
-        return smallvec![EvalAtom::Unknown];
+        smallvec![EvalAtom::Unknown]
+    } else {
+        result
+    };
+    if !truncated {
+        ctx.binding_memo.borrow_mut().insert(sym, result.clone());
     }
     result
 }
@@ -1467,7 +1446,7 @@ fn is_falsy(v: &KnownValue) -> bool {
         KnownValue::Bool(false) => true,
         KnownValue::Num(n) => *n == 0.0 || n.is_nan(),
         KnownValue::Str(s) => s.is_empty(),
-        KnownValue::Bool(true) | KnownValue::BigInt => false,
+        KnownValue::Bool(true) | KnownValue::BigInt | KnownValue::Regex(_) => false,
     }
 }
 
@@ -1501,6 +1480,7 @@ fn set_to_evaluation(set: EvalSet) -> Evaluation {
                     KnownValue::Bool(_) => ValueClass::Boolean,
                     KnownValue::Num(_) => ValueClass::Number,
                     KnownValue::Str(_) => ValueClass::String,
+                    KnownValue::Regex(_) => ValueClass::Object,
                     KnownValue::BigInt => ValueClass::BigInt,
                     KnownValue::Null | KnownValue::Undefined => unreachable!(),
                 };

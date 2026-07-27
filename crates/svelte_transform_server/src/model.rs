@@ -3,18 +3,21 @@ use std::mem;
 use oxc_allocator::Vec as OxcVec;
 use oxc_ast::NONE;
 use oxc_ast::ast::{
-    ArrowFunctionExpression, Class, Declaration, ExportNamedDeclaration, Expression,
-    ExpressionStatement, Function, ObjectProperty, Program, PropertyKind, Statement,
-    VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
+    ArrowFunctionExpression, BindingIdentifier, Class, Declaration, ExportNamedDeclaration,
+    Expression, ExpressionStatement, Function, IdentifierReference, ObjectProperty, Program,
+    PropertyKind, Statement, VariableDeclaration, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc_ast_visit::{VisitMut, walk_mut};
 use oxc_semantic::ScopeFlags;
 use oxc_span::GetSpan;
-use svelte_analyze::{AnalysisData, DeclaratorSemantics, IdentGen, WarningCode};
+use svelte_analyze::{
+    AnalysisData, DeclaratorSemantics, IdentGen, ReferenceSemantics, WarningCode,
+};
 use svelte_ast_builder::Builder;
 use svelte_emit_builders::server_refs;
 
 use crate::effect::RuneStatement;
+use crate::runtime_rune::RuneRewrite;
 
 pub(crate) struct ServerTransform<'b, 'a> {
     pub b: &'b Builder<'a>,
@@ -32,14 +35,37 @@ impl<'a> ServerTransform<'_, 'a> {
         let Some(&start) = self.enclosing_stmt_start.last() else {
             return false;
         };
+        self.analysis.ignore.is_ignored_warning_at_span(start, code)
+    }
+
+    pub(crate) fn is_ignored_at_span(&self, span_start: u32, code: WarningCode) -> bool {
         self.analysis
-            .output
-            .ignore_data
-            .is_ignored_warning_at_span(start, code)
+            .ignore
+            .is_ignored_warning_at_span(span_start, code)
     }
 }
 
 impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
+    fn visit_binding_identifier(&mut self, it: &mut BindingIdentifier<'a>) {
+        if let Some(sym) = it.symbol_id.get()
+            && self
+                .analysis
+                .binding_semantics(sym)
+                .is_legacy_props_object()
+        {
+            it.name = self.b.alloc_str("$$sanitized_props").into();
+        }
+    }
+
+    fn visit_identifier_reference(&mut self, it: &mut IdentifierReference<'a>) {
+        if let Some(ref_id) = it.reference_id.get()
+            && let ReferenceSemantics::LegacyPropsIdentifierRead =
+                self.analysis.reference_semantics(ref_id)
+        {
+            it.name = self.b.alloc_str("$$sanitized_props").into();
+        }
+    }
+
     fn visit_program(&mut self, it: &mut Program<'a>) {
         self.split_top_level_multi_declarators(&mut it.body);
         walk_mut::walk_program(self, it);
@@ -102,7 +128,10 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
         if self.rewrite_private_derived_write(it) {
             return;
         }
-        self.rewrite_runtime_rune_call(it);
+        match self.rewrite_runtime_rune_call(it) {
+            RuneRewrite::ReplacedOpaque => return,
+            RuneRewrite::Replaced | RuneRewrite::NotARune => {}
+        }
         let member_mutation = self.detect_store_member_mutation(it);
         if matches!(it, Expression::ParenthesizedExpression(_)) {
             self.parent_is_expr_statement = is_standalone;

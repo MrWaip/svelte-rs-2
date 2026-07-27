@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::mem;
 
 use svelte_span::GetSpan;
@@ -12,7 +13,7 @@ const VOID_ELEMENTS: &[&str] = &[
 ];
 
 pub fn is_void(name: &str) -> bool {
-    VOID_ELEMENTS.contains(&name)
+    VOID_ELEMENTS.contains(&name) || name.eq_ignore_ascii_case("!doctype")
 }
 
 const SVG_ELEMENTS: &[&str] = &[
@@ -219,6 +220,22 @@ pub const SVELTE_ELEMENT: &str = "svelte:element";
 
 pub const SVELTE_BOUNDARY: &str = "svelte:boundary";
 
+pub const SLOT_ELEMENT: &str = "slot";
+
+pub const SLOT_ATTRIBUTE: &str = "slot";
+
+pub const SLOT_NAME_ATTRIBUTE: &str = "name";
+
+pub const DEFAULT_SLOT_NAME: &str = "default";
+
+pub const DOLLAR_PROPS: &str = "$$props";
+
+pub const DOLLAR_REST_PROPS: &str = "$$restProps";
+
+pub const DOLLAR_SLOTS: &str = "$$slots";
+
+pub const DOLLAR_SLOTS_SEARCH_TOKEN: &str = "$$slot";
+
 pub const SVELTE_META_TAGS: &[&str] = &[
     SVELTE_HEAD,
     SVELTE_OPTIONS,
@@ -236,6 +253,12 @@ pub const SVELTE_META_TAG_LIST: &str = "svelte:head, svelte:options, svelte:wind
 
 pub fn is_svelte_meta_tag(name: &str) -> bool {
     SVELTE_META_TAGS.contains(&name)
+}
+
+pub const BIND_THIS: &str = "this";
+
+pub fn is_event_attribute_name(name: &str) -> bool {
+    name.starts_with("on")
 }
 
 pub const RUNE_STATE: &str = "$state";
@@ -352,6 +375,8 @@ pub struct Component {
     pub options: Option<SvelteOptions>,
 
     pub source: String,
+
+    pub js_comment_expr_starts: Vec<u32>,
 }
 
 impl Component {
@@ -371,6 +396,7 @@ impl Component {
             css,
             options: None,
             source,
+            js_comment_expr_starts: Vec::new(),
         }
     }
 
@@ -385,7 +411,14 @@ impl Component {
             css: None,
             options: None,
             source,
+            js_comment_expr_starts: Vec::new(),
         }
+    }
+
+    pub fn has_js_comment_at(&self, expr_start: u32) -> bool {
+        self.js_comment_expr_starts
+            .binary_search(&expr_start)
+            .is_ok()
     }
 
     pub fn root_fragment(&self) -> &Fragment {
@@ -634,16 +667,6 @@ pub struct SnippetBlock {
     pub body: FragmentId,
 }
 
-impl SnippetBlock {
-    pub fn name<'a>(&self, source: &'a str) -> &'a str {
-        let expr = &source[self.decl.span.start as usize..self.decl.span.end as usize];
-        match expr.find('(') {
-            Some(pos) => expr[..pos].trim_end(),
-            None => expr.trim_end(),
-        }
-    }
-}
-
 pub struct RenderTag {
     pub id: NodeId,
     pub span: Span,
@@ -812,10 +835,21 @@ impl SvelteComponentLegacy {
 
 impl SvelteElement {
     pub fn this_expr(&self) -> Option<&ExprRef> {
-        self.attributes.iter().find_map(|a| match a {
-            Attribute::ExpressionAttribute(x) if x.name == "this" => Some(&x.expression),
+        if self.static_tag {
+            return None;
+        }
+        match self
+            .attributes
+            .iter()
+            .find(|a| a.is_svelte_element_this())?
+        {
+            Attribute::ExpressionAttribute(x) => Some(&x.expression),
+            Attribute::ConcatenationAttribute(x) => match x.parts.first()? {
+                ConcatPart::Dynamic { expr, .. } => Some(expr),
+                ConcatPart::Static(_) => None,
+            },
             _ => None,
-        })
+        }
     }
 }
 
@@ -992,6 +1026,13 @@ impl StringAttribute {
         self.decoded
             .as_deref()
             .unwrap_or_else(|| self.raw_value(source))
+    }
+
+    pub fn value_cow<'s>(&self, source: &'s str) -> Cow<'s, str> {
+        match &self.decoded {
+            Some(decoded) => Cow::Owned(decoded.clone()),
+            None => Cow::Borrowed(self.raw_value(source)),
+        }
     }
 }
 
@@ -1216,6 +1257,8 @@ pub struct Script {
 
     pub context_deprecated: bool,
     pub invalid_context: Option<Span>,
+
+    pub attributes: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1234,6 +1277,7 @@ pub struct RawBlock {
     pub span: Span,
     pub content_span: Span,
     pub preceding_comment: Option<NodeId>,
+    pub attributes: Vec<Attribute>,
 }
 
 pub struct SvelteOptions {

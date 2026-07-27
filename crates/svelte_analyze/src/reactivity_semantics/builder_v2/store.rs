@@ -7,6 +7,9 @@ use crate::scope::SymbolId;
 use crate::types::data::AnalysisData;
 
 pub(super) fn collect_store_declarations(data: &mut AnalysisData) {
+    if data.script.is_standalone_module {
+        return;
+    }
     let root = data.scoping.root_scope_id();
 
     let mut candidates: Vec<(u32, String, Vec<ReferenceId>)> = Vec::new();
@@ -118,7 +121,9 @@ fn rune_named_base_is_store(data: &AnalysisData, base_name: &str) -> bool {
     };
     match data.reactivity.binding_semantics(base_sym) {
         BindingSemantics::Prop(_) | BindingSemantics::LegacyBindableProp(_) => base_name != "props",
-        BindingSemantics::NonReactive | BindingSemantics::MaybeReactive => true,
+        BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
+        | BindingSemantics::MaybeReactive => true,
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedDerived(_)

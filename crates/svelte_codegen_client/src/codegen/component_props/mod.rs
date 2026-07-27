@@ -1,6 +1,7 @@
 mod attach_prop;
 mod bind_prop;
 mod bind_this;
+mod css_prop;
 mod dispatch;
 mod dynamic_ref;
 mod events;
@@ -9,4 +10,6 @@ mod slots;
 mod snippet_children;
 mod spread_prop;
 
-pub(super) use dispatch::{OwnershipBinding, OwnershipGetter, PropOrSpread};
+pub(super) use dispatch::{
+    OwnershipBinding, OwnershipGetter, PropOrSpread, sync_memo_slots_of_prop,
+};

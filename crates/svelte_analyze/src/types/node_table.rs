@@ -1,36 +1,49 @@
 use svelte_ast::NodeId;
 
 #[derive(Debug, Clone)]
-pub struct NodeTable<T>(Vec<Option<T>>);
+pub struct NodeTable<T> {
+    slots: Vec<Option<T>>,
+    node_count: u32,
+}
 
 impl<T> NodeTable<T> {
     pub fn new(node_count: u32) -> Self {
-        let mut v = Vec::with_capacity(node_count as usize);
-        v.resize_with(node_count as usize, || None);
-        Self(v)
+        Self {
+            slots: Vec::new(),
+            node_count,
+        }
+    }
+
+    fn materialize(&mut self, idx: usize) {
+        if idx < self.slots.len() {
+            return;
+        }
+        let len = (self.node_count as usize).max(idx + 1);
+        self.slots.reserve_exact(len - self.slots.len());
+        self.slots.resize_with(len, || None);
     }
 
     #[inline]
     pub fn get(&self, id: NodeId) -> Option<&T> {
-        self.0.get(id.0 as usize).and_then(|slot| slot.as_ref())
+        self.slots.get(id.0 as usize).and_then(|slot| slot.as_ref())
     }
 
     #[inline]
     pub fn get_mut(&mut self, id: NodeId) -> Option<&mut T> {
-        self.0.get_mut(id.0 as usize).and_then(|slot| slot.as_mut())
+        self.slots
+            .get_mut(id.0 as usize)
+            .and_then(|slot| slot.as_mut())
     }
 
     pub fn insert(&mut self, id: NodeId, value: T) {
         let idx = id.0 as usize;
-        if idx >= self.0.len() {
-            self.0.resize_with(idx + 1, || None);
-        }
-        self.0[idx] = Some(value);
+        self.materialize(idx);
+        self.slots[idx] = Some(value);
     }
 
     pub fn remove(&mut self, id: NodeId) -> Option<T> {
         let idx = id.0 as usize;
-        self.0.get_mut(idx).and_then(|slot| slot.take())
+        self.slots.get_mut(idx).and_then(|slot| slot.take())
     }
 
     #[inline]
@@ -43,43 +56,41 @@ impl<T> NodeTable<T> {
         T: Default,
     {
         let idx = id.0 as usize;
-        if idx >= self.0.len() {
-            self.0.resize_with(idx + 1, || None);
-        }
-        self.0[idx].get_or_insert_with(T::default)
+        self.materialize(idx);
+        self.slots[idx].get_or_insert_with(T::default)
     }
 
     pub fn values(&self) -> impl Iterator<Item = &T> {
-        self.0.iter().filter_map(|slot| slot.as_ref())
+        self.slots.iter().filter_map(|slot| slot.as_ref())
     }
 
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.0.iter_mut().filter_map(|slot| slot.as_mut())
+        self.slots.iter_mut().filter_map(|slot| slot.as_mut())
     }
 
     pub fn keys(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.0
+        self.slots
             .iter()
             .enumerate()
             .filter_map(|(i, slot)| slot.as_ref().map(|_| NodeId(i as u32)))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (NodeId, &T)> {
-        self.0
+        self.slots
             .iter()
             .enumerate()
             .filter_map(|(i, slot)| slot.as_ref().map(|v| (NodeId(i as u32), v)))
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (NodeId, &mut T)> {
-        self.0
+        self.slots
             .iter_mut()
             .enumerate()
             .filter_map(|(i, slot)| slot.as_mut().map(|v| (NodeId(i as u32), v)))
     }
 
     pub fn drain(&mut self) -> impl Iterator<Item = (NodeId, T)> + '_ {
-        self.0
+        self.slots
             .iter_mut()
             .enumerate()
             .filter_map(|(i, slot)| slot.take().map(|v| (NodeId(i as u32), v)))
@@ -90,16 +101,25 @@ impl<T> NodeTable<T> {
 pub struct NodeBitSet {
     words: Vec<u64>,
     len: usize,
+    node_count: u32,
 }
 
 impl NodeBitSet {
     pub fn new(node_count: u32) -> Self {
-        let len = node_count as usize;
-        let word_count = len.div_ceil(64);
         Self {
-            words: vec![0u64; word_count],
-            len,
+            words: Vec::new(),
+            len: 0,
+            node_count,
         }
+    }
+
+    fn materialize(&mut self, word: usize) {
+        if word < self.words.len() {
+            return;
+        }
+        let word_count = (self.node_count as usize).div_ceil(64).max(word + 1);
+        self.words.reserve_exact(word_count - self.words.len());
+        self.words.resize(word_count, 0);
     }
 
     #[inline]
@@ -114,9 +134,7 @@ impl NodeBitSet {
         let idx = id.0 as usize;
         let word = idx / 64;
         let bit = idx % 64;
-        if word >= self.words.len() {
-            self.words.resize(word + 1, 0);
-        }
+        self.materialize(word);
         self.words[word] |= 1u64 << bit;
         if idx >= self.len {
             self.len = idx + 1;
