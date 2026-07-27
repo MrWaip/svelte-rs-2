@@ -2918,7 +2918,7 @@ let b = await fetch('/b');
 }
 
 #[test]
-fn blocker_fragment_indices_are_sorted_and_unique() {
+fn blocker_fragment_indices_follow_encounter_order_and_are_unique() {
     let (component, data) = analyze_source_with_options(
         r#"<script>
 let a = await fetch('/a');
@@ -2938,7 +2938,7 @@ let b = await fetch('/b');
         .iter()
         .map(|slot| slot.entry)
         .collect();
-    assert_eq!(entries, vec![0, 1]);
+    assert_eq!(entries, vec![1, 0]);
 }
 
 fn is_head_title(data: &crate::AnalysisData, id: NodeId) -> bool {
@@ -4152,7 +4152,8 @@ let fn1 = () => data;
     );
     assert_has_async(&data);
     assert_symbol_blocker(&data, "data", 0);
-    assert_no_symbol_blocker(&data, "fn1");
+    assert_async_entry_count(&data, 1);
+    assert_symbol_blocker(&data, "fn1", 0);
 }
 
 #[test]
