@@ -65,6 +65,7 @@ pub(crate) struct JsWalk<'a, 'v, 'd> {
     enter_union: JsNodeMask,
     leave_union: JsNodeMask,
     muted: SmallVec<[u32; 8]>,
+    muted_count: u32,
     depth: u32,
 }
 
@@ -90,6 +91,7 @@ impl<'a, 'v, 'd> JsWalk<'a, 'v, 'd> {
             enter_union,
             leave_union,
             muted,
+            muted_count: 0,
             depth: 0,
         }
     }
@@ -109,39 +111,67 @@ impl<'a, 'v, 'd> JsWalk<'a, 'v, 'd> {
     }
 }
 
+impl<'a, 'v, 'd> JsWalk<'a, 'v, 'd> {
+    #[inline(never)]
+    fn dispatch_enter(&mut self, kind: AstKind<'a>, ty: AstType) {
+        let depth = self.depth;
+        let mut count = self.muted_count;
+        let visitors = self.visitors.iter_mut();
+        let masks = self.enter_masks.iter();
+        let muted = self.muted.iter_mut();
+        for ((visitor, mask), muted) in visitors.zip(masks).zip(muted) {
+            if !mask.contains(ty) || *muted != 0 {
+                continue;
+            }
+            if visitor.enter_js_node(kind) == JsFlow::SkipSubtree {
+                *muted = depth;
+                count += 1;
+            }
+        }
+        self.muted_count = count;
+    }
+
+    #[inline(never)]
+    fn dispatch_leave(&mut self, kind: AstKind<'a>, ty: AstType) {
+        let depth = self.depth;
+        let mut count = self.muted_count;
+        let visitors = self.visitors.iter_mut();
+        let masks = self.leave_masks.iter();
+        let muted = self.muted.iter_mut();
+        for ((visitor, mask), muted) in visitors.zip(masks).zip(muted) {
+            match *muted {
+                0 => {
+                    if mask.contains(ty) {
+                        visitor.leave_js_node(kind);
+                    }
+                }
+                value if value == depth => {
+                    *muted = 0;
+                    count -= 1;
+                }
+                _ => {}
+            }
+        }
+        self.muted_count = count;
+    }
+}
+
 impl<'a> Visit<'a> for JsWalk<'a, '_, '_> {
+    #[inline(always)]
     fn enter_node(&mut self, kind: AstKind<'a>) {
         self.depth += 1;
         let ty = kind.ty();
         if !self.enter_union.contains(ty) {
             return;
         }
-        let depth = self.depth;
-        for (index, visitor) in self.visitors.iter_mut().enumerate() {
-            if self.muted[index] != 0 || !self.enter_masks[index].contains(ty) {
-                continue;
-            }
-            if visitor.enter_js_node(kind) == JsFlow::SkipSubtree {
-                self.muted[index] = depth;
-            }
-        }
+        self.dispatch_enter(kind, ty);
     }
 
+    #[inline(always)]
     fn leave_node(&mut self, kind: AstKind<'a>) {
         let ty = kind.ty();
-        if self.leave_union.contains(ty) {
-            let depth = self.depth;
-            for (index, visitor) in self.visitors.iter_mut().enumerate() {
-                match self.muted[index] {
-                    0 => {
-                        if self.leave_masks[index].contains(ty) {
-                            visitor.leave_js_node(kind);
-                        }
-                    }
-                    muted if muted == depth => self.muted[index] = 0,
-                    _ => {}
-                }
-            }
+        if self.leave_union.contains(ty) || self.muted_count != 0 {
+            self.dispatch_leave(kind, ty);
         }
         self.depth -= 1;
     }
