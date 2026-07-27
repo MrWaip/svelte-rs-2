@@ -1,5 +1,5 @@
 {
-  "name": "svelte-rs-2",
+  "name": "svelte-rs",
   "build": {
     "dockerfile": "Dockerfile"
   },
@@ -11,17 +11,17 @@
     "--security-opt",
     "seccomp=unconfined"
   ],
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/svelte-rs-2,type=bind,consistency=delegated",
-  "workspaceFolder": "/workspaces/svelte-rs-2",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/svelte-rs,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspaces/svelte-rs",
   "mounts": [
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.config/gh,target=/home/vscode/.config/gh,type=bind,consistency=cached",
-    "source=${localWorkspaceFolder}/.devcontainer/settings.local.json,target=/workspaces/svelte-rs-2/.claude/settings.local.json,type=bind",
+    "source=${localWorkspaceFolder}/.devcontainer/settings.local.json,target=/workspaces/svelte-rs/.claude/settings.local.json,type=bind",
     "source=svelte-rs-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
     "source=svelte-rs-cargo-registry,target=/usr/local/cargo/registry,type=volume",
     "source=svelte-rs-cargo-git,target=/usr/local/cargo/git,type=volume",
-    "source=svelte-rs-target,target=/workspaces/svelte-rs-2/target,type=volume",
-    "source=svelte-rs-node-modules,target=/workspaces/svelte-rs-2/node_modules,type=volume",
+    "source=svelte-rs-target,target=/workspaces/svelte-rs/target,type=volume",
+    "source=svelte-rs-node-modules,target=/workspaces/svelte-rs/node_modules,type=volume",
     "source=${localEnv:HOME}/personal-code/svelte/packages/svelte/tests,target=/workspaces/samples,type=bind,consistency=cached"
   ],
   "remoteEnv": {

@@ -6,8 +6,8 @@ import { glob } from 'glob';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
-const require = createRequire(resolve(repoRoot, 'packages/svelte-rs2/compiler/index.js'));
-const native = require(resolve(repoRoot, 'packages/svelte-rs2/compiler/native/binding.cjs'));
+const require = createRequire(resolve(repoRoot, 'packages/svelte-rs/compiler/index.js'));
+const native = require(resolve(repoRoot, 'packages/svelte-rs/compiler/native/binding.cjs'));
 
 const rounds = Number(process.env.PGO_ROUNDS ?? 3);
 const corpusDirs = [

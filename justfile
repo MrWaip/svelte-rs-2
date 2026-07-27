@@ -12,7 +12,7 @@ build-bench-pgo:
 
 # Rebuild napi in release and benchmark our compiler vs svelte/compiler across .svelte files in dir (default: whole repo). Flags: --async.
 bench-compare dir='.' *flags:
-    npm run --prefix packages/svelte-rs2 build:release
+    npm run --prefix packages/svelte-rs build:release
     node tasks/compiler_bench/compare.mjs {{dir}} {{flags}}
 
 # Per-file breakdown: slowest .svelte files for our compiler in dir + weakest lead vs svelte. Feed hot paths into bench-flame. Builds the addon with PGO; BENCH_SKIP_BUILD=1 measures whatever is already built. Args: dir [mode=client|client-dev|ssr|ssr-dev] [top=15] [--async]
@@ -127,23 +127,23 @@ playground:
 
 # Build the debug addon, wire it into the local package, and run the JS smoke test
 npm-smoke:
-    npm run --prefix packages/svelte-rs2 build
-    node packages/svelte-rs2/scripts/smoke.mjs
+    npm run --prefix packages/svelte-rs build
+    node packages/svelte-rs/scripts/smoke.mjs
 
 # Build production-like local npm tarballs for testing in a consumer app
 npm-build:
-    npm run --prefix packages/svelte-rs2 build:release
-    node_modules/.bin/napi create-npm-dirs --package-json-path packages/svelte-rs2/package.json --npm-dir packages/svelte-rs2/npm
-    node_modules/.bin/napi artifacts --package-json-path packages/svelte-rs2/package.json --output-dir packages/svelte-rs2/compiler/native --npm-dir packages/svelte-rs2/npm
-    npm pack ./packages/svelte-rs2 --silent
+    npm run --prefix packages/svelte-rs build:release
+    node_modules/.bin/napi create-npm-dirs --package-json-path packages/svelte-rs/package.json --npm-dir packages/svelte-rs/npm
+    node_modules/.bin/napi artifacts --package-json-path packages/svelte-rs/package.json --output-dir packages/svelte-rs/compiler/native --npm-dir packages/svelte-rs/npm
+    npm pack ./packages/svelte-rs --silent
 
 # Build the native addon and stage it into the local dev path of the main package
 build-native:
-    npm run --prefix packages/svelte-rs2 build:release
+    npm run --prefix packages/svelte-rs build:release
 
 # Build the debug addon into the local dev path — required by the preprocess cluster cases
 build-native-dev:
-    npm run --prefix packages/svelte-rs2 build
+    npm run --prefix packages/svelte-rs build
 
 # Parity-sweep a directory: our compiler vs svelte/compiler across client+server × dev+prod, always dry-run. Flags: --mode=auto|runes|legacy --async --chunk=N (default auto) --print-diffs --out=<file>
 sweep-run pathname *flags:

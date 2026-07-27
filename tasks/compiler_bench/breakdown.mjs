@@ -39,7 +39,7 @@ const flameFlags = [
 const searchDir = resolve(process.cwd(), dirArg);
 
 const svelte = await import('svelte/compiler');
-const oursMod = await import(resolve(repoRoot, 'packages/svelte-rs2/compiler/index.js'));
+const oursMod = await import(resolve(repoRoot, 'packages/svelte-rs/compiler/index.js'));
 const ours = (src, o) => {
     const r = oursMod.compile(src, o);
     if (!r || !r.js) throw new Error('no js output');

@@ -84,7 +84,7 @@ After completed task run `just test-compiler` and `just test-diagnostics` and `j
 
 ### Issue tracker
 
-Issues and PRDs live in GitHub Issues (MrWaip/svelte-rs-2), managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and PRDs live in GitHub Issues (MrWaip/svelte-rs), managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

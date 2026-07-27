@@ -27,7 +27,7 @@ if [ ! -x "$LLVM_PROFDATA" ]; then
 fi
 
 build_napi() {
-    npm run --prefix "$ROOT/packages/svelte-rs2" build:release
+    npm run --prefix "$ROOT/packages/svelte-rs" build:release
 }
 
 build_bench() {

@@ -58,4 +58,4 @@ Backend'ом потребители не исчерпываются: `content_pr
 - `context.md` §«Принципы», §«Codegen-агностичность анализа», §«Эмит-форма семантики».
 - `analyze.md` — место в build order.
 - `codegen-server.md` / `codegen.md` — потребители (settle-обёртка и клиентские формы).
-- Миграция сырых component-флагов (`OutputData`/`RuntimeInfo`) в этот кластер — [issue #292](https://github.com/MrWaip/svelte-rs-2/issues/292).
+- Миграция сырых component-флагов (`OutputData`/`RuntimeInfo`) в этот кластер — [issue #292](https://github.com/MrWaip/svelte-rs/issues/292).

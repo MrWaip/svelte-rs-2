@@ -49,4 +49,4 @@ tmp2
 # tasks/ 
 
 # napi generated platform npm packages (created in CI via `napi create-npm-dirs`)
-packages/svelte-rs2/npm/
+packages/svelte-rs/npm/

@@ -5,7 +5,7 @@ resolver = "2"
 
 [workspace.package]
 license = "MIT"
-repository = "https://github.com/MrWaip/svelte-rs-2"
+repository = "https://github.com/MrWaip/svelte-rs"
 
 [workspace.metadata.dylint]
 libraries = [

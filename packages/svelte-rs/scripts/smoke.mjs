@@ -1,4 +1,4 @@
-const api = await import('@mrwaip/svelte-rs2/compiler');
+const api = await import('@mrwaip/svelte-rs/compiler');
 
 const compileResult = api.compile('<script>let count = 1;</script><h1>{count}</h1>', {
   filename: 'Counter.svelte'

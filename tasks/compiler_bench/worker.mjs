@@ -51,7 +51,7 @@ async function loadCompile() {
         return (src, options) => mod.compile(src, options);
     }
     if (compiler === 'ours') {
-        const mod = await import(resolve(repoRoot, 'packages/svelte-rs2/compiler/index.js'));
+        const mod = await import(resolve(repoRoot, 'packages/svelte-rs/compiler/index.js'));
         return (src, options) => {
             const result = mod.compile(src, options);
             if (!result || !result.js) throw new Error('no js output');

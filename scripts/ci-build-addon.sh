@@ -27,9 +27,9 @@ build() {
     node_modules/.bin/napi build \
         --manifest-path crates/napi_compiler/Cargo.toml \
         -p napi_compiler \
-        --package-json-path packages/svelte-rs2/package.json \
+        --package-json-path packages/svelte-rs/package.json \
         --platform \
-        --output-dir packages/svelte-rs2/compiler/native \
+        --output-dir packages/svelte-rs/compiler/native \
         --js binding.cjs \
         --dts binding.d.ts \
         --release \

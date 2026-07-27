@@ -1,8 +1,9 @@
 {
+  "name": "svelte-rs",
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/svelte-rs2"
+    "packages/svelte-rs"
   ],
   "dependencies": {
     "@codspeed/benchmark.js-plugin": "^4.0.0",

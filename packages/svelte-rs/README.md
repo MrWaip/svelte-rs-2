@@ -1,11 +1,11 @@
-# @mrwaip/svelte-rs2 (canary facade)
+# @mrwaip/svelte-rs (canary facade)
 
 ## Compiler entrypoint
 
-Use `@mrwaip/svelte-rs2/compiler`.
+Use `@mrwaip/svelte-rs/compiler`.
 
 ```js
-import { compile, compileModule } from '@mrwaip/svelte-rs2/compiler';
+import { compile, compileModule } from '@mrwaip/svelte-rs/compiler';
 ```
 
 ## Canary compatibility policy
@@ -14,13 +14,13 @@ This package currently exposes only `compile` and `compileModule` through a Node
 
 ### Native loading policy
 
-- In local development, `compiler/index.js` first checks `compiler/native/svelte-rs2.node`.
+- In local development, `compiler/index.js` first checks `compiler/native/svelte-rs.node`.
 - In packaged installs, it loads a platform package via optional dependencies:
-  - `@mrwaip/svelte-rs2-darwin-arm64`
-  - `@mrwaip/svelte-rs2-darwin-x64`
-  - `@mrwaip/svelte-rs2-linux-x64-gnu`
+  - `@mrwaip/svelte-rs-darwin-arm64`
+  - `@mrwaip/svelte-rs-darwin-x64`
+  - `@mrwaip/svelte-rs-linux-x64-gnu`
 - Unsupported targets throw an explicit platform error during import.
-- For canary packaging, run `npm run prepare-platform-package` in `packages/svelte-rs2` after `cargo build -p napi_compiler --release` to copy the current platform artifact into the matching platform package.
+- For canary packaging, run `npm run prepare-platform-package` in `packages/svelte-rs` after `cargo build -p napi_compiler --release` to copy the current platform artifact into the matching platform package.
 
 ### Result shape
 

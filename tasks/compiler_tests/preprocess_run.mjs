@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-const oursApi = await import('@mrwaip/svelte-rs2/compiler');
+const oursApi = await import('@mrwaip/svelte-rs/compiler');
 
 const casesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cluster_cases/preprocess');
 
