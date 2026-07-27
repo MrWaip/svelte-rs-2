@@ -23,7 +23,8 @@ use super::fragment_topology::fragment_items;
 use crate::expression_semantics::ExpressionData;
 use crate::scope::SymbolId;
 use crate::types::data::{
-    ElementFacts, NamespaceKind, ParentKind, TemplateAnalysis, TemplateElementIndex,
+    ElementFacts, ElementFactsEntry, NamespaceKind, ParentKind, TemplateAnalysis,
+    TemplateElementIndex,
 };
 use crate::types::node_table::NodeBitSet;
 use crate::{AnalysisData, BlockSemantics};
@@ -2218,7 +2219,8 @@ fn attribute_matches(
     operator: &str,
     case_insensitive: bool,
 ) -> bool {
-    if pruner.element_facts.has_spread(elem_id) {
+    let facts = pruner.element_facts.entry(elem_id);
+    if facts.is_some_and(ElementFactsEntry::has_spread) {
         return true;
     }
     let Some(attrs) = element_attributes(pruner.component, elem_id) else {
@@ -2227,28 +2229,30 @@ fn attribute_matches(
     let name_is_class = name.eq_ignore_ascii_case("class");
     let name_is_style = name.eq_ignore_ascii_case("style");
 
-    for attr in attrs {
-        match attr {
-            Attribute::BindDirective(bind) if bind.name.eq_ignore_ascii_case(name) => {
-                return true;
-            }
-            Attribute::StyleDirective(_) if name_is_style => {
-                return true;
-            }
-            Attribute::ClassDirective(class_directive) if name_is_class => {
-                if operator == "~=" {
-                    if expected_value.is_some_and(|value| class_directive.name == value) {
-                        return true;
-                    }
-                } else {
+    if facts.is_some_and(ElementFactsEntry::has_selector_directive) {
+        for attr in attrs {
+            match attr {
+                Attribute::BindDirective(bind) if bind.name.eq_ignore_ascii_case(name) => {
                     return true;
                 }
+                Attribute::StyleDirective(_) if name_is_style => {
+                    return true;
+                }
+                Attribute::ClassDirective(class_directive) if name_is_class => {
+                    if operator == "~=" {
+                        if expected_value.is_some_and(|value| class_directive.name == value) {
+                            return true;
+                        }
+                    } else {
+                        return true;
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
 
-    if let Some(idx) = pruner.element_facts.attr_index(elem_id) {
+    if let Some(idx) = facts.map(ElementFactsEntry::attr_index) {
         for attr in idx.all(attrs, name) {
             if let Some(result) = scan_value_attr(
                 pruner,
