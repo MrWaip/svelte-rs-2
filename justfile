@@ -141,6 +141,10 @@ npm-build:
 build-native:
     npm run --prefix packages/svelte-rs2 build:release
 
+# Build the debug addon into the local dev path — required by the preprocess cluster cases
+build-native-dev:
+    npm run --prefix packages/svelte-rs2 build
+
 # Parity-sweep a directory: our compiler vs svelte/compiler across client+server × dev+prod, always dry-run. Flags: --mode=auto|runes|legacy --async --chunk=N (default auto) --print-diffs --out=<file>
 sweep-run pathname *flags:
     cargo run --profile sweep -p sweep -- {{pathname}} {{flags}}
