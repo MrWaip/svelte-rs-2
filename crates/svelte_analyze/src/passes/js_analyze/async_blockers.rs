@@ -24,7 +24,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
     let mut non_import_idx: usize = 0;
     let mut sync_group: Vec<AsyncEntryMember> = Vec::new();
     let mut member_counter: u32 = 0;
-    let assigned = super::async_trace::AssignedValues::collect(&data.scoping, program);
+    let mut assigned: Option<super::async_trace::AssignedValues> = None;
 
     for stmt in &program.body {
         if matches!(stmt, Statement::ImportDeclaration(_)) {
@@ -52,6 +52,10 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
             continue;
         }
 
+        let assigned = assigned.get_or_insert_with(|| {
+            super::async_trace::AssignedValues::collect(&data.scoping, program)
+        });
+
         match declaration_of(stmt_ref) {
             Some(var_decl) => {
                 for declarator in var_decl.declarations.iter() {
@@ -78,7 +82,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
                     };
                     member_counter += 1;
 
-                    for sym in declarator_writes(data, &assigned, declarator) {
+                    for sym in declarator_writes(data, assigned, declarator) {
                         data.script.blocker_data.symbol_blockers.insert(sym, slot);
                     }
 
@@ -112,7 +116,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
                 };
                 member_counter += 1;
 
-                for sym in statement_writes(data, &assigned, stmt_ref) {
+                for sym in statement_writes(data, assigned, stmt_ref) {
                     data.script.blocker_data.symbol_blockers.insert(sym, slot);
                 }
 
@@ -145,7 +149,9 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
     }
 
     flush_sync_group(data, &mut sync_group);
-    assign_deferred_function_blockers(program, data, &assigned, &mut member_counter);
+    if let Some(assigned) = assigned.as_ref() {
+        assign_deferred_function_blockers(program, data, assigned, &mut member_counter);
+    }
     data.script.blocker_data.has_async = !data.script.blocker_data.entries.is_empty();
     build_member_lookup(data);
 }
