@@ -1,6 +1,6 @@
 use crate::expression_semantics::{ExpressionSemantics, ExpressionSemanticsStore};
 use crate::reactivity_semantics::data::ReactivitySemantics;
-use crate::types::data::{FragmentNamespaces, IgnoreData, JsAst};
+use crate::types::data::{BlockerData, FragmentNamespaces, IgnoreData, JsAst};
 
 use super::super::{BlockSemanticsStore, SnippetPlacement};
 use super::common::declarator_from_stmt;
@@ -22,6 +22,7 @@ pub(super) fn populate(
     expressions: &ExpressionSemanticsStore,
     fragment_namespaces: &FragmentNamespaces,
     ignore_data: &IgnoreData,
+    blocker_data: &BlockerData,
     dev: bool,
     store: &mut BlockSemanticsStore,
 ) {
@@ -33,6 +34,7 @@ pub(super) fn populate(
         expressions,
         fragment_namespaces,
         ignore_data,
+        blocker_data,
         dev,
         current_fragment_id: component.root,
         non_root_depth: 0,
@@ -160,6 +162,7 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) expressions: &'c ExpressionSemanticsStore,
     pub(super) fragment_namespaces: &'c FragmentNamespaces,
     pub(super) ignore_data: &'c IgnoreData,
+    pub(super) blocker_data: &'c BlockerData,
     pub(super) dev: bool,
     pub(super) current_fragment_id: FragmentId,
 

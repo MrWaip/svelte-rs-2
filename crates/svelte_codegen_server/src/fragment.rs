@@ -189,8 +189,9 @@ impl<'a> ServerCodegen<'a> {
         self.emit_fragment_titles(id)?;
         self.emit_fragment_const_tags_hoisted(id)?;
         self.emit_fragment_declaration_tags(id)?;
-        let group = self.build_declaration_group_for(id)?;
-        self.emit_fragment_snippets_debug_head(id)?;
+        let mut group = self.build_declaration_group_for(id)?;
+        self.emit_group_declarations_and_snippets(id, &mut group)?;
+        self.emit_fragment_debug_tags(id)?;
         self.push_declaration_group(group);
         Ok(())
     }
@@ -256,12 +257,11 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    pub(crate) fn emit_fragment_snippets_debug_head(&mut self, id: FragmentId) -> Result<()> {
-        self.emit_fragment_snippets(id)?;
-        self.emit_fragment_debug_tags(id)
-    }
-
-    pub(crate) fn emit_fragment_snippets(&mut self, id: FragmentId) -> Result<()> {
+    pub(crate) fn emit_group_declarations_and_snippets(
+        &mut self,
+        id: FragmentId,
+        group: &mut Option<DeclarationGroupRun<'a>>,
+    ) -> Result<()> {
         let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
         for &nid in &node_ids {
             if matches!(self.component.store.get(nid), Node::SnippetBlock(_)) {
@@ -270,7 +270,9 @@ impl<'a> ServerCodegen<'a> {
                 for decl in local {
                     self.hoist_stmt(decl);
                 }
+                continue;
             }
+            self.hoist_group_declarations(group, nid);
         }
         Ok(())
     }

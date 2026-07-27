@@ -58,8 +58,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let key_stmt = self.add_svelte_meta(key_call, span_start, "key");
                 let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
                 let wrapped = self.emit_async_call_stmt(
-                    &blockers,
-                    &[],
+                    self.ctx.script_blocker_exprs(&blockers),
                     anchor_expr,
                     &anchor_node,
                     "$$key",

@@ -1,7 +1,7 @@
 # PRD: BlockSemantics (корневой)
 
 label: block-semantics
-topics: block, if-block, each-block/keyed each, await-block, key-block, snippet, each-item/index, key expression, fragment topology, then/else branches, const tag, declaration tag, async-kind
+topics: block, if-block, each-block/keyed each, await-block, key-block, snippet, each-item/index, key expression, fragment topology, then/else branches, const tag, declaration tag, async-kind, blocker, ExpressionBlocker
 
 Корневой PRD для модуля `svelte_analyze::block_semantics` (3.A.5).
 Дочерний по слою: `analyze.md`. Зависит от `ComponentSemantics`, `ReactivitySemantics`, `ExpressionSemantics`, плюс AST.
@@ -38,6 +38,7 @@ topics: block, if-block, each-block/keyed each, await-block, key-block, snippet,
 3. **Read-only после build.**
 4. **Группа объявлений фрагмента — один вердикт на фрагмент, а не сборка в кодгене.** Состав и порядок группы (`fragment_declaration_group`) рождаются в ТОМ ЖЕ обходе, что и вердикты самих тегов: кадр группы живёт на стеке walker'а, открывается при входе во фрагмент и закрывается при выходе, первое async-объявление открывает группу, каждое последующее объявление того же фрагмента в неё входит. Отдельного прохода по AST под это нет и быть не должно — пасс обходит дерево только внутри себя. Const-теги и declaration-теги делят ОДНУ группу — backend не собирает её из двух корзин и не сортирует заново; он печатает `$.run` по готовому списку.
 5. **Блокер на объявление именуется узлом, не слотом.** `FragmentDeclarationAsyncKind::{Awaited,Deferred}` несёт `blockers` (индексы скриптового `$$promises`) и `declaration_blockers` — `NodeId` объявлений ИЗ ДРУГИХ фрагментов, чьё значение читает инициализатор. Анализ отвечает «на кого ждать», backend — «где этот кто-то приземлился» (имя массива + номер thunk'а он раздаёт сам при эмите). Объявления своего фрагмента в `declaration_blockers` не попадают: внутри одной группы порядок обеспечивает сам `run`.
+6. **Блокеры блока — один упорядоченный список.** `IfBlockSemantics`/`EachBlockSemantics` несут `blockers: [ExpressionBlocker]` — скриптовые **блокеры** и объявления фрагмента вперемешку, в порядке первого упоминания ссылки. `async_kind` — чистая ось `Sync`/`Awaited`/`Deferred`, payload'а не несёт: два списка вместо одного теряют взаимный порядок, и backend начинает склеивать их конкатенацией («Сырые факты»). Канонический пример: `{#if b + a}` при `b` из объявления фрагмента и `a` из скрипта даёт `[FragmentDeclaration(b), Script(a)]`, а не «сначала все скриптовые».
 
 ## Связь с другими документами
 

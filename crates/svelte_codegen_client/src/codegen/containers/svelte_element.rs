@@ -267,8 +267,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     dev_stmts
                 };
                 self.emit_async_call_stmt(
-                    &blockers,
-                    &[],
+                    self.ctx.script_blocker_exprs(&blockers),
                     anchor_expr,
                     anchor_node.as_str(),
                     "$$tag",

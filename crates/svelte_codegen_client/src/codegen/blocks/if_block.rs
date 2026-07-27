@@ -38,12 +38,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .b
             .arrow(self.ctx.b.params(["$$render"]), [render_body_stmt]);
 
-        let const_blockers = self
-            .ctx
-            .declaration_blocker_slots_of(&sem.declaration_blockers);
-        let script_blockers = sem.async_kind.blockers().to_vec();
+        let blocker_exprs = self.ctx.blocker_exprs(&sem.blockers);
 
-        if sem.async_kind.is_sync() && const_blockers.is_empty() {
+        if sem.async_kind.is_sync() && blocker_exprs.is_empty() {
             let anchor_node = self.commit_comment_anchor(state, ctx, pre_anchor)?;
             let mut if_args: Vec<Arg<'a, '_>> =
                 vec![Arg::Ident(&anchor_node), Arg::Arrow(render_fn)];
@@ -72,16 +69,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         decls.push(self.add_svelte_meta(if_call, span_start, "if"));
 
         let async_thunk = match &sem.async_kind {
-            IfAsyncKind::Awaited { .. } => {
+            IfAsyncKind::Awaited => {
                 let suspension = self.ctx.expression_suspension(id);
                 let expr = self.take_node_expr(id)?;
                 Some(suspending_block_thunk(self.ctx, expr, suspension))
             }
-            IfAsyncKind::Deferred { .. } | IfAsyncKind::Sync => None,
+            IfAsyncKind::Deferred | IfAsyncKind::Sync => None,
         };
         let wrapped = self.emit_async_call_stmt(
-            &script_blockers,
-            &const_blockers,
+            blocker_exprs,
             anchor_expr,
             &anchor_node,
             "$$condition",

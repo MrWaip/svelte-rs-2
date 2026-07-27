@@ -59,6 +59,7 @@ pub(in super::super) struct ComponentPropsOutput<'a> {
     pub bind_init_stmts: Vec<Statement<'a>>,
     pub validate_binding_stmts: Vec<Statement<'a>>,
     pub async_values: AsyncValues<'a>,
+    pub css_props: Vec<ObjProp<'a>>,
 }
 
 pub(in super::super) struct OwnershipBinding<'a> {
@@ -75,7 +76,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn build_component_props(
         &mut self,
         el_id: NodeId,
-        initial_memo_counter: u32,
     ) -> Result<ComponentPropsOutput<'a>> {
         let mut out = ComponentPropsOutput {
             items: Vec::new(),
@@ -88,8 +88,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             bind_init_stmts: Vec::new(),
             validate_binding_stmts: Vec::new(),
             async_values: AsyncValues::new(0),
+            css_props: Vec::new(),
         };
-        let mut memo_counter: u32 = initial_memo_counter;
+        let mut memo_counter: u32 = 0;
 
         let component = self.ctx.query.component;
         let attrs: &[Attribute] = match component.store.get(el_id).as_component_like() {
@@ -98,7 +99,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 return CodegenError::semantic_mismatch(el_id, "component-like node expected");
             }
         };
-        out.async_values = AsyncValues::new(initial_memo_counter + self.count_sync_memos(attrs));
+        out.async_values = AsyncValues::new(self.count_sync_memos(attrs));
 
         for attr in attrs {
             let attr_id: NodeId = attr.id();
@@ -213,7 +214,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         );
                     }
                 },
-                AttributeSemantics::ComponentCssProp(_) => continue,
+                AttributeSemantics::ComponentCssProp(value) => {
+                    let value = value.clone();
+                    self.emit_component_css_prop(
+                        attr,
+                        &value,
+                        &mut out.css_props,
+                        &mut out.memo_decls,
+                        &mut memo_counter,
+                        &mut out.async_values,
+                    )?;
+                }
                 AttributeSemantics::Skip(_) => continue,
                 _ => {
                     return CodegenError::semantic_mismatch(
@@ -241,11 +252,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     AttributeSemantics::ComponentSpread(ComponentSpreadSemantics { emit }) => {
                         sync_memo_slots_of_spread(*emit)
                     }
+                    AttributeSemantics::ComponentCssProp(value) => {
+                        self.sync_memo_slots_of_css_prop(attr.id(), value)
+                    }
                     AttributeSemantics::ComponentBind(_)
                     | AttributeSemantics::ComponentAttach(_)
                     | AttributeSemantics::SvelteComponentThis(_)
                     | AttributeSemantics::Event(_)
-                    | AttributeSemantics::ComponentCssProp(_)
                     | AttributeSemantics::Skip(_)
                     | AttributeSemantics::NonSpecial
                     | AttributeSemantics::ElementBind(_)

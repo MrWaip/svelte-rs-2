@@ -70,7 +70,7 @@ pub struct EachBlockSemantics {
 
     pub async_kind: EachAsyncKind,
 
-    pub declaration_blockers: SmallVec<[NodeId; 2]>,
+    pub blockers: SmallVec<[ExpressionBlocker; 2]>,
 
     pub collection: EachCollection,
 }
@@ -87,27 +87,34 @@ pub enum EachCollectionSource {
     Prop { sym: SymbolId },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExpressionBlocker {
+    Script { entry: u32 },
+
+    FragmentDeclaration { node: NodeId },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EachAsyncKind {
     Sync,
 
-    Awaited { blockers: SmallVec<[u32; 2]> },
+    Awaited,
 
-    Deferred { blockers: SmallVec<[u32; 2]> },
+    Deferred,
 }
 
 impl EachAsyncKind {
-    pub fn blockers(&self) -> &[u32] {
-        match self {
-            EachAsyncKind::Sync => &[],
-            EachAsyncKind::Awaited { blockers } | EachAsyncKind::Deferred { blockers } => blockers,
-        }
-    }
-
     pub fn is_sync(&self) -> bool {
         match self {
             EachAsyncKind::Sync => true,
-            EachAsyncKind::Awaited { .. } | EachAsyncKind::Deferred { .. } => false,
+            EachAsyncKind::Awaited | EachAsyncKind::Deferred => false,
+        }
+    }
+
+    pub fn is_awaited(&self) -> bool {
+        match self {
+            EachAsyncKind::Awaited => true,
+            EachAsyncKind::Sync | EachAsyncKind::Deferred => false,
         }
     }
 }
@@ -348,7 +355,7 @@ pub struct IfBlockSemantics {
 
     pub async_kind: IfAsyncKind,
 
-    pub declaration_blockers: SmallVec<[NodeId; 2]>,
+    pub blockers: SmallVec<[ExpressionBlocker; 2]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -367,27 +374,27 @@ pub enum IfConditionKind {
     AsyncParam,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IfAsyncKind {
     Sync,
 
-    Awaited { blockers: SmallVec<[u32; 2]> },
+    Awaited,
 
-    Deferred { blockers: SmallVec<[u32; 2]> },
+    Deferred,
 }
 
 impl IfAsyncKind {
-    pub fn blockers(&self) -> &[u32] {
-        match self {
-            IfAsyncKind::Sync => &[],
-            IfAsyncKind::Awaited { blockers } | IfAsyncKind::Deferred { blockers } => blockers,
-        }
-    }
-
     pub fn is_sync(&self) -> bool {
         match self {
             IfAsyncKind::Sync => true,
-            IfAsyncKind::Awaited { .. } | IfAsyncKind::Deferred { .. } => false,
+            IfAsyncKind::Awaited | IfAsyncKind::Deferred => false,
+        }
+    }
+
+    pub fn is_awaited(&self) -> bool {
+        match self {
+            IfAsyncKind::Awaited => true,
+            IfAsyncKind::Sync | IfAsyncKind::Deferred => false,
         }
     }
 }

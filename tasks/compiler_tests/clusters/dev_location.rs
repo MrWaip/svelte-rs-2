@@ -20,12 +20,12 @@ compiler_case!(
 compiler_case!(
     instance_async_derived_filename,
     "dev_location/instance_async_derived_filename",
-    ignore = "async derived promise hoisting not implemented"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     instance_async_derived_pattern_filename,
     "dev_location/instance_async_derived_pattern_filename",
-    ignore = "async derived promise hoisting not implemented"
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_module_case!(

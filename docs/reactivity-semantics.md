@@ -107,6 +107,7 @@ topics: reactivity, rune, signal, $state, $derived, $props, $bindable, store/$st
 - **Const-tag реактивность** — `{@const}` как реактивный alias.
 - **Let-carrier desugaring** — destructure-инициализаторы через carrier-символ.
 - **Each-item member-mutation** — мутации полей item-а в `{#each}`.
+- **Each-item destructured write** *(LEGACY(svelte4))* — присваивание переменной, объявленной деструктурирующим контекстом `{#each}`; в runes-mode та же запись — `IllegalWrite`. Форма writeback-места — `destructuring.md` инвариант 8.
 - **IllegalWrite** — запись по read-only ссылке (парность диагностик).
 
 ## SSR

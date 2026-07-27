@@ -1313,6 +1313,7 @@ fn classify_identifier_kind(
         | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
         | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
         | ReferenceSemantics::EachItemIndexedLegacy { .. }
+        | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
         | ReferenceSemantics::IllegalWrite
         | ReferenceSemantics::Unresolved => HtmlBindKind::Plain,
     }

@@ -1228,6 +1228,10 @@ pub enum ReferenceSemantics {
         index_read: EachIndexStrategy,
     },
 
+    EachItemDestructuredWriteLegacy {
+        item_symbol: SymbolId,
+    },
+
     IllegalWrite,
 
     Unresolved,
@@ -1271,6 +1275,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => None,
         }
@@ -1322,6 +1327,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1364,6 +1370,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1405,6 +1412,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1446,6 +1454,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1493,6 +1502,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1534,6 +1544,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1575,6 +1586,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1616,6 +1628,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1825,6 +1838,10 @@ pub(crate) enum ReferenceFacts {
         item_symbol: SymbolId,
     },
 
+    EachItemDestructuredWriteLegacy {
+        item_symbol: SymbolId,
+    },
+
     IllegalWrite,
 
     Proxy,
@@ -1867,6 +1884,7 @@ impl ReferenceFacts {
             | ReferenceFacts::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceFacts::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceFacts::EachItemIndexedLegacy { .. }
+            | ReferenceFacts::EachItemDestructuredWriteLegacy { .. }
             | ReferenceFacts::IllegalWrite
             | ReferenceFacts::Proxy => None,
         }
@@ -2436,6 +2454,11 @@ impl ReactivitySemantics {
                 collection_store: *collection_store,
                 raw_param: *raw_param,
             },
+            Some(ReferenceFacts::EachItemDestructuredWriteLegacy { item_symbol }) => {
+                ReferenceSemantics::EachItemDestructuredWriteLegacy {
+                    item_symbol: *item_symbol,
+                }
+            }
             Some(ReferenceFacts::EachItemIndexedLegacy { item_symbol }) => {
                 let index_sym = self.each_item_index_legacy(*item_symbol);
                 ReferenceSemantics::EachItemIndexedLegacy {

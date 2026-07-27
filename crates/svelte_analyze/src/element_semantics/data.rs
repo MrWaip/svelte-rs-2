@@ -148,7 +148,7 @@ pub enum ElementValueRole {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextareaBody {
-    Single(OxcNodeId),
+    Single { node_id: NodeId, oxc_id: OxcNodeId },
     Static(String),
     Segments(Vec<TextareaSegment>),
 }

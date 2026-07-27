@@ -28,8 +28,7 @@ compiler_case!(
 compiler_case!(
     component_prop_blocker_and_await,
     "async_construct_wrap/component_prop_blocker_and_await",
-    ignore =
-        "blocker identity is the promise index, not the declaration, so one index cannot repeat"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     component_spread,
@@ -44,7 +43,7 @@ compiler_case!(
 compiler_case!(
     component_css_props,
     "async_construct_wrap/component_css_props",
-    ignore = "custom css props memoize outside the component's async value numbering"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     component_dynamic,
@@ -111,38 +110,38 @@ compiler_case!(
 compiler_case!(
     component_css_prop_and_prop,
     "async_construct_wrap/component_css_prop_and_prop",
-    [prod_todo, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
     component_concat_prop,
     "async_construct_wrap/component_concat_prop",
-    [prod_todo, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     element_concat_and_class_directive,
     "async_construct_wrap/element_concat_and_class_directive",
-    [prod_todo, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     element_spread_style_directive_concat,
     "async_construct_wrap/element_spread_style_directive_concat",
-    [prod_todo, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     svelte_element_attr,
     "async_construct_wrap/svelte_element_attr",
-    [prod_todo, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     svelte_element_attr_in_snippet,
     "async_construct_wrap/svelte_element_attr_in_snippet",
-    [prod_todo, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     svelte_element_attr_in_slot,
     "async_construct_wrap/svelte_element_attr_in_slot",
-    [prod_todo, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
@@ -166,7 +165,7 @@ compiler_case!(
 compiler_case!(
     state_eager_derived_raw,
     "async_construct_wrap/state_eager_derived_raw",
-    [prod_todo, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
@@ -252,12 +251,12 @@ compiler_case!(
 compiler_case!(
     special_value_bind_checked_await,
     "async_construct_wrap/special_value_bind_checked_await",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     special_value_option_attr_hoist_order,
     "async_construct_wrap/special_value_option_attr_hoist_order",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     special_value_option_spread,
@@ -267,12 +266,12 @@ compiler_case!(
 compiler_case!(
     special_value_input_static_init,
     "async_construct_wrap/special_value_input_static_init",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     special_value_concat_slot_order,
     "async_construct_wrap/special_value_concat_slot_order",
-    ignore = "concatenated special values memoize eagerly, so their slots precede the children's"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     special_value_slot_after_children,
@@ -317,7 +316,7 @@ compiler_case!(
 compiler_case!(
     attr_blockers_concat_folded_part,
     "async_construct_wrap/attr_blockers_concat_folded_part",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     attr_blockers_concat_inline_read,

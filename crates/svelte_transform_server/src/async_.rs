@@ -35,7 +35,9 @@ impl<'a> ServerTransform<'_, 'a> {
     fn await_needs_save(&self, id: OxcNodeId) -> bool {
         match self.analysis.await_semantics.query(id) {
             AwaitSemantics::NonTerminal | AwaitSemantics::TerminalInConstruct => true,
-            AwaitSemantics::TerminalInFragmentInterpolation | AwaitSemantics::Detached => false,
+            AwaitSemantics::TerminalInFragmentInterpolation
+            | AwaitSemantics::TerminalInReactiveDeclaration
+            | AwaitSemantics::Detached => false,
         }
     }
 }
@@ -134,7 +136,7 @@ impl<'a> ServerTransform<'_, 'a> {
                         result.push(other);
                         continue;
                     };
-                    push_entry_statement(&mut buckets[location.entry], other, location.kind);
+                    push_entry_statement(b, &mut buckets[location.entry], other, location.kind);
                 }
             }
         }

@@ -95,7 +95,7 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
                     let member = AsyncEntryMember {
                         node: declarator.node_id(),
                         stmt_index: non_import_idx,
-                        kind: AsyncEntryMemberKind::Declarator,
+                        kind: AsyncEntryMemberKind::Binding,
                         symbols: syms,
                     };
                     push_member(data, &mut sync_group, member, suspension, has_await);
@@ -116,21 +116,26 @@ pub(crate) fn calculate_instance_blockers(parsed: &JsAst<'_>, data: &mut Analysi
                     data.script.blocker_data.symbol_blockers.insert(sym, slot);
                 }
 
+                let mut symbols: Vec<SymbolId> = Vec::new();
+                let mut kind = AsyncEntryMemberKind::SideEffect;
+
                 if let Statement::ClassDeclaration(class) = stmt_ref
                     && let Some(ref id) = class.id
                 {
                     let name = id.name.to_string();
                     if let Some(sym) = data.scoping.find_binding(root, &name) {
                         data.script.blocker_data.symbol_blockers.insert(sym, slot);
+                        symbols.push(sym);
                     }
                     data.script.blocker_data.hoisted_names.push(name);
+                    kind = AsyncEntryMemberKind::Binding;
                 }
 
                 let member = AsyncEntryMember {
                     node: stmt_ref.node_id(),
                     stmt_index: non_import_idx,
-                    kind: AsyncEntryMemberKind::Statement,
-                    symbols: Vec::new(),
+                    kind,
+                    symbols,
                 };
                 push_member(data, &mut sync_group, member, suspension, has_await);
             }

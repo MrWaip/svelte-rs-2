@@ -64,7 +64,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     ) -> Result<()> {
         let controlled_anchor = match &sem.async_kind {
             EachAsyncKind::Sync => controlled_anchor,
-            EachAsyncKind::Awaited { .. } | EachAsyncKind::Deferred { .. } => None,
+            EachAsyncKind::Awaited | EachAsyncKind::Deferred => None,
         };
         let is_controlled = controlled_anchor.is_some();
         let anchor_node = match controlled_anchor {
@@ -77,7 +77,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let context_pattern = self.take_each_context_pattern(id)?;
 
         let async_thunk = match &plan.async_kind {
-            EachAsyncKind::Awaited { .. } => {
+            EachAsyncKind::Awaited => {
                 let suspension = self.ctx.expression_suspension(id);
                 let collection_expr = self.take_node_expr(id)?;
                 Some(suspending_block_thunk(
@@ -86,7 +86,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     suspension,
                 ))
             }
-            EachAsyncKind::Deferred { .. } | EachAsyncKind::Sync => None,
+            EachAsyncKind::Deferred | EachAsyncKind::Sync => None,
         };
 
         let item_pattern_node = match &sem.item {
@@ -112,11 +112,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         let each_call = self.ctx.b.call_expr("$.each", args);
 
-        let const_blockers = self
-            .ctx
-            .declaration_blocker_slots_of(&sem.declaration_blockers);
-        let script_blockers = plan.async_kind.blockers().to_vec();
-        if plan.async_kind.is_sync() && const_blockers.is_empty() {
+        let blocker_exprs = self.ctx.blocker_exprs(&sem.blockers);
+        if plan.async_kind.is_sync() && blocker_exprs.is_empty() {
             state
                 .init
                 .push(self.add_svelte_meta(each_call, span_start, "each"));
@@ -125,8 +122,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
         let each_stmt = self.add_svelte_meta(each_call, span_start, "each");
         let wrapped = self.emit_async_call_stmt(
-            &script_blockers,
-            &const_blockers,
+            blocker_exprs,
             anchor_expr,
             &anchor_node,
             "$$collection",
@@ -212,7 +208,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             key_is_index: matches!(sem.key, EachKeyKind::KeyedByIndex),
             has_fallback: block.fallback.is_some(),
             collection_source: sem.collection.source.clone(),
-            async_kind: sem.async_kind.clone(),
+            async_kind: sem.async_kind,
         })
     }
 
@@ -245,10 +241,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         plan: &EachEmit,
     ) -> Result<Expression<'a>> {
         match &plan.async_kind {
-            EachAsyncKind::Awaited { .. } => {
-                Ok(self.ctx.b.thunk(rune_get(&self.ctx.b, "$$collection")))
-            }
-            EachAsyncKind::Deferred { .. } | EachAsyncKind::Sync => {
+            EachAsyncKind::Awaited => Ok(self.ctx.b.thunk(rune_get(&self.ctx.b, "$$collection"))),
+            EachAsyncKind::Deferred | EachAsyncKind::Sync => {
                 if let EachCollectionSource::Prop { sym } = &plan.collection_source {
                     let name = self.ctx.query.symbol_name(*sym).to_string();
                     return Ok(self.ctx.b.rid_expr(&name));

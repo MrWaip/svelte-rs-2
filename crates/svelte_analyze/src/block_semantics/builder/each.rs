@@ -129,7 +129,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
 
     let async_kind = derive_async_kind(expression_data);
 
-    let declaration_blockers = super::declaration_group::declaration_blockers_of(ctx, block.id);
+    let blockers = super::declaration_group::expression_blockers(ctx, block.id);
 
     let source = derive_collection_source(ctx, collection_expr, expression_data);
 
@@ -174,7 +174,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
             shadows_outer,
             render_index_required,
             async_kind,
-            declaration_blockers,
+            blockers,
             collection: EachCollection { source },
         }),
     );
@@ -298,16 +298,12 @@ fn symbol_is_store(binding: BindingSemantics) -> bool {
 fn derive_async_kind(data: Option<&ExpressionData>) -> EachAsyncKind {
     match data {
         Some(d) => match d.volatility {
-            Volatility::Asynchronous => EachAsyncKind::Awaited {
-                blockers: d.blockers.clone(),
-            },
+            Volatility::Asynchronous => EachAsyncKind::Awaited,
             Volatility::Static | Volatility::Reactive | Volatility::Heavy => {
                 if d.blockers.is_empty() {
                     EachAsyncKind::Sync
                 } else {
-                    EachAsyncKind::Deferred {
-                        blockers: d.blockers.clone(),
-                    }
+                    EachAsyncKind::Deferred
                 }
             }
         },

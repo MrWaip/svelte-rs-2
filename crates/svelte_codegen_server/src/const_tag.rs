@@ -11,6 +11,7 @@ use crate::model::ServerCodegen;
 
 pub(crate) struct DeclarationGroupRun<'a> {
     name: String,
+    declarations: Vec<(NodeId, Vec<String>)>,
     thunks: Vec<Expression<'a>>,
 }
 
@@ -82,6 +83,7 @@ impl<'a> ServerCodegen<'a> {
             ));
         };
         let mut thunks: Vec<Expression<'a>> = Vec::new();
+        let mut declarations: Vec<(NodeId, Vec<String>)> = Vec::new();
 
         for &id in ids {
             let async_kind = self.fragment_declaration_async_kind(id);
@@ -124,24 +126,51 @@ impl<'a> ServerCodegen<'a> {
                 self.const_tag_blockers
                     .insert(symbol, (promises_name.clone(), thunk_idx));
             }
+            let declared = mem::take(&mut self.pending_group_declarations);
+            if !declared.is_empty() {
+                declarations.push((id, declared));
+            }
         }
 
-        for name in mem::take(&mut self.pending_group_declarations) {
-            self.push_stmt(self.b.let_stmt(&name));
-        }
-        if thunks.is_empty() {
+        if thunks.is_empty() && declarations.is_empty() {
             return Ok(None);
         }
         Ok(Some(DeclarationGroupRun {
             name: promises_name,
+            declarations,
             thunks,
         }))
+    }
+
+    pub(crate) fn hoist_group_declarations(
+        &mut self,
+        group: &mut Option<DeclarationGroupRun<'a>>,
+        id: NodeId,
+    ) {
+        let Some(group) = group.as_mut() else {
+            return;
+        };
+        let Some(position) = group.declarations.iter().position(|(node, _)| *node == id) else {
+            return;
+        };
+        let (_, names) = group.declarations.remove(position);
+        for name in names {
+            self.hoist_stmt(self.b.let_stmt(&name));
+        }
     }
 
     pub(crate) fn push_declaration_group(&mut self, group: Option<DeclarationGroupRun<'a>>) {
         let Some(group) = group else {
             return;
         };
+        for (_, names) in &group.declarations {
+            for name in names {
+                self.hoist_stmt(self.b.let_stmt(name));
+            }
+        }
+        if group.thunks.is_empty() {
+            return;
+        }
         let run = self.b.call_expr(
             "$$renderer.run",
             [Arg::Expr(self.b.array_expr(group.thunks))],

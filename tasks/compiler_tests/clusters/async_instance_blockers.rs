@@ -58,8 +58,7 @@ compiler_case!(
 compiler_case!(
     effect_not_traced,
     "async_instance_blockers/effect_not_traced",
-    ignore =
-        "single expression statement in a promise group is wrapped as a block, not `void expr`"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     statement_thunk_shape,
@@ -73,8 +72,7 @@ compiler_case!(
 compiler_case!(
     await_statement_collapse,
     "async_instance_blockers/await_statement_collapse",
-    ignore =
-        "a bare await statement keeps its async arrow instead of collapsing to `() => argument`"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     await_call_unthunk,
@@ -89,17 +87,17 @@ compiler_case!(
 compiler_case!(
     class_declaration_assignment,
     "async_instance_blockers/class_declaration_assignment",
-    ignore = "a class declaration in a promise group is not rewritten to an assignment of a class expression"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     destructured_await_assignment,
     "async_instance_blockers/destructured_await_assignment",
-    ignore = "a destructured awaited declarator keeps its declaration instead of assigning the hoisted bindings"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     removed_statement_slot,
     "async_instance_blockers/removed_statement_slot",
-    ignore = "a statement erased by the transform panics instead of holding its slot with `() => void 0`"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     multi_declarator_slots,
@@ -116,12 +114,12 @@ compiler_case!(
 compiler_case!(
     export_specifier_slot,
     "async_instance_blockers/export_specifier_slot",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     block_statement_entry,
     "async_instance_blockers/block_statement_entry",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
@@ -139,12 +137,12 @@ compiler_case!(
 compiler_case!(
     function_declaration_after_erased_props,
     "async_instance_blockers/function_declaration_after_erased_props",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     derived_nested_await_thunk,
     "async_instance_blockers/derived_nested_await_thunk",
-    [prod_todo, dev_todo, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(

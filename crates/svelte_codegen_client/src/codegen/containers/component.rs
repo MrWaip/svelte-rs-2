@@ -12,6 +12,12 @@ use super::super::data_structures::FragmentCtx;
 use super::super::fragment::SlotFragmentOutcome;
 use super::super::{Codegen, CodegenError, Result};
 
+struct CssPropsWrapper<'a> {
+    props_stmt: Option<Statement<'a>>,
+    reset_stmt: Option<Statement<'a>>,
+    anchor: Option<&'a str>,
+}
+
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in crate::codegen) fn emit_component(
         &mut self,
@@ -20,17 +26,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         existing_var: Option<&str>,
     ) -> Result<String> {
-        self.emit_component_impl(state, ctx, el_id, existing_var, None, 0)
+        self.emit_component_impl(state, ctx, el_id, existing_var, None)
     }
 
-    pub(in crate::codegen) fn emit_component_inline_memo(
+    pub(in crate::codegen) fn emit_component_css_wrapped(
         &mut self,
         state: &mut EmitState<'a>,
         ctx: &FragmentCtx<'a>,
         el_id: NodeId,
-        initial_memo_counter: u32,
-    ) -> Result<String> {
-        self.emit_component_impl(state, ctx, el_id, None, None, initial_memo_counter)
+        css_wrapper_node: &str,
+    ) -> Result<()> {
+        self.emit_component_impl(state, ctx, el_id, None, Some(css_wrapper_node))?;
+        Ok(())
     }
 
     fn emit_component_impl(
@@ -39,8 +46,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         ctx: &FragmentCtx<'a>,
         el_id: NodeId,
         _existing_var: Option<&str>,
-        memo_decls_out: Option<&mut Vec<Statement<'a>>>,
-        initial_memo_counter: u32,
+        css_wrapper_node: Option<&str>,
     ) -> Result<String> {
         let node = self.ctx.query.component.store.get(el_id);
         let is_svelte_component_legacy = matches!(node, Node::SvelteComponentLegacy(_));
@@ -76,7 +82,24 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         let snippet_ids: Vec<NodeId> = self.ctx.component_snippets(el_id).to_vec();
 
-        let mut props = self.build_component_props(el_id, initial_memo_counter)?;
+        let mut props = self.build_component_props(el_id)?;
+
+        let (css_props_stmt, css_reset_stmt, css_anchor) = match css_wrapper_node {
+            Some(node) => {
+                let node_ident = self.ctx.b.alloc_str(node);
+                let props_obj = self.ctx.b.object_expr(mem::take(&mut props.css_props));
+                let props_thunk = self.ctx.b.thunk(props_obj);
+                (
+                    Some(self.ctx.b.call_stmt(
+                        "$.css_props",
+                        [Arg::Ident(node_ident), Arg::Expr(props_thunk)],
+                    )),
+                    Some(self.ctx.b.call_stmt("$.reset", [Arg::Ident(node_ident)])),
+                    Some(node_ident),
+                )
+            }
+            None => (None, None, None),
+        };
 
         let mut init_stmts: Vec<Statement<'a>> = Vec::new();
         let events = mem::take(&mut props.events);
@@ -206,6 +229,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         .query(el_id)
                         .async_kind()
                         .clone(),
+                    CssPropsWrapper {
+                        props_stmt: css_props_stmt,
+                        reset_stmt: css_reset_stmt,
+                        anchor: css_anchor,
+                    },
                 );
             }
             Some(Volatility::Static) | None => {}
@@ -245,7 +273,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             (component_call, None)
         };
 
-        let component_stmt = if self.ctx.has_component_css_props(el_id) {
+        let component_stmt = if css_wrapper_node.is_some() {
             self.ctx.b.expr_stmt(final_expr)
         } else {
             let component_tag = if is_svelte_self {
@@ -261,12 +289,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
 
         let ownership_stmts = self.build_ownership_binding_stmts(props.ownership_bindings, callee);
-        let body_memo_decls: Vec<Statement<'a>> = if let Some(out) = memo_decls_out {
-            out.extend(props.memo_decls);
-            Vec::new()
-        } else {
-            props.memo_decls
-        };
+        let body_memo_decls: Vec<Statement<'a>> = props.memo_decls;
         if let Some(stmt) = bind_this_validate {
             state.init.push(stmt);
         }
@@ -282,35 +305,35 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .query(el_id)
             .async_kind()
             .clone();
+        let mut body = snippet_children.decls;
+        body.extend(body_memo_decls);
+        body.extend(ownership_stmts);
+        body.extend(css_props_stmt);
+        body.push(component_stmt);
+        body.extend(css_reset_stmt);
+
         match async_kind {
             ElementAsyncKind::Sync => {
-                if snippet_children.decls.is_empty()
-                    && body_memo_decls.is_empty()
-                    && ownership_stmts.is_empty()
-                {
-                    state.init.push(component_stmt);
+                if body.len() == 1 {
+                    state.init.extend(body);
                 } else {
-                    let mut block = snippet_children.decls;
-                    block.extend(body_memo_decls);
-                    block.extend(ownership_stmts);
-                    block.push(component_stmt);
-                    state.init.push(self.ctx.b.block_stmt(block));
+                    state.init.push(self.ctx.b.block_stmt(body));
                 }
             }
             ElementAsyncKind::Awaited { blockers } | ElementAsyncKind::Deferred { blockers } => {
-                let mut inner = snippet_children.decls;
-                inner.extend(body_memo_decls);
-                inner.extend(ownership_stmts);
-                inner.push(component_stmt);
                 let emit_next = super::super::blocks::owns_fragment_anchor(ctx);
+                let anchor = match css_anchor {
+                    Some(node) => self.ctx.b.rid_expr(node),
+                    None => anchor_for_async,
+                };
                 self.emit_async_wrapped(
                     state,
                     &blockers,
                     props.async_values,
-                    anchor_for_async,
+                    anchor,
                     "$$anchor",
                     emit_next,
-                    inner,
+                    body,
                 );
             }
         }
@@ -368,6 +391,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         reserved_intermediate: Option<&'a str>,
         async_values: AsyncValues<'a>,
         async_kind: ElementAsyncKind,
+        css: CssPropsWrapper<'a>,
     ) -> Result<String> {
         for stmt in bind_init_stmts {
             state.init.push(stmt);
@@ -425,7 +449,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             ],
         );
 
-        let component_stmt = if self.ctx.has_component_css_props(el_id) {
+        let component_stmt = if css.anchor.is_some() {
             self.ctx.b.expr_stmt(component_call)
         } else {
             let extra_obj = self.ctx.b.object_expr([ObjProp::KeyValue(
@@ -443,22 +467,25 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if let Some(stmt) = inner_validate {
             state.init.push(stmt);
         }
+        let mut body = snippet_decls;
+        body.extend(memo_decls);
+        body.extend(css.props_stmt);
+        body.push(component_stmt);
+        body.extend(css.reset_stmt);
         match async_kind {
             ElementAsyncKind::Sync => {
-                if snippet_decls.is_empty() && memo_decls.is_empty() {
-                    state.init.push(component_stmt);
+                if body.len() == 1 {
+                    state.init.extend(body);
                 } else {
-                    let mut block = snippet_decls;
-                    block.extend(memo_decls);
-                    block.push(component_stmt);
-                    state.init.push(self.ctx.b.block_stmt(block));
+                    state.init.push(self.ctx.b.block_stmt(body));
                 }
             }
             ElementAsyncKind::Awaited { blockers } | ElementAsyncKind::Deferred { blockers } => {
-                let mut inner = snippet_decls;
-                inner.extend(memo_decls);
-                inner.push(component_stmt);
-                let anchor = self.ctx.b.rid_expr(&anchor_node);
+                let inner = body;
+                let anchor = match css.anchor {
+                    Some(node) => self.ctx.b.rid_expr(node),
+                    None => self.ctx.b.rid_expr(&anchor_node),
+                };
                 self.emit_async_wrapped(
                     state,
                     &blockers,

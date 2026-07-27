@@ -181,17 +181,17 @@ compiler_case!(
 compiler_case!(
     legacy_destructure_array_index_assign,
     "each_item_writeback/legacy_destructure_array_index_assign",
-    ignore = "each-item writeback place not applied to identifier assignment"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_destructure_array_index_compound_assign,
     "each_item_writeback/legacy_destructure_array_index_compound_assign",
-    ignore = "each-item writeback place not applied to identifier assignment"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_destructure_object_computed_key_bind,
     "each_item_writeback/legacy_destructure_object_computed_key_bind",
-    ignore = "each-item writeback place rewrites the computed key expression"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     legacy_destructure_array_member_mutate_guard,
@@ -204,5 +204,5 @@ compiler_case!(
 compiler_case!(
     legacy_destructure_object_key_assign,
     "each_item_writeback/legacy_destructure_object_key_assign",
-    ignore = "each-item writeback place not applied to identifier assignment"
+    [prod, dev, ssr, ssr_dev]
 );

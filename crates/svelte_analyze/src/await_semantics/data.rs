@@ -10,6 +10,8 @@ pub enum AwaitSemantics {
 
     TerminalInConstruct,
 
+    TerminalInReactiveDeclaration,
+
     NonTerminal,
 }
 

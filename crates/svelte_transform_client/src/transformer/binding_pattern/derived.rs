@@ -91,6 +91,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         mut declarator: VariableDeclarator<'a>,
         suspension: Suspension,
     ) -> Statement<'a> {
+        let declarator_node_id = declarator.node_id();
         let init = declarator
             .init
             .take()
@@ -127,6 +128,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 );
             }
             let block_stmt = self.b.block_stmt(block);
+            if let Statement::BlockStatement(block) = &block_stmt {
+                block.set_node_id(declarator_node_id);
+            }
             self.b.seed_block_scope(&block_stmt, self.gen_arrow_scope);
             block_stmt
         } else {

@@ -58,17 +58,26 @@ fn textarea_value(
         if let Some(child) = data.fragment_single_expression_child_by_id(el.fragment)
             && let Node::ExpressionTag(tag) = component.store.get(child)
         {
-            return Some(TextareaBody::Single(tag.expression.id()));
+            return Some(TextareaBody::Single {
+                node_id: child,
+                oxc_id: tag.expression.id(),
+            });
         }
         return Some(TextareaBody::Segments(textarea_segments(component, el)));
     }
     for attr in &el.attributes {
         match attr {
             Attribute::BindDirective(d) if d.name == "value" => {
-                return Some(TextareaBody::Single(d.expression.id()));
+                return Some(TextareaBody::Single {
+                    node_id: d.id,
+                    oxc_id: d.expression.id(),
+                });
             }
             Attribute::ExpressionAttribute(a) if a.name == "value" => {
-                return Some(TextareaBody::Single(a.expression.id()));
+                return Some(TextareaBody::Single {
+                    node_id: a.id,
+                    oxc_id: a.expression.id(),
+                });
             }
             Attribute::ConcatenationAttribute(a) if a.name == "value" => {
                 return Some(concatenation_textarea_body(a));
@@ -86,7 +95,10 @@ fn textarea_value(
 
 fn concatenation_textarea_body(a: &svelte_ast::ConcatenationAttribute) -> TextareaBody {
     if let [svelte_ast::ConcatPart::Dynamic { expr, .. }] = a.parts.as_slice() {
-        return TextareaBody::Single(expr.id());
+        return TextareaBody::Single {
+            node_id: a.id,
+            oxc_id: expr.id(),
+        };
     }
     let mut segments: Vec<TextareaSegment> = Vec::new();
     for part in &a.parts {

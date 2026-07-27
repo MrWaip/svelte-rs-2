@@ -83,6 +83,7 @@ fn export_reactive_read<'a>(
         | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
         | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
         | ReferenceSemantics::EachItemIndexedLegacy { .. }
+        | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
         | ReferenceSemantics::IllegalWrite => None,
     }
 }
@@ -784,7 +785,7 @@ fn split_async_instance_body<'a>(
                     result.push(other);
                     continue;
                 };
-                push_entry_statement(&mut buckets[location.entry], other, location.kind);
+                push_entry_statement(b, &mut buckets[location.entry], other, location.kind);
             }
         }
     }

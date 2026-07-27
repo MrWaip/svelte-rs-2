@@ -1,8 +1,9 @@
 use oxc_ast::ast::{
     Argument, ArrayExpression, ArrayExpressionElement, ArrowFunctionExpression,
     AssignmentExpression, AwaitExpression, BinaryExpression, CallExpression, ConditionalExpression,
-    Expression, Function, LogicalExpression, MemberExpression, NewExpression, ObjectExpression,
-    ObjectPropertyKind, SequenceExpression, Statement, TaggedTemplateExpression, TemplateLiteral,
+    Declaration, Expression, Function, LogicalExpression, MemberExpression, NewExpression,
+    ObjectExpression, ObjectPropertyKind, Program, SequenceExpression, Statement,
+    TaggedTemplateExpression, TemplateLiteral, VariableDeclaration,
 };
 use oxc_ast_visit::Visit;
 use oxc_ast_visit::walk::{
@@ -12,11 +13,16 @@ use oxc_semantic::ScopeFlags;
 use smallvec::SmallVec;
 use svelte_ast::{Component, FragmentId, Node, OxcNodeId};
 
+use crate::ReactivitySemantics;
 use crate::types::data::JsAst;
 
 use super::data::{AwaitSemantics, AwaitSemanticsStore};
 
-pub(crate) fn build(component: &Component, parsed: &JsAst<'_>) -> AwaitSemanticsStore {
+pub(crate) fn build(
+    component: &Component,
+    parsed: &JsAst<'_>,
+    reactivity: &ReactivitySemantics,
+) -> AwaitSemanticsStore {
     let mut store = AwaitSemanticsStore::new();
 
     for expr in parsed.iter_exprs() {
@@ -45,7 +51,59 @@ pub(crate) fn build(component: &Component, parsed: &JsAst<'_>) -> AwaitSemantics
         classify_statement(stmt, AwaitSemantics::NonTerminal, &mut store);
     }
 
+    for program in [parsed.program.as_ref(), parsed.module_program.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        classify_script_reactive_declarations(program, reactivity, &mut store);
+    }
+
     store
+}
+
+fn classify_script_reactive_declarations(
+    program: &Program<'_>,
+    reactivity: &ReactivitySemantics,
+    store: &mut AwaitSemanticsStore,
+) {
+    for statement in &program.body {
+        let Some(declaration) = variable_declaration_of(statement) else {
+            continue;
+        };
+        for declarator in &declaration.declarations {
+            let Some(init) = declarator.init.as_ref() else {
+                continue;
+            };
+            let Expression::CallExpression(call) = init.get_inner_expression() else {
+                continue;
+            };
+            if !reactivity
+                .declarator_semantics(call.node_id())
+                .is_rune_derived()
+            {
+                continue;
+            }
+            for argument in &call.arguments {
+                let Some(expr) = argument.as_expression() else {
+                    continue;
+                };
+                classify_expression(expr, AwaitSemantics::TerminalInReactiveDeclaration, store);
+            }
+        }
+    }
+}
+
+fn variable_declaration_of<'b, 'a>(
+    statement: &'b Statement<'a>,
+) -> Option<&'b VariableDeclaration<'a>> {
+    match statement {
+        Statement::VariableDeclaration(declaration) => Some(declaration),
+        Statement::ExportNamedDeclaration(export) => match &export.declaration {
+            Some(Declaration::VariableDeclaration(declaration)) => Some(declaration),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn const_tag_declarations(component: &Component) -> Vec<OxcNodeId> {
@@ -132,12 +190,12 @@ impl AwaitCollector {
 
     fn semantics_here(&self) -> AwaitSemantics {
         if self.fn_depth > 0 {
-            AwaitSemantics::Detached
-        } else if self.current_is_last() {
-            self.terminal
-        } else {
-            AwaitSemantics::NonTerminal
+            return AwaitSemantics::Detached;
         }
+        if self.current_is_last() {
+            return self.terminal;
+        }
+        AwaitSemantics::NonTerminal
     }
 
     fn visit_child(&mut self, expr: &Expression<'_>, is_last: bool) {

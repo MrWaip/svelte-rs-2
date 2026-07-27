@@ -2,9 +2,7 @@ use oxc_ast::NONE;
 use oxc_ast::ast::{BindingPattern, Expression, Statement, VariableDeclarationKind};
 use oxc_span::SPAN;
 use oxc_syntax::operator::{BinaryOperator, UpdateOperator};
-use svelte_analyze::{
-    BlockSemantics, EachAsyncKind, EachBlockSemantics, EachFlavor, EachIndexKind,
-};
+use svelte_analyze::{BlockSemantics, EachBlockSemantics, EachFlavor, EachIndexKind};
 use svelte_ast::EachBlock;
 use svelte_ast_builder::Arg;
 
@@ -128,11 +126,7 @@ impl<'a> ServerCodegen<'a> {
             BlockSemantics::Each(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(block.id, "each block")),
         };
-        let (async_blockers, awaited) = match &sem.async_kind {
-            EachAsyncKind::Sync => (None, false),
-            EachAsyncKind::Awaited { blockers } => (Some(blockers.clone()), true),
-            EachAsyncKind::Deferred { blockers } => (Some(blockers.clone()), false),
-        };
+        let awaited = sem.async_kind.is_awaited();
 
         let array_name = self
             .each_array_names
@@ -150,12 +144,7 @@ impl<'a> ServerCodegen<'a> {
 
         let for_loop = self.build_each_for_loop(block, &sem, &array_name)?;
 
-        let mut members: Vec<Expression<'a>> = async_blockers
-            .iter()
-            .flatten()
-            .map(|&idx| self.blocker_member(idx))
-            .collect();
-        members.extend(self.declaration_blocker_exprs(&sem.declaration_blockers));
+        let members = self.blocker_exprs(&sem.blockers);
         let suspends = !sem.async_kind.is_sync() || !members.is_empty();
 
         if suspends {

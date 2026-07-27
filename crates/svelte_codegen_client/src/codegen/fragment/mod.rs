@@ -1,16 +1,14 @@
-use crate::codegen::expr::coarse_wrap;
-use svelte_emit_builders::runes::rune_get;
 mod legacy_slot_fragment;
 mod prepare;
 mod process_children;
 mod types;
 
 use compact_str::CompactString;
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::Expression;
 use std::iter::empty;
-use svelte_analyze::{AttributeSemantics, ComponentCssPropValue, SnippetPlacement, Volatility};
+use svelte_analyze::{SnippetPlacement, Volatility};
 use svelte_ast::{FragmentRole, NodeId};
-use svelte_ast_builder::{Arg, ObjProp};
+use svelte_ast_builder::Arg;
 
 use crate::codegen::concatenation::ConcatenationAnchor;
 use crate::codegen::fragment::prepare::prepare;
@@ -775,161 +773,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         node_ident: &str,
         namespace: svelte_ast::Namespace,
     ) -> Result<()> {
-        let css_props: Vec<(NodeId, String, ComponentCssPropValue)> = {
-            let Some(view) = self
-                .ctx
-                .query
-                .component
-                .store
-                .get(component_id)
-                .as_component_like()
-            else {
-                return CodegenError::semantic_mismatch(
-                    component_id,
-                    "component-like node expected",
-                );
-            };
-            view.attributes
-                .iter()
-                .filter_map(|attribute| {
-                    let attribute_id = attribute.id();
-                    match self.ctx.query.analysis.attributes.get(attribute_id) {
-                        AttributeSemantics::ComponentCssProp(value) => {
-                            Some((attribute_id, attribute.name()?.to_string(), value.clone()))
-                        }
-                        _ => None,
-                    }
-                })
-                .collect()
-        };
-        let mut prop_items: Vec<ObjProp<'a>> = Vec::with_capacity(css_props.len());
-        let mut css_memo_decls: Vec<Statement<'a>> = Vec::new();
-        let mut css_async_values = super::async_values::AsyncValues::new(0);
-        let mut memo_counter: u32 = 0;
-        for (attribute_id, name, value) in css_props {
-            let key = self.ctx.b.alloc_str(&name);
-            let expr = match value {
-                ComponentCssPropValue::Expression(expression_id) => {
-                    let Some(expression) = self.ctx.state.parsed.take_expr(expression_id) else {
-                        return CodegenError::missing_expression(attribute_id);
-                    };
-                    let expression_data = self.ctx.expression_data(attribute_id).cloned();
-                    let expression = coarse_wrap(self.ctx, expression, expression_data.as_ref());
-                    let volatility = expression_data
-                        .as_ref()
-                        .map(|data| data.volatility)
-                        .unwrap_or(Volatility::Static);
-                    match volatility {
-                        Volatility::Asynchronous => {
-                            return CodegenError::not_implemented(
-                                attribute_id,
-                                "await in a component custom css property",
-                            );
-                        }
-                        Volatility::Heavy => {
-                            let helper = self.ctx.query.view.derived_helper();
-                            let memo_name = format!("${memo_counter}");
-                            memo_counter += 1;
-                            let thunk = self.ctx.b.thunk(expression);
-                            let derived = self.ctx.b.call_expr(helper, [Arg::Expr(thunk)]);
-                            css_memo_decls.push(self.ctx.b.let_init_stmt(&memo_name, derived));
-                            let memo_ref = self.ctx.b.alloc_str(&memo_name);
-                            rune_get(&self.ctx.b, memo_ref)
-                        }
-                        Volatility::Static | Volatility::Reactive => expression,
-                    }
-                }
-                ComponentCssPropValue::StaticString(span) => {
-                    let value = self.ctx.query.component.source_text(span);
-                    self.ctx.b.str_expr(value)
-                }
-                ComponentCssPropValue::Concatenation(plan) => {
-                    if plan
-                        .iter()
-                        .any(|emit| matches!(emit, svelte_analyze::ConcatPartEmit::Awaited))
-                    {
-                        return CodegenError::not_implemented(
-                            attribute_id,
-                            "await in a component custom css property",
-                        );
-                    }
-                    let Some(view) = self
-                        .ctx
-                        .query
-                        .component
-                        .store
-                        .get(component_id)
-                        .as_component_like()
-                    else {
-                        return CodegenError::missing_expression(attribute_id);
-                    };
-                    let Some(svelte_ast::Attribute::ConcatenationAttribute(concat)) =
-                        view.attributes.iter().find(|a| a.id() == attribute_id)
-                    else {
-                        return CodegenError::missing_expression(attribute_id);
-                    };
-                    self.build_concat_expr_from_plan(
-                        attribute_id,
-                        &concat.parts,
-                        &plan,
-                        &mut css_memo_decls,
-                        &mut memo_counter,
-                        &mut css_async_values,
-                    )?
-                }
-                ComponentCssPropValue::Boolean => self.ctx.b.bool_expr(true),
-            };
-            prop_items.push(ObjProp::KeyValue(key, expr));
-        }
-        let props_obj = self.ctx.b.object_expr(prop_items);
-        let props_thunk = self.ctx.b.thunk(props_obj);
-
-        let prev_init_len = state.init.len();
         let mut wrapper_ctx = ctx.clone();
-        wrapper_ctx.anchor = FragmentAnchor::sibling_var(format!("{}.lastChild", node_ident));
+        wrapper_ctx.anchor = FragmentAnchor::sibling_var(format!("{node_ident}.lastChild"));
         wrapper_ctx.namespace = namespace;
-        self.emit_component_inline_memo(state, &wrapper_ctx, component_id, memo_counter)?;
-        let mut component_stmts: Vec<_> = state.init.drain(prev_init_len..).collect();
-
-        let css_props_call = self.ctx.b.call_stmt(
-            "$.css_props",
-            [Arg::Ident(node_ident), Arg::Expr(props_thunk)],
-        );
-
-        let mut block: Vec<Statement<'a>> = Vec::new();
-        block.extend(css_memo_decls);
-
-        let inner_block = if component_stmts.len() == 1 {
-            match component_stmts.pop() {
-                Some(Statement::BlockStatement(inner)) => {
-                    Some(inner.unbox().body.into_iter().collect::<Vec<_>>())
-                }
-                Some(other) => {
-                    component_stmts.push(other);
-                    None
-                }
-                None => None,
-            }
-        } else {
-            None
-        };
-
-        if let Some(mut inner) = inner_block {
-            let component_call = inner.pop();
-            block.extend(inner);
-            block.push(css_props_call);
-            if let Some(call) = component_call {
-                block.push(call);
-            }
-        } else {
-            block.push(css_props_call);
-            block.extend(component_stmts);
-        }
-
-        block.push(self.ctx.b.call_stmt("$.reset", [Arg::Ident(node_ident)]));
-
-        state.init.push(self.ctx.b.block_stmt(block));
-        Ok(())
+        self.emit_component_css_wrapped(state, &wrapper_ctx, component_id, node_ident)
     }
 
     fn render_tag_uses_direct_anchor(&self, id: NodeId) -> bool {

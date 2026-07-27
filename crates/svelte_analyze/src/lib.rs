@@ -40,10 +40,10 @@ pub use block_semantics::{
     AwaitBinding, AwaitBlockSemantics, AwaitBranch, AwaitDestructureKind, AwaitWrapper,
     BlockSemantics, ConstTagBlockSemantics, DeclarationTagBlockSemantics, EachAsyncKind,
     EachBlockSemantics, EachCollection, EachCollectionSource, EachFlags, EachFlavor, EachIndexKind,
-    EachItemKind, EachKeyKind, FragmentDeclarationAsyncKind, HtmlTagAsyncKind, IfAlternate,
-    IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind, KeyBlockSemantics,
-    RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics, SnippetBlockSemantics,
-    SnippetParam, SnippetPlacement, SnippetSlotKey,
+    EachItemKind, EachKeyKind, ExpressionBlocker, FragmentDeclarationAsyncKind, HtmlTagAsyncKind,
+    IfAlternate, IfAsyncKind, IfBlockSemantics, IfBranch, IfConditionKind, KeyAsyncKind,
+    KeyBlockSemantics, RenderArgKind, RenderAsyncKind, RenderCallKind, RenderTagBlockSemantics,
+    SnippetBlockSemantics, SnippetParam, SnippetPlacement, SnippetSlotKey,
 };
 pub use element_semantics::{
     BoundaryBranch, BoundarySemantics, ComponentElementSemantics, ElementAsyncKind,

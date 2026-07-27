@@ -3,7 +3,7 @@ use smallvec::SmallVec;
 use svelte_ast::{FragmentId, NodeId};
 use svelte_component_semantics::{OxcNodeId, SymbolId, walk_bindings};
 
-use super::super::FragmentDeclarationAsyncKind;
+use super::super::{ExpressionBlocker, FragmentDeclarationAsyncKind};
 use super::walker::Ctx;
 use crate::expression_semantics::ExpressionSemantics;
 
@@ -58,24 +58,35 @@ fn join_group(
     }
 }
 
-pub(super) fn declaration_blockers_of(ctx: &Ctx<'_, '_>, node_id: NodeId) -> SmallVec<[NodeId; 2]> {
+pub(super) fn expression_blockers(
+    ctx: &Ctx<'_, '_>,
+    node_id: NodeId,
+) -> SmallVec<[ExpressionBlocker; 2]> {
     let ExpressionSemantics::Expression(data) = ctx.expressions.get(node_id) else {
         return SmallVec::new();
     };
-    let mut blockers: SmallVec<[NodeId; 2]> = SmallVec::new();
-    for sym in &data.references {
-        let Some(owner) = ctx.declaration_owners.get(sym) else {
+    let mut out: SmallVec<[ExpressionBlocker; 2]> = SmallVec::new();
+    let mut seen_script: SmallVec<[u32; 2]> = SmallVec::new();
+    for sym in &data.blocker_references {
+        if let Some(owner) = ctx.declaration_owners.get(sym)
+            && owner.is_async
+        {
+            let blocker = ExpressionBlocker::FragmentDeclaration { node: owner.node };
+            if !out.contains(&blocker) {
+                out.push(blocker);
+            }
+            continue;
+        }
+        let Some(slot) = ctx.blocker_data.symbol_blocker(*sym) else {
             continue;
         };
-        if !owner.is_async {
+        if seen_script.contains(&slot.member) {
             continue;
         }
-        if blockers.contains(&owner.node) {
-            continue;
-        }
-        blockers.push(owner.node);
+        seen_script.push(slot.member);
+        out.push(ExpressionBlocker::Script { entry: slot.entry });
     }
-    blockers
+    out
 }
 
 fn outer_group_blockers(ctx: &Ctx<'_, '_>, node_id: NodeId) -> SmallVec<[NodeId; 2]> {

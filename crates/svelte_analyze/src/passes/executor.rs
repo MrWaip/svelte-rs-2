@@ -120,7 +120,8 @@ pub(crate) fn execute_pass<'a>(
             js_analyze::calculate_instance_blockers(parsed, data);
         }
         super::PassKey::BuildAwaitSemantics => {
-            data.await_semantics = await_semantics::build(component, parsed);
+            let semantics = await_semantics::build(component, parsed, &data.reactivity);
+            data.await_semantics = semantics;
         }
         super::PassKey::BuildReactivitySemantics => {
             build_v2(
@@ -204,6 +205,7 @@ pub(crate) fn execute_pass<'a>(
                 &data.expressions_v2,
                 &data.template.fragment_namespaces,
                 &data.ignore,
+                &data.script.blocker_data,
                 data.script.dev,
                 component.node_count(),
             );

@@ -102,11 +102,7 @@ impl<'a> ServerCodegen<'a> {
                     self.emit_group_value_attribute(attr)?;
                 }
                 AttributeSemantics::SpecialValueAttr(sem)
-                    if matches!(sem.kind, SpecialValueKind::InputBindChecked)
-                        && matches!(
-                            attr,
-                            Attribute::StringAttribute(_) | Attribute::BooleanAttribute(_)
-                        ) =>
+                    if matches!(sem.kind, SpecialValueKind::InputBindChecked) =>
                 {
                     self.emit_plain_attribute(owner_id, attr)?;
                 }
@@ -742,7 +738,7 @@ impl<'a> ServerCodegen<'a> {
         );
 
         let (class_attr_id, class_needs_clsx) = match self.find_class_semantics(attributes) {
-            Some(class) => (class.attr, class.needs_clsx),
+            Some(class) => (class.attr, class.needs_clsx && !is_select_or_option),
             None => (None, false),
         };
 

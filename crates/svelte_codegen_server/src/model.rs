@@ -1,7 +1,7 @@
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
 use std::collections::HashMap;
-use svelte_analyze::{AnalysisData, IdentGen, JsAst};
+use svelte_analyze::{AnalysisData, ExpressionBlocker, IdentGen, JsAst};
 use svelte_ast::{Component, ExprRef, NodeId};
 use svelte_ast_builder::{Arg, Builder};
 use svelte_component_semantics::SymbolId;
@@ -30,6 +30,7 @@ pub(crate) struct ServerCodegen<'a> {
     pub svelte_element_tag_refs: HashMap<NodeId, String>,
     pub save_block_awaits: bool,
     pub promise_hoists: Option<Vec<Expression<'a>>>,
+    pub emitted_blockers: Option<Vec<(u32, u32)>>,
     pub pending_group_declarations: Vec<String>,
     pub suppress_async_hoist: bool,
     pub const_tag_blockers: HashMap<SymbolId, (String, u32)>,
@@ -73,6 +74,7 @@ impl<'a> ServerCodegen<'a> {
             svelte_element_tag_refs: HashMap::new(),
             save_block_awaits: false,
             promise_hoists: None,
+            emitted_blockers: None,
             pending_group_declarations: Vec::new(),
             suppress_async_hoist: false,
             const_tag_blockers: HashMap::new(),
@@ -100,6 +102,7 @@ impl<'a> ServerCodegen<'a> {
         node_id: NodeId,
         oxc_id: OxcNodeId,
     ) -> Result<Expression<'a>> {
+        self.record_emitted_blockers(node_id);
         self.js_arena
             .take_expr(oxc_id)
             .ok_or(CodegenError::MissingExpression(node_id))
@@ -129,6 +132,29 @@ impl<'a> ServerCodegen<'a> {
         self.push_promise_hoist(expr)
     }
 
+    fn record_emitted_blockers(&mut self, node_id: NodeId) {
+        if self.emitted_blockers.is_none() {
+            return;
+        }
+        let Some(data) = self.analysis.expression_data(node_id) else {
+            return;
+        };
+        let blocker_data = self.analysis.blocker_data();
+        let Some(mut recorded) = self.emitted_blockers.take() else {
+            return;
+        };
+        for sym in &data.blocker_references {
+            let Some(slot) = blocker_data.symbol_blocker(*sym) else {
+                continue;
+            };
+            if recorded.iter().any(|(member, _)| *member == slot.member) {
+                continue;
+            }
+            recorded.push((slot.member, slot.entry));
+        }
+        self.emitted_blockers = Some(recorded);
+    }
+
     fn push_promise_hoist(&mut self, expr: Expression<'a>) -> Expression<'a> {
         let Some(hoists) = self.promise_hoists.as_mut() else {
             return expr;
@@ -147,6 +173,24 @@ impl<'a> ServerCodegen<'a> {
         let hoisted = self.promise_hoists.take().unwrap_or_default();
         self.promise_hoists = prev_hoists;
         (out, self.apply_promise_hoists(hoisted))
+    }
+
+    pub(crate) fn without_emitted_blockers<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let previous = self.emitted_blockers.take();
+        let out = f(self);
+        self.emitted_blockers = previous;
+        out
+    }
+
+    pub(crate) fn with_emitted_blockers<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> (T, Vec<u32>) {
+        let previous = self.emitted_blockers.replace(Vec::new());
+        let out = f(self);
+        let recorded = self.emitted_blockers.take().unwrap_or_default();
+        self.emitted_blockers = previous;
+        (out, recorded.into_iter().map(|(_, entry)| entry).collect())
     }
 
     fn apply_promise_hoists(&self, hoisted: Vec<Expression<'a>>) -> Vec<Statement<'a>> {
@@ -195,22 +239,23 @@ impl<'a> ServerCodegen<'a> {
         }
     }
 
-    pub(crate) fn declaration_blocker_exprs(&self, nodes: &[NodeId]) -> Vec<Expression<'a>> {
+    pub(crate) fn blocker_exprs(&self, blockers: &[ExpressionBlocker]) -> Vec<Expression<'a>> {
         let mut result = Vec::new();
-        let mut seen: Vec<(String, u32)> = Vec::new();
-        for node in nodes {
-            let Some((name, idx)) = self.declaration_blocker_slots.get(node) else {
-                continue;
-            };
-            let slot = (name.clone(), *idx);
-            if seen.contains(&slot) {
-                continue;
+        for blocker in blockers {
+            match blocker {
+                ExpressionBlocker::Script { entry } => result.push(self.blocker_member(*entry)),
+                ExpressionBlocker::FragmentDeclaration { node } => {
+                    let Some((name, idx)) = self.declaration_blocker_slots.get(node) else {
+                        continue;
+                    };
+                    result.push(
+                        self.b.computed_member_expr(
+                            self.b.rid_expr(name),
+                            self.b.num_expr(*idx as f64),
+                        ),
+                    );
+                }
             }
-            seen.push(slot);
-            result.push(
-                self.b
-                    .computed_member_expr(self.b.rid_expr(name), self.b.num_expr(*idx as f64)),
-            );
         }
         result
     }

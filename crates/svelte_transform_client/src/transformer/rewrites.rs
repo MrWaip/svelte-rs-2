@@ -3,7 +3,7 @@ use std::mem;
 
 use oxc_ast::ast::{
     Argument, AssignmentOperator, AssignmentTarget, ChainElement, Expression,
-    SimpleAssignmentTarget, StaticMemberExpression, UpdateOperator,
+    SimpleAssignmentTarget, Statement, StaticMemberExpression, UpdateOperator,
 };
 use oxc_span::SPAN;
 use oxc_traverse::TraverseCtx;
@@ -15,7 +15,10 @@ use svelte_analyze::{
     ContextualReadSemantics, DeclaratorSemantics, EachIndexStrategy, PropReferenceSemantics,
     ReferenceSemantics, RuntimeRuneKind, SignalReadLocality, StateKind,
 };
-use svelte_component_semantics::{ReferenceId, SymbolId};
+use svelte_component_semantics::{Access, ReferenceId, SymbolId, walk_bindings};
+use svelte_emit_builders::binding_pattern;
+
+const EACH_SYNTHETIC_ITEM_NAME: &str = "$$item";
 
 use svelte_emit_builders::store::{
     build_store_base_read, make_store_mutate, make_store_set, make_store_update,
@@ -310,6 +313,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyReactiveImportMemberMutationRoot { .. }
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::IllegalWrite
@@ -345,6 +349,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
             } => self.rewrite_each_item_reassignment_assignment(
                 node, item_sym, index_sym, index_read, ctx,
             ),
+            ReferenceSemantics::EachItemDestructuredWriteLegacy { item_symbol } => {
+                self.rewrite_each_item_destructured_assignment(node, item_symbol, ctx)
+            }
             ReferenceSemantics::SignalWrite {
                 store_unsub: Some(store_symbol),
                 ..
@@ -440,6 +447,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 index_read,
             } => self
                 .rewrite_each_item_reassignment_update(node, item_sym, index_sym, index_read, ctx),
+            ReferenceSemantics::EachItemDestructuredWriteLegacy { .. } => false,
             ReferenceSemantics::SignalUpdate { .. }
             | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::StoreUpdate { .. }
@@ -554,6 +562,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyReactiveImportRead
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::IllegalWrite
@@ -626,6 +635,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             | ReferenceSemantics::LegacyReactiveImportRead
             | ReferenceSemantics::ImportSubscribedRead { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::DerivedWrite
             | ReferenceSemantics::DerivedUpdate
             | ReferenceSemantics::IllegalWrite
@@ -1269,6 +1279,121 @@ impl<'a> ComponentTransformer<'_, 'a> {
         let placeholder = self.make_rune_get("");
         let mutation = mem::replace(node, placeholder);
         *node = self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_sym, ctx);
+        true
+    }
+
+    fn each_item_writeback_place(&self, item_symbol: SymbolId) -> Option<Expression<'a>> {
+        let analysis = self.analysis?;
+        let block_id = *self
+            .transform_data
+            .each_destructure_block_by_symbol
+            .get(&item_symbol)?;
+        let svelte_ast::Node::EachBlock(block) = self.component?.store.get(block_id) else {
+            return None;
+        };
+        let context = block.context.as_ref()?;
+        let Some(Statement::VariableDeclaration(decl)) = self.parsed.as_ref()?.stmt(context.id())
+        else {
+            return None;
+        };
+        let declarator = decl.declarations.first()?;
+
+        let item_reactive = match analysis.block_semantics(block_id) {
+            svelte_analyze::BlockSemantics::Each(sem) => sem
+                .each_flags
+                .contains(svelte_analyze::EachFlags::ITEM_REACTIVE),
+            _ => false,
+        };
+
+        let mut place: Option<Expression<'a>> = None;
+        walk_bindings(&declarator.id, |v| {
+            if v.symbol != item_symbol || place.is_some() {
+                return;
+            }
+            let mut expr = if item_reactive {
+                self.make_rune_get(EACH_SYNTHETIC_ITEM_NAME)
+            } else {
+                self.b.rid_expr(EACH_SYNTHETIC_ITEM_NAME)
+            };
+            for (index, step) in v.path.iter().enumerate() {
+                match step.access {
+                    Access::Key { key, computed } => {
+                        expr = binding_pattern::member_access(self.b, expr, key, computed);
+                    }
+                    Access::Index { index: at, .. } => {
+                        let Some(name) = self.each_destructure_carrier(block_id, &v.path[..index])
+                        else {
+                            return;
+                        };
+                        expr = self.b.computed_member_expr(
+                            self.b.rid_expr(name),
+                            self.b.num_expr(at as f64),
+                        );
+                    }
+                    Access::Slice { .. } => return,
+                }
+            }
+            place = Some(expr);
+        });
+        place
+    }
+
+    fn each_destructure_carrier(
+        &self,
+        block_id: svelte_ast::NodeId,
+        prefix: &[svelte_component_semantics::Step<'_>],
+    ) -> Option<&'a str> {
+        let key = (block_id, binding_pattern::serialize_prefix(prefix));
+        let name = self
+            .transform_data
+            .each_destructure_carrier_names
+            .get(&key)?;
+        Some(self.b.alloc_str(name))
+    }
+
+    fn rewrite_each_item_destructured_assignment(
+        &self,
+        node: &mut Expression<'a>,
+        item_symbol: SymbolId,
+        ctx: &mut TraverseCtx<'a, ()>,
+    ) -> bool {
+        let Some(analysis) = self.analysis else {
+            return false;
+        };
+        let Some(source_syms) = analysis.each_item_indirect_sources(item_symbol) else {
+            return false;
+        };
+        if source_syms.is_empty() {
+            return false;
+        }
+        let Some(place) = self.each_item_writeback_place(item_symbol) else {
+            return false;
+        };
+        let operator = {
+            let Expression::AssignmentExpression(assign) = &*node else {
+                return false;
+            };
+            assign.operator
+        };
+        let compound_read = if operator.is_assign() {
+            None
+        } else {
+            let name = self.component_scoping.symbol_name(item_symbol).to_string();
+            Some(self.each_item_member_root_read_legacy(analysis, item_symbol, &name))
+        };
+        let Expression::AssignmentExpression(assign) = &mut *node else {
+            return false;
+        };
+        if let Some(left_read) = compound_read {
+            let right = self.b.move_expr(&mut assign.right);
+            assign.right = self.build_compound_value(operator, left_read, right);
+            assign.operator = AssignmentOperator::Assign;
+        }
+        assign.left = self.b.expr_to_assignment_target(place);
+        let placeholder = self.make_rune_get("");
+        let mutation = mem::replace(node, placeholder);
+        *node =
+            self.make_each_item_invalidate_seq(analysis, mutation, source_syms, item_symbol, ctx);
         true
     }
 

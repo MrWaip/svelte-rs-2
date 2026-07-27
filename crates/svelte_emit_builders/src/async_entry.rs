@@ -113,23 +113,28 @@ fn entry_location_by_node(
 }
 
 pub fn push_entry_statement<'a>(
+    b: &Builder<'a>,
     bucket: &mut Vec<EntryStatement<'a>>,
     stmt: Statement<'a>,
     kind: AsyncEntryMemberKind,
 ) {
     match kind {
-        AsyncEntryMemberKind::Statement => match stmt {
+        AsyncEntryMemberKind::SideEffect => match stmt {
             Statement::EmptyStatement(_) => {}
             Statement::ExpressionStatement(expr_stmt) => {
                 bucket.push(EntryStatement::Expression(expr_stmt.unbox().expression));
             }
             other => bucket.push(EntryStatement::Plain(other)),
         },
-        AsyncEntryMemberKind::Declarator => push_declarator_statement(bucket, stmt),
+        AsyncEntryMemberKind::Binding => push_binding_statement(b, bucket, stmt),
     }
 }
 
-fn push_declarator_statement<'a>(bucket: &mut Vec<EntryStatement<'a>>, stmt: Statement<'a>) {
+fn push_binding_statement<'a>(
+    b: &Builder<'a>,
+    bucket: &mut Vec<EntryStatement<'a>>,
+    stmt: Statement<'a>,
+) {
     match stmt {
         Statement::EmptyStatement(_) => {}
         Statement::ExpressionStatement(expr_stmt) => {
@@ -137,8 +142,13 @@ fn push_declarator_statement<'a>(bucket: &mut Vec<EntryStatement<'a>>, stmt: Sta
         }
         Statement::BlockStatement(block) => {
             for inner in block.unbox().body {
-                push_declarator_statement(bucket, inner);
+                push_binding_statement(b, bucket, inner);
             }
+        }
+        Statement::ClassDeclaration(class) if class.id.is_some() => {
+            bucket.push(EntryStatement::Value(
+                b.class_declaration_to_assignment(class),
+            ));
         }
         other => bucket.push(EntryStatement::Plain(other)),
     }

@@ -13,7 +13,7 @@ use svelte_analyze::{
 };
 use svelte_ast::{Node, NodeId};
 use svelte_ast_builder::{Arg, ObjProp};
-use svelte_component_semantics::{Access, BindingVisit, OxcNodeId, walk_bindings};
+use svelte_component_semantics::{Access, OxcNodeId, walk_bindings};
 use svelte_emit_builders::binding_pattern as bp;
 use svelte_emit_builders::runes::rune_get;
 
@@ -74,7 +74,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     );
                 };
                 let item_reactive = self.each_item_reactive(block_id)?;
-                let (decls, writeback_places) = self.emit_each_item(pattern, item_reactive);
+                let (decls, writeback_places) =
+                    self.emit_each_item(block_id, pattern, item_reactive);
                 Ok(Out::EachItem {
                     decls,
                     writeback_places,
@@ -190,6 +191,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn emit_each_item(
         &mut self,
+        block_id: NodeId,
         pattern: &'a BindingPattern<'a>,
         item_reactive: bool,
     ) -> (Vec<Statement<'a>>, FxHashMap<SymbolId, Expression<'a>>) {
@@ -215,7 +217,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 match step.access {
                     Access::Key { key, computed } => {
                         expr = bp::member_access(&self.ctx.b, expr, key, computed);
-                        update_expr = bp::member_access(&self.ctx.b, update_expr, key, computed);
+                        update_expr =
+                            self.writeback_member_access(update_expr, key, computed, v.symbol, i);
                     }
                     Access::Index {
                         index,
@@ -224,6 +227,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
+                            Some(block_id),
                             &mut carriers,
                             &mut carrier_stmts,
                             &prefix,
@@ -238,6 +242,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     Access::Slice { from } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
+                            Some(block_id),
                             &mut carriers,
                             &mut carrier_stmts,
                             &prefix,
@@ -264,7 +269,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 expr = bp::exclude_from_object(&self.ctx.b, expr, v.excluded);
             }
 
-            if has_writeback_place_legacy(&v) {
+            if bp::has_each_item_writeback_place(&v) {
                 writeback_places.insert(v.symbol, update_expr);
             }
 
@@ -452,6 +457,31 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
+    fn writeback_member_access(
+        &self,
+        object: Expression<'a>,
+        key: &PropertyKey<'_>,
+        computed: bool,
+        symbol: SymbolId,
+        step: usize,
+    ) -> Expression<'a> {
+        if !computed {
+            return bp::member_access(&self.ctx.b, object, key, computed);
+        }
+        let raw = self
+            .ctx
+            .transform_data
+            .each_destructure_computed_keys
+            .get(&symbol)
+            .and_then(|keys| keys.get(step))
+            .and_then(|key| key.as_deref());
+        let Some(raw) = raw else {
+            return bp::member_access(&self.ctx.b, object, key, computed);
+        };
+        let key_expr = self.ctx.b.parse_expression(raw);
+        self.ctx.b.computed_member_expr(object, key_expr)
+    }
+
     fn carrier_index_expr(&self, carrier: Expression<'a>, index: u32) -> Expression<'a> {
         self.ctx
             .b
@@ -465,6 +495,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn ensure_carrier(
         &mut self,
+        block_id: Option<NodeId>,
         carriers: &mut HashMap<String, String>,
         carrier_stmts: &mut Vec<Statement<'a>>,
         prefix: &str,
@@ -474,7 +505,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if let Some(name) = carriers.get(prefix) {
             return name.clone();
         }
-        let name = self.ctx.state.gen_ident("$$array");
+        let reserved = block_id.and_then(|block_id| {
+            self.ctx
+                .transform_data
+                .each_destructure_carrier_names
+                .get(&(block_id, prefix.to_string()))
+                .cloned()
+        });
+        let name = match reserved {
+            Some(name) => name,
+            None => self.ctx.state.gen_ident("$$array"),
+        };
         let derived = bp::to_array_derived(&self.ctx.b, array_expr, count, None);
         carrier_stmts.push(self.ctx.b.var_stmt(&name, derived));
         carriers.insert(prefix.to_string(), name.clone());
@@ -662,6 +703,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
+                            None,
                             &mut carriers,
                             &mut carrier_stmts,
                             &prefix,
@@ -677,6 +719,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     Access::Slice { from } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
+                            None,
                             &mut carriers,
                             &mut carrier_stmts,
                             &prefix,
@@ -736,16 +779,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
 fn carrier_count(len: u32, has_rest: bool) -> Option<u32> {
     if has_rest { None } else { Some(len) }
-}
-
-fn has_writeback_place_legacy(v: &BindingVisit<'_, '_>) -> bool {
-    if v.is_rest {
-        return false;
-    }
-    match v.path.last().map(|step| step.access) {
-        Some(Access::Slice { .. }) => false,
-        Some(Access::Key { .. }) | Some(Access::Index { .. }) | None => true,
-    }
 }
 
 fn param_member_access<'a, 'ctx>(

@@ -91,8 +91,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
                 let anchor_expr = self.ctx.b.rid_expr(&anchor_name);
                 let async_stmt = self.emit_async_call_stmt(
-                    &blockers,
-                    &[],
+                    self.ctx.script_blocker_exprs(&blockers),
                     anchor_expr,
                     callback_node,
                     "$$html",

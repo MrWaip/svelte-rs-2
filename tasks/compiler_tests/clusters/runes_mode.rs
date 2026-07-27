@@ -23,7 +23,7 @@ compiler_case!(
 compiler_case!(
     template_await_const_tag_forces_runes,
     "runes_mode/template_await_const_tag_forces_runes",
-    ignore = "async const-tag emits an extra await/save wrapper"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     template_await_in_handler_stays_legacy_guard,

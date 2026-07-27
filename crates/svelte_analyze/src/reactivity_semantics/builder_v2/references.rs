@@ -496,6 +496,13 @@ fn classify_reference_semantics(
                 return Some(ReferenceFacts::EachItemIndexedLegacy { item_symbol: sym });
             }
             if is_write {
+                if !is_member_mutation_root
+                    && data.reactivity.each_item_indirect_sources(sym).is_some()
+                {
+                    return Some(ReferenceFacts::EachItemDestructuredWriteLegacy {
+                        item_symbol: sym,
+                    });
+                }
                 return Some(ReferenceFacts::IllegalWrite);
             }
             if !is_read {

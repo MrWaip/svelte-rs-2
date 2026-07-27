@@ -3,17 +3,17 @@ use super::*;
 compiler_case!(
     group_blocker_order_mixed,
     "async_fragment_declaration/group_blocker_order_mixed",
-    ignore = "script blockers and declaration blockers are two lists, so a block emits them grouped rather than in reference order"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     group_each_mixed_blockers,
     "async_fragment_declaration/group_each_mixed_blockers",
-    ignore = "script blockers and declaration blockers are two lists, so a block emits them grouped rather than in reference order"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     group_snippet_before_declaration,
     "async_fragment_declaration/group_snippet_before_declaration",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     group_after_hoisted_declaration,
@@ -106,7 +106,7 @@ compiler_case!(
 compiler_case!(
     snippet_blocks_on_outer_fragment,
     "async_fragment_declaration/snippet_blocks_on_outer_fragment",
-    [prod, dev, ssr_todo, ssr_dev_todo]
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
@@ -148,5 +148,5 @@ compiler_case!(
 compiler_case!(
     if_each_declaration_blockers,
     "async_fragment_declaration/if_each_declaration_blockers",
-    [prod_todo, dev_todo, ssr, ssr_dev]
+    [prod, dev, ssr, ssr_dev]
 );

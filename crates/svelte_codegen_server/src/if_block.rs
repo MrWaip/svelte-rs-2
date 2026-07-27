@@ -1,5 +1,5 @@
-use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{BlockSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics};
+use oxc_ast::ast::Statement;
+use svelte_analyze::{BlockSemantics, IfAlternate, IfBlockSemantics};
 use svelte_ast::{IfBlock, Node};
 
 use crate::error::{CodegenError, Result};
@@ -12,13 +12,8 @@ impl<'a> ServerCodegen<'a> {
             BlockSemantics::If(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(block.id, "if block")),
         };
-        let (async_blockers, block_is_async) = match &sem.async_kind {
-            IfAsyncKind::Sync => (None, false),
-            IfAsyncKind::Awaited { blockers } => (Some(blockers.clone()), true),
-            IfAsyncKind::Deferred { blockers } => (Some(blockers.clone()), false),
-        };
-
-        let declaration_blockers = self.declaration_blocker_exprs(&sem.declaration_blockers);
+        let block_is_async = sem.async_kind.is_awaited();
+        let blocker_exprs = self.blocker_exprs(&sem.blockers);
 
         let mut chain = self.build_if_alternate(&sem)?;
 
@@ -28,7 +23,7 @@ impl<'a> ServerCodegen<'a> {
                 _ => return Err(CodegenError::Unsupported(branch.block_id, "if branch")),
             };
             let mut test = self.take_expression(branch.block_id, &test_ref)?;
-            if async_blockers.is_some() {
+            if block_is_async {
                 test = self.save_block_await(test);
             }
             let mut body =
@@ -43,18 +38,12 @@ impl<'a> ServerCodegen<'a> {
             block.id,
             "if block without branches",
         ))?;
-        if sem.async_kind.is_sync() && declaration_blockers.is_empty() {
+        if sem.async_kind.is_sync() && blocker_exprs.is_empty() {
             self.push_stmt(if_statement);
             self.push_text("<!--]-->");
             return Ok(());
         }
 
-        let mut blocker_exprs: Vec<Expression<'a>> = async_blockers
-            .iter()
-            .flatten()
-            .map(|&idx| self.blocker_member(idx))
-            .collect();
-        blocker_exprs.extend(declaration_blockers);
         let wrapped =
             self.wrap_async_block_exprs(vec![if_statement], blocker_exprs, block_is_async);
         self.push_stmt(wrapped);

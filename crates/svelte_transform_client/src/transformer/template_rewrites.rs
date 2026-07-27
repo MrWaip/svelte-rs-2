@@ -68,6 +68,7 @@ pub(crate) fn rewrite_template_exit<'a>(
             AwaitSemantics::NonTerminal => true,
             AwaitSemantics::TerminalInFragmentInterpolation
             | AwaitSemantics::TerminalInConstruct
+            | AwaitSemantics::TerminalInReactiveDeclaration
             | AwaitSemantics::Detached => false,
         };
 

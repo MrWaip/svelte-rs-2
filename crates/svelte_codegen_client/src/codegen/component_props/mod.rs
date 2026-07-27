@@ -1,6 +1,7 @@
 mod attach_prop;
 mod bind_prop;
 mod bind_this;
+mod css_prop;
 mod dispatch;
 mod dynamic_ref;
 mod events;

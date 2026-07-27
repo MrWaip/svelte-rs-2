@@ -6,7 +6,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
 use svelte_analyze::{
-    AnalysisData, CodegenView, ElementSemantics, IdentGen, JsAst, RuntimeSemantics,
+    AnalysisData, CodegenView, ElementSemantics, ExpressionBlocker, IdentGen, JsAst,
+    RuntimeSemantics,
 };
 use svelte_ast::{
     Attribute, AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
@@ -258,19 +259,41 @@ impl<'a> Ctx<'a> {
         self.query.runtime_semantics()
     }
 
-    pub fn declaration_blocker_slots_of(&self, nodes: &[NodeId]) -> Vec<(String, usize)> {
-        let mut slots: Vec<(String, usize)> = Vec::new();
-        for node in nodes {
-            let Some((name, idx)) = self.declaration_blocker_slots.get(node) else {
-                continue;
-            };
-            let slot = (name.clone(), *idx);
-            if slots.contains(&slot) {
-                continue;
+    pub fn blocker_exprs(&self, blockers: &[ExpressionBlocker]) -> Vec<Expression<'a>> {
+        let mut out: Vec<Expression<'a>> = Vec::new();
+        for blocker in blockers {
+            match blocker {
+                ExpressionBlocker::Script { entry } => {
+                    out.push(self.b.computed_member_expr(
+                        self.b.rid_expr("$$promises"),
+                        self.b.num_expr(*entry as f64),
+                    ));
+                }
+                ExpressionBlocker::FragmentDeclaration { node } => {
+                    let Some((name, idx)) = self.declaration_blocker_slots.get(node) else {
+                        continue;
+                    };
+                    out.push(
+                        self.b.computed_member_expr(
+                            self.b.rid_expr(name),
+                            self.b.num_expr(*idx as f64),
+                        ),
+                    );
+                }
             }
-            slots.push(slot);
         }
-        slots
+        out
+    }
+
+    pub fn script_blocker_exprs(&self, blockers: &[u32]) -> Vec<Expression<'a>> {
+        let mut out: Vec<Expression<'a>> = Vec::new();
+        for &entry in blockers {
+            out.push(self.b.computed_member_expr(
+                self.b.rid_expr("$$promises"),
+                self.b.num_expr(entry as f64),
+            ));
+        }
+        out
     }
 
     pub fn const_tag_blocker_slots(&mut self, id: NodeId) -> Vec<(String, usize)> {

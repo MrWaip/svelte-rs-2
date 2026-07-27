@@ -21,8 +21,8 @@ pub struct BlockerSlot {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsyncEntryMemberKind {
-    Declarator,
-    Statement,
+    Binding,
+    SideEffect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

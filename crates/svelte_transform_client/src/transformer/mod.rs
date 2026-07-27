@@ -263,6 +263,9 @@ impl<'a> Traverse<'a, ()> for ComponentTransformer<'_, 'a> {
         if self.rewrite_private_read_exit(node) {
             return;
         }
+        if self.rewrite_script_await_save(node) {
+            return;
+        }
         if self.dev {
             if let Some(replacement) = self.transform_inspect(node) {
                 *node = replacement;
