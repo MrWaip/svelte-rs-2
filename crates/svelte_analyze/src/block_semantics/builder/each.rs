@@ -4,7 +4,7 @@ use super::super::{
 };
 use super::common::{binding_ident_of, binding_pattern_node_id, declarator_from_stmt};
 use super::walker::Ctx;
-use crate::expression_semantics::{ExpressionData, ExpressionSemantics, Volatility};
+use crate::expression_semantics::{ExpressionData, Volatility};
 use crate::reactivity_semantics::data::{BindingSemantics, PropBindingKind};
 use crate::utils::node_id_utils::expression_node_id;
 use oxc_ast::ast::{BindingPattern, Expression, IdentifierReference};
@@ -122,10 +122,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
                 .any(|name| ctx.semantics.find_binding(parent, name).is_some())
         });
 
-    let expression_data = match ctx.expressions.get(block.id) {
-        ExpressionSemantics::Expression(d) => Some(d),
-        ExpressionSemantics::NonSpecial => None,
-    };
+    let expression_data = ctx.expressions.get(block.id).data();
 
     let async_kind = derive_async_kind(expression_data);
 

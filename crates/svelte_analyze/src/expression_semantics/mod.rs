@@ -25,10 +25,13 @@ bitflags! {
 
 #[derive(Debug, Default, Clone)]
 pub struct ExpressionSemanticsStore {
-    entries: FxHashMap<u32, ExpressionSemantics>,
-    by_oxc: FxHashMap<OxcNodeId, ExpressionSemantics>,
+    entries: FxHashMap<u32, u32>,
+    by_oxc: FxHashMap<OxcNodeId, u32>,
+    values: Vec<ExpressionSemantics>,
     context_signals: ContextSignal,
 }
+
+const NON_SPECIAL: &ExpressionSemantics = &ExpressionSemantics::NonSpecial;
 
 impl ExpressionSemanticsStore {
     pub(crate) fn new(node_count: u32) -> Self {
@@ -36,32 +39,53 @@ impl ExpressionSemanticsStore {
         Self {
             entries: FxHashMap::with_capacity_and_hasher(cap, Default::default()),
             by_oxc: FxHashMap::with_capacity_and_hasher(cap, Default::default()),
+            values: Vec::with_capacity(cap),
             context_signals: ContextSignal::empty(),
         }
     }
 
     pub fn get(&self, id: NodeId) -> &ExpressionSemantics {
-        self.entries
-            .get(&id.0)
-            .unwrap_or(&ExpressionSemantics::NonSpecial)
+        match self.entries.get(&id.0) {
+            Some(slot) => &self.values[*slot as usize],
+            None => NON_SPECIAL,
+        }
     }
 
     pub fn get_by_oxc(&self, id: OxcNodeId) -> &ExpressionSemantics {
-        self.by_oxc
-            .get(&id)
-            .unwrap_or(&ExpressionSemantics::NonSpecial)
+        match self.by_oxc.get(&id) {
+            Some(slot) => &self.values[*slot as usize],
+            None => NON_SPECIAL,
+        }
     }
 
     pub fn is_context_required(&self) -> bool {
         !self.context_signals.is_empty()
     }
 
+    fn push_value(&mut self, value: ExpressionSemantics) -> u32 {
+        let slot = self.values.len() as u32;
+        self.values.push(value);
+        slot
+    }
+
     pub(crate) fn set(&mut self, id: NodeId, value: ExpressionSemantics) {
-        self.entries.insert(id.0, value);
+        match self.entries.get(&id.0) {
+            Some(slot) => self.values[*slot as usize] = value,
+            None => {
+                let slot = self.push_value(value);
+                self.entries.insert(id.0, slot);
+            }
+        }
     }
 
     pub(crate) fn set_by_oxc(&mut self, id: OxcNodeId, value: ExpressionSemantics) {
-        self.by_oxc.insert(id, value);
+        match self.by_oxc.get(&id) {
+            Some(slot) => self.values[*slot as usize] = value,
+            None => {
+                let slot = self.push_value(value);
+                self.by_oxc.insert(id, slot);
+            }
+        }
     }
 
     pub(crate) fn note_context(&mut self, signal: ContextSignal) {

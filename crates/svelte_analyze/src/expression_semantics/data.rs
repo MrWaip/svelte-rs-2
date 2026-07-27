@@ -10,6 +10,15 @@ pub enum ExpressionSemantics {
     Expression(ExpressionData),
 }
 
+impl ExpressionSemantics {
+    pub fn data(&self) -> Option<&ExpressionData> {
+        match self {
+            Self::NonSpecial => None,
+            Self::Expression(data) => Some(data),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExpressionData {
     pub volatility: Volatility,
