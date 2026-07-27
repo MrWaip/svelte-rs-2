@@ -21,7 +21,7 @@ permissions:
   pull-requests: read
 
 env:
-  RUST_CHANNEL: '1.94.1'
+  RUST_CHANNEL: '1.97.1'
   NODE_VERSION: '22.13.0'
 
 jobs:

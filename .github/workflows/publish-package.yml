@@ -22,7 +22,7 @@ permissions:
 
 env:
   NODE_VERSION: '22.13.0'
-  RUST_CHANNEL: '1.94.1'
+  RUST_CHANNEL: '1.97.1'
 
 jobs:
   version:
