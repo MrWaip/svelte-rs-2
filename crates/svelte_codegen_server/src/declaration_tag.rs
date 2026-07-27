@@ -73,9 +73,7 @@ impl<'a> ServerCodegen<'a> {
             assignments.push(self.b.assign_expr_raw(target, init));
         }
 
-        for name in &declared {
-            self.push_stmt(self.b.let_stmt(name));
-        }
+        self.pending_group_declarations.extend(declared);
         Ok((symbols, assignments))
     }
 

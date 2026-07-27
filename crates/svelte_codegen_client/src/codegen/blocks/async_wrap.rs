@@ -12,16 +12,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_async_call_stmt(
         &mut self,
         blockers: &[u32],
+        const_blockers: &[(String, usize)],
         anchor: Expression<'a>,
         node_param: &str,
         condition_param: &str,
         thunk: Option<Expression<'a>>,
         inner_stmts: Vec<Statement<'a>>,
     ) -> Result<Statement<'a>> {
-        let blockers_expr = if blockers.is_empty() {
+        let blockers_expr = if blockers.is_empty() && const_blockers.is_empty() {
             self.ctx.b.empty_array_expr()
         } else {
-            self.ctx.b.promises_array(blockers)
+            let mut members: Vec<Expression<'a>> = blockers
+                .iter()
+                .map(|&idx| {
+                    self.ctx.b.computed_member_expr(
+                        self.ctx.b.rid_expr("$$promises"),
+                        self.ctx.b.num_expr(idx as f64),
+                    )
+                })
+                .collect();
+            for slot in const_blockers {
+                members.push(self.ctx.blocker_slot_expr(slot));
+            }
+            self.ctx.b.array_expr(members)
         };
         let (async_values, callback_params) = match thunk {
             Some(thunk) => (

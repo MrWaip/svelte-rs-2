@@ -204,6 +204,10 @@ pub enum TemplateEffect {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HtmlConcatPart {
     StaticText(CompactString),
+    FoldedText {
+        text: CompactString,
+        part_id: NodeId,
+    },
     Inline {
         part_id: NodeId,
         defined: bool,

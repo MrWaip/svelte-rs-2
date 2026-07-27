@@ -1,4 +1,4 @@
-use oxc_ast::ast::Statement;
+use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{BlockSemantics, IfAlternate, IfAsyncKind, IfBlockSemantics};
 use svelte_ast::{IfBlock, Node};
 
@@ -17,6 +17,8 @@ impl<'a> ServerCodegen<'a> {
             IfAsyncKind::Awaited { blockers } => (Some(blockers.clone()), true),
             IfAsyncKind::Deferred { blockers } => (Some(blockers.clone()), false),
         };
+
+        let declaration_blockers = self.declaration_blocker_exprs(&sem.declaration_blockers);
 
         let mut chain = self.build_if_alternate(&sem)?;
 
@@ -41,14 +43,21 @@ impl<'a> ServerCodegen<'a> {
             block.id,
             "if block without branches",
         ))?;
-        match async_blockers {
-            Some(blockers) => {
-                let wrapped =
-                    self.wrap_async_block_flagged(vec![if_statement], &blockers, block_is_async);
-                self.push_stmt(wrapped);
-            }
-            None => self.push_stmt(if_statement),
+        if sem.async_kind.is_sync() && declaration_blockers.is_empty() {
+            self.push_stmt(if_statement);
+            self.push_text("<!--]-->");
+            return Ok(());
         }
+
+        let mut blocker_exprs: Vec<Expression<'a>> = async_blockers
+            .iter()
+            .flatten()
+            .map(|&idx| self.blocker_member(idx))
+            .collect();
+        blocker_exprs.extend(declaration_blockers);
+        let wrapped =
+            self.wrap_async_block_exprs(vec![if_statement], blocker_exprs, block_is_async);
+        self.push_stmt(wrapped);
         self.push_text("<!--]-->");
         Ok(())
     }

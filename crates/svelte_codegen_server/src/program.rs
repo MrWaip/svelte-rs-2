@@ -14,6 +14,7 @@ use svelte_sourcemap::JsOutput;
 use crate::error::Result;
 use crate::fragment::FragmentParent;
 use crate::model::ServerCodegen;
+use crate::renderer::leading_declaration_count;
 
 impl<'a> ServerCodegen<'a> {
     fn wrap_settled_loop(&self, inner_body: Vec<Statement<'a>>) -> Vec<Statement<'a>> {
@@ -67,8 +68,13 @@ impl<'a> ServerCodegen<'a> {
         self.reserve_each_index_names();
         self.prepare_declaration_groups();
         self.fragment(root, FragmentParent::Root)?;
-        let mut template_body = self.take_render_hoists();
-        template_body.extend(self.take_renderer_statements());
+        let hoists = self.take_render_hoists();
+        let mut rendered = self.take_renderer_statements();
+        let split = leading_declaration_count(&rendered);
+        let tail = rendered.split_off(split);
+        let mut template_body = rendered;
+        template_body.extend(hoists);
+        template_body.extend(tail);
         let template_body = match runtime.child_prop_mode {
             ChildPropMode::InOut => self.wrap_settled_loop(template_body),
             ChildPropMode::In => template_body,

@@ -1,9 +1,10 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::NamespaceKind;
+use svelte_analyze::{ExpressionData, NamespaceKind, Volatility};
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
+use super::super::data_structures::{DeferredMemoValue, EmitState};
 use super::super::expr::evaluation_is_defined;
 use super::super::{Codegen, CodegenError, Result};
 
@@ -25,6 +26,72 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 | Some(NamespaceKind::MathMl)
                 | Some(NamespaceKind::AnnotationXml)
         )
+    }
+
+    pub(super) fn defer_blockers(
+        &self,
+        state: &mut EmitState<'a>,
+        node: NodeId,
+        data: &ExpressionData,
+    ) {
+        state.deferred_memo_values.push(DeferredMemoValue {
+            node,
+            late_id: None,
+            data: data.clone(),
+            expr: None,
+        });
+    }
+
+    pub(super) fn defer_memo_value(
+        &mut self,
+        state: &mut EmitState<'a>,
+        node: NodeId,
+        data: &ExpressionData,
+        expr: Expression<'a>,
+    ) -> Expression<'a> {
+        match data.volatility {
+            Volatility::Heavy | Volatility::Asynchronous => {}
+            Volatility::Static | Volatility::Reactive => {
+                self.defer_blockers(state, node, data);
+                return expr;
+            }
+        }
+        let late_id = state.shared_memo.reserve_late();
+        state.deferred_memo_values.push(DeferredMemoValue {
+            node,
+            late_id: Some(late_id),
+            data: data.clone(),
+            expr: Some(expr),
+        });
+        state.shared_memo.late_param_expr(self.ctx, late_id)
+    }
+
+    pub(in super::super) fn flush_deferred_memo_values(
+        &mut self,
+        state: &mut EmitState<'a>,
+        start: usize,
+    ) -> Result<()> {
+        let deferred: Vec<DeferredMemoValue<'a>> =
+            state.deferred_memo_values.drain(start..).collect();
+        for entry in deferred {
+            let (Some(late_id), Some(expr)) = (entry.late_id, entry.expr) else {
+                state
+                    .shared_memo
+                    .push_expression_data(self.ctx, &entry.data);
+                continue;
+            };
+            let Some(slot) = state
+                .shared_memo
+                .add_memoized_expr(self.ctx, &entry.data, expr)
+            else {
+                return CodegenError::semantic_mismatch(
+                    entry.node,
+                    "deferred memo value reserved a slot but did not memoize",
+                );
+            };
+            state.shared_memo.resolve_late(late_id, Some(slot));
+        }
+        Ok(())
     }
 
     pub(super) fn attr_blockers(&self, attr_id: NodeId) -> Vec<u32> {

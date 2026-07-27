@@ -14,7 +14,7 @@ impl ServerCodegen<'_> {
 
     pub(crate) fn expression_tag(&mut self, tag: &ExpressionTag) -> Result<()> {
         if let ExpressionSemantics::Expression(data) = self.analysis.expressions_v2.get(tag.id)
-            && let Some(known) = data.declared_evaluation.known_str()
+            && let Some(known) = data.unblocked_declared_str()
         {
             self.push_text(&escape_text(&known));
             return Ok(());

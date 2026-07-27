@@ -1022,14 +1022,17 @@ fn derive_blockers(ctx: &Ctx<'_, '_>, d: &BindDirective) -> SmallVec<[u32; 2]> {
     let Some(data) = ctx.expression_data(d.id) else {
         return result;
     };
+    let mut seen: SmallVec<[u32; 2]> = SmallVec::new();
     for &sym in &data.references {
-        if let Some(idx) = ctx.blockers.symbol_blocker(sym)
-            && !result.contains(&idx)
-        {
-            result.push(idx);
+        let Some(slot) = ctx.blockers.symbol_blocker(sym) else {
+            continue;
+        };
+        if seen.contains(&slot.member) {
+            continue;
         }
+        seen.push(slot.member);
+        result.push(slot.entry);
     }
-    result.sort_unstable();
     result
 }
 
@@ -1765,23 +1768,14 @@ fn derive_html_concat_semantics(
                 };
                 if !single && let Evaluation::Known(_) = &data.evaluation {
                     let text = data.evaluation.known_str().unwrap_or_default();
-                    parts.push(HtmlConcatPart::StaticText(text.into()));
+                    parts.push(HtmlConcatPart::FoldedText {
+                        text: text.into(),
+                        part_id: *id,
+                    });
                     continue;
                 }
                 let defined = matches!(data.evaluation, Evaluation::Defined { .. });
                 let wrap = data.legacy_wrap;
-                if !data.blockers.is_empty() {
-                    let index = async_index;
-                    async_index += 1;
-                    has_async = true;
-                    parts.push(HtmlConcatPart::AsyncMemoSlot {
-                        index,
-                        part_id: *id,
-                        defined,
-                        wrap,
-                    });
-                    continue;
-                }
                 match data.volatility {
                     Volatility::Asynchronous => {
                         let index = async_index;
@@ -2006,16 +2000,20 @@ fn derive_component_prop_memo_core(
     carrier: ComponentPropCarrier,
 ) -> ComponentPropMemo {
     let expr = expr_raw.get_inner_expression();
-    if matches!(
-        expr,
-        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
-    ) {
+    if data.blockers.is_empty()
+        && matches!(
+            expr,
+            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+        )
+    {
         return ComponentPropMemo::Inline;
     }
-    if matches!(
-        expr,
-        Expression::ObjectExpression(_) | Expression::ArrayExpression(_)
-    ) && object_array_literal_is_inline(ctx, expr)
+    if data.blockers.is_empty()
+        && matches!(
+            expr,
+            Expression::ObjectExpression(_) | Expression::ArrayExpression(_)
+        )
+        && object_array_literal_is_inline(ctx, expr)
     {
         return ComponentPropMemo::Inline;
     }
@@ -2030,7 +2028,7 @@ fn derive_component_prop_memo_core(
         ComponentPropMemo::Awaited
     } else if matches!(data.volatility, Volatility::Heavy) {
         ComponentPropMemo::Derived
-    } else if needs_wrap && simple_shape {
+    } else if (needs_wrap && simple_shape) || (!needs_wrap && !data.blockers.is_empty()) {
         ComponentPropMemo::Getter
     } else if needs_wrap {
         match carrier {

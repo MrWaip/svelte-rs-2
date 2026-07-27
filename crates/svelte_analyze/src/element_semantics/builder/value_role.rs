@@ -150,3 +150,27 @@ fn select_is_controlled(el: &Element) -> bool {
         _ => false,
     })
 }
+
+pub(super) fn content_value_nodes(
+    component: &Component,
+    data: &AnalysisData,
+    el: &Element,
+) -> smallvec::SmallVec<[NodeId; 2]> {
+    let mut nodes: smallvec::SmallVec<[NodeId; 2]> = smallvec::SmallVec::new();
+    if el.name.as_str() != "textarea" {
+        return nodes;
+    }
+    if !data.elements.flags.needs_textarea_value_lowering(el.id) {
+        return nodes;
+    }
+    for child_id in component.store.fragment_nodes(el.fragment) {
+        let Node::ExpressionTag(tag) = component.store.get(*child_id) else {
+            continue;
+        };
+        if nodes.contains(&tag.id) {
+            continue;
+        }
+        nodes.push(tag.id);
+    }
+    nodes
+}

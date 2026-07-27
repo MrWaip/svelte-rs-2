@@ -351,7 +351,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             };
             let target: &str = self.ctx.b.alloc_str(&name);
             let value_thunk = match async_kind {
-                DerivedAsyncKind::Async => self.ctx.b.async_arrow_expr_body(init),
+                DerivedAsyncKind::Async { .. } => self.ctx.b.async_arrow_expr_body(init),
                 DerivedAsyncKind::Sync => self.ctx.b.thunk(init),
             };
             let derived = self.build_derived(value_thunk, async_kind);
@@ -391,7 +391,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .collect();
             let ret = self.ctx.b.return_stmt(self.ctx.b.object_expr(props));
             let value_thunk = match async_kind {
-                DerivedAsyncKind::Async => self.ctx.b.async_thunk_block(vec![destruct_stmt, ret]),
+                DerivedAsyncKind::Async { .. } => {
+                    self.ctx.b.async_thunk_block(vec![destruct_stmt, ret])
+                }
                 DerivedAsyncKind::Sync => self
                     .ctx
                     .b
@@ -419,7 +421,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         async_kind: DerivedAsyncKind,
     ) -> Expression<'a> {
         match async_kind {
-            DerivedAsyncKind::Async => {
+            DerivedAsyncKind::Async { .. } => {
                 let derived = self
                     .ctx
                     .b

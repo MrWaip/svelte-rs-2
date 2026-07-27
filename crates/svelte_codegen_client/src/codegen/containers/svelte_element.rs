@@ -229,10 +229,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let needs_ns = ns_thunk.is_some() || needs_loc;
         let needs_cb = callback.is_some() || needs_ns;
 
-        let element_anchor_ident = match &tag_async_plan {
-            AsyncEmission::Awaited { .. } | AsyncEmission::Deferred { .. } => "node",
-            AsyncEmission::Sync => anchor_node.as_str(),
-        };
+        let element_anchor_ident = anchor_node.as_str();
         let mut args: Vec<Arg<'a, '_>> = vec![
             Arg::Ident(element_anchor_ident),
             Arg::Expr(get_tag),
@@ -271,8 +268,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 };
                 self.emit_async_call_stmt(
                     &blockers,
+                    &[],
                     anchor_expr,
-                    "node",
+                    anchor_node.as_str(),
                     "$$tag",
                     tag_async_thunk,
                     inner_stmts,

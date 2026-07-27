@@ -99,7 +99,7 @@ pub struct TemplateAnalysis {
     pub fragment_facts: FragmentFacts,
     pub fragment_namespaces: FragmentNamespaces,
     pub rich_content_facts: RichContentFacts,
-    pub(crate) fragment_blockers: Vec<Option<SmallVec<[u32; 2]>>>,
+    pub(crate) fragment_blockers: Vec<Option<SmallVec<[BlockerSlot; 2]>>>,
     pub snippets: SnippetData,
     pub template_topology: TemplateTopology,
     pub template_elements: TemplateElementIndex,
@@ -124,7 +124,7 @@ impl TemplateAnalysis {
         }
     }
 
-    pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[u32] {
+    pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[BlockerSlot] {
         self.fragment_blockers
             .get(id.0 as usize)
             .and_then(|o| o.as_ref())
@@ -134,7 +134,7 @@ impl TemplateAnalysis {
     pub(crate) fn insert_fragment_blockers_by_id(
         &mut self,
         id: svelte_ast::FragmentId,
-        blockers: SmallVec<[u32; 2]>,
+        blockers: SmallVec<[BlockerSlot; 2]>,
     ) {
         let idx = id.0 as usize;
         if self.fragment_blockers.len() <= idx {

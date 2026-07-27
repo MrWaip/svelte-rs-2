@@ -1,5 +1,6 @@
 use std::mem;
 
+use crate::expression_semantics::Suspension;
 use crate::scope::SymbolId;
 use oxc_index::IndexVec;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -704,7 +705,7 @@ pub enum DerivedKind {
 pub enum DerivedAsyncKind {
     Sync,
 
-    Async,
+    Async { suspension: Suspension },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -58,6 +58,26 @@ fn join_group(
     }
 }
 
+pub(super) fn declaration_blockers_of(ctx: &Ctx<'_, '_>, node_id: NodeId) -> SmallVec<[NodeId; 2]> {
+    let ExpressionSemantics::Expression(data) = ctx.expressions.get(node_id) else {
+        return SmallVec::new();
+    };
+    let mut blockers: SmallVec<[NodeId; 2]> = SmallVec::new();
+    for sym in &data.references {
+        let Some(owner) = ctx.declaration_owners.get(sym) else {
+            continue;
+        };
+        if !owner.is_async {
+            continue;
+        }
+        if blockers.contains(&owner.node) {
+            continue;
+        }
+        blockers.push(owner.node);
+    }
+    blockers
+}
+
 fn outer_group_blockers(ctx: &Ctx<'_, '_>, node_id: NodeId) -> SmallVec<[NodeId; 2]> {
     let ExpressionSemantics::Expression(data) = ctx.expressions.get(node_id) else {
         return SmallVec::new();

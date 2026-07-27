@@ -47,6 +47,11 @@ impl<'a> Builder<'a> {
         self.ast.expression_null_literal(SPAN)
     }
 
+    pub fn void_expr(&self, expr: Expression<'a>) -> Expression<'a> {
+        self.ast
+            .expression_unary(SPAN, ast::UnaryOperator::Void, expr)
+    }
+
     pub fn void_zero_expr(&self) -> Expression<'a> {
         self.ast
             .expression_unary(SPAN, ast::UnaryOperator::Void, self.num_expr(0.0))

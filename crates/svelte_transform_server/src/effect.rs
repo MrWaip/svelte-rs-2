@@ -12,6 +12,13 @@ pub(crate) enum RuneStatement<'a> {
 }
 
 impl<'a> ServerTransform<'_, 'a> {
+    fn statement_holds_promise_slot(&self, stmt: &Statement<'a>) -> bool {
+        self.analysis
+            .blocker_data()
+            .entry_location(stmt.node_id())
+            .is_some()
+    }
+
     pub(crate) fn rewrite_rune_statement(&self, stmt: Statement<'a>) -> RuneStatement<'a> {
         let Statement::ExpressionStatement(es) = &stmt else {
             return RuneStatement::Keep(stmt);
@@ -28,7 +35,18 @@ impl<'a> ServerTransform<'_, 'a> {
             RuntimeRuneKind::Effect
             | RuntimeRuneKind::EffectPre
             | RuntimeRuneKind::EffectRoot
-            | RuntimeRuneKind::InspectTrace => RuneStatement::Replace(Vec::new()),
+            | RuntimeRuneKind::InspectTrace => {
+                if self.statement_holds_promise_slot(&stmt) {
+                    let node_id = stmt.node_id();
+                    let void = self.b.void_zero_expr();
+                    let replacement = self.b.expr_stmt(void);
+                    if let Statement::ExpressionStatement(es) = &replacement {
+                        es.node_id.set(node_id);
+                    }
+                    return RuneStatement::Replace(vec![replacement]);
+                }
+                RuneStatement::Replace(Vec::new())
+            }
             RuntimeRuneKind::Inspect => self.rewrite_inspect(stmt, false),
             RuntimeRuneKind::InspectWith => self.rewrite_inspect(stmt, true),
             RuntimeRuneKind::PropsId

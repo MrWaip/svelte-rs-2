@@ -298,7 +298,8 @@ fn walk_node<'a>(
             let body_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
             walk_fragment(ctx, block.body, component, parsed, body_scope);
             if let Some(fb) = block.fallback {
-                walk_fragment(ctx, fb, component, parsed, scope);
+                let fallback_scope = ctx.analysis.effective_fragment_scope(fb, body_scope);
+                walk_fragment(ctx, fb, component, parsed, fallback_scope);
             }
             reserve_each_index_name(ctx, block);
             reserve_each_collection_name_legacy(ctx, block, body_scope);

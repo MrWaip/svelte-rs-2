@@ -132,7 +132,7 @@ pub(crate) const PASS_DESCRIPTORS: &[PassDescriptor] = &[
     },
     PassDescriptor {
         key: PassKey::JsAnalyzePostTemplate,
-        requires: &[],
+        requires: &[DataToken::ReactivitySemantics],
         produces: &[DataToken::JsAnalyzePostTemplate],
     },
     PassDescriptor {

@@ -50,7 +50,7 @@ impl ElementSemantics {
     pub fn async_kind(&self) -> &ElementAsyncKind {
         match self {
             ElementSemantics::RegularElement(sem) => &sem.async_kind,
-            ElementSemantics::SvelteElement(sem) => &sem.async_kind,
+            ElementSemantics::SvelteElement(sem) => &sem.tag_async_kind,
             ElementSemantics::Component(sem) => &sem.async_kind,
             ElementSemantics::LegacySlot(sem) => &sem.async_kind,
             ElementSemantics::None
@@ -161,7 +161,8 @@ pub enum TextareaSegment {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SvelteElementSemantics {
-    pub async_kind: ElementAsyncKind,
+    pub tag_async_kind: ElementAsyncKind,
+    pub attributes_async_kind: ElementAsyncKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -196,6 +197,15 @@ impl ElementAsyncKind {
 pub struct BoundarySemantics {
     pub failed: BoundaryBranch,
     pub pending: BoundaryBranch,
+    pub pending_needs_nullish_guard: bool,
+    pub failed_snippet: Option<NodeId>,
+    pub pending_snippet: Option<NodeId>,
+}
+
+impl BoundarySemantics {
+    pub fn is_prop_snippet(&self, id: NodeId) -> bool {
+        self.failed_snippet == Some(id) || self.pending_snippet == Some(id)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

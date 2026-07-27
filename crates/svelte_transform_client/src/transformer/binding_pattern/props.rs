@@ -197,7 +197,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     args.push(Arg::Str(name.to_string()));
                 }
                 let init = self.b.call_expr("$.rest_props", args);
-                declarators.push(self.props_declarator(decl_kind, name, init));
+                declarators.push(self.props_declarator_for(decl_kind, name, init, Some(v.symbol)));
                 return;
             }
 
@@ -301,7 +301,12 @@ impl<'a> ComponentTransformer<'_, 'a> {
                     }
 
                     let init = self.b.call_expr("$.prop", args);
-                    declarators.push(self.props_declarator(decl_kind, local_name, init));
+                    declarators.push(self.props_declarator_for(
+                        decl_kind,
+                        local_name,
+                        init,
+                        Some(v.symbol),
+                    ));
                 }
             }
         });
@@ -348,13 +353,24 @@ impl<'a> ComponentTransformer<'_, 'a> {
         name: &'a str,
         init: Expression<'a>,
     ) -> VariableDeclarator<'a> {
-        self.b.ast.variable_declarator(
-            SPAN,
-            decl_kind,
-            self.b.ast.binding_pattern_binding_identifier(SPAN, name),
-            NONE,
-            Some(init),
-            false,
-        )
+        self.props_declarator_for(decl_kind, name, init, None)
+    }
+
+    fn props_declarator_for(
+        &self,
+        decl_kind: VariableDeclarationKind,
+        name: &'a str,
+        init: Expression<'a>,
+        symbol: Option<SymbolId>,
+    ) -> VariableDeclarator<'a> {
+        let pattern = self.b.ast.binding_pattern_binding_identifier(SPAN, name);
+        if let Some(symbol) = symbol
+            && let BindingPattern::BindingIdentifier(id) = &pattern
+        {
+            id.symbol_id.set(Some(symbol));
+        }
+        self.b
+            .ast
+            .variable_declarator(SPAN, decl_kind, pattern, NONE, Some(init), false)
     }
 }

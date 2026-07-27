@@ -129,6 +129,8 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
 
     let async_kind = derive_async_kind(expression_data);
 
+    let declaration_blockers = super::declaration_group::declaration_blockers_of(ctx, block.id);
+
     let source = derive_collection_source(ctx, collection_expr, expression_data);
 
     let runes = ctx.reactivity.uses_runes();
@@ -172,6 +174,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &EachBlock) {
             shadows_outer,
             render_index_required,
             async_kind,
+            declaration_blockers,
             collection: EachCollection { source },
         }),
     );

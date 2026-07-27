@@ -17,6 +17,7 @@ use svelte_ast_builder::Builder;
 use svelte_emit_builders::server_refs;
 
 use crate::effect::RuneStatement;
+use crate::runtime_rune::RuneRewrite;
 
 pub(crate) struct ServerTransform<'b, 'a> {
     pub b: &'b Builder<'a>,
@@ -127,7 +128,10 @@ impl<'a> VisitMut<'a> for ServerTransform<'_, 'a> {
         if self.rewrite_private_derived_write(it) {
             return;
         }
-        self.rewrite_runtime_rune_call(it);
+        match self.rewrite_runtime_rune_call(it) {
+            RuneRewrite::ReplacedOpaque => return,
+            RuneRewrite::Replaced | RuneRewrite::NotARune => {}
+        }
         let member_mutation = self.detect_store_member_mutation(it);
         if matches!(it, Expression::ParenthesizedExpression(_)) {
             self.parent_is_expr_statement = is_standalone;

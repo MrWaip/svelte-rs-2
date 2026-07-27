@@ -38,7 +38,10 @@ pub use crate::reactivity_semantics::data::{
 pub use analysis::{
     AnalysisData, ApiExport, BlockAnalysis, ElementAnalysis, ScriptAnalysis, TemplateAnalysis,
 };
-pub use async_data::{AsyncStmtMeta, BlockerData};
+pub use async_data::{
+    AsyncEntry, AsyncEntryLocation, AsyncEntryMember, AsyncEntryMemberKind, BlockerData,
+    BlockerSlot,
+};
 pub use attr_index::AttrIndex;
 pub use codegen_view::CodegenView;
 pub use css::CssAnalysis;

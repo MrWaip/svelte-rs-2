@@ -1,8 +1,8 @@
-use oxc_ast::ast::Expression;
+use oxc_ast::ast::{Expression, Statement};
 use svelte_analyze::{BlockSemantics, ConstTagBlockSemantics, FragmentDeclarationAsyncKind};
 use svelte_ast::{FragmentId, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft};
-use svelte_component_semantics::SymbolId;
+use svelte_component_semantics::{SymbolId, walk_bindings};
 
 use crate::codegen::binding_pattern::{BindingPatternOutput, BindingPatternSource};
 use crate::context::Ctx;
@@ -159,10 +159,35 @@ pub fn prepare_declaration_groups(ctx: &mut Ctx<'_>) {
             }
             ctx.declaration_blocker_slots
                 .insert(id, (promises_name.clone(), slot));
+            for symbol in declaration_member_symbols(ctx, id) {
+                ctx.const_tag_blockers
+                    .insert(symbol, (promises_name.clone(), slot));
+            }
             slot += 1;
         }
         ctx.declaration_group_idents.insert(fragment, promises_name);
     }
+}
+
+fn declaration_member_symbols(ctx: &Ctx<'_>, id: NodeId) -> Vec<SymbolId> {
+    let decl_id = match ctx.query.analysis.block_semantics(id) {
+        BlockSemantics::ConstTag(sem) => sem.decl_node_id,
+        BlockSemantics::DeclarationTag(sem) => sem.decl_node_id,
+        _ => return Vec::new(),
+    };
+    let Some(Statement::VariableDeclaration(decl)) = ctx.state.parsed.stmt(decl_id) else {
+        return Vec::new();
+    };
+    let mut symbols: Vec<SymbolId> = Vec::new();
+    for declarator in &decl.declarations {
+        walk_bindings(&declarator.id, |v| {
+            if symbols.contains(&v.symbol) {
+                return;
+            }
+            symbols.push(v.symbol);
+        });
+    }
+    symbols
 }
 
 fn declaration_has_blockers(ctx: &Ctx<'_>, id: NodeId) -> bool {

@@ -59,6 +59,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
                 let wrapped = self.emit_async_call_stmt(
                     &blockers,
+                    &[],
                     anchor_expr,
                     &anchor_node,
                     "$$key",

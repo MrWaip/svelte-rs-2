@@ -1,5 +1,6 @@
 use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
+use std::mem;
 use svelte_analyze::{BlockSemantics, FragmentDeclarationAsyncKind};
 use svelte_ast::{FragmentId, NodeId};
 use svelte_ast_builder::Arg;
@@ -7,6 +8,11 @@ use svelte_component_semantics::{SymbolId, walk_bindings};
 
 use crate::error::{CodegenError, Result};
 use crate::model::ServerCodegen;
+
+pub(crate) struct DeclarationGroupRun<'a> {
+    name: String,
+    thunks: Vec<Expression<'a>>,
+}
 
 impl<'a> ServerCodegen<'a> {
     pub(crate) fn const_tag(&mut self, id: NodeId) -> Result<()> {
@@ -64,11 +70,11 @@ impl<'a> ServerCodegen<'a> {
         }
     }
 
-    pub(crate) fn emit_fragment_declaration_group(
+    pub(crate) fn build_fragment_declaration_group(
         &mut self,
         fragment_id: FragmentId,
         ids: &[NodeId],
-    ) -> Result<()> {
+    ) -> Result<Option<DeclarationGroupRun<'a>>> {
         let Some(promises_name) = self.declaration_group_idents.get(&fragment_id).cloned() else {
             return Err(CodegenError::Unsupported(
                 ids[0],
@@ -120,13 +126,27 @@ impl<'a> ServerCodegen<'a> {
             }
         }
 
-        if !thunks.is_empty() {
-            let run = self
-                .b
-                .call_expr("$$renderer.run", [Arg::Expr(self.b.array_expr(thunks))]);
-            self.push_stmt(self.b.var_stmt(&promises_name, run));
+        for name in mem::take(&mut self.pending_group_declarations) {
+            self.push_stmt(self.b.let_stmt(&name));
         }
-        Ok(())
+        if thunks.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(DeclarationGroupRun {
+            name: promises_name,
+            thunks,
+        }))
+    }
+
+    pub(crate) fn push_declaration_group(&mut self, group: Option<DeclarationGroupRun<'a>>) {
+        let Some(group) = group else {
+            return;
+        };
+        let run = self.b.call_expr(
+            "$$renderer.run",
+            [Arg::Expr(self.b.array_expr(group.thunks))],
+        );
+        self.hoist_stmt(self.b.var_stmt(&group.name, run));
     }
 
     fn take_const_parts(
@@ -164,9 +184,7 @@ impl<'a> ServerCodegen<'a> {
             assignments.push(self.b.assign_expr_raw(target, init));
         }
 
-        for name in &declared {
-            self.push_stmt(self.b.let_stmt(name));
-        }
+        self.pending_group_declarations.extend(declared);
         Ok((symbols, assignments))
     }
 

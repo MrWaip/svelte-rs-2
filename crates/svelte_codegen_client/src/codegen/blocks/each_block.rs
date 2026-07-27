@@ -62,6 +62,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         sem: EachBlockSemantics,
         controlled_anchor: Option<String>,
     ) -> Result<()> {
+        let controlled_anchor = match &sem.async_kind {
+            EachAsyncKind::Sync => controlled_anchor,
+            EachAsyncKind::Awaited { .. } | EachAsyncKind::Deferred { .. } => None,
+        };
         let is_controlled = controlled_anchor.is_some();
         let anchor_node = match controlled_anchor {
             Some(name) => name,
@@ -108,29 +112,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         let each_call = self.ctx.b.call_expr("$.each", args);
 
-        match &plan.async_kind {
-            EachAsyncKind::Awaited { blockers } | EachAsyncKind::Deferred { blockers } => {
-                let blockers = blockers.to_vec();
-                let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
-                let each_stmt = self.add_svelte_meta(each_call, span_start, "each");
-                let wrapped = self.emit_async_call_stmt(
-                    &blockers,
-                    anchor_expr,
-                    &anchor_node,
-                    "$$collection",
-                    async_thunk,
-                    vec![each_stmt],
-                )?;
-                state.init.push(wrapped);
-                Ok(())
-            }
-            EachAsyncKind::Sync => {
-                state
-                    .init
-                    .push(self.add_svelte_meta(each_call, span_start, "each"));
-                Ok(())
-            }
+        let const_blockers = self
+            .ctx
+            .declaration_blocker_slots_of(&sem.declaration_blockers);
+        let script_blockers = plan.async_kind.blockers().to_vec();
+        if plan.async_kind.is_sync() && const_blockers.is_empty() {
+            state
+                .init
+                .push(self.add_svelte_meta(each_call, span_start, "each"));
+            return Ok(());
         }
+        let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
+        let each_stmt = self.add_svelte_meta(each_call, span_start, "each");
+        let wrapped = self.emit_async_call_stmt(
+            &script_blockers,
+            &const_blockers,
+            anchor_expr,
+            &anchor_node,
+            "$$collection",
+            async_thunk,
+            vec![each_stmt],
+        )?;
+        state.init.push(wrapped);
+        Ok(())
     }
 
     fn build_each_plan(
@@ -241,10 +245,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         plan: &EachEmit,
     ) -> Result<Expression<'a>> {
         match &plan.async_kind {
-            EachAsyncKind::Awaited { .. } | EachAsyncKind::Deferred { .. } => {
+            EachAsyncKind::Awaited { .. } => {
                 Ok(self.ctx.b.thunk(rune_get(&self.ctx.b, "$$collection")))
             }
-            EachAsyncKind::Sync => {
+            EachAsyncKind::Deferred { .. } | EachAsyncKind::Sync => {
                 if let EachCollectionSource::Prop { sym } = &plan.collection_source {
                     let name = self.ctx.query.symbol_name(*sym).to_string();
                     return Ok(self.ctx.b.rid_expr(&name));

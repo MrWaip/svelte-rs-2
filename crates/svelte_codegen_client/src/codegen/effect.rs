@@ -24,6 +24,8 @@ fn emit_effect_call<'a>(
     deps: &mut TemplateMemoState<'a>,
     body: &mut Vec<Statement<'a>>,
 ) {
+    let mut callback = callback;
+    deps.resolve_param_names(ctx, &mut callback);
     if !deps.has_deps() {
         body.push(ctx.b.call_stmt(effect_name, [Arg::Expr(callback)]));
         return;
@@ -82,7 +84,7 @@ fn collapse_when_outermost<'a>(
 fn emit_template_effect_with_blockers<'a>(
     ctx: &mut Ctx<'a>,
     update: Vec<Statement<'a>>,
-    script_blockers: Vec<u32>,
+    script_blockers: Vec<svelte_analyze::BlockerSlot>,
     extra_blockers: Vec<(String, usize)>,
     body: &mut Vec<Statement<'a>>,
 ) {
@@ -91,8 +93,8 @@ fn emit_template_effect_with_blockers<'a>(
     }
     let eff = ctx.b.arrow_expr(ctx.b.no_params(), update);
     let mut deps = TemplateMemoState::default();
-    for idx in script_blockers {
-        deps.push_script_blocker(idx);
+    for slot in script_blockers {
+        deps.push_blocker_slot(slot);
     }
     super::data_structures::extend_blocker_slots(&mut deps.extra_blockers, extra_blockers);
     emit_effect_call(ctx, "$.template_effect", eff, &mut deps, body);
@@ -103,7 +105,7 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
     body: &mut Vec<Statement<'a>>,
     regular_updates: Vec<Statement<'a>>,
     mut shared_memo: TemplateMemoState<'a>,
-    script_blockers: Vec<u32>,
+    script_blockers: Vec<svelte_analyze::BlockerSlot>,
     extra_blockers: Vec<(String, usize)>,
 ) -> Result<()> {
     if !shared_memo.has_deps() {
@@ -117,8 +119,8 @@ pub(in crate::codegen) fn emit_template_effect_with_memo<'a>(
         return Ok(());
     }
 
-    for idx in script_blockers {
-        shared_memo.push_script_blocker(idx);
+    for slot in script_blockers {
+        shared_memo.push_blocker_slot(slot);
     }
     super::data_structures::extend_blocker_slots(&mut shared_memo.extra_blockers, extra_blockers);
 

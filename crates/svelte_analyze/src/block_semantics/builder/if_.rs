@@ -71,6 +71,16 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
         }
     };
 
+    let mut declaration_blockers: SmallVec<[svelte_ast::NodeId; 2]> = SmallVec::new();
+    for branch in &branches {
+        for node in super::declaration_group::declaration_blockers_of(ctx, branch.block_id) {
+            if declaration_blockers.contains(&node) {
+                continue;
+            }
+            declaration_blockers.push(node);
+        }
+    }
+
     ctx.store.set(
         block.id,
         BlockSemantics::If(IfBlockSemantics {
@@ -78,6 +88,7 @@ pub(super) fn populate(ctx: &mut Ctx<'_, '_>, block: &IfBlock) {
             final_alternate,
             is_elseif_root: block.elseif,
             async_kind,
+            declaration_blockers,
         }),
     );
 

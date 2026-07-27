@@ -103,6 +103,14 @@ impl<'a> Builder<'a> {
         Statement::VariableDeclaration(self.alloc(declaration))
     }
 
+    pub fn declarator_stmt(&self, declarator: ast::VariableDeclarator<'a>) -> Statement<'a> {
+        let kind = declarator.kind;
+        let declaration =
+            self.ast
+                .variable_declaration(SPAN, kind, self.ast.vec_from_iter([declarator]), false);
+        Statement::VariableDeclaration(self.alloc(declaration))
+    }
+
     pub fn let_multi_stmt(&self, declarators: Vec<(&str, Expression<'a>)>) -> Statement<'a> {
         self.var_decl_multi_stmt(declarators, VariableDeclarationKind::Let)
     }

@@ -5,13 +5,14 @@ mod value_role;
 
 use svelte_ast::{
     AstStore, Attribute, Component, ComponentLikeView, Element, FragmentId, FragmentRole, Node,
+    NodeId,
 };
 
 use smallvec::SmallVec;
 
 use super::{
     ComponentElementSemantics, ElementPropertyReset, ElementReplayEvent, ElementSemantics,
-    ElementSemanticsStore, RegularElementSemantics, SvelteElementSemantics,
+    ElementSemanticsStore, ElementValueRole, RegularElementSemantics, SvelteElementSemantics,
 };
 use compact_str::CompactString;
 
@@ -47,8 +48,30 @@ pub(crate) fn build(
                         | NamespaceKind::ForeignObject
                         | NamespaceKind::AnnotationXml => CompactString::new(el.name.as_str()),
                     };
-                    let async_kind = async_kind::from_attributes(expressions, &el.attributes);
                     let value_role = value_role::classify(component, data, el);
+                    let mut value_nodes: SmallVec<[NodeId; 2]> = SmallVec::new();
+                    match &value_role {
+                        ElementValueRole::Option { value, .. } => value_nodes.extend(*value),
+                        ElementValueRole::TextareaValue { .. } => {
+                            value_nodes = value_role::content_value_nodes(component, data, el);
+                        }
+                        ElementValueRole::Plain
+                        | ElementValueRole::Select { .. }
+                        | ElementValueRole::ContentEditable { .. }
+                        | ElementValueRole::RawText
+                        | ElementValueRole::RichContainer => {}
+                    }
+                    let async_kind = async_kind::from_attributes(
+                        expressions,
+                        data.blocker_data(),
+                        &async_kind::HtmlAttributeSite {
+                            attributes: &data.attributes,
+                            element_name: &name,
+                            siblings: &el.attributes,
+                            source,
+                            value_nodes,
+                        },
+                    );
                     let replay_events = replay_events(data, el);
                     let opaque_content =
                         data.elements.flags.is_customizable_select(el.id) || name == "noscript";
@@ -68,16 +91,29 @@ pub(crate) fn build(
                     );
                 }
                 Node::SvelteElement(el) => {
-                    let async_kind = async_kind::from_tag(expressions, el.id);
-                    if !async_kind.is_sync() {
-                        store.set(
-                            el.id,
-                            ElementSemantics::SvelteElement(SvelteElementSemantics { async_kind }),
-                        );
-                    }
+                    let tag_async_kind = async_kind::from_tag(expressions, el.id);
+                    let attributes_async_kind = async_kind::from_svelte_element_attributes(
+                        expressions,
+                        data.blocker_data(),
+                        &async_kind::HtmlAttributeSite {
+                            attributes: &data.attributes,
+                            element_name: "svelte:element",
+                            siblings: &el.attributes,
+                            source,
+                            value_nodes: SmallVec::new(),
+                        },
+                    );
+                    store.set(
+                        el.id,
+                        ElementSemantics::SvelteElement(SvelteElementSemantics {
+                            tag_async_kind,
+                            attributes_async_kind,
+                        }),
+                    );
                 }
                 Node::SlotElementLegacy(el) => {
-                    let async_kind = async_kind::from_slot(expressions, &el.attributes);
+                    let async_kind =
+                        async_kind::from_slot(expressions, data.blocker_data(), &el.attributes);
                     let slot = legacy_slot::classify_slot(el, component, source, async_kind);
                     store.set(el.id, ElementSemantics::LegacySlot(slot));
                 }
@@ -93,8 +129,12 @@ pub(crate) fn build(
                             Node::SvelteSelf(_) => None,
                             _ => Some(id),
                         };
-                        let async_kind =
-                            async_kind::from_component(expressions, attributes, name_id);
+                        let async_kind = async_kind::from_component(
+                            expressions,
+                            data.blocker_data(),
+                            attributes,
+                            name_id,
+                        );
                         let legacy_slots = legacy_slot::classify_component_slots(
                             attributes, fragment, component, source,
                         );

@@ -214,22 +214,6 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn async_thunk(&self, expr: Expression<'a>) -> Expression<'a> {
-        if let Expression::AwaitExpression(await_node) = expr {
-            let inner = await_node.unbox().argument;
-            return self.thunk(inner);
-        }
-        if let Expression::CallExpression(call) = &expr
-            && matches!(
-                call.callee.get_inner_expression(),
-                Expression::AwaitExpression(_)
-            )
-        {
-            return self.async_arrow_expr_body(expr);
-        }
-        self.async_arrow_expr_body(self.await_expr(expr))
-    }
-
     pub fn await_expr(&self, expr: Expression<'a>) -> Expression<'a> {
         self.ast.expression_await(SPAN, expr)
     }

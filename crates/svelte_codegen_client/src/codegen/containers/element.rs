@@ -131,6 +131,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let prev_pending_element_update = mem::take(&mut state.pending_element_update);
         let prev_pending_pre_update = mem::take(&mut state.pending_pre_update);
         let element_after_update_len_before = state.element_after_update.len();
+        let deferred_memo_start = state.deferred_memo_values.len();
 
         if !is_ghost && !is_noscript && !has_spread {
             self.emit_element_directives(state, el_id, &el_name_hint, &el_name, attributes)?;
@@ -217,7 +218,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             );
             state.update.push(dir_assign);
         }
-        if let Some(expr_id) = self.ctx.query.view.option_synthetic_value_expr(el_id) {
+        if let Some(expr_id) = self
+            .ctx
+            .query
+            .view
+            .option_synthetic_value_expr(el_id)
+            .filter(|_| !has_spread)
+        {
             self.emit_option_synthetic_value(state, &el_name, expr_id)?;
         }
         let my_element_init = mem::take(&mut state.pending_element_init);
@@ -232,7 +239,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Vec<Statement<'a>>,
             Vec<Statement<'a>>,
             TemplateMemoState<'a>,
-            Vec<u32>,
+            Vec<svelte_analyze::BlockerSlot>,
             Vec<(String, usize)>,
         );
         let mut block_wrap: Option<BlockWrap<'a>> = None;
@@ -325,6 +332,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         state.skip_snippets = saved_skip_snippets;
+        self.flush_deferred_memo_values(state, deferred_memo_start)?;
         state.init.extend(my_element_init);
         state.init.extend(my_pre_update);
         state.update.extend(my_element_update);
@@ -684,6 +692,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
         );
 
+        let expr_ids: Vec<NodeId> = parts
+            .iter()
+            .filter_map(|p| match p {
+                Raw::Expr(id) => Some(*id),
+                Raw::Text(_) => None,
+            })
+            .collect();
+
         let single_expr_id = match parts.as_slice() {
             [Raw::Expr(id)] => Some(*id),
             _ => None,
@@ -739,6 +755,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.update.push(self.ctx.b.expr_stmt(set_value));
             }
             Volatility::Reactive => {
+                for id in &expr_ids {
+                    state.shared_memo.push_node_deps(self.ctx, *id);
+                }
                 let set_value = self
                     .ctx
                     .b

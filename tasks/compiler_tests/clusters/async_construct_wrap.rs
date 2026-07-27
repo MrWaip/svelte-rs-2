@@ -380,3 +380,8 @@ compiler_case!(
     "async_construct_wrap/memo_slot_numbering_concat",
     [prod, dev, ssr, ssr_dev]
 );
+compiler_case!(
+    attr_blockers_textarea_content,
+    "async_construct_wrap/attr_blockers_textarea_content",
+    [prod, dev, ssr, ssr_dev]
+);

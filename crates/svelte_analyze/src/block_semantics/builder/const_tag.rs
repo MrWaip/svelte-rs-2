@@ -209,12 +209,12 @@ mod tests {
         with_const_tag_async(
             r#"{#if true}{@const x = await foo()}<p>{x}</p>{/if}"#,
             |sem, data| {
-                assert_eq!(
+                assert!(matches!(
                     data.declarator_semantics(sem.decl_node_id),
                     DeclaratorSemantics::ConstTag {
-                        async_kind: DerivedAsyncKind::Async
+                        async_kind: DerivedAsyncKind::Async { .. }
                     }
-                );
+                ));
             },
         );
     }

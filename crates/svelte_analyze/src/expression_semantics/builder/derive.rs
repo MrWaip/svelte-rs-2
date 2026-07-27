@@ -204,16 +204,22 @@ pub(super) fn suspension(
     }
 }
 
-pub(super) fn blockers(facts: &ExprFacts, blocker_data: &BlockerData) -> SmallVec<[u32; 2]> {
+pub(super) fn blockers_of(
+    references: &[SymbolId],
+    blocker_data: &BlockerData,
+) -> SmallVec<[u32; 2]> {
     let mut out: SmallVec<[u32; 2]> = SmallVec::new();
-    for sym in &facts.references {
-        if let Some(idx) = blocker_data.symbol_blocker(*sym)
-            && !out.contains(&idx)
-        {
-            out.push(idx);
+    let mut seen: SmallVec<[u32; 2]> = SmallVec::new();
+    for sym in references {
+        let Some(slot) = blocker_data.symbol_blocker(*sym) else {
+            continue;
+        };
+        if seen.contains(&slot.member) {
+            continue;
         }
+        seen.push(slot.member);
+        out.push(slot.entry);
     }
-    out.sort_unstable();
     out
 }
 

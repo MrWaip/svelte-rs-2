@@ -138,18 +138,23 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 } => self.rewrite_derived(decl_kind, declarator, kind, source, &mut pending),
 
                 DeclaratorSemantics::RuneDerived {
-                    async_kind: DerivedAsyncKind::Async,
+                    async_kind: DerivedAsyncKind::Async { suspension },
                     ..
                 } => {
                     if matches!(&declarator.id, BindingPattern::BindingIdentifier(_)) {
                         self.rewrite_single_identifier_async_derived(
                             span.start,
                             declarator,
+                            suspension,
                             &mut pending,
                         );
                     } else {
                         self.flush_pending(&mut pending, decl_kind, span, declare, &mut out);
-                        out.push(self.rewrite_async_derived(decl_kind, span.start, declarator));
+                        out.push(
+                            self.rewrite_async_derived(
+                                decl_kind, span.start, declarator, suspension,
+                            ),
+                        );
                     }
                 }
 

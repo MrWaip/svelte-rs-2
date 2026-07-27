@@ -62,7 +62,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
 
         let directives_obj = if has_class_dirs {
-            self.build_class_directives_object(owner_id)?
+            let obj = self.build_class_directives_object(owner_id)?;
+            self.push_class_directive_blockers(&mut state.shared_memo, owner_id);
+            obj
         } else {
             None
         };
@@ -132,28 +134,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         owner_id: NodeId,
         dir_obj: Expression<'a>,
     ) -> Expression<'a> {
+        let volatility = self.ctx.class_directives_volatility(owner_id);
+        match volatility {
+            Volatility::Heavy | Volatility::Asynchronous => {}
+            Volatility::Static | Volatility::Reactive => return dir_obj,
+        }
+        super::hoist_directives_object(self.ctx, &mut state.shared_memo, volatility, dir_obj)
+    }
+
+    pub(super) fn push_class_directive_blockers(
+        &mut self,
+        memo: &mut TemplateMemoState<'a>,
+        owner_id: NodeId,
+    ) {
         let Some(dirs) = self.ctx.class_directive_info(owner_id) else {
-            return dir_obj;
+            return;
         };
         let dir_ids: Vec<NodeId> = dirs.iter().map(|cd| cd.id).collect();
-        let Some(_) =
-            dir_ids.iter().find(
-                |&&id| match self.ctx.expression_data(id).map(|d| d.volatility) {
-                    Some(Volatility::Heavy) => true,
-                    Some(Volatility::Static | Volatility::Reactive | Volatility::Asynchronous)
-                    | None => false,
-                },
-            )
-        else {
-            return dir_obj;
-        };
-        for &id in &dir_ids {
-            if let Some(data) = self.ctx.expression_data(id) {
-                state.shared_memo.push_expression_data(self.ctx, data);
-            }
+        for id in dir_ids {
+            let Some(data) = self.ctx.expression_data(id).cloned() else {
+                continue;
+            };
+            memo.push_expression_data(self.ctx, &data);
         }
-        let idx = state.shared_memo.sync_values_push(dir_obj);
-        state.shared_memo.sync_param_expr(self.ctx, idx)
     }
 
     fn build_class_attr_value(
@@ -184,18 +187,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 if self.ctx.needs_clsx(owner_id) {
                     expr = self.ctx.b.call_expr("$.clsx", [Arg::Expr(expr)]);
                 }
+                if let Some(d) = &data {
+                    memo.push_expression_data(self.ctx, d);
+                }
                 let class_value = match data.as_ref().map(|d| d.volatility) {
                     Some(Volatility::Heavy) => {
-                        if let Some(d) = &data {
-                            memo.push_expression_data(self.ctx, d);
-                        }
                         let index = memo.sync_values_push(expr);
                         memo.sync_param_expr(self.ctx, index)
                     }
                     Some(Volatility::Asynchronous) => {
-                        if let Some(d) = &data {
-                            memo.push_expression_data(self.ctx, d);
-                        }
                         let index = memo
                             .async_values_push(expr, self.ctx.expression_suspension(class_attr_id));
                         memo.async_param_expr(self.ctx, index)
@@ -246,6 +246,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let Some(dir_obj) = dir_obj_opt else {
             return Ok(());
         };
+        self.push_class_directive_blockers(&mut state.shared_memo, owner_id);
 
         let class_volatility = self.ctx.class_state_volatility(owner_id);
         let dir_obj = match class_volatility {

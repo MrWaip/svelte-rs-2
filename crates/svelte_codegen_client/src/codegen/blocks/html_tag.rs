@@ -41,9 +41,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         id: NodeId,
         sem: HtmlTagSemantics,
     ) -> Result<()> {
+        let plan = AsyncEmission::for_node(self.ctx, id);
+        let controlled_anchor = match &plan {
+            AsyncEmission::Sync => true,
+            AsyncEmission::Awaited { .. } | AsyncEmission::Deferred { .. } => false,
+        };
         let (anchor_name, is_controlled) = match &ctx.anchor {
             FragmentAnchor::Child { parent_var }
-            | FragmentAnchor::ElementContentChild { parent_var } => (parent_var.to_string(), true),
+            | FragmentAnchor::ElementContentChild { parent_var }
+                if controlled_anchor =>
+            {
+                (parent_var.to_string(), true)
+            }
             _ => (self.comment_anchor_node_name(state, ctx)?, false),
         };
 
@@ -51,23 +60,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let is_mathml = !is_controlled && matches!(sem.parent_strategy, HtmlTagNamespace::MathMl);
         let hydration_ignored = sem.hydration_html_changed_ignored;
 
-        let plan = AsyncEmission::for_node(self.ctx, id);
-
         match &plan {
             AsyncEmission::Awaited { blockers } | AsyncEmission::Deferred { blockers } => {
                 let blockers = blockers.to_vec();
                 let suspension = self.ctx.expression_suspension(id);
                 let expression = self.take_node_expr(id)?;
-                let async_thunk = match &plan {
-                    AsyncEmission::Awaited { .. } => {
-                        Some(suspending_block_thunk(self.ctx, expression, suspension))
+                let callback_node: &str = self.ctx.b.alloc_str(&anchor_name);
+                let (async_thunk, html_value) = match &plan {
+                    AsyncEmission::Awaited { .. } => (
+                        Some(suspending_block_thunk(self.ctx, expression, suspension)),
+                        self.ctx.b.thunk(rune_get(&self.ctx.b, "$$html")),
+                    ),
+                    AsyncEmission::Deferred { .. } | AsyncEmission::Sync => {
+                        (None, self.ctx.b.thunk(expression))
                     }
-                    AsyncEmission::Deferred { .. } | AsyncEmission::Sync => None,
                 };
-
-                let html_value = self.ctx.b.thunk(rune_get(&self.ctx.b, "$$html"));
                 let mut html_args: Vec<Arg<'a, '_>> =
-                    vec![Arg::Ident("node"), Arg::Expr(html_value)];
+                    vec![Arg::Ident(callback_node), Arg::Expr(html_value)];
 
                 push_html_trailing_args(
                     self.ctx,
@@ -83,8 +92,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let anchor_expr = self.ctx.b.rid_expr(&anchor_name);
                 let async_stmt = self.emit_async_call_stmt(
                     &blockers,
+                    &[],
                     anchor_expr,
-                    "node",
+                    callback_node,
                     "$$html",
                     async_thunk,
                     vec![html_stmt],

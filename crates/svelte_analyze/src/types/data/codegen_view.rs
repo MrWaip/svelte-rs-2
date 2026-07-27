@@ -203,7 +203,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
     pub fn blocker_data(&self) -> &BlockerData {
         self.data.blocker_data()
     }
-    pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
+    pub fn symbol_blocker(&self, sym: SymbolId) -> Option<BlockerSlot> {
         self.data.blocker_data().symbol_blocker(sym)
     }
     pub fn is_ignored(&self, node_id: NodeId, code: WarningCode) -> bool {
@@ -279,7 +279,7 @@ impl<'d, 'a> CodegenView<'d, 'a> {
         fragment_items(store, id)
     }
 
-    pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[u32] {
+    pub fn fragment_blockers_by_id(&self, id: svelte_ast::FragmentId) -> &[BlockerSlot] {
         self.data.template.fragment_blockers_by_id(id)
     }
     pub fn fragment_references_any_symbol(

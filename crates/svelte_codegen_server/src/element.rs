@@ -113,9 +113,11 @@ impl<'a> ServerCodegen<'a> {
             | ElementValueRole::TextareaValue { .. }
             | ElementValueRole::ContentEditable { .. } => false,
         };
+        let mut pending_group = None;
         if emits_const_tags {
             self.emit_fragment_const_tags_hoisted(element.fragment)?;
             self.emit_fragment_declaration_tags(element.fragment)?;
+            pending_group = self.build_declaration_group_for(element.fragment)?;
         }
 
         let name = self
@@ -152,6 +154,7 @@ impl<'a> ServerCodegen<'a> {
             | ElementValueRole::Select { .. }
             | ElementValueRole::Option { .. } => {
                 self.emit_fragment_snippets_debug_head(element.fragment)?;
+                self.push_declaration_group(pending_group.take());
                 if self.dev {
                     let push_element = self.push_element_stmt(element);
                     self.push_stmt(push_element);
@@ -203,10 +206,11 @@ impl<'a> ServerCodegen<'a> {
         value: Option<NodeId>,
         rich: bool,
     ) -> Result<()> {
-        let (object, optionals) =
-            self.build_element_attribute_object(element.id, &element.attributes)?;
         let body = match value {
-            Some(node) => self.take_expression_tag(node)?,
+            Some(node) => {
+                let expr = self.take_expression_tag(node)?;
+                self.maybe_hoist_async_expr(node, expr)
+            }
             None => {
                 let stmts = self.child_statements(|c| {
                     if c.dev {
@@ -224,6 +228,8 @@ impl<'a> ServerCodegen<'a> {
                     .arrow_block_expr(self.b.params(["$$renderer"]), stmts)
             }
         };
+        let (object, optionals) =
+            self.build_element_attribute_object(element.id, &element.attributes)?;
         let mut args = vec![Arg::Expr(object), Arg::Expr(body)];
         args.extend(self.container_trailing_args(optionals, rich));
         let call = self.b.call_stmt("$$renderer.option", args);

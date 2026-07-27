@@ -128,19 +128,11 @@ impl<'a> ServerCodegen<'a> {
             BlockSemantics::Each(sem) => sem.clone(),
             _ => return Err(CodegenError::Unsupported(block.id, "each block")),
         };
-        let async_blockers = match &sem.async_kind {
-            EachAsyncKind::Sync => None,
-            EachAsyncKind::Awaited { blockers } => Some(blockers.clone()),
-            EachAsyncKind::Deferred { .. } => {
-                return Err(CodegenError::Unsupported(block.id, "deferred each block"));
-            }
+        let (async_blockers, awaited) = match &sem.async_kind {
+            EachAsyncKind::Sync => (None, false),
+            EachAsyncKind::Awaited { blockers } => (Some(blockers.clone()), true),
+            EachAsyncKind::Deferred { blockers } => (Some(blockers.clone()), false),
         };
-        if async_blockers.is_some() && block.fallback.is_some() {
-            return Err(CodegenError::Unsupported(
-                block.id,
-                "async each with fallback",
-            ));
-        }
 
         let array_name = self
             .each_array_names
@@ -148,7 +140,7 @@ impl<'a> ServerCodegen<'a> {
             .cloned()
             .unwrap_or_else(|| self.gen_ident("each_array"));
         let mut collection = self.take_expression(block.id, &block.expression)?;
-        if async_blockers.is_some() {
+        if awaited {
             collection = self.save_block_await(collection);
         }
         let ensure = self
@@ -158,9 +150,26 @@ impl<'a> ServerCodegen<'a> {
 
         let for_loop = self.build_each_for_loop(block, &sem, &array_name)?;
 
-        if let Some(blockers) = async_blockers {
-            self.push_text("<!--[-->");
-            let wrapped = self.wrap_async_block(vec![array_decl, for_loop], &blockers);
+        let mut members: Vec<Expression<'a>> = async_blockers
+            .iter()
+            .flatten()
+            .map(|&idx| self.blocker_member(idx))
+            .collect();
+        members.extend(self.declaration_blocker_exprs(&sem.declaration_blockers));
+        let suspends = !sem.async_kind.is_sync() || !members.is_empty();
+
+        if suspends {
+            let body = match block.fallback {
+                Some(_) => {
+                    let guard = self.build_each_fallback(block, &array_name, for_loop)?;
+                    vec![array_decl, guard]
+                }
+                None => {
+                    self.push_text("<!--[-->");
+                    vec![array_decl, for_loop]
+                }
+            };
+            let wrapped = self.wrap_async_block_exprs(body, members, awaited);
             self.push_stmt(wrapped);
         } else if block.fallback.is_some() {
             let guard = self.build_each_fallback(block, &array_name, for_loop)?;

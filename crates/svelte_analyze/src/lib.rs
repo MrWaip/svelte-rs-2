@@ -61,10 +61,11 @@ pub use runtime_semantics::{
 };
 pub use scope::ComponentScoping;
 pub use types::data::{
-    AnalysisData, ApiExport, AsyncStmtMeta, AttrIndex, BindHostKind, BindPropertyKind, BindSource,
-    BindTargetSemantics, BindingSemantics, BlockAnalysis, BlockerData, CarrierMemberReadSemantics,
-    ClassDirectiveInfo, ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics,
-    CodegenView, ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagSemantics,
+    AnalysisData, ApiExport, AsyncEntry, AsyncEntryLocation, AsyncEntryMemberKind, AttrIndex,
+    BindHostKind, BindPropertyKind, BindSource, BindTargetSemantics, BindingSemantics,
+    BlockAnalysis, BlockerData, BlockerSlot, CarrierMemberReadSemantics, ClassDirectiveInfo,
+    ClassFieldDerivedSemantics, ClassFieldSemantics, ClassFieldStateSemantics, CodegenView,
+    ComponentBindMode, ComponentPropInfo, ComponentPropKind, ConstTagSemantics,
     ContentEditableKind, ContextualBindingSemantics, ContextualReadKind, ContextualReadSemantics,
     CssAnalysis, DeclaratorGroup, DeclaratorSemantics, DerivedAsyncKind,
     DerivedDeclarationSemantics, DerivedKind, DerivedSource, DocumentBindKind, EachIndexStrategy,

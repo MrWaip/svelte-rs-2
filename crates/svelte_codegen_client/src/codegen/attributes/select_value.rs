@@ -3,8 +3,8 @@ use svelte_analyze::Volatility;
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, AssignLeft};
 
-use super::super::data_structures::{EmitState, MemoValueRef};
-use super::super::{Codegen, CodegenError, Result};
+use super::super::data_structures::EmitState;
+use super::super::{Codegen, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
     pub(in super::super) fn emit_select_value(
@@ -15,26 +15,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         val_expr: Expression<'a>,
         coalesce: bool,
     ) -> Result<()> {
-        match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
-            Some(Volatility::Heavy | Volatility::Asynchronous) => {
-                let Some(data) = self.ctx.expression_data(attr_id).cloned() else {
-                    return CodegenError::missing_expression_deps(attr_id);
-                };
-                let placeholder = match state
-                    .shared_memo
-                    .add_memoized_expr(self.ctx, &data, val_expr)
-                {
-                    Some(MemoValueRef::Sync(i)) => state.shared_memo.sync_param_expr(self.ctx, i),
-                    Some(MemoValueRef::Async(i)) => state.shared_memo.async_param_expr(self.ctx, i),
-                    None => return CodegenError::missing_expression_deps(attr_id),
-                };
-                self.emit_select_value_core(state, el_name, placeholder, coalesce, true);
+        let Some(data) = self.ctx.expression_data(attr_id).cloned() else {
+            self.emit_select_value_core(state, el_name, val_expr, coalesce, false);
+            return Ok(());
+        };
+        let volatility = data.volatility;
+        let value = self.defer_memo_value(state, attr_id, &data, val_expr);
+        match volatility {
+            Volatility::Heavy | Volatility::Asynchronous | Volatility::Reactive => {
+                self.emit_select_value_core(state, el_name, value, coalesce, true);
             }
-            Some(Volatility::Reactive) => {
-                self.emit_select_value_core(state, el_name, val_expr, coalesce, true);
-            }
-            Some(Volatility::Static) | None => {
-                self.emit_select_value_core(state, el_name, val_expr, coalesce, false);
+            Volatility::Static => {
+                self.emit_select_value_core(state, el_name, value, coalesce, false);
             }
         }
         Ok(())
@@ -141,7 +133,38 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_name: &str,
         val_expr: Expression<'a>,
         coalesce: bool,
+        volatile: bool,
     ) {
+        if !volatile {
+            let assign = self.build_input_value_assign(el_name, val_expr, coalesce);
+            state.init.push(assign);
+            return;
+        }
+        let cache_name = self.ctx.state.gen_ident(&format!("{el_name}_value"));
+        state
+            .pending_pre_update
+            .push(self.ctx.b.var_uninit_stmt(&cache_name));
+        let val_for_assign = self.ctx.b.clone_expr(&val_expr);
+        let assign = self.build_input_value_assign(el_name, val_for_assign, coalesce);
+        let b = &self.ctx.b;
+        let cache_assign = b.assign_expr(AssignLeft::Ident(cache_name.clone()), val_expr);
+        let test = b.ast.expression_binary(
+            oxc_span::SPAN,
+            b.rid_expr(&cache_name),
+            BinaryOperator::StrictInequality,
+            cache_assign,
+        );
+        let body = b.block_stmt(vec![assign]);
+        let if_stmt = b.if_stmt(test, body, None);
+        state.update.push(if_stmt);
+    }
+
+    fn build_input_value_assign(
+        &mut self,
+        el_name: &str,
+        val_expr: Expression<'a>,
+        coalesce: bool,
+    ) -> Statement<'a> {
         let b = &self.ctx.b;
         let dunder = b.assign_expr(
             AssignLeft::StaticMember(b.static_member(b.rid_expr(el_name), "__value")),
@@ -152,10 +175,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             dunder
         };
-        let value_assign = b.assign_stmt(
+        b.assign_stmt(
             AssignLeft::StaticMember(b.static_member(b.rid_expr(el_name), "value")),
             value_rhs,
-        );
-        state.update.push(value_assign);
+        )
     }
 }

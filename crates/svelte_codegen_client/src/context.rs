@@ -258,6 +258,21 @@ impl<'a> Ctx<'a> {
         self.query.runtime_semantics()
     }
 
+    pub fn declaration_blocker_slots_of(&self, nodes: &[NodeId]) -> Vec<(String, usize)> {
+        let mut slots: Vec<(String, usize)> = Vec::new();
+        for node in nodes {
+            let Some((name, idx)) = self.declaration_blocker_slots.get(node) else {
+                continue;
+            };
+            let slot = (name.clone(), *idx);
+            if slots.contains(&slot) {
+                continue;
+            }
+            slots.push(slot);
+        }
+        slots
+    }
+
     pub fn const_tag_blocker_slots(&mut self, id: NodeId) -> Vec<(String, usize)> {
         if self.const_tag_blockers.is_empty() {
             return Vec::new();
@@ -442,7 +457,7 @@ impl<'a> Ctx<'a> {
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
     }
-    pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
+    pub fn symbol_blocker(&self, sym: SymbolId) -> Option<svelte_analyze::BlockerSlot> {
         self.query.view.symbol_blocker(sym)
     }
 

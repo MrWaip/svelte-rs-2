@@ -277,11 +277,13 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
             record_expr_id(key_ref, key_ref.span.start, &mut self.expr_id_map);
         }
         self.walk_fragment(body, ctx);
-        ctx.leave_scope();
 
         if let Some(fb) = fallback {
+            ctx.enter_fragment_scope_by_id(fb);
             self.walk_fragment(fb, ctx);
+            ctx.leave_scope();
         }
+        ctx.leave_scope();
     }
 
     fn walk_await_block(&mut self, block: &'d AwaitBlock, ctx: &mut TemplateBuildContext<'_, 'a>) {

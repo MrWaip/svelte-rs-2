@@ -70,6 +70,8 @@ pub struct EachBlockSemantics {
 
     pub async_kind: EachAsyncKind,
 
+    pub declaration_blockers: SmallVec<[NodeId; 2]>,
+
     pub collection: EachCollection,
 }
 
@@ -92,6 +94,22 @@ pub enum EachAsyncKind {
     Awaited { blockers: SmallVec<[u32; 2]> },
 
     Deferred { blockers: SmallVec<[u32; 2]> },
+}
+
+impl EachAsyncKind {
+    pub fn blockers(&self) -> &[u32] {
+        match self {
+            EachAsyncKind::Sync => &[],
+            EachAsyncKind::Awaited { blockers } | EachAsyncKind::Deferred { blockers } => blockers,
+        }
+    }
+
+    pub fn is_sync(&self) -> bool {
+        match self {
+            EachAsyncKind::Sync => true,
+            EachAsyncKind::Awaited { .. } | EachAsyncKind::Deferred { .. } => false,
+        }
+    }
 }
 
 bitflags! {
@@ -270,6 +288,8 @@ impl FragmentDeclarationAsyncKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeclarationTagBlockSemantics {
+    pub decl_node_id: OxcNodeId,
+
     pub async_kind: FragmentDeclarationAsyncKind,
 }
 
@@ -327,6 +347,8 @@ pub struct IfBlockSemantics {
     pub is_elseif_root: bool,
 
     pub async_kind: IfAsyncKind,
+
+    pub declaration_blockers: SmallVec<[NodeId; 2]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -352,6 +374,22 @@ pub enum IfAsyncKind {
     Awaited { blockers: SmallVec<[u32; 2]> },
 
     Deferred { blockers: SmallVec<[u32; 2]> },
+}
+
+impl IfAsyncKind {
+    pub fn blockers(&self) -> &[u32] {
+        match self {
+            IfAsyncKind::Sync => &[],
+            IfAsyncKind::Awaited { blockers } | IfAsyncKind::Deferred { blockers } => blockers,
+        }
+    }
+
+    pub fn is_sync(&self) -> bool {
+        match self {
+            IfAsyncKind::Sync => true,
+            IfAsyncKind::Awaited { .. } | IfAsyncKind::Deferred { .. } => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

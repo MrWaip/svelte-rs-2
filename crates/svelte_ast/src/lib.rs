@@ -255,6 +255,12 @@ pub fn is_svelte_meta_tag(name: &str) -> bool {
     SVELTE_META_TAGS.contains(&name)
 }
 
+pub const BIND_THIS: &str = "this";
+
+pub fn is_event_attribute_name(name: &str) -> bool {
+    name.starts_with("on")
+}
+
 pub const RUNE_STATE: &str = "$state";
 pub const RUNE_DERIVED: &str = "$derived";
 pub const RUNE_EFFECT: &str = "$effect";

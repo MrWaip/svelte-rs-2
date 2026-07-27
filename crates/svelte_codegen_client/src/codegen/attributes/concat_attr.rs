@@ -74,7 +74,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     return Ok(());
                 }
                 SpecialValueKind::InputBindChecked => {
-                    self.emit_input_value(state, owner_var, val, coalesce);
+                    self.emit_input_value(state, owner_var, val, coalesce, volatile);
                     return Ok(());
                 }
             }
@@ -112,6 +112,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             match plan {
                 HtmlConcatPart::StaticText(text) => {
                     push_template_str(&mut tpl_parts, text.as_str());
+                }
+                HtmlConcatPart::FoldedText { text, part_id } => {
+                    push_template_str(&mut tpl_parts, text.as_str());
+                    if let Some(data) = self.ctx.expression_data(*part_id).cloned() {
+                        memo_deps.push_expression_data(self.ctx, &data);
+                    }
                 }
                 HtmlConcatPart::Inline {
                     part_id, defined, ..

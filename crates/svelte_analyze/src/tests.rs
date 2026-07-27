@@ -2797,7 +2797,7 @@ fn assert_symbol_blocker(data: &AnalysisData, name: &str, expected_index: u32) {
         .blocker_data()
         .symbol_blocker(sym)
         .unwrap_or_else(|| panic!("symbol '{name}' has no blocker"));
-    assert_eq!(actual, expected_index, "blocker index for '{name}'");
+    assert_eq!(actual.entry, expected_index, "blocker index for '{name}'");
 }
 
 fn assert_no_symbol_blocker(data: &AnalysisData, name: &str) {
@@ -2812,33 +2812,31 @@ fn assert_no_symbol_blocker(data: &AnalysisData, name: &str) {
     );
 }
 
-fn assert_stmt_meta_count(data: &AnalysisData, expected: usize) {
+fn assert_async_entry_count(data: &AnalysisData, expected: usize) {
     assert_eq!(
-        data.blocker_data().stmt_metas.len(),
+        data.blocker_data().entries().len(),
         expected,
-        "stmt_metas count mismatch"
+        "async entry count mismatch"
     );
 }
 
-fn assert_stmt_meta_has_await(data: &AnalysisData, stmt_index: usize, expected: bool) {
-    let meta = data
+fn assert_async_entry_suspends(data: &AnalysisData, entry_index: usize, expected: bool) {
+    let entry = data
         .blocker_data()
-        .stmt_meta(stmt_index)
-        .unwrap_or_else(|| panic!("no stmt_meta at index {stmt_index}"));
-    assert_eq!(
-        meta.has_await(),
-        expected,
-        "stmt_meta[{stmt_index}].has_await"
-    );
+        .entries()
+        .get(entry_index)
+        .unwrap_or_else(|| panic!("no async entry at index {entry_index}"));
+    assert_eq!(entry.suspends(), expected, "entry[{entry_index}].suspends");
 }
 
-fn assert_stmt_meta_hoist_names(data: &AnalysisData, stmt_index: usize, expected: &[&str]) {
-    let meta = data
+fn assert_hoisted_names(data: &AnalysisData, expected: &[&str]) {
+    let actual: Vec<&str> = data
         .blocker_data()
-        .stmt_meta(stmt_index)
-        .unwrap_or_else(|| panic!("no stmt_meta at index {stmt_index}"));
-    let actual: Vec<&str> = meta.hoist_names().iter().map(|s| s.as_str()).collect();
-    assert_eq!(actual, expected, "stmt_meta[{stmt_index}].hoist_names");
+        .hoisted_names()
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    assert_eq!(actual, expected, "hoisted_names");
 }
 
 fn assert_expr_tag_has_blockers(data: &AnalysisData, component: &Component, expr_text: &str) {
@@ -2934,10 +2932,13 @@ let b = await fetch('/b');
     );
     let paragraph =
         find_element(component.root, &component, "p").unwrap_or_else(|| panic!("no <p> element"));
-    assert_eq!(
-        data.template.fragment_blockers_by_id(paragraph.fragment),
-        &[0, 1]
-    );
+    let entries: Vec<u32> = data
+        .template
+        .fragment_blockers_by_id(paragraph.fragment)
+        .iter()
+        .map(|slot| slot.entry)
+        .collect();
+    assert_eq!(entries, vec![0, 1]);
 }
 
 fn is_head_title(data: &crate::AnalysisData, id: NodeId) -> bool {
@@ -3618,7 +3619,7 @@ fn reactivity_semantics_declaration_semantics_distinguish_derived_lowering() {
         symbol_declaration_semantics(&data, "async_total"),
         BindingSemantics::Derived(DerivedDeclarationSemantics {
             kind: DerivedKind::Derived,
-            async_kind: DerivedAsyncKind::Async,
+            async_kind: DerivedAsyncKind::Async { .. },
             ..
         })
     ));
@@ -4133,7 +4134,7 @@ function helper() { return data; }
     );
     assert_has_async(&data);
     assert_symbol_blocker(&data, "data", 0);
-    assert_stmt_meta_count(&data, 2); // data decl + function decl
+    assert_async_entry_count(&data, 1);
 }
 
 #[test]
@@ -4169,10 +4170,9 @@ let y = data.length;
     );
     assert_has_async(&data);
     assert_first_await_index(&data, 0);
-    assert_stmt_meta_has_await(&data, 0, true);
-    assert_stmt_meta_hoist_names(&data, 0, &["data"]);
-    assert_stmt_meta_has_await(&data, 1, false);
-    assert_stmt_meta_hoist_names(&data, 1, &["y"]);
+    assert_async_entry_suspends(&data, 0, true);
+    assert_async_entry_suspends(&data, 1, false);
+    assert_hoisted_names(&data, &["data", "y"]);
 }
 
 #[test]

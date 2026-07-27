@@ -10,6 +10,7 @@ mod util;
 
 pub(crate) use util::expression_root_reference_id;
 
+use crate::expression_semantics::Suspension;
 use util::{property_key_atom, simple_assignment_target_member_root_reference_id};
 
 use super::data::{
@@ -1125,8 +1126,8 @@ fn record_const_tag_declarators<'a>(
             continue;
         };
         let async_kind = match declarator.init.as_ref() {
-            Some(init) if expression_has_await(init) => DerivedAsyncKind::Async,
-            _ => DerivedAsyncKind::Sync,
+            Some(init) => async_kind_of(init),
+            None => DerivedAsyncKind::Sync,
         };
         data.reactivity.record_declarator_semantics(
             decl.node_id(),
@@ -2736,16 +2737,29 @@ fn is_simple_expression(expr: &Expression<'_>) -> bool {
 }
 
 fn derived_async_kind(call: &CallExpression<'_>) -> DerivedAsyncKind {
-    let has_await = call
-        .arguments
-        .first()
-        .and_then(|arg| arg.as_expression())
-        .is_some_and(expression_has_await);
-    if has_await {
-        DerivedAsyncKind::Async
-    } else {
-        DerivedAsyncKind::Sync
+    let Some(argument) = call.arguments.first().and_then(|arg| arg.as_expression()) else {
+        return DerivedAsyncKind::Sync;
+    };
+    async_kind_of(argument)
+}
+
+fn async_kind_of(argument: &Expression<'_>) -> DerivedAsyncKind {
+    if !expression_has_await(argument) {
+        return DerivedAsyncKind::Sync;
     }
+    DerivedAsyncKind::Async {
+        suspension: derived_suspension(argument),
+    }
+}
+
+fn derived_suspension(argument: &Expression<'_>) -> Suspension {
+    let Expression::AwaitExpression(outermost) = argument.get_inner_expression() else {
+        return Suspension::Interleaved;
+    };
+    if expression_has_await(&outermost.argument) {
+        return Suspension::Interleaved;
+    }
+    Suspension::Outermost
 }
 
 fn derived_source_reference(call: &CallExpression<'_>) -> Option<ReferenceId> {

@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use svelte_analyze::{BlockSemantics, ElementSemantics};
 use svelte_ast::{Element, FragmentId, Node, NodeId};
 
+use crate::const_tag::DeclarationGroupRun;
 use crate::error::Result;
 use crate::escape::escape_text;
 use crate::model::ServerCodegen;
@@ -188,7 +189,9 @@ impl<'a> ServerCodegen<'a> {
         self.emit_fragment_titles(id)?;
         self.emit_fragment_const_tags_hoisted(id)?;
         self.emit_fragment_declaration_tags(id)?;
+        let group = self.build_declaration_group_for(id)?;
         self.emit_fragment_snippets_debug_head(id)?;
+        self.push_declaration_group(group);
         Ok(())
     }
 
@@ -232,15 +235,34 @@ impl<'a> ServerCodegen<'a> {
             }
             self.const_tag(nid)?;
         }
+        Ok(())
+    }
+
+    pub(crate) fn build_declaration_group_for(
+        &mut self,
+        id: FragmentId,
+    ) -> Result<Option<DeclarationGroupRun<'a>>> {
+        let group = self.fragment_declaration_group(id);
         if group.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
-        self.emit_fragment_declaration_group(id, &group)
+        self.build_fragment_declaration_group(id, &group)
+    }
+
+    pub(crate) fn emit_fragment_const_tags_and_group(&mut self, id: FragmentId) -> Result<()> {
+        self.emit_fragment_const_tags_hoisted(id)?;
+        let group = self.build_declaration_group_for(id)?;
+        self.push_declaration_group(group);
+        Ok(())
     }
 
     pub(crate) fn emit_fragment_snippets_debug_head(&mut self, id: FragmentId) -> Result<()> {
-        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
+        self.emit_fragment_snippets(id)?;
+        self.emit_fragment_debug_tags(id)
+    }
 
+    pub(crate) fn emit_fragment_snippets(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
         for &nid in &node_ids {
             if matches!(self.component.store.get(nid), Node::SnippetBlock(_)) {
                 let mut local = Vec::new();
@@ -250,7 +272,11 @@ impl<'a> ServerCodegen<'a> {
                 }
             }
         }
+        Ok(())
+    }
 
+    pub(crate) fn emit_fragment_debug_tags(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
         for &nid in &node_ids {
             if matches!(self.component.store.get(nid), Node::DebugTag(_)) {
                 self.debug_tag(nid)?;

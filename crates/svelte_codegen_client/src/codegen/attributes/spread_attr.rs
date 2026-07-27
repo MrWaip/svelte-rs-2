@@ -110,6 +110,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         let data = self.ctx.expression_data(attr_id).cloned();
                         coarse_wrap(self.ctx, expr, data.as_ref())
                     };
+                    if let Some(data) = self.ctx.expression_data(attr_id) {
+                        memo.push_expression_data(self.ctx, data);
+                    }
                     let is_event = a.event_name.is_some();
                     let is_fn = matches!(
                         expr.get_inner_expression(),
@@ -133,17 +136,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     let name_alloc = self.ctx.b.alloc_str(&a.name);
                     match self.ctx.expression_data(attr_id).map(|d| d.volatility) {
                         Some(Volatility::Heavy) => {
-                            if let Some(data) = self.ctx.expression_data(attr_id) {
-                                memo.push_expression_data(self.ctx, data);
-                            }
                             let idx = memo.sync_values_push(expr);
                             let param = memo.sync_param_expr(self.ctx, idx);
                             props.push(ObjProp::KeyValue(name_alloc, param));
                         }
-                        Some(
-                            Volatility::Static | Volatility::Reactive | Volatility::Asynchronous,
-                        )
-                        | None => {
+                        Some(Volatility::Asynchronous) => {
+                            let suspension = self.ctx.expression_suspension(attr_id);
+                            let idx = memo.async_values_push(expr, suspension);
+                            let param = memo.async_param_expr(self.ctx, idx);
+                            props.push(ObjProp::KeyValue(name_alloc, param));
+                        }
+                        Some(Volatility::Static | Volatility::Reactive) | None => {
                             if self.ctx.is_expression_shorthand(attr_id)
                                 && expr_is_ident_named(&expr, &a.name)
                             {
@@ -267,18 +270,30 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
 
         if let Some(class_obj) = class_directives_obj {
+            self.push_class_directive_blockers(&mut memo, owner_id);
             let volatility = self.ctx.class_directives_volatility(owner_id);
-            let class_obj =
-                super::hoist_directives_object(self.ctx, &mut memo, volatility, class_obj);
             let class_key_expr = self
                 .ctx
                 .b
                 .static_member_expr(self.ctx.b.rid_expr("$"), "CLASS");
-            props.push(ObjProp::Computed(class_key_expr, class_obj));
+            match super::hoist_directives_slot(&mut memo, volatility, class_obj) {
+                super::DirectivesSlot::Inline(obj) => {
+                    props.push(ObjProp::Computed(class_key_expr, obj));
+                }
+                super::DirectivesSlot::Sync(index) => {
+                    let param = memo.sync_param_expr(self.ctx, index);
+                    props.push(ObjProp::Computed(class_key_expr, param));
+                }
+                super::DirectivesSlot::Async(index) => {
+                    let param = memo.async_param_expr(self.ctx, index);
+                    props.push(ObjProp::Computed(class_key_expr, param));
+                }
+            }
         }
 
         if self.ctx.has_style_directives(owner_id) {
             let style_props = self.build_style_props(owner_id)?;
+            self.push_style_directive_blockers(&mut memo, owner_id);
             let style_obj = if style_props.important.is_empty() {
                 self.ctx.b.object_expr(style_props.normal)
             } else {
@@ -289,13 +304,23 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .array_from_args([Arg::Expr(normal_obj), Arg::Expr(important_obj)])
             };
             let volatility = self.ctx.style_directives_volatility(owner_id);
-            let style_obj =
-                super::hoist_directives_object(self.ctx, &mut memo, volatility, style_obj);
             let style_key_expr = self
                 .ctx
                 .b
                 .static_member_expr(self.ctx.b.rid_expr("$"), "STYLE");
-            props.push(ObjProp::Computed(style_key_expr, style_obj));
+            match super::hoist_directives_slot(&mut memo, volatility, style_obj) {
+                super::DirectivesSlot::Inline(obj) => {
+                    props.push(ObjProp::Computed(style_key_expr, obj));
+                }
+                super::DirectivesSlot::Sync(index) => {
+                    let param = memo.sync_param_expr(self.ctx, index);
+                    props.push(ObjProp::Computed(style_key_expr, param));
+                }
+                super::DirectivesSlot::Async(index) => {
+                    let param = memo.async_param_expr(self.ctx, index);
+                    props.push(ObjProp::Computed(style_key_expr, param));
+                }
+            }
         }
 
         for (prop_index, async_index) in deferred_spreads {
@@ -310,7 +335,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             } else {
                 self.ctx.b.params(param_names.iter().map(|s| s.as_str()))
             };
-            let arrow = self.ctx.b.arrow_expr(params, [self.ctx.b.expr_stmt(obj)]);
+            let mut arrow = self.ctx.b.arrow_expr(params, [self.ctx.b.expr_stmt(obj)]);
+            memo.resolve_param_names(self.ctx, &mut arrow);
             let hash = self.ctx.css_hash().to_string();
             let css_scoped = self.ctx.is_css_scoped(owner_id) && !hash.is_empty();
             let has_deps = memo.has_deps();

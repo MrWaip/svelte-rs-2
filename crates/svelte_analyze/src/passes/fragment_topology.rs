@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 
 use svelte_ast::{AstStore, Component, FragmentRole, Node, NodeId};
 
-use crate::types::data::AnalysisData;
+use crate::types::data::{AnalysisData, BlockerSlot};
 
 pub(crate) fn build(component: &Component, data: &mut AnalysisData) {
     let _ = component;
@@ -14,17 +14,25 @@ pub(crate) fn build(component: &Component, data: &mut AnalysisData) {
     let map = take(&mut data.template.expression_tags_by_fragment);
     for (idx, slot) in map.iter().enumerate() {
         let Some(expr_ids) = slot else { continue };
-        let mut blockers = SmallVec::<[u32; 2]>::new();
+        let mut references = Vec::new();
         for &id in expr_ids {
             if let Some(d) = data.expression_data(id) {
-                for &blk in d.blockers.iter() {
-                    blockers.push(blk);
-                }
+                references.extend(d.references.iter().copied());
             }
         }
+        let mut blockers = SmallVec::<[BlockerSlot; 2]>::new();
+        let mut seen = SmallVec::<[u32; 2]>::new();
+        for sym in references {
+            let Some(slot) = data.script.blocker_data.symbol_blocker(sym) else {
+                continue;
+            };
+            if seen.contains(&slot.member) {
+                continue;
+            }
+            seen.push(slot.member);
+            blockers.push(slot);
+        }
         if !blockers.is_empty() {
-            blockers.sort_unstable();
-            blockers.dedup();
             data.template
                 .insert_fragment_blockers_by_id(svelte_ast::FragmentId(idx as u32), blockers);
         }

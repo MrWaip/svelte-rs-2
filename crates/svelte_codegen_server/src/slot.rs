@@ -19,27 +19,46 @@ impl<'a> ServerCodegen<'a> {
             _ => ("default", false),
         };
 
-        let mut items: Vec<PropOrSpread<'a>> = Vec::new();
-        for attr in &el.attributes {
-            self.emit_component_attribute(attr, &mut items)?;
-        }
-        let props_expr = self.build_slot_props_expr(items);
+        let async_kind = self
+            .analysis
+            .element_semantics
+            .query(el.id)
+            .async_kind()
+            .clone();
 
-        let fallback = self.slot_fallback(el, has_fallback)?;
-
-        let slot_stmt = self.b.call_stmt(
-            "$.slot",
-            [
-                Arg::Ident("$$renderer"),
-                Arg::Ident("$$props"),
-                Arg::StrRef(slot_name),
-                Arg::Expr(props_expr),
-                Arg::Expr(fallback),
-            ],
-        );
+        let (built, hoists) = self.with_promise_hoisting(|cg| {
+            let mut items: Vec<PropOrSpread<'a>> = Vec::new();
+            for attr in &el.attributes {
+                cg.emit_component_attribute(attr, &mut items)?;
+            }
+            let props_expr = cg.build_slot_props_expr(items);
+            let fallback = cg.slot_fallback(el, has_fallback)?;
+            Ok(cg.b.call_stmt(
+                "$.slot",
+                [
+                    Arg::Ident("$$renderer"),
+                    Arg::Ident("$$props"),
+                    Arg::StrRef(slot_name),
+                    Arg::Expr(props_expr),
+                    Arg::Expr(fallback),
+                ],
+            ))
+        });
+        let slot_stmt = built?;
 
         self.push_text("<!--[-->");
-        self.push_stmt(slot_stmt);
+        if async_kind.is_sync() {
+            for hoist in hoists {
+                self.push_stmt(hoist);
+            }
+            self.push_stmt(slot_stmt);
+        } else {
+            let mut body = hoists;
+            body.push(slot_stmt);
+            let wrapped =
+                self.wrap_async_block_flagged(body, async_kind.blockers(), async_kind.awaited());
+            self.push_stmt(wrapped);
+        }
         self.push_text("<!--]-->");
         Ok(())
     }
@@ -75,7 +94,7 @@ impl<'a> ServerCodegen<'a> {
         }
         let fragment = el.fragment;
         let body = self.child_statements(|codegen| {
-            codegen.emit_fragment_const_tags_hoisted(fragment)?;
+            codegen.emit_fragment_const_tags_and_group(fragment)?;
             codegen.fragment_children_only(fragment, FragmentParent::Block)
         })?;
         Ok(self.b.arrow_block_expr(self.b.no_params(), body))
@@ -107,7 +126,7 @@ impl<'a> ServerCodegen<'a> {
             FragmentParent::Component
         };
         let inner = self.child_statements(|codegen| {
-            codegen.emit_fragment_const_tags_hoisted(fragment)?;
+            codegen.emit_fragment_const_tags_and_group(fragment)?;
             codegen.fragment_children_only(fragment, parent)
         })?;
         if inner.is_empty() {
@@ -133,13 +152,13 @@ impl<'a> ServerCodegen<'a> {
         if let Node::SvelteFragmentLegacy(el) = self.component.store.get(fill_node_id) {
             let inner_fragment = el.fragment;
             let inner = self.child_statements(|codegen| {
-                codegen.emit_fragment_const_tags_hoisted(inner_fragment)?;
+                codegen.emit_fragment_const_tags_and_group(inner_fragment)?;
                 codegen.fragment_children_only(inner_fragment, FragmentParent::Block)
             })?;
             return Ok(vec![self.b.block_stmt(inner)]);
         }
         self.child_statements(|codegen| {
-            codegen.emit_fragment_const_tags_hoisted(slot_fragment)?;
+            codegen.emit_fragment_const_tags_and_group(slot_fragment)?;
             codegen.fragment_children_only(slot_fragment, FragmentParent::Component)
         })
     }
