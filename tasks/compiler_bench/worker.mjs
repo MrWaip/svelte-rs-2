@@ -1,20 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { glob } from 'glob';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(here, '..', '..');
+import { discoverFiles, repoRoot, resolveSearchDir } from './corpus.mjs';
 
 const argv = process.argv.slice(2);
 const asyncFlag = argv.includes('--async');
 const positional = argv.filter((a) => !a.startsWith('--'));
 const compiler = positional[0];
 const mode = positional[1];
-const explicitDir = Boolean(positional[2]);
-const searchDir = explicitDir ? resolve(process.cwd(), positional[2]) : repoRoot;
+const { searchDir, explicitDir } = resolveSearchDir(positional[2]);
 const repeats = Number(process.env.BENCH_REPEATS ?? 5);
 const warmups = Number(process.env.BENCH_WARMUPS ?? 1);
 
@@ -82,12 +77,7 @@ async function loadCompile() {
 
 const compile = await loadCompile();
 
-const relFiles = (
-    await glob('**/*.svelte', {
-        cwd: searchDir,
-        ignore: explicitDir ? [] : ['**/node_modules/**', 'original/**', 'target/**'],
-    })
-).sort();
+const relFiles = await discoverFiles(searchDir, explicitDir);
 
 const sources = relFiles.map((rel) => ({
     filename: rel,
