@@ -1,4 +1,7 @@
 {
   "code": "<script lang=\"ts\">var Direction = /* @__PURE__ */ function(Direction) {\n\tDirection[Direction[\"Up\"] = 0] = \"Up\";\n\tDirection[Direction[\"Down\"] = 1] = \"Down\";\n\treturn Direction;\n}(Direction || {});\nconst dir = Direction.Up;\n</script>\n\n<h1>{dir}</h1>\n",
-  "dependencies": []
+  "dependencies": [],
+  "mapSources": [
+    "script_typescript.svelte"
+  ]
 }

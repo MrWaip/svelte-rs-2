@@ -1,19 +1,27 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
 const oursApi = await import('@mrwaip/svelte-rs2/compiler');
 
 const casesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cluster_cases/preprocess');
 
+function normalizeMapSources(map, dir) {
+  if (!map) return null;
+  const prefix = pathToFileURL(dir + path.sep).href;
+  return [...map.sources].map((source) =>
+    source.startsWith(prefix) ? source.slice(prefix.length) : source
+  );
+}
+
 function loadCase(name) {
   const dir = path.join(casesDir, name);
   const source = readFileSync(path.join(dir, 'component.svelte'), 'utf-8');
   const expected = JSON.parse(readFileSync(path.join(dir, 'expected.json'), 'utf-8'));
-  return { name, source, expected, preprocessorsPath: path.join(dir, 'preprocessors.mjs') };
+  return { name, dir, source, expected, preprocessorsPath: path.join(dir, 'preprocessors.mjs') };
 }
 
-async function runCase({ name, source, expected, preprocessorsPath }) {
+async function runCase({ name, dir, source, expected, preprocessorsPath }) {
   const { default: createPreprocessors } = await import(preprocessorsPath);
   const filename = `${name}.svelte`;
 
@@ -34,6 +42,15 @@ async function runCase({ name, source, expected, preprocessorsPath }) {
       name,
       ok: false,
       reason: `dependencies mismatch: ours=${JSON.stringify(ourDeps)}, expected=${JSON.stringify(expectedDeps)}`
+    };
+  }
+
+  const ourSources = normalizeMapSources(result.map, dir);
+  if (JSON.stringify(ourSources) !== JSON.stringify(expected.mapSources)) {
+    return {
+      name,
+      ok: false,
+      reason: `map.sources mismatch: ours=${JSON.stringify(ourSources)}, expected=${JSON.stringify(expected.mapSources)}`
     };
   }
 

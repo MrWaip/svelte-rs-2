@@ -1,4 +1,8 @@
 {
   "code": "<style lang=\"scss\">.a .b {\n  color: red;\n}</style>\n\n<div class=\"a\"><div class=\"b\">hi</div></div>\n",
-  "dependencies": []
+  "dependencies": [],
+  "mapSources": [
+    "style_scss.svelte",
+    "file:///style_scss.svelte"
+  ]
 }

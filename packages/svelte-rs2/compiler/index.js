@@ -263,7 +263,7 @@ function attributesToObject(attributes) {
   return result;
 }
 
-async function applyHookToRegion(hook, region, code, map, filename, dependencies) {
+async function applyHookToRegion(hook, region, code, map, filename, collected) {
   const processed = await hook({
     content: region.content,
     attributes: attributesToObject(region.attributes),
@@ -273,13 +273,16 @@ async function applyHookToRegion(hook, region, code, map, filename, dependencies
   if (!processed) return { code, map };
 
   if (Array.isArray(processed.dependencies)) {
-    dependencies.push(...processed.dependencies);
+    collected.dependencies.push(...processed.dependencies);
   }
 
   const newContent = typeof processed.code === 'string' ? processed.code : region.content;
   const newMapJson = toMapJson(processed.map);
   if (newMapJson == null && newContent === region.content) {
     return { code, map };
+  }
+  if (newMapJson != null) {
+    collected.hasMap = true;
   }
 
   const spliced = native.spliceRegion(
@@ -294,18 +297,21 @@ async function applyHookToRegion(hook, region, code, map, filename, dependencies
   return { code: spliced.code, map: spliced.map };
 }
 
-async function processMarkup(hook, code, map, filename, dependencies) {
+async function processMarkup(hook, code, map, filename, collected) {
   const processed = await hook({ content: code, filename });
   if (!processed) return { code, map };
 
   if (Array.isArray(processed.dependencies)) {
-    dependencies.push(...processed.dependencies);
+    collected.dependencies.push(...processed.dependencies);
   }
 
   const newContent = typeof processed.code === 'string' ? processed.code : code;
   const newMapJson = toMapJson(processed.map);
   if (newMapJson == null && newContent === code) {
     return { code, map };
+  }
+  if (newMapJson != null) {
+    collected.hasMap = true;
   }
 
   const documentEnd = Buffer.byteLength(code, 'utf-8');
@@ -321,7 +327,7 @@ async function processMarkup(hook, code, map, filename, dependencies) {
   return { code: spliced.code, map: spliced.map };
 }
 
-async function processScript(hook, code, map, filename, dependencies) {
+async function processScript(hook, code, map, filename, collected) {
   let regions = native.findPreprocessorRegions(code);
   for (const which of ['moduleScript', 'instanceScript']) {
     const scriptRegion = regions[which];
@@ -334,7 +340,7 @@ async function processScript(hook, code, map, filename, dependencies) {
       code,
       map,
       filename,
-      dependencies
+      collected
     );
     code = result.code;
     if (code !== before) {
@@ -345,10 +351,10 @@ async function processScript(hook, code, map, filename, dependencies) {
   return { code, map };
 }
 
-async function processStyle(hook, code, map, filename, dependencies) {
+async function processStyle(hook, code, map, filename, collected) {
   const regions = native.findPreprocessorRegions(code);
   if (regions.style == null) return { code, map };
-  return applyHookToRegion(hook, regions.style, code, map, filename, dependencies);
+  return applyHookToRegion(hook, regions.style, code, map, filename, collected);
 }
 
 export async function preprocess(source, preprocessor, options = {}) {
@@ -362,24 +368,26 @@ export async function preprocess(source, preprocessor, options = {}) {
 
   let code = source;
   let map = null;
-  const dependencies = [];
+  const collected = { dependencies: [], hasMap: false };
 
   for (const group of groups) {
     if (group.markup) {
-      ({ code, map } = await processMarkup(group.markup, code, map, filename, dependencies));
+      ({ code, map } = await processMarkup(group.markup, code, map, filename, collected));
     }
     if (group.script) {
-      ({ code, map } = await processScript(group.script, code, map, filename, dependencies));
+      ({ code, map } = await processScript(group.script, code, map, filename, collected));
     }
     if (group.style) {
-      ({ code, map } = await processStyle(group.style, code, map, filename, dependencies));
+      ({ code, map } = await processStyle(group.style, code, map, filename, collected));
     }
   }
 
+  const hasMap = collected.hasMap && map != null;
+
   return {
     code,
-    map: map == null ? null : attachSourceContent(toSourceMap(native.sourceMapToJson(map)), source),
-    dependencies: [...new Set(dependencies)],
+    map: hasMap ? attachSourceContent(toSourceMap(native.sourceMapToJson(map)), source) : null,
+    dependencies: [...new Set(collected.dependencies)],
     toString: () => code
   };
 }

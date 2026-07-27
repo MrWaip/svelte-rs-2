@@ -218,25 +218,19 @@ pub fn splice_region<'a>(
     let code = format!("{prefix}{new_content}{suffix}");
 
     let mut builder = SourceMapBuilder::default();
-
-    let mut before_tokens = Vec::new();
-    let mut after_tokens = Vec::new();
-    if let Some(map) = document_map {
-        for token in map.get_tokens() {
-            let dst = (token.get_dst_line(), token.get_dst_col());
-            if dst < region_start {
-                before_tokens.push(token);
-            } else if dst >= region_end {
-                after_tokens.push(token);
-            }
-        }
-    }
+    let mut document_ids = match document_map {
+        Some(map) => BuilderIds::new(map),
+        None => BuilderIds::empty(),
+    };
 
     match document_map {
         Some(map) => {
-            for token in before_tokens {
+            for token in map.get_tokens() {
                 let dst = (token.get_dst_line(), token.get_dst_col());
-                copy_token(&mut builder, map, token, dst);
+                if dst >= region_start {
+                    continue;
+                }
+                copy_token(&mut builder, &mut document_ids, map, token, dst);
             }
         }
         None => {
@@ -252,33 +246,59 @@ pub fn splice_region<'a>(
 
     if let Some(new_map) = new_content_map {
         let document_lookup = document_map.map(|map| (map, map.generate_lookup_table()));
+        let region_source = region_source_id(new_map, file_basename);
+        let mut region_ids = BuilderIds::new(new_map);
+        let mut fallback_source = None;
+
         for token in new_map.get_tokens() {
             let dst = offset_position(region_start, (token.get_dst_line(), token.get_dst_col()));
-            let src_abs =
-                offset_position(region_start, (token.get_src_line(), token.get_src_col()));
-            let (src_line, src_col, source, content) = resolve_original(
-                document_lookup
-                    .as_ref()
-                    .map(|(map, table)| (*map, &table[..])),
-                src_abs,
-                document,
-                file_basename,
-            );
-            let source_id = builder.add_source_and_content(source, content);
             let name_id = token
                 .get_name_id()
-                .and_then(|id| new_map.get_name(id))
-                .map(|name| builder.add_name(name));
+                .and_then(|id| region_ids.name(&mut builder, new_map, id));
+
+            if !maps_into_region(token, region_source) {
+                let source_id = token
+                    .get_source_id()
+                    .and_then(|id| region_ids.source(&mut builder, new_map, id));
+                builder.add_token(
+                    dst.0,
+                    dst.1,
+                    token.get_src_line(),
+                    token.get_src_col(),
+                    source_id,
+                    name_id,
+                );
+                continue;
+            }
+
+            let src_abs =
+                offset_position(region_start, (token.get_src_line(), token.get_src_col()));
+            let mut resolved = None;
+            if let Some((map, lookup)) = &document_lookup {
+                resolved = resolve_original(&mut builder, &mut document_ids, map, lookup, src_abs);
+            }
+            let (src_line, src_col, source_id) = match resolved {
+                Some(origin) => origin,
+                None => {
+                    let source_id = *fallback_source.get_or_insert_with(|| {
+                        builder.add_source_and_content(file_basename, document)
+                    });
+                    (src_abs.0, src_abs.1, source_id)
+                }
+            };
             builder.add_token(dst.0, dst.1, src_line, src_col, Some(source_id), name_id);
         }
     }
 
     match document_map {
         Some(map) => {
-            for token in after_tokens {
+            for token in map.get_tokens() {
                 let dst = (token.get_dst_line(), token.get_dst_col());
+                if dst < region_end {
+                    continue;
+                }
                 let new_dst = shift_past(dst, region_end, new_region_end);
-                copy_token(&mut builder, map, token, new_dst);
+                copy_token(&mut builder, &mut document_ids, map, token, new_dst);
             }
         }
         None => {
@@ -299,21 +319,90 @@ pub fn splice_region<'a>(
     (code, result)
 }
 
+#[derive(Default)]
+struct BuilderIds {
+    sources: Vec<Option<u32>>,
+    names: Vec<Option<u32>>,
+}
+
+impl BuilderIds {
+    fn new(map: &SourceMap<'_>) -> Self {
+        Self {
+            sources: vec![None; map.get_sources().len()],
+            names: vec![None; map.get_names().len()],
+        }
+    }
+
+    fn empty() -> Self {
+        Self::default()
+    }
+
+    fn source<'a>(
+        &mut self,
+        builder: &mut SourceMapBuilder<'a>,
+        map: &'a SourceMap<'a>,
+        source_id: u32,
+    ) -> Option<u32> {
+        let index = source_id as usize;
+        if let Some(&Some(id)) = self.sources.get(index) {
+            return Some(id);
+        }
+        let source = map.get_source(source_id)?;
+        let content = map.get_source_content(source_id).unwrap_or("");
+        let id = builder.add_source_and_content(source, content);
+        self.sources[index] = Some(id);
+        Some(id)
+    }
+
+    fn name<'a>(
+        &mut self,
+        builder: &mut SourceMapBuilder<'a>,
+        map: &'a SourceMap<'a>,
+        name_id: u32,
+    ) -> Option<u32> {
+        let index = name_id as usize;
+        if let Some(&Some(id)) = self.names.get(index) {
+            return Some(id);
+        }
+        let name = map.get_name(name_id)?;
+        let id = builder.add_name(name);
+        self.names[index] = Some(id);
+        Some(id)
+    }
+}
+
+fn region_source_id(map: &SourceMap<'_>, file_basename: &str) -> Option<u32> {
+    for (index, source) in map.get_sources().enumerate() {
+        if source == file_basename {
+            return Some(index as u32);
+        }
+    }
+    None
+}
+
+fn maps_into_region(token: Token, region_source: Option<u32>) -> bool {
+    let Some(source_id) = token.get_source_id() else {
+        return true;
+    };
+    let Some(region) = region_source else {
+        return false;
+    };
+    source_id == region
+}
+
 fn copy_token<'a>(
     builder: &mut SourceMapBuilder<'a>,
+    ids: &mut BuilderIds,
     map: &'a SourceMap<'a>,
     token: Token,
     new_dst: (u32, u32),
 ) {
-    let source_id = token.get_source_id().and_then(|id| {
-        let source = map.get_source(id)?;
-        let content = map.get_source_content(id).unwrap_or("");
-        Some(builder.add_source_and_content(source, content))
-    });
+    let source_id = token
+        .get_source_id()
+        .and_then(|id| ids.source(builder, map, id));
     let name_id = token
         .get_name_id()
-        .and_then(|id| map.get_name(id))
-        .map(|name| builder.add_name(name));
+        .and_then(|id| ids.name(builder, map, id));
     builder.add_token(
         new_dst.0,
         new_dst.1,
@@ -325,30 +414,16 @@ fn copy_token<'a>(
 }
 
 fn resolve_original<'a>(
-    document_lookup: Option<(&'a SourceMap<'a>, &[&'a [Token]])>,
+    builder: &mut SourceMapBuilder<'a>,
+    ids: &mut BuilderIds,
+    map: &'a SourceMap<'a>,
+    lookup: &[&[Token]],
     abs: (u32, u32),
-    document: &'a str,
-    file_basename: &'a str,
-) -> (u32, u32, &'a str, &'a str) {
-    let Some((map, lookup)) = document_lookup else {
-        return (abs.0, abs.1, file_basename, document);
-    };
-    let Some(resolved) = map.lookup_token(lookup, abs.0, abs.1) else {
-        return (abs.0, abs.1, file_basename, document);
-    };
-    let Some(source_id) = resolved.get_source_id() else {
-        return (abs.0, abs.1, file_basename, document);
-    };
-    let Some(source) = map.get_source(source_id) else {
-        return (abs.0, abs.1, file_basename, document);
-    };
-    let content = map.get_source_content(source_id).unwrap_or(document);
-    (
-        resolved.get_src_line(),
-        resolved.get_src_col(),
-        source,
-        content,
-    )
+) -> Option<(u32, u32, u32)> {
+    let resolved = map.lookup_token(lookup, abs.0, abs.1)?;
+    let source_id = resolved.get_source_id()?;
+    let mapped = ids.source(builder, map, source_id)?;
+    Some((resolved.get_src_line(), resolved.get_src_col(), mapped))
 }
 
 fn add_identity_lines<'a>(
@@ -448,6 +523,51 @@ mod tests {
         );
     }
 
+    #[track_caller]
+    fn assert_sources(map: &SourceMap<'_>, expected: &[&str]) {
+        let got: Vec<&str> = map.get_sources().collect();
+        assert_eq!(got, expected, "sources: expected {expected:?}, got {got:?}");
+    }
+
+    fn splice_style_preprocessed_from_another_file() -> (String, SourceMap<'static>) {
+        let document = "<div>x</div>\n<style>.a{color:red}</style>";
+        let region = Span::new(20, 33);
+
+        let mut region_builder = SourceMapBuilder::default();
+        let imported = region_builder.add_source_and_content("foo.scss", ".b{color:blue}");
+        let component = region_builder.add_source_and_content("app.svelte", ".a{color:red}");
+        region_builder.add_token(0, 0, 0, 0, Some(imported), None);
+        region_builder.add_token(1, 0, 0, 0, Some(component), None);
+        let region_map = region_builder.into_sourcemap();
+
+        splice_region(
+            document,
+            None,
+            region,
+            ".b{color:blue}\n.a{color:red}",
+            Some(&region_map),
+            "app.svelte",
+        )
+    }
+
+    #[test]
+    fn keeps_preprocessor_source_that_is_not_the_component() {
+        let (_, map) = splice_style_preprocessed_from_another_file();
+        assert_position(&map, (1, 7), (0, 0, "foo.scss"));
+    }
+
+    #[test]
+    fn lists_component_and_preprocessor_sources_side_by_side() {
+        let (_, map) = splice_style_preprocessed_from_another_file();
+        assert_sources(&map, &["app.svelte", "foo.scss"]);
+    }
+
+    #[test]
+    fn still_offsets_region_tokens_that_point_at_the_component() {
+        let (_, map) = splice_style_preprocessed_from_another_file();
+        assert_position(&map, (2, 0), (1, 7, "app.svelte"));
+    }
+
     #[test]
     fn replaces_region_content_in_place() {
         let result = splice(
@@ -503,7 +623,7 @@ mod tests {
         let document_map = document_builder.into_sourcemap();
 
         let mut region_builder = SourceMapBuilder::default();
-        let region_source = region_builder.add_source_and_content("region", "js");
+        let region_source = region_builder.add_source_and_content("output.svelte", "js");
         region_builder.add_token(0, 0, 0, 0, Some(region_source), None);
         let new_content_map = region_builder.into_sourcemap();
 
@@ -530,7 +650,7 @@ mod tests {
         let document_map = document_builder.into_sourcemap();
 
         let mut region_builder = SourceMapBuilder::default();
-        let region_source = region_builder.add_source_and_content("region", "js");
+        let region_source = region_builder.add_source_and_content("output.svelte", "js");
         region_builder.add_token(0, 0, 0, 0, Some(region_source), None);
         let new_content_map = region_builder.into_sourcemap();
 

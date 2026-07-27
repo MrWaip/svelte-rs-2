@@ -2,5 +2,10 @@
   "code": "<style lang=\"scss\">.a {\n  color: red;\n}</style>\n\n<div class=\"a\">hi</div>\n",
   "dependencies": [
     "_tokens.scss"
+  ],
+  "mapSources": [
+    "dependencies.svelte",
+    "component.svelte.scss",
+    "_tokens.scss"
   ]
 }
