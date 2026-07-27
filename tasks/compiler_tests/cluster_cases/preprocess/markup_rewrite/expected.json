@@ -1,0 +1,4 @@
+{
+  "code": "<script>\n\tlet name = 'world';\n</script><h1>Hello, {name}!</h1>\n<p>Some <strong>important</strong> text.</p>\n",
+  "dependencies": []
+}

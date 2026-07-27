@@ -20,6 +20,8 @@
   },
   "devDependencies": {
     "@napi-rs/cli": "3.7.3",
-    "@rsvelte/compiler": "0.7.16"
+    "@rsvelte/compiler": "0.7.16",
+    "marked": "18.0.7",
+    "sass": "1.102.0"
   }
 }

@@ -3,7 +3,11 @@ use compiler_tests::harness::{
     assert_compiler_module_ssr, assert_compiler_module_ssr_dev, assert_compiler_prod,
     assert_compiler_ssr, assert_compiler_ssr_dev,
 };
-use compiler_tests::{compiler_case, compiler_module_case};
+use compiler_tests::preprocess_harness::assert_preprocess_case;
+use compiler_tests::{compiler_case, compiler_module_case, preprocess_case};
+
+#[path = "clusters/preprocess.rs"]
+mod preprocess;
 
 #[path = "clusters/value_evaluation.rs"]
 mod value_evaluation;

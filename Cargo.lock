@@ -916,8 +916,12 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "svelte_ast",
  "svelte_compiler",
  "svelte_diagnostics",
+ "svelte_parser",
+ "svelte_sourcemap",
+ "svelte_span",
 ]
 
 [[package]]
@@ -2096,6 +2100,7 @@ version = "0.1.0"
 dependencies = [
  "oxc_sourcemap",
  "serde_json",
+ "svelte_span",
 ]
 
 [[package]]

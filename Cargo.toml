@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/*", "tasks/*"]
-exclude = ["tasks/compiler_bench"]
+exclude = ["tasks/compiler_bench", "tasks/preprocess_tests"]
 resolver = "2"
 
 [workspace.package]

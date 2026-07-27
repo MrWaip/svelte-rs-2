@@ -249,3 +249,137 @@ export function compileModule(source, options = {}) {
     source
   });
 }
+
+function toMapJson(rawMap) {
+  if (rawMap == null) return null;
+  return typeof rawMap === 'string' ? rawMap : JSON.stringify(rawMap);
+}
+
+function attributesToObject(attributes) {
+  const result = {};
+  for (const attr of attributes) {
+    result[attr.name] = attr.value == null ? true : attr.value;
+  }
+  return result;
+}
+
+async function applyHookToRegion(hook, region, code, map, filename, dependencies) {
+  const processed = await hook({
+    content: region.content,
+    attributes: attributesToObject(region.attributes),
+    markup: code,
+    filename
+  });
+  if (!processed) return { code, map };
+
+  if (Array.isArray(processed.dependencies)) {
+    dependencies.push(...processed.dependencies);
+  }
+
+  const newContent = typeof processed.code === 'string' ? processed.code : region.content;
+  const newMapJson = toMapJson(processed.map);
+  if (newMapJson == null && newContent === region.content) {
+    return { code, map };
+  }
+
+  const spliced = native.spliceRegion(
+    code,
+    map,
+    region.contentStart,
+    region.contentEnd,
+    newContent,
+    newMapJson,
+    filename ?? '(unknown)'
+  );
+  return { code: spliced.code, map: spliced.map };
+}
+
+async function processMarkup(hook, code, map, filename, dependencies) {
+  const processed = await hook({ content: code, filename });
+  if (!processed) return { code, map };
+
+  if (Array.isArray(processed.dependencies)) {
+    dependencies.push(...processed.dependencies);
+  }
+
+  const newContent = typeof processed.code === 'string' ? processed.code : code;
+  const newMapJson = toMapJson(processed.map);
+  if (newMapJson == null && newContent === code) {
+    return { code, map };
+  }
+
+  const documentEnd = Buffer.byteLength(code, 'utf-8');
+  const spliced = native.spliceRegion(
+    code,
+    map,
+    0,
+    documentEnd,
+    newContent,
+    newMapJson,
+    filename ?? '(unknown)'
+  );
+  return { code: spliced.code, map: spliced.map };
+}
+
+async function processScript(hook, code, map, filename, dependencies) {
+  let regions = native.findPreprocessorRegions(code);
+  for (const which of ['moduleScript', 'instanceScript']) {
+    const scriptRegion = regions[which];
+    if (scriptRegion == null) continue;
+
+    const before = code;
+    const result = await applyHookToRegion(
+      hook,
+      scriptRegion.region,
+      code,
+      map,
+      filename,
+      dependencies
+    );
+    code = result.code;
+    if (code !== before) {
+      regions = native.findPreprocessorRegions(code);
+    }
+    map = result.map;
+  }
+  return { code, map };
+}
+
+async function processStyle(hook, code, map, filename, dependencies) {
+  const regions = native.findPreprocessorRegions(code);
+  if (regions.style == null) return { code, map };
+  return applyHookToRegion(hook, regions.style, code, map, filename, dependencies);
+}
+
+export async function preprocess(source, preprocessor, options = {}) {
+  if (typeof source !== 'string') {
+    throw new TypeError('preprocess(source, preprocessor, options): source must be a string');
+  }
+
+  const filename =
+    options.filename ?? (!Array.isArray(preprocessor) ? preprocessor?.filename : undefined);
+  const groups = preprocessor ? (Array.isArray(preprocessor) ? preprocessor : [preprocessor]) : [];
+
+  let code = source;
+  let map = null;
+  const dependencies = [];
+
+  for (const group of groups) {
+    if (group.markup) {
+      ({ code, map } = await processMarkup(group.markup, code, map, filename, dependencies));
+    }
+    if (group.script) {
+      ({ code, map } = await processScript(group.script, code, map, filename, dependencies));
+    }
+    if (group.style) {
+      ({ code, map } = await processStyle(group.style, code, map, filename, dependencies));
+    }
+  }
+
+  return {
+    code,
+    map: map == null ? null : attachSourceContent(toSourceMap(native.sourceMapToJson(map)), source),
+    dependencies: [...new Set(dependencies)],
+    toString: () => code
+  };
+}

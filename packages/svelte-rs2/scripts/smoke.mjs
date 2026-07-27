@@ -68,4 +68,66 @@ if (!(typeError instanceof TypeError)) {
   throw new Error('compileModule must throw TypeError for non-string source');
 }
 
+const scriptOnly = await api.preprocess(
+  '<script lang="ts">const x: number = 1;</script><h1>hi</h1>',
+  {
+    script: ({ content, attributes }) => {
+      if (attributes.lang !== 'ts') throw new Error('expected lang=ts attribute');
+      return { code: content.replace('const x: number = 1;', 'const x = 1;') };
+    }
+  },
+  { filename: 'Preprocess.svelte' }
+);
+if (!scriptOnly.code.includes('const x = 1;')) {
+  throw new Error('preprocess must apply the script hook');
+}
+if (!scriptOnly.code.includes('<h1>hi</h1>')) {
+  throw new Error('preprocess must leave markup outside the script tag untouched');
+}
+if (typeof scriptOnly.toString !== 'function' || scriptOnly.toString() !== scriptOnly.code) {
+  throw new Error('preprocess result must implement toString()');
+}
+if (!Array.isArray(scriptOnly.dependencies)) {
+  throw new Error('preprocess result must contain a dependencies array');
+}
+
+const styleAndDeps = await api.preprocess(
+  '<style lang="scss">.a { .b { color: red; } }</style>',
+  {
+    style: ({ content }) => ({
+      code: content.replace('.a { .b { color: red; } }', '.a .b { color: red; }'),
+      dependencies: ['tokens.scss']
+    })
+  },
+  { filename: 'Style.svelte' }
+);
+if (!styleAndDeps.code.includes('.a .b { color: red; }')) {
+  throw new Error('preprocess must apply the style hook');
+}
+if (!styleAndDeps.dependencies.includes('tokens.scss')) {
+  throw new Error('preprocess must collect hook-reported dependencies');
+}
+
+const markupThenScript = await api.preprocess(
+  '<script>let x = 1;</script>',
+  [
+    { markup: ({ content }) => ({ code: content.replace('let x = 1;', 'let x = 1;\n') }) },
+    { script: ({ content }) => ({ code: content.replace('let x = 1;', 'let x = 2;') }) }
+  ],
+  { filename: 'Chained.svelte' }
+);
+if (!markupThenScript.code.includes('let x = 2;')) {
+  throw new Error('preprocess must run multiple groups in sequence');
+}
+
+const noHooks = await api.preprocess('<h1>ok</h1>', {}, { filename: 'NoHooks.svelte' });
+if (noHooks.code !== '<h1>ok</h1>' || noHooks.map !== null) {
+  throw new Error('preprocess with no matching hooks must return the source unchanged');
+}
+
+const compiledAfterPreprocess = api.compile(scriptOnly.code, { filename: 'Preprocess.svelte' });
+if (!compiledAfterPreprocess.js || typeof compiledAfterPreprocess.js.code !== 'string') {
+  throw new Error('compile must succeed on preprocess output');
+}
+
 console.log('Smoke tests passed');

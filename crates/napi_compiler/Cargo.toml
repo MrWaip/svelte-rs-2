@@ -14,6 +14,10 @@ napi = { version = "3", features = ["napi8"] }
 napi-derive = "3"
 svelte_compiler = { workspace = true }
 svelte_diagnostics = { workspace = true }
+svelte_parser = { workspace = true }
+svelte_ast = { workspace = true }
+svelte_span = { workspace = true }
+svelte_sourcemap = { workspace = true }
 mimalloc = { version = "0.1", features = ["local_dynamic_tls"] }
 
 [build-dependencies]

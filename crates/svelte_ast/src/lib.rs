@@ -1257,6 +1257,8 @@ pub struct Script {
 
     pub context_deprecated: bool,
     pub invalid_context: Option<Span>,
+
+    pub attributes: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1275,6 +1277,7 @@ pub struct RawBlock {
     pub span: Span,
     pub content_span: Span,
     pub preceding_comment: Option<NodeId>,
+    pub attributes: Vec<Attribute>,
 }
 
 pub struct SvelteOptions {

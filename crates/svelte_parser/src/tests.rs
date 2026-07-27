@@ -107,6 +107,29 @@ fn script_tag_lang_ts() {
     assert_eq!(script.language, ScriptLanguage::TypeScript);
 }
 
+#[track_caller]
+fn assert_script_attributes(c: &Component, expected: &[&str]) {
+    let script = c
+        .instance_script
+        .as_ref()
+        .expect("expected instance script");
+    let spans: Vec<_> = script
+        .attributes
+        .iter()
+        .map(|attr| c.source_text(attr.span()))
+        .collect();
+    assert_eq!(
+        spans, expected,
+        "instance script attributes: expected {expected:?}, got {spans:?}"
+    );
+}
+
+#[test]
+fn script_tag_keeps_custom_attributes() {
+    let c = parse(r#"<script lang="ts" foo="bar">const i = 10;</script>"#);
+    assert_script_attributes(&c, &[r#"lang="ts""#, r#"foo="bar""#]);
+}
+
 #[test]
 fn comment() {
     let c = parse("<!-- some comment -->");
@@ -448,6 +471,26 @@ fn interpolation_with_escaped_quotes() {
 fn assert_css(c: &Component, expected_content: &str) {
     let css = c.css.as_ref().expect("expected css");
     assert_eq!(c.source_text(css.content_span), expected_content);
+}
+
+#[track_caller]
+fn assert_css_attributes(c: &Component, expected: &[&str]) {
+    let css = c.css.as_ref().expect("expected css");
+    let spans: Vec<_> = css
+        .attributes
+        .iter()
+        .map(|attr| c.source_text(attr.span()))
+        .collect();
+    assert_eq!(
+        spans, expected,
+        "style attributes: expected {expected:?}, got {spans:?}"
+    );
+}
+
+#[test]
+fn style_tag_keeps_custom_attributes() {
+    let c = parse(r#"<style lang="scss" module>.foo { color: red; }</style>"#);
+    assert_css_attributes(&c, &[r#"lang="scss""#, "module"]);
 }
 
 #[test]

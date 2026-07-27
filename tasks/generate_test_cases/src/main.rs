@@ -40,6 +40,7 @@ fn main() {
         .chain(diagnostic_svelte_files)
         .chain(diagnostic_module_files)
         .map(|entry| entry.expect("test invariant").display().to_string())
+        .filter(|path| !path.contains("/cluster_cases/preprocess/"))
         .collect();
 
     let input_json = serde_json::to_string(&files).expect("test invariant");
@@ -106,6 +107,53 @@ fn main() {
                 .write_all(css.as_bytes())
                 .expect("test invariant");
         }
+    }
+
+    generate_preprocess_expectations();
+}
+
+fn generate_preprocess_expectations() {
+    let case_dirs: Vec<String> = glob("./tasks/compiler_tests/cluster_cases/preprocess/*")
+        .expect("Failed to read glob pattern for preprocess cases")
+        .filter_map(|entry| entry.ok())
+        .filter(|path| path.is_dir())
+        .map(|path| path.display().to_string())
+        .collect();
+
+    if case_dirs.is_empty() {
+        return;
+    }
+
+    let input_json = serde_json::to_string(&case_dirs).expect("test invariant");
+    let tmp_input = env::temp_dir().join("svelte_gen_preprocess_input.json");
+    fs::write(&tmp_input, &input_json).expect("Failed to write temp input file");
+
+    let output = Command::new("node")
+        .arg("./tasks/compiler_tests/generate_preprocess.mjs")
+        .env("INPUT_FILE", &tmp_input)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|child| child.wait_with_output())
+        .expect("Failed to run node generate_preprocess.mjs");
+
+    let _ = fs::remove_file(&tmp_input);
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!("node generate_preprocess.mjs failed:\n{stderr}");
+    }
+
+    let results: HashMap<String, serde_json::Value> =
+        serde_json::from_slice(&output.stdout).expect("Failed to parse node output");
+
+    for (dir, expected) in &results {
+        let path = Path::new(dir).join("expected.json");
+        let json = serde_json::to_string_pretty(expected).expect("test invariant");
+        File::create(&path)
+            .expect("test invariant")
+            .write_all(json.as_bytes())
+            .expect("test invariant");
     }
 }
 

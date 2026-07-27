@@ -199,3 +199,44 @@ export declare function compileModule(
   source: string,
   options?: ModuleCompileOptions
 ): CompileResult;
+
+export type PreprocessorAttributes = Record<string, string | boolean>;
+
+export type Processed = {
+  code: string;
+  map?: string | object;
+  dependencies?: string[];
+  attributes?: Record<string, string | boolean>;
+};
+
+export type MarkupPreprocessor = (options: {
+  content: string;
+  filename?: string;
+}) => Processed | void | Promise<Processed | void>;
+
+export type Preprocessor = (options: {
+  content: string;
+  attributes: PreprocessorAttributes;
+  markup: string;
+  filename?: string;
+}) => Processed | void | Promise<Processed | void>;
+
+export interface PreprocessorGroup {
+  name?: string;
+  markup?: MarkupPreprocessor;
+  script?: Preprocessor;
+  style?: Preprocessor;
+}
+
+export type PreprocessResult = {
+  code: string;
+  map: SourceMap | null;
+  dependencies: string[];
+  toString(): string;
+};
+
+export declare function preprocess(
+  source: string,
+  preprocessor: PreprocessorGroup | PreprocessorGroup[],
+  options?: { filename?: string }
+): Promise<PreprocessResult>;

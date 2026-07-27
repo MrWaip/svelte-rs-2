@@ -603,9 +603,9 @@ impl<'a> Scanner<'a> {
                 ));
             }
             return if name == "script" {
-                self.script_tag(&attributes, name_span)
+                self.script_tag(attributes, name_span)
             } else {
-                self.style_tag(name_span)
+                self.style_tag(attributes, name_span)
             };
         }
 
@@ -2084,7 +2084,11 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn script_tag(&mut self, attributes: &[Attribute], _name_span: Span) -> Result<(), Diagnostic> {
+    fn script_tag(
+        &mut self,
+        attributes: Vec<Attribute>,
+        _name_span: Span,
+    ) -> Result<(), Diagnostic> {
         let start = self.current;
         let mut end = start;
 
@@ -2172,6 +2176,7 @@ impl<'a> Scanner<'a> {
                 is_module,
                 context_deprecated,
                 invalid_context,
+                attributes,
             }));
 
             return Ok(());
@@ -2192,12 +2197,17 @@ impl<'a> Scanner<'a> {
             is_module,
             context_deprecated,
             invalid_context,
+            attributes,
         }));
 
         Ok(())
     }
 
-    fn style_tag(&mut self, _name_span: Span) -> Result<(), Diagnostic> {
+    fn style_tag(
+        &mut self,
+        attributes: Vec<Attribute>,
+        _name_span: Span,
+    ) -> Result<(), Diagnostic> {
         let start = self.current;
         let mut end = start;
 
@@ -2226,6 +2236,7 @@ impl<'a> Scanner<'a> {
 
             self.add_token(TokenType::StyleTag(token::StyleTag {
                 content_span: self.span(start, self.current),
+                attributes,
             }));
 
             return Ok(());
@@ -2242,6 +2253,7 @@ impl<'a> Scanner<'a> {
 
         self.add_token(TokenType::StyleTag(token::StyleTag {
             content_span: self.span(start, end),
+            attributes,
         }));
 
         Ok(())

@@ -1,0 +1,4 @@
+{
+  "code": "<script>\n\tlet x = 1;\n</script>\n\n<p>{x}</p>\n",
+  "dependencies": []
+}

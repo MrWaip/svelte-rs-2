@@ -552,6 +552,7 @@ impl<'a> Parser<'a> {
                     } else {
                         ScriptLanguage::JavaScript
                     };
+                    let attributes = self.convert_attributes(&script_tag.attributes, false);
 
                     if script_tag.is_module {
                         if module_script_data.is_some() {
@@ -568,6 +569,7 @@ impl<'a> Parser<'a> {
                             context: ScriptContext::Module,
                             context_deprecated: script_tag.context_deprecated,
                             invalid_context: script_tag.invalid_context,
+                            attributes,
                         });
                     } else {
                         if instance_script_data.is_some() {
@@ -584,6 +586,7 @@ impl<'a> Parser<'a> {
                             context: ScriptContext::Default,
                             context_deprecated: false,
                             invalid_context: script_tag.invalid_context,
+                            attributes,
                         });
                     }
                 }
@@ -599,10 +602,12 @@ impl<'a> Parser<'a> {
                     let preceding_comment = children_stack
                         .last()
                         .and_then(|siblings| self.preceding_comment_id(siblings));
+                    let attributes = self.convert_attributes(&style_tag.attributes, false);
                     css_data = Some(CssData {
                         span: token.span,
                         content_span: style_tag.content_span,
                         preceding_comment,
+                        attributes,
                     });
                 }
                 TokenType::EOF => break,
@@ -621,6 +626,7 @@ impl<'a> Parser<'a> {
             language: sd.language,
             context_deprecated: sd.context_deprecated,
             invalid_context: sd.invalid_context,
+            attributes: sd.attributes,
         });
 
         let module_script = module_script_data.map(|sd| Script {
@@ -631,12 +637,14 @@ impl<'a> Parser<'a> {
             language: sd.language,
             context_deprecated: sd.context_deprecated,
             invalid_context: sd.invalid_context,
+            attributes: sd.attributes,
         });
 
         let css = css_data.map(|cd| RawBlock {
             span: cd.span,
             content_span: cd.content_span,
             preceding_comment: cd.preceding_comment,
+            attributes: cd.attributes,
         });
 
         let root_fragment = self.new_fragment(FragmentRole::Root, roots);
@@ -765,12 +773,14 @@ struct ScriptData {
     context: ScriptContext,
     context_deprecated: bool,
     invalid_context: Option<Span>,
+    attributes: Vec<Attribute>,
 }
 
 struct CssData {
     span: Span,
     content_span: Span,
     preceding_comment: Option<NodeId>,
+    attributes: Vec<Attribute>,
 }
 
 #[cfg(test)]

@@ -175,3 +175,19 @@ macro_rules! compiler_module_case {
         }
     };
 }
+
+#[macro_export]
+macro_rules! preprocess_case {
+    ($name:ident) => {
+        $crate::preprocess_case!(@build $name, stringify!($name));
+    };
+    ($name:ident, $case:literal) => {
+        $crate::preprocess_case!(@build $name, $case);
+    };
+    (@build $name:ident, $case:expr) => {
+        #[test]
+        fn $name() {
+            assert_preprocess_case($case);
+        }
+    };
+}
