@@ -1,7 +1,9 @@
 import { execFileSync } from 'node:child_process';
+import { statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { discoverFiles, resolveSearchDir } from './corpus.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const worker = resolve(here, 'worker.mjs');
@@ -54,6 +56,13 @@ function run(compiler, mode) {
 
 process.stderr.write(
     `benchmarking .svelte files in: ${targetDir ?? '<repo root>'}${asyncFlag ? ' (experimental async)' : ''}\n`,
+);
+
+const { searchDir, explicitDir } = resolveSearchDir(targetDir);
+const corpus = await discoverFiles(searchDir, explicitDir);
+const corpusBytes = corpus.reduce((acc, rel) => acc + statSync(resolve(searchDir, rel)).size, 0);
+process.stderr.write(
+    `discovered ${corpus.length} files, ${(corpusBytes / 1024).toFixed(0)} KB total\n`,
 );
 
 const rows = [];

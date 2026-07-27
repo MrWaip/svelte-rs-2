@@ -17,11 +17,11 @@
     "terser": "^5.36.0"
   },
   "optionalDependencies": {
-    "@rsvelte/vite-plugin-svelte-native": "0.2.6"
+    "@rsvelte/vite-plugin-svelte-native": "0.3.1"
   },
   "devDependencies": {
     "@napi-rs/cli": "3.7.3",
-    "@rsvelte/compiler": "0.7.16",
+    "@rsvelte/compiler": "0.9.4",
     "marked": "18.0.7",
     "sass": "1.102.0"
   }
