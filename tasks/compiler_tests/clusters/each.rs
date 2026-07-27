@@ -273,3 +273,26 @@ compiler_case!(
     "each/animate_declaration_tag_sibling",
     [prod, dev, ssr, ssr_dev]
 );
+
+compiler_case!(
+    async_fallback,
+    "each/async_fallback",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    async_deferred_collection,
+    "each/async_deferred_collection",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    fallback_const_scope,
+    "each/fallback_const_scope",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    nested_each_in_fallback,
+    "each/nested_each_in_fallback",
+    [prod, dev, ssr, ssr_dev]
+);

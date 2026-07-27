@@ -1,6 +1,46 @@
 use super::*;
 
 compiler_case!(
+    group_blocker_order_mixed,
+    "async_fragment_declaration/group_blocker_order_mixed",
+    ignore = "script blockers and declaration blockers are two lists, so a block emits them grouped rather than in reference order"
+);
+compiler_case!(
+    group_each_mixed_blockers,
+    "async_fragment_declaration/group_each_mixed_blockers",
+    ignore = "script blockers and declaration blockers are two lists, so a block emits them grouped rather than in reference order"
+);
+compiler_case!(
+    group_snippet_before_declaration,
+    "async_fragment_declaration/group_snippet_before_declaration",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
+compiler_case!(
+    group_after_hoisted_declaration,
+    "async_fragment_declaration/group_after_hoisted_declaration",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    group_after_hoisted_snippet,
+    "async_fragment_declaration/group_after_hoisted_snippet",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    group_boundary_snippet_stays_inside,
+    "async_fragment_declaration/group_boundary_snippet_stays_inside",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    group_snippet_blockers,
+    "async_fragment_declaration/group_snippet_blockers",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    group_block_const_blockers,
+    "async_fragment_declaration/group_block_const_blockers",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
     const_tag_await,
     "async_fragment_declaration/const_tag_await",
     [prod, dev, ssr, ssr_dev]
@@ -103,4 +143,10 @@ compiler_case!(
     declaration_tag_in_element_guard,
     "async_fragment_declaration/declaration_tag_in_element_guard",
     [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    if_each_declaration_blockers,
+    "async_fragment_declaration/if_each_declaration_blockers",
+    [prod_todo, dev_todo, ssr, ssr_dev]
 );

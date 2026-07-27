@@ -1,39 +1,54 @@
 use super::*;
 
 compiler_case!(
+    derived_destructured_after_await,
+    "async_instance_blockers/derived_destructured_after_await",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    derived_destructured_carrier_guard,
+    "async_instance_blockers/derived_destructured_carrier_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    boundary_nullish_pending_literal,
+    "async_instance_blockers/boundary_nullish_pending_literal",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
     assignment_write,
     "async_instance_blockers/assignment_write",
-    ignore = "instance-body writes after an await do not blocker the reading expression"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     update_write,
     "async_instance_blockers/update_write",
-    ignore = "instance-body writes after an await do not blocker the reading expression"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     call_touch,
     "async_instance_blockers/call_touch",
-    ignore = "bindings reached through a call after an await are not blockered"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     function_declaration,
     "async_instance_blockers/function_declaration",
-    ignore = "function declarations get no deferred blocker"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     arrow_declarator,
     "async_instance_blockers/arrow_declarator",
-    ignore = "arrow declarators get no deferred blocker"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     sync_group_slot,
     "async_instance_blockers/sync_group_slot",
-    ignore = "consecutive non-await statements are split into separate promise slots"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     props_id_declarator,
     "async_instance_blockers/props_id_declarator",
-    ignore = "$props.id declarator is not skipped when grouping the instance body"
+    [prod, dev, ssr, ssr_dev]
 );
 
 compiler_case!(
@@ -49,8 +64,7 @@ compiler_case!(
 compiler_case!(
     statement_thunk_shape,
     "async_instance_blockers/statement_thunk_shape",
-    ignore =
-        "single expression statement in a promise group is wrapped as a block, not `void expr`"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     closure_reference_guard,
@@ -65,12 +79,12 @@ compiler_case!(
 compiler_case!(
     await_call_unthunk,
     "async_instance_blockers/await_call_unthunk",
-    ignore = "`await load()` is not collapsed to the callee `load`"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     nested_await_no_collapse,
     "async_instance_blockers/nested_await_no_collapse",
-    ignore = "an await with a nested await keeps a block body instead of an expression body"
+    [prod, dev, ssr, ssr_dev]
 );
 compiler_case!(
     class_declaration_assignment,
@@ -90,6 +104,69 @@ compiler_case!(
 compiler_case!(
     multi_declarator_slots,
     "async_instance_blockers/multi_declarator_slots",
-    ignore =
-        "a multi-declarator declaration in an async instance body panics on statement metadata"
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    parenthesized_await_collapse,
+    "async_instance_blockers/parenthesized_await_collapse",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    export_specifier_slot,
+    "async_instance_blockers/export_specifier_slot",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
+compiler_case!(
+    block_statement_entry,
+    "async_instance_blockers/block_statement_entry",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
+
+compiler_case!(
+    erased_statement_slot_shape,
+    "async_instance_blockers/erased_statement_slot_shape",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    props_erased_before_await,
+    "async_instance_blockers/props_erased_before_await",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    function_declaration_after_erased_props,
+    "async_instance_blockers/function_declaration_after_erased_props",
+    [prod, dev, ssr_todo, ssr_dev_todo]
+);
+compiler_case!(
+    derived_nested_await_thunk,
+    "async_instance_blockers/derived_nested_await_thunk",
+    [prod_todo, dev_todo, ssr_todo, ssr_dev_todo]
+);
+
+compiler_case!(
+    destructured_props_assignment,
+    "async_instance_blockers/destructured_props_assignment",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    effect_slot_void,
+    "async_instance_blockers/effect_slot_void",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    bindable_prop_after_await,
+    "async_instance_blockers/bindable_prop_after_await",
+    [prod, dev, ssr, ssr_dev]
+);
+
+compiler_case!(
+    rest_prop_after_await,
+    "async_instance_blockers/rest_prop_after_await",
+    [prod, dev, ssr, ssr_dev]
 );

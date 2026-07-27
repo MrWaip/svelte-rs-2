@@ -1,6 +1,16 @@
 use super::*;
 
 compiler_case!(
+    nullish_pending_with_snippet,
+    "boundary/nullish_pending_with_snippet",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    nullish_pending_with_failed,
+    "boundary/nullish_pending_with_failed",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
     boundary_reactive_handler_inline,
     "boundary/reactive_handler_inline"
 );
@@ -89,4 +99,10 @@ compiler_case!(
 compiler_case!(
     boundary_snippet_order_pending_nested_guard,
     "boundary/snippet_order_pending_nested_guard"
+);
+
+compiler_case!(
+    pending_snippet_attr,
+    "boundary/pending_snippet_attr",
+    [prod, dev, ssr, ssr_dev]
 );
