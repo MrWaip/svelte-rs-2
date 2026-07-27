@@ -1,0 +1,8 @@
+[
+  {
+    "code": "legacy_await_invalid",
+    "end": 98,
+    "severity": "error",
+    "start": 74
+  }
+]

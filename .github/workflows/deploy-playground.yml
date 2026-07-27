@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RUST_CHANNEL: '1.94.1'
+  RUST_CHANNEL: '1.97.1'
   WASM_PACK_VERSION: '0.13.1'
 
 jobs:

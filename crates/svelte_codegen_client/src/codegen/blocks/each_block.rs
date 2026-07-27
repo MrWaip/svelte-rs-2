@@ -13,6 +13,7 @@ use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::effect::suspending_block_thunk;
 use super::super::{Codegen, CodegenError, Result};
 
 const EACH_IS_CONTROLLED: u32 = 4;
@@ -61,6 +62,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         sem: EachBlockSemantics,
         controlled_anchor: Option<String>,
     ) -> Result<()> {
+        let controlled_anchor = match &sem.async_kind {
+            EachAsyncKind::Sync => controlled_anchor,
+            EachAsyncKind::Awaited | EachAsyncKind::Deferred => None,
+        };
         let is_controlled = controlled_anchor.is_some();
         let anchor_node = match controlled_anchor {
             Some(name) => name,
@@ -72,11 +77,16 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let context_pattern = self.take_each_context_pattern(id)?;
 
         let async_thunk = match &plan.async_kind {
-            EachAsyncKind::Awaited { .. } => {
+            EachAsyncKind::Awaited => {
+                let suspension = self.ctx.expression_suspension(id);
                 let collection_expr = self.take_node_expr(id)?;
-                Some(self.ctx.b.async_thunk(collection_expr))
+                Some(suspending_block_thunk(
+                    self.ctx,
+                    collection_expr,
+                    suspension,
+                ))
             }
-            EachAsyncKind::Deferred { .. } | EachAsyncKind::Sync => None,
+            EachAsyncKind::Deferred | EachAsyncKind::Sync => None,
         };
 
         let item_pattern_node = match &sem.item {
@@ -102,29 +112,25 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
         let each_call = self.ctx.b.call_expr("$.each", args);
 
-        match &plan.async_kind {
-            EachAsyncKind::Awaited { blockers } | EachAsyncKind::Deferred { blockers } => {
-                let blockers = blockers.to_vec();
-                let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
-                let each_stmt = self.add_svelte_meta(each_call, span_start, "each");
-                let wrapped = self.emit_async_call_stmt(
-                    &blockers,
-                    anchor_expr,
-                    &anchor_node,
-                    "$$collection",
-                    async_thunk,
-                    vec![each_stmt],
-                )?;
-                state.init.push(wrapped);
-                Ok(())
-            }
-            EachAsyncKind::Sync => {
-                state
-                    .init
-                    .push(self.add_svelte_meta(each_call, span_start, "each"));
-                Ok(())
-            }
+        let blocker_exprs = self.ctx.blocker_exprs(&sem.blockers);
+        if plan.async_kind.is_sync() && blocker_exprs.is_empty() {
+            state
+                .init
+                .push(self.add_svelte_meta(each_call, span_start, "each"));
+            return Ok(());
         }
+        let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
+        let each_stmt = self.add_svelte_meta(each_call, span_start, "each");
+        let wrapped = self.emit_async_call_stmt(
+            blocker_exprs,
+            anchor_expr,
+            &anchor_node,
+            "$$collection",
+            async_thunk,
+            vec![each_stmt],
+        )?;
+        state.init.push(wrapped);
+        Ok(())
     }
 
     fn build_each_plan(
@@ -202,7 +208,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             key_is_index: matches!(sem.key, EachKeyKind::KeyedByIndex),
             has_fallback: block.fallback.is_some(),
             collection_source: sem.collection.source.clone(),
-            async_kind: sem.async_kind.clone(),
+            async_kind: sem.async_kind,
         })
     }
 
@@ -235,10 +241,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         plan: &EachEmit,
     ) -> Result<Expression<'a>> {
         match &plan.async_kind {
-            EachAsyncKind::Awaited { .. } | EachAsyncKind::Deferred { .. } => {
-                Ok(self.ctx.b.thunk(rune_get(&self.ctx.b, "$$collection")))
-            }
-            EachAsyncKind::Sync => {
+            EachAsyncKind::Awaited => Ok(self.ctx.b.thunk(rune_get(&self.ctx.b, "$$collection"))),
+            EachAsyncKind::Deferred | EachAsyncKind::Sync => {
                 if let EachCollectionSource::Prop { sym } = &plan.collection_source {
                     let name = self.ctx.query.symbol_name(*sym).to_string();
                     return Ok(self.ctx.b.rid_expr(&name));

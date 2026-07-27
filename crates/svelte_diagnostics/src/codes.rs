@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn warning_code_union_in_sync_with_all_warning_codes() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let path = manifest_dir.join("../../packages/svelte-rs2/compiler/index.d.ts");
+        let path = manifest_dir.join("../../packages/svelte-rs/compiler/index.d.ts");
         let Ok(content) = fs::read_to_string(&path) else {
             return;
         };

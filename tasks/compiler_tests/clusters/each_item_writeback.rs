@@ -149,3 +149,60 @@ compiler_case!(
     legacy_prop_item_member_read_only,
     "each_item_writeback/legacy_prop_item_member_read_only"
 );
+
+compiler_case!(
+    legacy_destructure_array_index_bind,
+    "each_item_writeback/legacy_destructure_array_index_bind"
+);
+compiler_case!(
+    legacy_destructure_array_default_bind,
+    "each_item_writeback/legacy_destructure_array_default_bind"
+);
+compiler_case!(
+    legacy_destructure_array_in_object_bind,
+    "each_item_writeback/legacy_destructure_array_in_object_bind"
+);
+compiler_case!(
+    legacy_destructure_object_in_array_bind,
+    "each_item_writeback/legacy_destructure_object_in_array_bind"
+);
+compiler_case!(
+    legacy_destructure_nested_rest_bind,
+    "each_item_writeback/legacy_destructure_nested_rest_bind"
+);
+compiler_case!(
+    legacy_destructure_array_index_group_bind,
+    "each_item_writeback/legacy_destructure_array_index_group_bind"
+);
+compiler_case!(
+    legacy_destructure_array_index_component_bind,
+    "each_item_writeback/legacy_destructure_array_index_component_bind"
+);
+compiler_case!(
+    legacy_destructure_array_index_assign,
+    "each_item_writeback/legacy_destructure_array_index_assign",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    legacy_destructure_array_index_compound_assign,
+    "each_item_writeback/legacy_destructure_array_index_compound_assign",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    legacy_destructure_object_computed_key_bind,
+    "each_item_writeback/legacy_destructure_object_computed_key_bind",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    legacy_destructure_array_member_mutate_guard,
+    "each_item_writeback/legacy_destructure_array_member_mutate_guard"
+);
+compiler_case!(
+    legacy_item_update_guard,
+    "each_item_writeback/legacy_item_update_guard"
+);
+compiler_case!(
+    legacy_destructure_object_key_assign,
+    "each_item_writeback/legacy_destructure_object_key_assign",
+    [prod, dev, ssr, ssr_dev]
+);

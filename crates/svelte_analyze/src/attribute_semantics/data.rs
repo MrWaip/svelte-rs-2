@@ -45,20 +45,25 @@ pub enum SkipCause {
 }
 
 impl AttributeSemantics {
-    pub fn is_event_or_binding(&self) -> bool {
+    pub fn skips_member_write_instrumentation(&self) -> bool {
         match self {
             AttributeSemantics::ElementBind(_)
             | AttributeSemantics::WindowBind(_)
             | AttributeSemantics::DocumentBind(_)
             | AttributeSemantics::ComponentBind(_)
             | AttributeSemantics::Event(_) => true,
+            AttributeSemantics::ComponentProp(prop) => match prop.carrier() {
+                ComponentPropCarrier::Component => true,
+                ComponentPropCarrier::SvelteSelf
+                | ComponentPropCarrier::SvelteComponentLegacy
+                | ComponentPropCarrier::SlotLegacy => false,
+            },
             AttributeSemantics::NonSpecial
             | AttributeSemantics::StaticAttr
             | AttributeSemantics::Skip(_)
             | AttributeSemantics::RuntimeBehavior
             | AttributeSemantics::Class(_)
             | AttributeSemantics::Style(_)
-            | AttributeSemantics::ComponentProp(_)
             | AttributeSemantics::ComponentCssProp(_)
             | AttributeSemantics::SvelteComponentThis(_)
             | AttributeSemantics::ComponentSpread(_)
@@ -199,6 +204,10 @@ pub enum TemplateEffect {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HtmlConcatPart {
     StaticText(CompactString),
+    FoldedText {
+        text: CompactString,
+        part_id: NodeId,
+    },
     Inline {
         part_id: NodeId,
         defined: bool,
@@ -228,6 +237,7 @@ pub enum ComponentSpreadEmit {
     Inline,
     Thunk,
     MemoThunk,
+    AwaitedThunk,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -258,16 +268,35 @@ pub enum ComponentPropSemantics {
     Concat(ComponentPropConcatSemantics),
 }
 
+impl ComponentPropSemantics {
+    pub fn carrier(&self) -> ComponentPropCarrier {
+        match self {
+            ComponentPropSemantics::Expression(expression) => expression.carrier,
+            ComponentPropSemantics::Concat(concat) => concat.carrier,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComponentPropCarrier {
+    Component,
+    SvelteSelf,
+    SvelteComponentLegacy,
+    SlotLegacy,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ComponentPropExpressionSemantics {
     pub memo: ComponentPropMemo,
     pub shorthand: bool,
+    pub carrier: ComponentPropCarrier,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ComponentPropConcatSemantics {
     pub memo: ComponentPropMemo,
     pub plan: SmallVec<[ConcatPartEmit; 4]>,
+    pub carrier: ComponentPropCarrier,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -275,6 +304,7 @@ pub enum ConcatPartEmit {
     Static,
     Inline,
     HoistDerived,
+    Awaited,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -282,6 +312,7 @@ pub enum ComponentPropMemo {
     Inline,
     Getter,
     Derived,
+    Awaited,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -329,6 +360,7 @@ pub struct ComponentBindSemantics {
     pub each_context_vars: SmallVec<[SymbolId; 4]>,
     pub ownership_root: Option<SymbolId>,
     pub each_item_store_backed: bool,
+    pub needs_binding_validation: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -367,6 +399,7 @@ pub enum ComponentBindTarget {
 pub enum GroupBindValue {
     Expression { expression: OxcNodeId, data: NodeId },
     Static { node: NodeId },
+    Boolean,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -386,6 +419,7 @@ pub struct ElementBindSemantics {
     pub group_reflection: Option<GroupReflection>,
     pub group_id: Option<u32>,
     pub needs_binding_validation: bool,
+    pub each_item_store_backed: bool,
     pub reflects_as_attribute: bool,
 }
 

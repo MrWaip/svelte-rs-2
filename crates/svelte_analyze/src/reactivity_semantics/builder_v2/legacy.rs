@@ -13,13 +13,12 @@ use crate::types::data::{AnalysisData, ApiExport};
 use crate::utils::{is_let_or_var, is_simple_expression};
 
 use super::super::data::{
-    BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropDefaultKind, ReferenceFacts,
+    BindingFacts, DeclaratorSemantics, LegacyBindablePropSemantics, PropBindingKind,
+    PropDefaultKind, ReferenceFacts,
 };
 use crate::PropsFlags;
 
-const PROPS_NAME: &str = "$$props";
-const REST_PROPS_NAME: &str = "$$restProps";
-const SLOTS_NAME: &str = "$$slots";
+use svelte_ast::{DOLLAR_PROPS, DOLLAR_REST_PROPS, DOLLAR_SLOTS};
 
 #[derive(Clone, Copy)]
 enum LegacyMagicObject {
@@ -31,9 +30,9 @@ enum LegacyMagicObject {
 impl LegacyMagicObject {
     fn from_name(name: &str) -> Option<Self> {
         match name {
-            PROPS_NAME => Some(Self::Props),
-            REST_PROPS_NAME => Some(Self::RestProps),
-            SLOTS_NAME => Some(Self::Slots),
+            DOLLAR_PROPS => Some(Self::Props),
+            DOLLAR_REST_PROPS => Some(Self::RestProps),
+            DOLLAR_SLOTS => Some(Self::Slots),
             _ => None,
         }
     }
@@ -55,7 +54,7 @@ pub(super) fn classify_export_named_declaration<'a>(
         classify_runes_export(data, export);
         return;
     }
-    data.output.legacy_has_export_declaration = true;
+    data.legacy_has_export_declaration = true;
     if let Some(decl) = &export.declaration {
         match decl {
             Declaration::VariableDeclaration(var_decl) if is_let_or_var(var_decl.kind) => {
@@ -94,7 +93,7 @@ fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDe
         } else {
             None
         };
-        data.output.api_exports.push(ApiExport {
+        data.api_exports.push(ApiExport {
             local: symbol,
             reference_id: Some(ref_id),
             alias,
@@ -109,7 +108,7 @@ fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDe
         {
             for declarator in &var_decl.declarations {
                 walk_bindings(&declarator.id, |visit| {
-                    data.output.api_exports.push(ApiExport {
+                    data.api_exports.push(ApiExport {
                         local: visit.symbol,
                         reference_id: None,
                         alias: None,
@@ -122,7 +121,7 @@ fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDe
             if let Some(ident) = &func.id
                 && let Some(symbol) = ident.symbol_id.get()
             {
-                data.output.api_exports.push(ApiExport {
+                data.api_exports.push(ApiExport {
                     local: symbol,
                     reference_id: None,
                     alias: None,
@@ -133,7 +132,7 @@ fn classify_runes_export<'a>(data: &mut AnalysisData<'a>, export: &ExportNamedDe
             if let Some(ident) = &cls.id
                 && let Some(symbol) = ident.symbol_id.get()
             {
-                data.output.api_exports.push(ApiExport {
+                data.api_exports.push(ApiExport {
                     local: symbol,
                     reference_id: None,
                     alias: None,
@@ -182,7 +181,7 @@ fn record_api_export(
     alias: Option<CompactString>,
 ) {
     data.reactivity.record_legacy_api_export_binding(symbol);
-    data.output.api_exports.push(ApiExport {
+    data.api_exports.push(ApiExport {
         local: symbol,
         reference_id,
         alias,
@@ -345,12 +344,54 @@ pub(super) fn register_legacy_synthetic_objects(data: &mut AnalysisData<'_>) {
             }
         }
         if is_slots {
-            data.output.needs_sanitized_legacy_slots = true;
+            data.reactivity.mark_legacy_reads_slots();
         }
+    }
+
+    if reads_declared_slots_object(data) {
+        data.reactivity.mark_legacy_reads_slots();
     }
 
     data.reactivity
         .set_legacy_unresolved_usage(uses_props, uses_rest_props);
+}
+
+fn reads_declared_slots_object(data: &AnalysisData<'_>) -> bool {
+    data.scoping.symbol_ids().any(|sym| {
+        data.scoping.symbol_name(sym) == DOLLAR_SLOTS
+            && !data.scoping.get_resolved_reference_ids(sym).is_empty()
+    })
+}
+
+pub(super) fn register_standalone_module_props_object(data: &mut AnalysisData<'_>) {
+    if !data.script.is_standalone_module {
+        return;
+    }
+
+    let mut rename_refs: Vec<ReferenceId> =
+        match data.scoping.root_unresolved_references().get(DOLLAR_PROPS) {
+            Some(refs) => refs.clone(),
+            None => Vec::new(),
+        };
+
+    let props_symbols: Vec<SymbolId> = data
+        .scoping
+        .semantics()
+        .symbol_ids()
+        .filter(|&sym| data.scoping.semantics().symbol_name(sym) == DOLLAR_PROPS)
+        .collect();
+
+    for &sym in &props_symbols {
+        rename_refs.extend_from_slice(data.scoping.get_resolved_reference_ids(sym));
+    }
+
+    for sym in props_symbols {
+        data.reactivity.record_legacy_props_object_binding(sym);
+    }
+    for ref_id in rename_refs {
+        data.reactivity
+            .record_reference_semantics(ref_id, ReferenceFacts::LegacyPropsIdentifierRead);
+    }
 }
 
 pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
@@ -402,6 +443,62 @@ pub(super) fn finalize_legacy_aggregates(data: &mut AnalysisData<'_>) {
                 legacy.default_kind = kind;
             }
         }
+    }
+}
+
+pub(super) fn finalize_runes_store_prop_defaults(data: &mut AnalysisData<'_>) {
+    if !data.script.runes() {
+        return;
+    }
+    let symbols: Vec<SymbolId> = data.reactivity.iter_runes_prop_symbols().collect();
+    for sym in symbols {
+        let Some(kind) = runes_store_default_kind(data, sym) else {
+            continue;
+        };
+        let Some(BindingFacts::Prop(prop)) = data.reactivity.binding_facts_mut(sym) else {
+            continue;
+        };
+        if let PropBindingKind::Source {
+            default_lowering, ..
+        } = &mut prop.kind
+        {
+            *default_lowering = kind;
+        }
+    }
+}
+
+fn runes_store_default_kind(data: &AnalysisData<'_>, sym: SymbolId) -> Option<PropDefaultKind> {
+    let Some(BindingFacts::Prop(prop)) = data.reactivity.binding_facts(sym) else {
+        return None;
+    };
+    let PropBindingKind::Source {
+        default_lowering, ..
+    } = &prop.kind
+    else {
+        return None;
+    };
+    if *default_lowering != PropDefaultKind::Eager {
+        return None;
+    }
+    let default = runes_prop_default_expr(data, sym)?;
+    if is_store_subscription_identifier(data, default) {
+        Some(PropDefaultKind::LazyAccessor)
+    } else if references_store_subscription(data, default) {
+        Some(PropDefaultKind::Lazy)
+    } else {
+        None
+    }
+}
+
+fn runes_prop_default_expr<'a>(
+    data: &AnalysisData<'a>,
+    sym: SymbolId,
+) -> Option<&'a Expression<'a>> {
+    let decl = data.scoping.symbol_declaration(sym);
+    let parent = data.scoping.js_parent_id(decl)?;
+    match data.scoping.js_kind(parent)? {
+        AstKind::AssignmentPattern(pat) => Some(&pat.right),
+        _ => None,
     }
 }
 

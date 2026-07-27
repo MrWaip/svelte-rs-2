@@ -69,14 +69,14 @@ impl LineIndex {
     }
 
     fn utf16_column(&self, line_start: usize, byte_offset: usize) -> usize {
+        let byte_offset = byte_offset.min(self.source.len());
+        let segment = &self.source[line_start..byte_offset];
+        if segment.is_ascii() {
+            return byte_offset - line_start;
+        }
         let mut col = 0;
-        let mut pos = line_start;
-        for ch in self.source[line_start..].chars() {
-            if pos >= byte_offset {
-                break;
-            }
+        for ch in segment.chars() {
             col += ch.len_utf16();
-            pos += ch.len_utf8();
         }
         col
     }

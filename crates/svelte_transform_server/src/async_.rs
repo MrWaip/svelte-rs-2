@@ -1,9 +1,15 @@
 use std::mem;
 
-use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, BindingPattern, Expression, Statement};
+use oxc_allocator::CloneIn;
+use oxc_ast::ast::{AssignmentOperator, BindingPattern, Expression, Statement};
 use oxc_span::SPAN;
-use svelte_ast_builder::{Arg, Builder};
+use svelte_analyze::{AsyncEntryLocation, AwaitSemantics};
+use svelte_ast_builder::Arg;
 use svelte_component_semantics::OxcNodeId;
+use svelte_emit_builders::async_entry::{
+    EntryStatement, entry_thunk as async_entry_thunk, push_entry_statement,
+    statement_entry_location,
+};
 
 use crate::derived::expand_derived_destructure_statements;
 use crate::model::ServerTransform;
@@ -22,17 +28,17 @@ impl<'a> ServerTransform<'_, 'a> {
             &mut await_expr.argument,
             ast.expression_identifier(SPAN, ""),
         );
-        await_expr.argument = self.b.call_expr("$.save", [Arg::Expr(arg)]);
-        let awaited = mem::replace(it, ast.expression_identifier(SPAN, ""));
-        *it = self.b.call_expr_callee(awaited, []);
+        let saved = self.b.call_expr("$.save", [Arg::Expr(arg)]);
+        *it = self.b.call_expr_callee(self.b.await_expr(saved), []);
     }
 
     fn await_needs_save(&self, id: OxcNodeId) -> bool {
-        self.analysis.pickled_awaits.contains(id)
-            || self
-                .analysis
-                .expression_data_by_oxc(id)
-                .is_some_and(|data| !data.blockers.is_empty() || !data.references.is_empty())
+        match self.analysis.await_semantics.query(id) {
+            AwaitSemantics::NonTerminal | AwaitSemantics::TerminalInConstruct => true,
+            AwaitSemantics::TerminalInFragmentInterpolation
+            | AwaitSemantics::TerminalInReactiveDeclaration
+            | AwaitSemantics::Detached => false,
+        }
     }
 }
 
@@ -44,30 +50,17 @@ impl<'a> ServerTransform<'_, 'a> {
         let b = self.b;
         let analysis = self.analysis;
         let blocker_data = analysis.blocker_data();
-        let Some(first_await_idx) = blocker_data.first_await_index() else {
+        if blocker_data.first_await_index().is_none() {
             return body;
-        };
+        }
 
         let ident_gen = &mut *self.ident_gen;
+        let entries = blocker_data.entries();
         let mut result = Vec::new();
-        let mut hoisted_names: Vec<&str> = Vec::new();
-        let mut thunks: Vec<Expression<'a>> = Vec::new();
+        let mut buckets: Vec<Vec<EntryStatement<'a>>> =
+            entries.iter().map(|_| Vec::new()).collect();
 
         for (i, stmt) in body.into_iter().enumerate() {
-            if i < first_await_idx {
-                result.push(stmt);
-                continue;
-            }
-
-            let meta = blocker_data
-                .stmt_meta(i)
-                .expect("stmt_meta out of range for async instance body");
-            let has_await = meta.has_await();
-
-            for name in meta.hoist_names() {
-                hoisted_names.push(b.alloc_str(name));
-            }
-
             let stmt = match stmt {
                 Statement::ExportNamedDeclaration(export) => match export.unbox().declaration {
                     Some(decl) => Statement::from(decl),
@@ -78,32 +71,51 @@ impl<'a> ServerTransform<'_, 'a> {
 
             match stmt {
                 Statement::VariableDeclaration(var_decl) => {
-                    for declarator in var_decl.unbox().declarations {
+                    let declarators: Vec<_> = var_decl.unbox().declarations.into_iter().collect();
+                    let locations: Vec<Option<AsyncEntryLocation>> = declarators
+                        .iter()
+                        .map(|declarator| {
+                            blocker_data
+                                .entry_location(declarator.node_id())
+                                .or_else(|| {
+                                    declarator_symbol_location(blocker_data, &declarator.id)
+                                })
+                        })
+                        .collect();
+                    let shared = locations.iter().flatten().next().copied();
+                    for (declarator, own) in declarators.into_iter().zip(locations) {
+                        let location = own.or(shared);
+                        if own.is_none()
+                            && let Some(location) = location
+                        {
+                            buckets[location.entry]
+                                .push(EntryStatement::Plain(b.var_init_stmt(declarator)));
+                            continue;
+                        }
                         let declarator = match expand_derived_destructure_statements(
                             b, analysis, ident_gen, declarator,
                         ) {
                             Ok(stmts) => {
-                                thunks.push(if has_await {
-                                    b.async_thunk_block(stmts)
-                                } else {
-                                    b.thunk_block(stmts)
-                                });
+                                match location {
+                                    Some(location) => {
+                                        for stmt in stmts {
+                                            buckets[location.entry]
+                                                .push(EntryStatement::Plain(stmt));
+                                        }
+                                    }
+                                    None => result.extend(stmts),
+                                }
                                 continue;
                             }
                             Err(declarator) => declarator,
                         };
-                        if matches!(
-                            declarator.init.as_ref().map(|e| e.get_inner_expression()),
-                            Some(
-                                Expression::ArrowFunctionExpression(_)
-                                    | Expression::FunctionExpression(_)
-                            )
-                        ) {
-                            result.push(b.var_init_stmt(declarator));
+                        let Some(location) = location else {
+                            result.push(b.declarator_stmt(declarator));
                             continue;
-                        }
+                        };
 
-                        if let Some(target) = binding_to_assignment(&declarator.id, b) {
+                        let pattern = declarator.id.clone_in(b.ast.allocator);
+                        if let Some(target) = b.binding_pattern_to_assignment_target(pattern) {
                             let init = declarator.init.unwrap_or_else(|| b.void_zero_expr());
                             let assign = b.ast.expression_assignment(
                                 SPAN,
@@ -111,43 +123,38 @@ impl<'a> ServerTransform<'_, 'a> {
                                 target,
                                 init,
                             );
-                            thunks.push(if has_await {
-                                b.async_arrow_expr_body(assign)
-                            } else {
-                                b.thunk(assign)
-                            });
+                            buckets[location.entry].push(EntryStatement::Value(assign));
                         } else {
-                            let var_stmt = b.var_init_stmt(declarator);
-                            thunks.push(if has_await {
-                                b.async_thunk_block(vec![var_stmt])
-                            } else {
-                                b.thunk_block(vec![var_stmt])
-                            });
+                            buckets[location.entry]
+                                .push(EntryStatement::Plain(b.var_init_stmt(declarator)));
                         }
                     }
                 }
                 Statement::FunctionDeclaration(_) => result.push(stmt),
                 other => {
-                    if has_await {
-                        if let Statement::BlockStatement(block) = other {
-                            thunks.push(
-                                b.async_thunk_block(block.unbox().body.into_iter().collect()),
-                            );
-                        } else {
-                            thunks.push(b.async_thunk_block(vec![other]));
-                        }
-                    } else {
-                        thunks.push(b.thunk_block(vec![other]));
-                    }
+                    let Some(location) = statement_entry_location(blocker_data, &other, i) else {
+                        result.push(other);
+                        continue;
+                    };
+                    push_entry_statement(b, &mut buckets[location.entry], other, location.kind);
                 }
             }
         }
 
+        let hoisted_names: Vec<&str> = blocker_data
+            .hoisted_names()
+            .iter()
+            .map(|name| b.alloc_str(name))
+            .collect();
         if !hoisted_names.is_empty() {
             result.push(b.var_multi_stmt(&hoisted_names));
         }
 
-        if !thunks.is_empty() {
+        if !entries.is_empty() {
+            let mut thunks: Vec<Expression<'a>> = Vec::with_capacity(entries.len());
+            for (entry, statements) in entries.iter().zip(buckets) {
+                thunks.push(async_entry_thunk(b, entry, statements));
+            }
             let run_call = b.call_expr("$$renderer.run", [Arg::Expr(b.array_expr(thunks))]);
             result.push(b.var_stmt("$$promises", run_call));
         }
@@ -156,15 +163,15 @@ impl<'a> ServerTransform<'_, 'a> {
     }
 }
 
-fn binding_to_assignment<'a>(
-    pat: &BindingPattern<'a>,
-    b: &Builder<'a>,
-) -> Option<AssignmentTarget<'a>> {
-    match pat {
-        BindingPattern::BindingIdentifier(id) => {
-            let ident = b.ast.identifier_reference(SPAN, id.name.as_str());
-            Some(AssignmentTarget::AssignmentTargetIdentifier(b.alloc(ident)))
+fn declarator_symbol_location(
+    blocker_data: &svelte_analyze::BlockerData,
+    pattern: &BindingPattern<'_>,
+) -> Option<svelte_analyze::AsyncEntryLocation> {
+    let mut found = None;
+    svelte_component_semantics::walk_bindings(pattern, |v| {
+        if found.is_none() {
+            found = blocker_data.entry_location_of_symbol(v.symbol);
         }
-        _ => None,
-    }
+    });
+    found
 }

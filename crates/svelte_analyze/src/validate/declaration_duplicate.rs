@@ -1,8 +1,8 @@
 use oxc_ast::ast::Statement;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
-use svelte_ast::{Component, Node};
-use svelte_component_semantics::{ScopeId, SymbolId, SymbolOwner, walk_bindings};
+use svelte_ast::{Component, FragmentId, Node, NodeId};
+use svelte_component_semantics::{SymbolId, SymbolOwner, walk_bindings};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 
 use crate::AnalysisData;
@@ -16,35 +16,40 @@ pub(super) fn validate(
 ) {
     let sem = data.scoping.semantics();
 
-    let mut declared: Vec<SymbolId> = Vec::new();
+    let mut declared: Vec<(FragmentId, SymbolId)> = Vec::new();
     for i in 0..component.store.len() {
-        let node = component.store.get(svelte_ast::NodeId(i));
+        let node_id = NodeId(i);
+        let node = component.store.get(node_id);
         match node {
             Node::ConstTag(tag) => {
-                collect_declaration_bindings(parsed, tag.decl.id(), &mut declared)
+                if let Some(fragment) = component.store.node_fragment(node_id) {
+                    collect_declaration_bindings(parsed, tag.decl.id(), fragment, &mut declared);
+                }
             }
             Node::EachBlock(block) => {
                 if let Some(context) = &block.context {
-                    collect_declaration_bindings(parsed, context.id(), &mut declared);
+                    collect_declaration_bindings(parsed, context.id(), block.body, &mut declared);
                 }
                 if let Some(index) = &block.index {
-                    collect_declaration_bindings(parsed, index.id(), &mut declared);
+                    collect_declaration_bindings(parsed, index.id(), block.body, &mut declared);
                 }
             }
             Node::SnippetBlock(block) => {
-                collect_declaration_bindings(parsed, block.decl.id(), &mut declared);
+                if let Some(fragment) = component.store.node_fragment(node_id) {
+                    collect_declaration_bindings(parsed, block.decl.id(), fragment, &mut declared);
+                }
             }
             _ => {}
         }
     }
 
-    let mut groups: FxHashMap<(ScopeId, &str), SmallVec<[SymbolId; 2]>> = FxHashMap::default();
-    for symbol_id in declared {
-        let key = (sem.symbol_scope_id(symbol_id), sem.symbol_name(symbol_id));
+    let mut groups: FxHashMap<(FragmentId, &str), SmallVec<[SymbolId; 2]>> = FxHashMap::default();
+    for (fragment, symbol_id) in declared {
+        let key = (fragment, sem.symbol_name(symbol_id));
         groups.entry(key).or_default().push(symbol_id);
     }
 
-    for ((_, name), mut symbols) in groups {
+    for ((_fragment, name), mut symbols) in groups {
         symbols.sort_by_key(|&id| {
             let span = sem.symbol_span(id);
             (span.start, span.end)
@@ -88,9 +93,9 @@ fn validate_top_level_conflicts(
             Node::DeclarationTag(tag) => tag.declaration.id(),
             _ => continue,
         };
-        let mut names: Vec<SymbolId> = Vec::new();
-        collect_declaration_bindings(parsed, stmt_id, &mut names);
-        for symbol_id in names {
+        let mut names: Vec<(FragmentId, SymbolId)> = Vec::new();
+        collect_declaration_bindings(parsed, stmt_id, component.root, &mut names);
+        for (_, symbol_id) in names {
             let name = sem.symbol_name(symbol_id);
             if instance_names.contains(name) {
                 emit(sem, symbol_id, name, diags);
@@ -102,13 +107,14 @@ fn validate_top_level_conflicts(
 fn collect_declaration_bindings(
     parsed: &JsAst<'_>,
     stmt_id: svelte_component_semantics::OxcNodeId,
-    out: &mut Vec<SymbolId>,
+    fragment: FragmentId,
+    out: &mut Vec<(FragmentId, SymbolId)>,
 ) {
     let Some(Statement::VariableDeclaration(decl)) = parsed.stmt(stmt_id) else {
         return;
     };
     for declarator in &decl.declarations {
-        walk_bindings(&declarator.id, |visit| out.push(visit.symbol));
+        walk_bindings(&declarator.id, |visit| out.push((fragment, visit.symbol)));
     }
 }
 

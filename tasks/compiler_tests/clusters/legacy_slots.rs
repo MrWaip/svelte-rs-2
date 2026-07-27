@@ -47,3 +47,33 @@ compiler_case!(
     svelte_fragment_slot_let_guard,
     "legacy_slots/svelte_fragment_slot_let_guard"
 );
+compiler_case!(
+    parent_default_element_plain_guard,
+    "legacy_slots/parent_default_element_plain_guard"
+);
+compiler_case!(
+    parent_default_slot_attribute,
+    "legacy_slots/parent_default_slot_attribute"
+);
+compiler_case!(
+    parent_default_slot_attribute_let,
+    "legacy_slots/parent_default_slot_attribute_let"
+);
+compiler_case!(
+    parent_default_element_let,
+    "legacy_slots/parent_default_element_let"
+);
+
+compiler_case!(
+    named_slot_dynamic_component_let,
+    "legacy_slots/named_slot_dynamic_component_let"
+);
+compiler_case!(
+    named_slot_static_component_let_guard,
+    "legacy_slots/named_slot_static_component_let_guard"
+);
+compiler_case!(
+    svelte_self_slot_let_guard,
+    "legacy_slots/svelte_self_slot_let_guard",
+    [prod, dev, ssr, ssr_dev]
+);

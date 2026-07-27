@@ -6,6 +6,7 @@ use svelte_emit_builders::runes::rune_get;
 
 use super::super::data_structures::EmitState;
 use super::super::data_structures::{FragmentAnchor, FragmentCtx};
+use super::super::effect::suspending_block_thunk;
 use super::super::{Codegen, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -39,8 +40,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let blockers = blockers.to_vec();
                 let async_thunk = match &sem.async_kind {
                     KeyAsyncKind::Awaited { .. } => {
+                        let suspension = self.ctx.expression_suspension(id);
                         let expr = self.take_node_expr(id)?;
-                        Some(self.ctx.b.async_thunk(expr))
+                        Some(suspending_block_thunk(self.ctx, expr, suspension))
                     }
                     KeyAsyncKind::Deferred { .. } | KeyAsyncKind::Sync => None,
                 };
@@ -56,7 +58,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 let key_stmt = self.add_svelte_meta(key_call, span_start, "key");
                 let anchor_expr = self.ctx.b.rid_expr(&anchor_node);
                 let wrapped = self.emit_async_call_stmt(
-                    &blockers,
+                    self.ctx.script_blocker_exprs(&blockers),
                     anchor_expr,
                     &anchor_node,
                     "$$key",

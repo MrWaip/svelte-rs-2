@@ -1,7 +1,7 @@
 use oxc_ast::ast::Expression;
 use svelte_ast::{
-    Attribute, ComponentNode, ConcatPart, Element, NodeId, SlotElementLegacy, is_mathml, is_svg,
-    is_void,
+    Attribute, ComponentNode, ConcatPart, DEFAULT_SLOT_NAME, Element, NodeId, RenderTag,
+    SLOT_NAME_ATTRIBUTE, SlotElementLegacy, is_mathml, is_svg, is_void,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
@@ -30,6 +30,18 @@ impl<'src> ElementFlagsVisitor<'src> {
 
     fn source_text(&self, span: Span) -> &str {
         &self.source[span.start as usize..span.end as usize]
+    }
+
+    fn legacy_slot_name(&self, el: &SlotElementLegacy) -> String {
+        el.attributes
+            .iter()
+            .find_map(|attr| match attr {
+                Attribute::StringAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
+                    Some(self.source_text(attr.value_span).to_string())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| DEFAULT_SLOT_NAME.to_string())
     }
 
     fn modifier_flags(modifiers: &[String]) -> EventModifier {
@@ -168,8 +180,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         if ctx.data.script.dev
             && ctx
                 .data
-                .output
-                .ignore_data
+                .ignore
                 .is_ignored_warning(el.id, crate::WarningCode::HydrationAttributeChanged)
         {
             ctx.data
@@ -196,8 +207,7 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
         if ctx.data.script.dev
             && ctx
                 .data
-                .output
-                .ignore_data
+                .ignore
                 .is_ignored_warning(el.id, crate::WarningCode::HydrationAttributeChanged)
         {
             ctx.data
@@ -209,6 +219,9 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
     }
 
     fn visit_attribute(&mut self, attr: &Attribute, ctx: &mut VisitContext<'_, '_>) {
+        if matches!(attr, Attribute::OnDirectiveLegacy(od) if od.expression.is_none()) {
+            ctx.data.elements.has_legacy_event_forward = true;
+        }
         let Some(el_id) = ctx.data.nearest_element(attr.id()) else {
             return;
         };
@@ -321,10 +334,19 @@ impl<'src> TemplateVisitor for ElementFlagsVisitor<'src> {
 
     fn visit_slot_element_legacy(
         &mut self,
-        _el: &SlotElementLegacy,
+        el: &SlotElementLegacy,
         ctx: &mut VisitContext<'_, '_>,
     ) {
-        ctx.data.output.renders_legacy_slot = true;
+        let name = self.legacy_slot_name(el);
+        let slots = &mut ctx.data.elements.legacy_slots_by_name;
+        match slots.iter_mut().find(|(known, _)| *known == name) {
+            Some((_, span)) => *span = el.span,
+            None => slots.push((name, el.span)),
+        }
+    }
+
+    fn visit_render_tag(&mut self, _tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
+        ctx.data.elements.has_render_tag = true;
     }
 
     fn visit_js_expression(
@@ -390,6 +412,12 @@ impl<'src> ElementFlagsVisitor<'src> {
     ) {
         let data = &mut *ctx.data;
         for attr in attributes {
+            if matches!(attr, Attribute::OnDirectiveLegacy(od) if od.expression.is_none()) {
+                data.elements.has_legacy_event_forward = true;
+            }
+            if matches!(attr, Attribute::BindDirective(b) if b.name != "this") {
+                data.elements.has_child_component_bind = true;
+            }
             if is_component_css_property(attr) {
                 data.elements.flags.components_with_css_props.insert(cn_id);
                 continue;
@@ -503,12 +531,12 @@ impl<'src> ElementFlagsVisitor<'src> {
                             let requires_ownership_emit = data.script.dev
                                 && is_identifier_bind
                                 && matches!(mode, ComponentBindMode::PropSource)
-                                && !data.output.ignore_data.is_ignored_warning(
+                                && !data.ignore.is_ignored_warning(
                                     bind_id,
                                     crate::WarningCode::OwnershipInvalidBinding,
                                 );
                             if requires_ownership_emit {
-                                data.output.needs_component_bind_ownership = true;
+                                data.elements.needs_component_bind_ownership = true;
                             }
                             let source_ident = match &expr_text {
                                 Some(text) if is_simple_identifier(text.trim()) => {

@@ -140,6 +140,22 @@ impl<'a> Builder<'a> {
         self.private_member(this_expr, name)
     }
 
+    pub fn class_declaration_to_assignment(
+        &self,
+        class: oxc_allocator::Box<'a, ast::Class<'a>>,
+    ) -> Expression<'a> {
+        let mut class = class;
+        let name = match class.id.as_ref() {
+            Some(id) => self.alloc_str(id.name.as_str()),
+            None => "",
+        };
+        class.r#type = ast::ClassType::ClassExpression;
+        let target = AssignmentTarget::AssignmentTargetIdentifier(
+            self.alloc(self.ast.identifier_reference(SPAN, name)),
+        );
+        self.assign_expr_raw(target, Expression::ClassExpression(class))
+    }
+
     pub fn private_member(&self, object: Expression<'a>, name: &str) -> Expression<'a> {
         let field =
             self.ast

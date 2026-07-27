@@ -1,13 +1,19 @@
-use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, Expression, Statement};
-use oxc_span::SPAN;
+use oxc_ast::ast::{Expression, Statement};
 use oxc_syntax::node::NodeId as OxcNodeId;
-use svelte_analyze::{BlockSemantics, ConstTagBlockSemantics, FragmentDeclarationAsyncKind};
-use svelte_ast::NodeId;
+use std::mem;
+use svelte_analyze::{BlockSemantics, FragmentDeclarationAsyncKind};
+use svelte_ast::{FragmentId, NodeId};
 use svelte_ast_builder::Arg;
 use svelte_component_semantics::{SymbolId, walk_bindings};
 
 use crate::error::{CodegenError, Result};
 use crate::model::ServerCodegen;
+
+pub(crate) struct DeclarationGroupRun<'a> {
+    name: String,
+    declarations: Vec<(NodeId, Vec<String>)>,
+    thunks: Vec<Expression<'a>>,
+}
 
 impl<'a> ServerCodegen<'a> {
     pub(crate) fn const_tag(&mut self, id: NodeId) -> Result<()> {
@@ -26,62 +32,157 @@ impl<'a> ServerCodegen<'a> {
         Ok(())
     }
 
-    pub(crate) fn emit_const_tags_async(&mut self, ids: &[NodeId]) -> Result<()> {
-        let promises_name = self.gen_ident("promises");
+    pub(crate) fn prepare_declaration_groups(&mut self) {
+        if !self.experimental_async {
+            return;
+        }
+        let order: Vec<FragmentId> = self.analysis.fragment_declaration_group_order().to_vec();
+        for fragment in order {
+            let members: Vec<NodeId> = self.analysis.fragment_declaration_group(fragment).to_vec();
+            if members.is_empty() {
+                continue;
+            }
+            let promises_name = self.gen_ident("promises");
+            let mut slot = 0u32;
+            for id in members {
+                if self.declaration_has_blockers(id) {
+                    slot += 1;
+                }
+                self.declaration_blocker_slots
+                    .insert(id, (promises_name.clone(), slot));
+                slot += 1;
+            }
+            self.declaration_group_idents
+                .insert(fragment, promises_name);
+        }
+    }
+
+    fn declaration_has_blockers(&self, id: NodeId) -> bool {
+        match self.fragment_declaration_async_kind(id) {
+            FragmentDeclarationAsyncKind::Sync => false,
+            FragmentDeclarationAsyncKind::Awaited {
+                blockers,
+                declaration_blockers,
+            }
+            | FragmentDeclarationAsyncKind::Deferred {
+                blockers,
+                declaration_blockers,
+            } => !blockers.is_empty() || !declaration_blockers.is_empty(),
+        }
+    }
+
+    pub(crate) fn build_fragment_declaration_group(
+        &mut self,
+        fragment_id: FragmentId,
+        ids: &[NodeId],
+    ) -> Result<Option<DeclarationGroupRun<'a>>> {
+        let Some(promises_name) = self.declaration_group_idents.get(&fragment_id).cloned() else {
+            return Err(CodegenError::Unsupported(
+                ids[0],
+                "fragment declaration group",
+            ));
+        };
         let mut thunks: Vec<Expression<'a>> = Vec::new();
+        let mut declarations: Vec<(NodeId, Vec<String>)> = Vec::new();
 
         for &id in ids {
-            let sem: ConstTagBlockSemantics = match self.analysis.block_semantics(id) {
-                BlockSemantics::ConstTag(s) => s.clone(),
-                _ => continue,
-            };
-            let (symbol, target, value) = self.take_const_parts(id, sem.decl_node_id)?;
-
-            self.push_stmt(self.b.let_stmt(&target));
-
-            let target_atom = self.b.alloc_str(&target);
-            let assignment_target = AssignmentTarget::AssignmentTargetIdentifier(
-                self.b
-                    .alloc(self.b.ast.identifier_reference(SPAN, target_atom)),
-            );
-            let assignment = self.b.ast.expression_assignment(
-                SPAN,
-                AssignmentOperator::Assign,
-                assignment_target,
-                value,
-            );
-
-            let body = match &sem.async_kind {
-                FragmentDeclarationAsyncKind::Awaited { blockers } => {
-                    self.push_blocker_thunk(blockers, &mut thunks);
-                    self.b.async_thunk(assignment)
+            let async_kind = self.fragment_declaration_async_kind(id);
+            let (symbols, assignments) = match self.component.store.get(id) {
+                svelte_ast::Node::ConstTag(_) => {
+                    let BlockSemantics::ConstTag(sem) = self.analysis.block_semantics(id) else {
+                        return Err(CodegenError::Unsupported(id, "const tag"));
+                    };
+                    let decl_node_id = sem.decl_node_id;
+                    self.take_const_parts(id, decl_node_id)?
                 }
-                FragmentDeclarationAsyncKind::Deferred { blockers } => {
-                    self.push_blocker_thunk(blockers, &mut thunks);
-                    self.b.thunk(assignment)
+                svelte_ast::Node::DeclarationTag(_) => {
+                    let decl_id = self.declaration_tag_statement_id(id)?;
+                    self.take_declaration_parts(id, decl_id)?
                 }
-                FragmentDeclarationAsyncKind::Sync => self.b.thunk(assignment),
+                _ => return Err(CodegenError::Unsupported(id, "fragment declaration")),
             };
-            thunks.push(body);
+
+            let is_awaited = match &async_kind {
+                FragmentDeclarationAsyncKind::Awaited {
+                    blockers,
+                    declaration_blockers,
+                } => {
+                    self.push_blocker_thunk(blockers, declaration_blockers, &mut thunks);
+                    true
+                }
+                FragmentDeclarationAsyncKind::Deferred {
+                    blockers,
+                    declaration_blockers,
+                } => {
+                    self.push_blocker_thunk(blockers, declaration_blockers, &mut thunks);
+                    false
+                }
+                FragmentDeclarationAsyncKind::Sync => false,
+            };
+
+            thunks.push(self.build_declaration_thunk(assignments, is_awaited));
             let thunk_idx = (thunks.len() - 1) as u32;
-            self.const_tag_blockers
-                .insert(symbol, (promises_name.clone(), thunk_idx));
+            for symbol in symbols {
+                self.const_tag_blockers
+                    .insert(symbol, (promises_name.clone(), thunk_idx));
+            }
+            let declared = mem::take(&mut self.pending_group_declarations);
+            if !declared.is_empty() {
+                declarations.push((id, declared));
+            }
         }
 
-        if !thunks.is_empty() {
-            let run = self
-                .b
-                .call_expr("$$renderer.run", [Arg::Expr(self.b.array_expr(thunks))]);
-            self.push_stmt(self.b.var_stmt(&promises_name, run));
+        if thunks.is_empty() && declarations.is_empty() {
+            return Ok(None);
         }
-        Ok(())
+        Ok(Some(DeclarationGroupRun {
+            name: promises_name,
+            declarations,
+            thunks,
+        }))
+    }
+
+    pub(crate) fn hoist_group_declarations(
+        &mut self,
+        group: &mut Option<DeclarationGroupRun<'a>>,
+        id: NodeId,
+    ) {
+        let Some(group) = group.as_mut() else {
+            return;
+        };
+        let Some(position) = group.declarations.iter().position(|(node, _)| *node == id) else {
+            return;
+        };
+        let (_, names) = group.declarations.remove(position);
+        for name in names {
+            self.hoist_stmt(self.b.let_stmt(&name));
+        }
+    }
+
+    pub(crate) fn push_declaration_group(&mut self, group: Option<DeclarationGroupRun<'a>>) {
+        let Some(group) = group else {
+            return;
+        };
+        for (_, names) in &group.declarations {
+            for name in names {
+                self.hoist_stmt(self.b.let_stmt(name));
+            }
+        }
+        if group.thunks.is_empty() {
+            return;
+        }
+        let run = self.b.call_expr(
+            "$$renderer.run",
+            [Arg::Expr(self.b.array_expr(group.thunks))],
+        );
+        self.hoist_stmt(self.b.var_stmt(&group.name, run));
     }
 
     fn take_const_parts(
         &mut self,
         id: NodeId,
         decl_id: OxcNodeId,
-    ) -> Result<(SymbolId, String, Expression<'a>)> {
+    ) -> Result<(Vec<SymbolId>, Vec<Expression<'a>>)> {
         let stmt = self
             .js_arena
             .take_stmt(decl_id)
@@ -89,37 +190,60 @@ impl<'a> ServerCodegen<'a> {
         let Statement::VariableDeclaration(mut decl) = stmt else {
             return Err(CodegenError::Unsupported(id, "const tag declaration"));
         };
-        if decl.declarations.is_empty() {
-            return Err(CodegenError::Unsupported(id, "const tag declarator"));
-        }
-        let declarator = decl.declarations.remove(0);
 
-        let mut targets: Vec<(SymbolId, bool)> = Vec::new();
-        walk_bindings(&declarator.id, |v| {
-            targets.push((v.symbol, v.path.is_empty() && !v.is_rest));
-        });
-        let [(symbol, true)] = targets.as_slice() else {
-            return Err(CodegenError::Unsupported(id, "destructured async const"));
-        };
-        let symbol = *symbol;
-        let name = self.analysis.scoping.symbol_name(symbol).to_string();
-        let value = declarator.init.ok_or(CodegenError::MissingExpression(id))?;
-        Ok((symbol, name, value))
+        let mut symbols: Vec<SymbolId> = Vec::new();
+        let mut assignments: Vec<Expression<'a>> = Vec::new();
+        let mut declared: Vec<String> = Vec::new();
+        for declarator in decl.declarations.drain(..) {
+            walk_bindings(&declarator.id, |v| {
+                if symbols.contains(&v.symbol) {
+                    return;
+                }
+                symbols.push(v.symbol);
+                declared.push(self.analysis.scoping.symbol_name(v.symbol).to_string());
+            });
+
+            let Some(init) = declarator.init else {
+                continue;
+            };
+            let target = self
+                .b
+                .binding_pattern_to_assignment_target(declarator.id)
+                .ok_or(CodegenError::Unsupported(id, "const tag pattern"))?;
+            assignments.push(self.b.assign_expr_raw(target, init));
+        }
+
+        self.pending_group_declarations.extend(declared);
+        Ok((symbols, assignments))
     }
 
-    pub(crate) fn push_blocker_thunk(&self, blockers: &[u32], thunks: &mut Vec<Expression<'a>>) {
-        if blockers.is_empty() {
+    pub(crate) fn push_blocker_thunk(
+        &self,
+        blockers: &[u32],
+        declaration_blockers: &[NodeId],
+        thunks: &mut Vec<Expression<'a>>,
+    ) {
+        let mut members: Vec<Expression<'a>> = Vec::new();
+        for &idx in blockers {
+            members.push(self.blocker_member(idx));
+        }
+        for id in declaration_blockers {
+            let Some((name, idx)) = self.declaration_blocker_slots.get(id) else {
+                continue;
+            };
+            members.push(
+                self.b
+                    .computed_member_expr(self.b.rid_expr(name), self.b.num_expr(*idx as f64)),
+            );
+        }
+        if members.is_empty() {
             return;
         }
-        let expr = if blockers.len() == 1 {
-            self.blocker_member(blockers[0])
+        let expr = if members.len() == 1 {
+            members.remove(0)
         } else {
-            let elements: Vec<Expression<'a>> = blockers
-                .iter()
-                .map(|&idx| self.blocker_member(idx))
-                .collect();
             self.b
-                .call_expr("Promise.all", [Arg::Expr(self.b.array_expr(elements))])
+                .call_expr("Promise.all", [Arg::Expr(self.b.array_expr(members))])
         };
         thunks.push(self.b.thunk(expr));
     }

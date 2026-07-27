@@ -1,5 +1,4 @@
 pub(crate) mod attributes;
-pub(crate) mod ce_config;
 pub(crate) mod events;
 pub(crate) mod expression_await;
 pub(crate) mod html_tree_validation;
@@ -8,6 +7,7 @@ pub(crate) mod legacy_slot;
 pub(crate) mod node_id_utils;
 pub(crate) mod property_key;
 pub(crate) mod simple_expression;
+pub(crate) mod snippet;
 pub(crate) mod var_decl_kind;
 
 pub use attributes::{

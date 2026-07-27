@@ -12,15 +12,18 @@ use oxc_syntax::node::NodeId as OxcNodeId;
 use svelte_component_semantics::OxcNodeId as SemOxcNodeId;
 
 use oxc_ast::ast::{Expression, Statement};
+use oxc_span::GetSpan;
 use svelte_analyze::scope::ScopeId;
 use svelte_analyze::{
     AnalysisData, AttributeSemantics, BlockSemantics, EachItemKind, HtmlBindKind, IdentGen, JsAst,
+    SkipCause,
 };
 use svelte_ast::{
     Attribute, Component, ConcatPart, EachBlock, ExprRef, FragmentId, LegacySlot, Node,
     NodeId as SvelteNodeId, StyleDirectiveValue,
 };
-use svelte_component_semantics::walk_bindings;
+use svelte_component_semantics::{Access, Step, SymbolId, walk_bindings};
+use svelte_emit_builders::binding_pattern::{has_each_item_writeback_place, serialize_prefix};
 
 pub(crate) fn is_simple_expression(expr: &Expression<'_>) -> bool {
     match expr {
@@ -165,10 +168,11 @@ fn reserve_each_index_name(ctx: &mut TransformCtx<'_, '_>, block: &EachBlock) {
         .insert(*item_sym, block.id);
 }
 
-fn reserve_destructure_default_simple<'a>(
+fn reserve_each_destructure_context<'a>(
     ctx: &mut TransformCtx<'a, '_>,
     block: &EachBlock,
     parsed: &JsAst<'a>,
+    source: &str,
 ) {
     let Some(context) = block.context.as_ref() else {
         return;
@@ -179,6 +183,12 @@ fn reserve_destructure_default_simple<'a>(
     let Some(declarator) = decl.declarations.first() else {
         return;
     };
+
+    let mut has_writeback_target = false;
+    let mut declared: Vec<SymbolId> = Vec::new();
+    let mut prefixes: Vec<String> = Vec::new();
+    let mut computed_keys: Vec<(SymbolId, Vec<Option<String>>)> = Vec::new();
+
     walk_bindings(&declarator.id, |v| {
         let mut flags: Vec<bool> = Vec::new();
         for step in v.path {
@@ -191,7 +201,74 @@ fn reserve_destructure_default_simple<'a>(
                 .destructure_default_simple
                 .insert(v.symbol, flags);
         }
+
+        declared.push(v.symbol);
+        if has_computed_key(v.path) {
+            computed_keys.push((v.symbol, computed_key_texts(v.path, source)));
+        }
+        for (index, step) in v.path.iter().enumerate() {
+            if matches!(step.access, Access::Key { .. }) {
+                continue;
+            }
+            let prefix = serialize_prefix(&v.path[..index]);
+            if prefixes.contains(&prefix) {
+                continue;
+            }
+            prefixes.push(prefix);
+        }
+        if has_each_item_writeback_place(&v)
+            && ctx
+                .analysis
+                .each_item_indirect_sources(v.symbol)
+                .is_some_and(|sources| !sources.is_empty())
+        {
+            has_writeback_target = true;
+        }
     });
+
+    if !has_writeback_target {
+        return;
+    }
+    for (symbol, keys) in computed_keys {
+        ctx.transform_data
+            .each_destructure_computed_keys
+            .insert(symbol, keys);
+    }
+    for prefix in prefixes {
+        let name = ctx.ident_gen.generate("$$array");
+        ctx.transform_data
+            .each_destructure_carrier_names
+            .insert((block.id, prefix), name);
+    }
+    for symbol in declared {
+        ctx.transform_data
+            .each_destructure_block_by_symbol
+            .insert(symbol, block.id);
+    }
+}
+
+fn has_computed_key(path: &[Step<'_>]) -> bool {
+    path.iter()
+        .any(|step| matches!(step.access, Access::Key { computed: true, .. }))
+}
+
+fn computed_key_texts(path: &[Step<'_>], source: &str) -> Vec<Option<String>> {
+    let mut keys: Vec<Option<String>> = Vec::with_capacity(path.len());
+    for step in path {
+        match step.access {
+            Access::Key {
+                key,
+                computed: true,
+            } => {
+                let span = key.span();
+                keys.push(Some(
+                    source[span.start as usize..span.end as usize].to_string(),
+                ));
+            }
+            Access::Key { .. } | Access::Index { .. } | Access::Slice { .. } => keys.push(None),
+        }
+    }
+    keys
 }
 
 fn reserve_each_collection_name_legacy(
@@ -293,11 +370,12 @@ fn walk_node<'a>(
             if let Some(context) = block.context.as_ref() {
                 ctx.stmt_handles.push((context.id(), Some(block.id)));
             }
-            reserve_destructure_default_simple(ctx, block, parsed);
+            reserve_each_destructure_context(ctx, block, parsed, component.source.as_str());
             let body_scope = ctx.analysis.effective_fragment_scope(block.body, scope);
             walk_fragment(ctx, block.body, component, parsed, body_scope);
             if let Some(fb) = block.fallback {
-                walk_fragment(ctx, fb, component, parsed, scope);
+                let fallback_scope = ctx.analysis.effective_fragment_scope(fb, body_scope);
+                walk_fragment(ctx, fb, component, parsed, fallback_scope);
             }
             reserve_each_index_name(ctx, block);
             reserve_each_collection_name_legacy(ctx, block, body_scope);
@@ -436,6 +514,13 @@ fn walk_component_like<'a>(
 fn walk_attrs<'a>(ctx: &mut TransformCtx<'a, '_>, attrs: &[Attribute], parsed: &JsAst<'a>) {
     for attr in attrs {
         let owner = Some(attr.id());
+
+        if matches!(
+            ctx.analysis.attributes.get(attr.id()),
+            AttributeSemantics::Skip(SkipCause::TagCarrier)
+        ) {
+            continue;
+        }
 
         if let Attribute::BindDirective(bind) = attr {
             let bind_id = bind.expression.id();
@@ -600,51 +685,63 @@ mod tests {
     use super::*;
     use oxc_allocator::Allocator;
     use oxc_ast::ast::Expression;
-    use svelte_analyze::{IdentGen, analyze};
+    use svelte_analyze::{AnalysisData, BlockSemantics, IdentGen, analyze};
     use svelte_ast::{Component, ExpressionTag, Node, SnippetBlock};
 
     fn find_snippet_block<'a>(
         fragment_id: FragmentId,
         component: &'a Component,
+        analysis: &AnalysisData,
         name: &str,
     ) -> Option<&'a SnippetBlock> {
         for &id in component.fragment_nodes(fragment_id) {
             match component.store.get(id) {
-                Node::SnippetBlock(block) if block.name(component.source.as_str()) == name => {
+                Node::SnippetBlock(block)
+                    if matches!(
+                        analysis.block_semantics(block.id),
+                        BlockSemantics::Snippet(sem)
+                            if analysis.scoping.semantics().symbol_name(sem.name) == name
+                    ) =>
+                {
                     return Some(block);
                 }
                 Node::IfBlock(block) => {
-                    if let Some(found) = find_snippet_block(block.consequent, component, name) {
+                    if let Some(found) =
+                        find_snippet_block(block.consequent, component, analysis, name)
+                    {
                         return Some(found);
                     }
                     if let Some(alt) = block.alternate
-                        && let Some(found) = find_snippet_block(alt, component, name)
+                        && let Some(found) = find_snippet_block(alt, component, analysis, name)
                     {
                         return Some(found);
                     }
                 }
                 Node::EachBlock(block) => {
-                    if let Some(found) = find_snippet_block(block.body, component, name) {
+                    if let Some(found) = find_snippet_block(block.body, component, analysis, name) {
                         return Some(found);
                     }
                     if let Some(fallback) = block.fallback
-                        && let Some(found) = find_snippet_block(fallback, component, name)
+                        && let Some(found) = find_snippet_block(fallback, component, analysis, name)
                     {
                         return Some(found);
                     }
                 }
                 Node::SnippetBlock(block) => {
-                    if let Some(found) = find_snippet_block(block.body, component, name) {
+                    if let Some(found) = find_snippet_block(block.body, component, analysis, name) {
                         return Some(found);
                     }
                 }
                 Node::Element(el) => {
-                    if let Some(found) = find_snippet_block(el.fragment, component, name) {
+                    if let Some(found) = find_snippet_block(el.fragment, component, analysis, name)
+                    {
                         return Some(found);
                     }
                 }
                 Node::ComponentNode(node) => {
-                    if let Some(found) = find_snippet_block(node.fragment, component, name) {
+                    if let Some(found) =
+                        find_snippet_block(node.fragment, component, analysis, name)
+                    {
                         return Some(found);
                     }
                 }
@@ -713,7 +810,7 @@ mod tests {
         };
         transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 
-        let snippet = find_snippet_block(component.root, &component, "withDefault")
+        let snippet = find_snippet_block(component.root, &component, &analysis, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
         let expr_tag = find_expr_tag(snippet.body, &component, "label")
             .unwrap_or_else(|| panic!("missing label expression"));
@@ -763,7 +860,7 @@ mod tests {
         };
         transform_component(&mut ctx, &svelte_types::TransformOptions::default());
 
-        let snippet = find_snippet_block(component.root, &component, "withDefault")
+        let snippet = find_snippet_block(component.root, &component, &analysis, "withDefault")
             .unwrap_or_else(|| panic!("missing snippet"));
         let expr_tag = find_expr_tag(snippet.body, &component, "label")
             .unwrap_or_else(|| panic!("missing label expression"));

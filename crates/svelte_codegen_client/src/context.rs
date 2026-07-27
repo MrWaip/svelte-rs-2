@@ -5,7 +5,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_ast::ast::{Expression, Statement};
 use oxc_semantic::SymbolId;
-use svelte_analyze::{AnalysisData, CodegenView, ElementSemantics, IdentGen, JsAst, RuntimeInfo};
+use svelte_analyze::{
+    AnalysisData, CodegenView, ElementSemantics, ExpressionBlocker, IdentGen, JsAst,
+    RuntimeSemantics,
+};
 use svelte_ast::{
     Attribute, AwaitBlock, Component, DebugTag, EachBlock, Element, IfBlock, KeyBlock, NodeId,
     RenderTag, SvelteBoundary, SvelteElement,
@@ -60,8 +63,8 @@ impl<'a> CodegenQuery<'a> {
         self.component.store.debug_tag(id)
     }
 
-    pub fn runtime_plan(&self) -> RuntimeInfo {
-        self.view.runtime_plan()
+    pub fn runtime_semantics(&self) -> RuntimeSemantics {
+        self.view.runtime_semantics()
     }
 }
 
@@ -97,9 +100,11 @@ pub struct CodegenState<'a> {
 
     pub css_text: Option<&'a str>,
 
-    pub has_tracing: bool,
-
     pub(crate) const_tag_blockers: FxHashMap<SymbolId, (String, usize)>,
+
+    pub(crate) declaration_blocker_slots: FxHashMap<NodeId, (String, usize)>,
+
+    pub(crate) declaration_group_idents: FxHashMap<svelte_ast::FragmentId, String>,
 
     pub(crate) each_item_writeback_places: Option<FxHashMap<SymbolId, Expression<'a>>>,
 
@@ -139,8 +144,9 @@ impl<'a> CodegenState<'a> {
             delegated_events: Vec::new(),
             delegated_events_set: FxHashSet::default(),
             css_text,
-            has_tracing: false,
             const_tag_blockers: FxHashMap::default(),
+            declaration_blocker_slots: FxHashMap::default(),
+            declaration_group_idents: FxHashMap::default(),
             each_item_writeback_places: None,
             hoisted_templates: FxHashMap::default(),
         }
@@ -240,18 +246,57 @@ impl<'a> Ctx<'a> {
     pub fn expression_data(&self, id: NodeId) -> Option<&svelte_analyze::ExpressionData> {
         self.query.view.expression_data(id)
     }
-    pub fn const_tag_symbol_blocker_expr(&self, sym: SymbolId) -> Option<Expression<'a>> {
-        let (name, idx) = self.const_tag_blockers.get(&sym)?;
-        Some(
-            self.b
-                .computed_member_expr(self.b.rid_expr(name), self.b.num_expr(*idx as f64)),
-        )
+    pub fn expression_suspension(&self, id: NodeId) -> svelte_analyze::Suspension {
+        self.expression_data(id)
+            .map(|data| data.suspension)
+            .unwrap_or_default()
     }
-    pub fn runtime_plan(&self) -> RuntimeInfo {
-        self.query.runtime_plan()
+    pub fn const_tag_symbol_blocker_slot(&self, sym: SymbolId) -> Option<(String, usize)> {
+        let (name, idx) = self.const_tag_blockers.get(&sym)?;
+        Some((name.clone(), *idx))
+    }
+    pub fn runtime_semantics(&self) -> RuntimeSemantics {
+        self.query.runtime_semantics()
     }
 
-    pub fn const_tag_blocker_exprs(&mut self, id: NodeId) -> Vec<Expression<'a>> {
+    pub fn blocker_exprs(&self, blockers: &[ExpressionBlocker]) -> Vec<Expression<'a>> {
+        let mut out: Vec<Expression<'a>> = Vec::new();
+        for blocker in blockers {
+            match blocker {
+                ExpressionBlocker::Script { entry } => {
+                    out.push(self.b.computed_member_expr(
+                        self.b.rid_expr("$$promises"),
+                        self.b.num_expr(*entry as f64),
+                    ));
+                }
+                ExpressionBlocker::FragmentDeclaration { node } => {
+                    let Some((name, idx)) = self.declaration_blocker_slots.get(node) else {
+                        continue;
+                    };
+                    out.push(
+                        self.b.computed_member_expr(
+                            self.b.rid_expr(name),
+                            self.b.num_expr(*idx as f64),
+                        ),
+                    );
+                }
+            }
+        }
+        out
+    }
+
+    pub fn script_blocker_exprs(&self, blockers: &[u32]) -> Vec<Expression<'a>> {
+        let mut out: Vec<Expression<'a>> = Vec::new();
+        for &entry in blockers {
+            out.push(self.b.computed_member_expr(
+                self.b.rid_expr("$$promises"),
+                self.b.num_expr(entry as f64),
+            ));
+        }
+        out
+    }
+
+    pub fn const_tag_blocker_slots(&mut self, id: NodeId) -> Vec<(String, usize)> {
         if self.const_tag_blockers.is_empty() {
             return Vec::new();
         }
@@ -259,13 +304,22 @@ impl<'a> Ctx<'a> {
             return Vec::new();
         };
         let ref_symbols: Vec<SymbolId> = data.references.iter().copied().collect();
-        let mut result = Vec::new();
+        let mut slots: Vec<(String, usize)> = Vec::new();
         for sym in &ref_symbols {
-            if let Some(expr) = self.const_tag_symbol_blocker_expr(*sym) {
-                result.push(expr);
+            let Some(slot) = self.const_tag_symbol_blocker_slot(*sym) else {
+                continue;
+            };
+            if slots.contains(&slot) {
+                continue;
             }
+            slots.push(slot);
         }
-        result
+        slots
+    }
+
+    pub fn blocker_slot_expr(&self, slot: &(String, usize)) -> Expression<'a> {
+        self.b
+            .computed_member_expr(self.b.rid_expr(&slot.0), self.b.num_expr(slot.1 as f64))
     }
 
     pub fn has_spread(&self, id: NodeId) -> bool {
@@ -372,7 +426,7 @@ impl<'a> Ctx<'a> {
             | ElementSemantics::Boundary(_)
             | ElementSemantics::SvelteElement(_)
             | ElementSemantics::LegacySlot(_)
-            | ElementSemantics::LegacyComponentSlots(_) => false,
+            | ElementSemantics::Component(_) => false,
         }
     }
     pub fn element_name(&self, id: NodeId) -> Option<&str> {
@@ -383,7 +437,7 @@ impl<'a> Ctx<'a> {
             | ElementSemantics::Boundary(_)
             | ElementSemantics::SvelteElement(_)
             | ElementSemantics::LegacySlot(_)
-            | ElementSemantics::LegacyComponentSlots(_) => None,
+            | ElementSemantics::Component(_) => None,
         }
     }
     pub fn needs_var(&self, id: NodeId) -> bool {
@@ -426,7 +480,7 @@ impl<'a> Ctx<'a> {
     pub fn symbol_name(&self, sym: SymbolId) -> &str {
         self.query.view.symbol_name(sym)
     }
-    pub fn symbol_blocker(&self, sym: SymbolId) -> Option<u32> {
+    pub fn symbol_blocker(&self, sym: SymbolId) -> Option<svelte_analyze::BlockerSlot> {
         self.query.view.symbol_blocker(sym)
     }
 

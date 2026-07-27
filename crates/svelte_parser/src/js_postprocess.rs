@@ -20,14 +20,16 @@ pub(crate) struct JsPostprocessor<'a> {
     alloc: &'a Allocator,
     delta: i64,
     strip_ts: bool,
+    is_module: bool,
 }
 
 impl<'a> JsPostprocessor<'a> {
-    fn new(alloc: &'a Allocator, delta: i64, strip_ts: bool) -> Self {
+    fn new(alloc: &'a Allocator, delta: i64, strip_ts: bool, is_module: bool) -> Self {
         Self {
             alloc,
             delta,
             strip_ts,
+            is_module,
         }
     }
 
@@ -159,11 +161,14 @@ impl<'a> JsPostprocessor<'a> {
     fn filter_statements(&self, stmts: &mut oxc_allocator::Vec<'a, Statement<'a>>) {
         for stmt in stmts.iter_mut() {
             match stmt {
-                Statement::ImportDeclaration(import) => {
+                Statement::ImportDeclaration(import) if !import.import_kind.is_type() => {
                     if let Some(specs) = &mut import.specifiers {
                         specs.retain(|spec| {
                             !matches!(spec, ImportDeclarationSpecifier::ImportSpecifier(s) if s.import_kind.is_type())
                         });
+                        if self.is_module && specs.is_empty() {
+                            import.specifiers = None;
+                        }
                     }
                 }
                 Statement::ExportNamedDeclaration(export) if export.declaration.is_none() => {
@@ -353,6 +358,7 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
     }
 
     fn visit_arrow_function_expression(&mut self, it: &mut ArrowFunctionExpression<'a>) {
+        it.pife = false;
         if self.strip_ts {
             it.type_parameters = None;
             it.return_type = None;
@@ -386,6 +392,7 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
         if self.strip_ts {
             it.type_arguments = None;
         }
+        mark_iife_callee(&mut it.callee);
         walk_mut::walk_call_expression(self, it);
     }
 
@@ -393,6 +400,7 @@ impl<'a> VisitMut<'a> for JsPostprocessor<'a> {
         if self.strip_ts {
             it.type_arguments = None;
         }
+        mark_iife_callee(&mut it.callee);
         walk_mut::walk_new_expression(self, it);
     }
 
@@ -521,7 +529,7 @@ fn shift(value: u32, delta: i64) -> u32 {
     shifted as u32
 }
 
-fn shift_comments(comments: &mut [oxc_ast::Comment], delta: i64) {
+pub(crate) fn shift_comments(comments: &mut [oxc_ast::Comment], delta: i64) {
     for comment in comments {
         comment.span.start = shift(comment.span.start, delta);
         comment.span.end = shift(comment.span.end, delta);
@@ -534,12 +542,10 @@ pub(crate) fn process_program<'a>(
     program: &mut Program<'a>,
     delta: i64,
     strip_ts: bool,
+    is_module: bool,
 ) {
     normalize_empty_import_specifiers(program);
-    if delta == 0 && !strip_ts {
-        return;
-    }
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, is_module);
     v.visit_program(program);
     if delta != 0 {
         shift_comments(&mut program.comments, delta);
@@ -569,10 +575,7 @@ pub(crate) fn process_expression<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    if delta == 0 && !strip_ts {
-        return;
-    }
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, false);
     v.visit_expression(expr);
 }
 
@@ -582,10 +585,7 @@ pub(crate) fn process_statement<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    if delta == 0 && !strip_ts {
-        return;
-    }
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, false);
     v.visit_statement(stmt);
 }
 
@@ -595,10 +595,7 @@ pub(crate) fn process_binding_pattern<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    if delta == 0 && !strip_ts {
-        return;
-    }
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, false);
     v.visit_binding_pattern(pat);
 }
 
@@ -608,15 +605,18 @@ pub(crate) fn process_formal_parameters<'a>(
     delta: i64,
     strip_ts: bool,
 ) {
-    if delta == 0 && !strip_ts {
-        return;
-    }
-    let mut v = JsPostprocessor::new(alloc, delta, strip_ts);
+    let mut v = JsPostprocessor::new(alloc, delta, strip_ts, false);
     v.visit_formal_parameters(params);
 }
 
 pub(crate) fn wrapper_delta(absolute_start: u32, leading_ws: usize, prefix_len: i64) -> i64 {
     absolute_start as i64 + leading_ws as i64 - prefix_len
+}
+
+fn mark_iife_callee(callee: &mut Expression<'_>) {
+    if let Expression::FunctionExpression(func) = callee {
+        func.pife = true;
+    }
 }
 
 fn relocate_orphaned_comments(program: &mut Program<'_>) {

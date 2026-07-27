@@ -12,7 +12,7 @@ pub fn canonicalize_js(js: &str) -> String {
     if !parsed.diagnostics.is_empty() {
         return strip_js_comments(js);
     }
-    strip_empty_statement_nodes(&mut parsed.program);
+    canonicalize_ast(&mut parsed.program);
     Codegen::new()
         .with_options(CodegenOptions {
             comments: CommentOptions::disabled(),
@@ -22,7 +22,7 @@ pub fn canonicalize_js(js: &str) -> String {
         .code
 }
 
-fn strip_empty_statement_nodes(program: &mut Program<'_>) {
+fn canonicalize_ast(program: &mut Program<'_>) {
     use oxc_allocator::Vec as OxcVec;
     use oxc_ast::ast::{BlockStatement, FunctionBody, StaticBlock, SwitchCase};
     use oxc_ast_visit::{VisitMut, walk_mut};
@@ -54,6 +54,14 @@ fn strip_empty_statement_nodes(program: &mut Program<'_>) {
             retain(&mut it.consequent);
             walk_mut::walk_switch_case(self, it);
         }
+        fn visit_expression(&mut self, it: &mut Expression<'a>) {
+            match it {
+                Expression::ArrowFunctionExpression(arrow) => arrow.pife = false,
+                Expression::FunctionExpression(function) => function.pife = false,
+                _ => {}
+            }
+            walk_mut::walk_expression(self, it);
+        }
     }
 
     Stripper.visit_program(program);
@@ -66,12 +74,16 @@ pub fn canonicalize_injected_css_in_js(js: &str) -> String {
     }
     let mut out = js.to_string();
     for (start, end, css) in spans.into_iter().rev() {
-        let stripped = strip_css_sourcemap_comment(&css);
-        let canon = minify_css(stripped).unwrap_or_else(|| fallback_normalize_css(stripped));
+        let canon = canonicalize_injected_css(&css);
         let literal = serde_json::to_string(&canon).expect("string serializes");
         out.replace_range(start..end, &literal);
     }
     out
+}
+
+pub fn canonicalize_injected_css(css: &str) -> String {
+    let stripped = strip_css_sourcemap_comment(css);
+    minify_css(stripped).unwrap_or_else(|| fallback_normalize_css(stripped))
 }
 
 fn find_injected_css_spans(js: &str) -> Vec<(usize, usize, String)> {

@@ -20,7 +20,12 @@ use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
 use crate::block_semantics::data::BlockSemantics;
+use crate::js_walker::{JsVisitor, JsWalk};
+use crate::runtime_semantics::ContentProjection;
+use crate::utils::snippet::snippet_name_symbol;
 use crate::{AnalysisData, types::data::JsAst};
+
+use dollar_name::{INSTANCE_FUNCTION_DEPTH, MODULE_FUNCTION_DEPTH};
 
 pub fn validate(
     component: &Component,
@@ -32,10 +37,9 @@ pub fn validate(
 ) {
     if let Some(program) = &parsed.program {
         validate_program(data, program, runes, diags);
+        run_instance_js_bundle(data, program, runes, diags);
         runes::validate_invalid_exports(data, program, true, None, diags);
         validate_illegal_default_export(program, diags);
-        const_assignment::validate(data, program, diags);
-        dollar_name::validate(program, runes, diags);
         validate_module_import_conflict(data, program, diags);
     }
     const_assignment::validate_template(data, parsed, diags);
@@ -54,7 +58,7 @@ pub fn validate(
             diags,
         );
         stores::validate_module(data, module_program, diags);
-        syntax_bundle::validate_module(data, module_program, runes, diags);
+        run_module_js_bundle(data, module_program, runes, diags);
     }
     non_reactive_update::validate(component, data, parsed, runes, diags);
     validate_snippet_exports(component, data, parsed, diags);
@@ -67,6 +71,96 @@ pub fn validate(
     validate_attribute_duplicate(component, diags);
     validate_attribute_names(component, diags);
     declaration_duplicate::validate(component, data, parsed, diags);
+    validate_content_projection(data, diags);
+}
+
+fn validate_content_projection(data: &AnalysisData, diags: &mut Vec<Diagnostic>) {
+    if let ContentProjection::Mixed { first_slot_syntax } =
+        data.runtime_semantics.query().content_projection
+    {
+        diags.push(Diagnostic::error(
+            DiagnosticKind::SlotSnippetConflict,
+            first_slot_syntax,
+        ));
+    }
+}
+
+fn run_instance_js_bundle(
+    data: &AnalysisData,
+    program: &Program<'_>,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut const_assign_diags = Vec::new();
+    let mut dollar_name_diags = Vec::new();
+    let mut syntax_diags = Vec::new();
+    let mut async_diags = Vec::new();
+    let mut state_ref_diags = Vec::new();
+    let mut rest_prop_diags = Vec::new();
+
+    let mut const_assign = const_assignment::new_validator(data, &mut const_assign_diags);
+    let mut dollar =
+        dollar_name::new_validator(runes, INSTANCE_FUNCTION_DEPTH, &mut dollar_name_diags);
+    let mut syntax = syntax_bundle::new_instance_validator(data, runes, &mut syntax_diags);
+    let mut experimental =
+        experimental_async::new_instance_validator(data, runes, &mut async_diags);
+    let mut state_ref = runes::new_state_ref_locally_validator(data, &mut state_ref_diags);
+    let mut rest_prop = runes::new_rest_prop_validator(data, &mut rest_prop_diags);
+
+    {
+        match experimental.as_mut() {
+            Some(experimental) => {
+                let mut visitors: [&mut dyn JsVisitor; 6] = [
+                    &mut const_assign,
+                    &mut dollar,
+                    &mut syntax,
+                    &mut state_ref,
+                    &mut rest_prop,
+                    experimental,
+                ];
+                JsWalk::new(&mut visitors).walk_program(program);
+            }
+            None => {
+                let mut visitors: [&mut dyn JsVisitor; 5] = [
+                    &mut const_assign,
+                    &mut dollar,
+                    &mut syntax,
+                    &mut state_ref,
+                    &mut rest_prop,
+                ];
+                JsWalk::new(&mut visitors).walk_program(program);
+            }
+        }
+    }
+
+    diags.extend(state_ref_diags);
+    diags.extend(rest_prop_diags);
+    diags.extend(async_diags);
+    diags.extend(syntax_diags);
+    diags.extend(const_assign_diags);
+    diags.extend(dollar_name_diags);
+}
+
+fn run_module_js_bundle(
+    data: &AnalysisData,
+    program: &Program<'_>,
+    runes: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut dollar_name_diags = Vec::new();
+    let mut syntax_diags = Vec::new();
+
+    let mut dollar =
+        dollar_name::new_validator(runes, MODULE_FUNCTION_DEPTH, &mut dollar_name_diags);
+    let mut syntax = syntax_bundle::new_module_validator(data, runes, &mut syntax_diags);
+
+    {
+        let mut visitors: [&mut dyn JsVisitor; 2] = [&mut dollar, &mut syntax];
+        JsWalk::new(&mut visitors).walk_program(program);
+    }
+
+    diags.extend(dollar_name_diags);
+    diags.extend(syntax_diags);
 }
 
 const ATTR_NAMESPACE: &str = "attr";
@@ -298,8 +392,6 @@ pub fn validate_program(
     legacy::validate_legacy_diagnostics(data, program, runes, diags);
     runes::validate(data, program, runes, true, diags);
     stores::validate_scoped_subscriptions(data, diags);
-    experimental_async::validate_instance_program(data, program, diags);
-    syntax_bundle::validate_instance(data, program, runes, diags);
 }
 
 pub(crate) fn span_already_taken(diags: &[Diagnostic], span: Span) -> bool {
@@ -322,11 +414,33 @@ pub fn validate_standalone_module(
         diags,
     );
     runes::validate_default_export_state(data, program, data.scoping.root_scope_id(), diags);
-    const_assignment::validate(data, program, diags);
-    dollar_name::validate(program, true, diags);
+    run_standalone_js_bundle(data, program, diags);
     stores::validate_dollar_globals(data, source, diags);
     stores::validate_standalone_module(data, program, diags);
-    syntax_bundle::validate_module(data, program, true, diags);
+}
+
+fn run_standalone_js_bundle(
+    data: &AnalysisData,
+    program: &Program<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut const_assign_diags = Vec::new();
+    let mut dollar_name_diags = Vec::new();
+    let mut syntax_diags = Vec::new();
+
+    let mut const_assign = const_assignment::new_validator(data, &mut const_assign_diags);
+    let mut dollar =
+        dollar_name::new_validator(true, MODULE_FUNCTION_DEPTH, &mut dollar_name_diags);
+    let mut syntax = syntax_bundle::new_module_validator(data, true, &mut syntax_diags);
+
+    {
+        let mut visitors: [&mut dyn JsVisitor; 3] = [&mut const_assign, &mut dollar, &mut syntax];
+        JsWalk::new(&mut visitors).walk_program(program);
+    }
+
+    diags.extend(const_assign_diags);
+    diags.extend(dollar_name_diags);
+    diags.extend(syntax_diags);
 }
 
 pub fn validate_module_experimental_async(
@@ -334,7 +448,12 @@ pub fn validate_module_experimental_async(
     program: &Program<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    experimental_async::validate_module_program(data, program, diags);
+    let mut async_diags = Vec::new();
+    if let Some(mut validator) = experimental_async::new_module_validator(data, &mut async_diags) {
+        let mut visitors: [&mut dyn JsVisitor; 1] = [&mut validator];
+        JsWalk::new(&mut visitors).walk_program(program);
+    }
+    diags.extend(async_diags);
 }
 
 fn validate_module_program(parsed: &JsAst, diags: &mut Vec<Diagnostic>) {
@@ -392,7 +511,9 @@ fn validate_snippet_exports(
                 data.block_semantics(id),
                 BlockSemantics::Snippet(sem) if sem.placement.is_module_level()
             );
-            Some((snippet.name(&component.source), hoistable))
+            let name = snippet_name_symbol(parsed, snippet)
+                .map(|sym| data.scoping.semantics().symbol_name(sym))?;
+            Some((name, hoistable))
         })
         .collect();
 
@@ -447,7 +568,8 @@ fn validate_undefined_exports(
                 .store
                 .get(svelte_ast::NodeId(i))
                 .as_snippet_block()
-                .map(|s| s.name(&component.source))
+                .and_then(|s| snippet_name_symbol(parsed, s))
+                .map(|sym| data.scoping.semantics().symbol_name(sym))
         })
         .collect();
 
@@ -587,7 +709,7 @@ fn validate_svelte_options_warnings(
         let kind = match attr.html_name() {
             "accessors" if runes => Some(DiagnosticKind::OptionsDeprecatedAccessors),
             "immutable" if runes => Some(DiagnosticKind::OptionsDeprecatedImmutable),
-            "customElement" if !data.output.custom_element_compile_flag => {
+            "customElement" if !data.custom_element.compile_flag => {
                 Some(DiagnosticKind::OptionsMissingCustomElement)
             }
             _ => None,

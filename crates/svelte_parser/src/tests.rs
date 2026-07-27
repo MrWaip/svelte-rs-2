@@ -107,6 +107,29 @@ fn script_tag_lang_ts() {
     assert_eq!(script.language, ScriptLanguage::TypeScript);
 }
 
+#[track_caller]
+fn assert_script_attributes(c: &Component, expected: &[&str]) {
+    let script = c
+        .instance_script
+        .as_ref()
+        .expect("expected instance script");
+    let spans: Vec<_> = script
+        .attributes
+        .iter()
+        .map(|attr| c.source_text(attr.span()))
+        .collect();
+    assert_eq!(
+        spans, expected,
+        "instance script attributes: expected {expected:?}, got {spans:?}"
+    );
+}
+
+#[test]
+fn script_tag_keeps_custom_attributes() {
+    let c = parse(r#"<script lang="ts" foo="bar">const i = 10;</script>"#);
+    assert_script_attributes(&c, &[r#"lang="ts""#, r#"foo="bar""#]);
+}
+
 #[test]
 fn comment() {
     let c = parse("<!-- some comment -->");
@@ -295,14 +318,8 @@ fn script_context_module_context_attribute() {
     assert_eq!(script.context, ScriptContext::Module);
 }
 
-fn assert_snippet_block(
-    c: &Component,
-    index: usize,
-    expected_name: &str,
-    expected_expression: &str,
-) {
+fn assert_snippet_block(c: &Component, index: usize, expected_expression: &str) {
     if let Node::SnippetBlock(sb) = node_at(c, index) {
-        assert_eq!(sb.name(&c.source), expected_name);
         assert_eq!(c.source_text(sb.decl.span), expected_expression);
     } else {
         panic!("expected SnippetBlock at index {index}");
@@ -325,19 +342,19 @@ fn snippet_block_basic() {
         0,
         "{#snippet greeting(name)}<p>Hello {name}</p>{/snippet}",
     );
-    assert_snippet_block(&c, 0, "greeting", "greeting(name)");
+    assert_snippet_block(&c, 0, "greeting(name)");
 }
 
 #[test]
 fn snippet_block_no_params() {
     let c = parse("{#snippet footer()}<p>footer</p>{/snippet}");
-    assert_snippet_block(&c, 0, "footer", "footer()");
+    assert_snippet_block(&c, 0, "footer()");
 }
 
 #[test]
 fn snippet_block_multiple_params() {
     let c = parse("{#snippet card(title, body)}<div>{title} {body}</div>{/snippet}");
-    assert_snippet_block(&c, 0, "card", "card(title, body)");
+    assert_snippet_block(&c, 0, "card(title, body)");
 }
 
 #[test]
@@ -361,7 +378,7 @@ fn render_tag_multiple_args() {
 #[test]
 fn snippet_and_render_together() {
     let c = parse("{#snippet greet(name)}<p>{name}</p>{/snippet}{@render greet(x)}");
-    assert_snippet_block(&c, 0, "greet", "greet(name)");
+    assert_snippet_block(&c, 0, "greet(name)");
     assert_render_tag(&c, 1, "greet(x)");
 }
 
@@ -454,6 +471,26 @@ fn interpolation_with_escaped_quotes() {
 fn assert_css(c: &Component, expected_content: &str) {
     let css = c.css.as_ref().expect("expected css");
     assert_eq!(c.source_text(css.content_span), expected_content);
+}
+
+#[track_caller]
+fn assert_css_attributes(c: &Component, expected: &[&str]) {
+    let css = c.css.as_ref().expect("expected css");
+    let spans: Vec<_> = css
+        .attributes
+        .iter()
+        .map(|attr| c.source_text(attr.span()))
+        .collect();
+    assert_eq!(
+        spans, expected,
+        "style attributes: expected {expected:?}, got {spans:?}"
+    );
+}
+
+#[test]
+fn style_tag_keeps_custom_attributes() {
+    let c = parse(r#"<style lang="scss" module>.foo { color: red; }</style>"#);
+    assert_css_attributes(&c, &[r#"lang="scss""#, "module"]);
 }
 
 #[test]
@@ -1304,7 +1341,7 @@ mod js_parse_tests {
         let source = "let count = $state(0); const name = 'test';";
         let arena_source = alloc.alloc_str(source);
         let program =
-            parse_script_with_alloc(&alloc, arena_source, 0, false).expect("test invariant");
+            parse_script_with_alloc(&alloc, arena_source, 0, false, false).expect("test invariant");
         assert!(!program.body.is_empty());
     }
 
@@ -1314,7 +1351,7 @@ mod js_parse_tests {
         let source = "export const PI = 3.14; export function greet(name) { return name; }";
         let arena_source = alloc.alloc_str(source);
         let program =
-            parse_script_with_alloc(&alloc, arena_source, 0, false).expect("test invariant");
+            parse_script_with_alloc(&alloc, arena_source, 0, false, false).expect("test invariant");
         assert!(!program.body.is_empty());
     }
 }
@@ -1767,5 +1804,192 @@ fn assert_reports_error_without_panic(source: &str) {
 fn all_whitespace_block_condition_reports_error_without_panicking_js_walker() {
     assert_reports_error_without_panic(
         "{#if }\n{:else if }\n{:else }\n{/if}\n{#each }\n{/each}\n{#snippet }\n{/snippet}",
+    );
+}
+
+#[track_caller]
+fn assert_template_ignore_comment(source: &str, attached_prefix: &str) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (component, jsast, _diags) = crate::parse_with_js(&alloc, source);
+    let comments = jsast.template_comments();
+    assert_eq!(
+        comments.len(),
+        1,
+        "expected exactly 1 template comment, got {}: {comments:?}",
+        comments.len(),
+    );
+    let comment = &comments[0];
+    let text = &component.source[comment.span.start as usize..comment.span.end as usize];
+    assert!(
+        text.contains("svelte-ignore"),
+        "template comment text: expected to contain svelte-ignore, got {text:?}",
+    );
+    let attached = &component.source[comment.attached_to as usize..];
+    assert!(
+        attached.starts_with(attached_prefix),
+        "attached_to at {}: expected statement starting with {attached_prefix:?}, got {:?}",
+        comment.attached_to,
+        &attached[..attached_prefix.len().min(attached.len())],
+    );
+}
+
+#[test]
+fn harvests_line_ignore_comment_in_event_handler() {
+    assert_template_ignore_comment(
+        "<button onclick={() => {\n\t// svelte-ignore ownership_invalid_mutation\n\ttest.test = 1;\n}}></button>",
+        "test.test = 1",
+    );
+}
+
+#[test]
+fn harvests_block_ignore_comment_in_event_handler() {
+    assert_template_ignore_comment(
+        "<button onclick={() => {\n\t/* svelte-ignore ownership_invalid_mutation */\n\ttest.test = 1;\n}}></button>",
+        "test.test = 1",
+    );
+}
+
+#[track_caller]
+fn assert_no_template_comment(source: &str) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, jsast, _diags) = crate::parse_with_js(&alloc, source);
+    assert!(
+        jsast.template_comments().is_empty(),
+        "expected no template comments, got {:?}",
+        jsast.template_comments(),
+    );
+}
+
+#[test]
+fn no_template_comment_when_expression_has_none() {
+    assert_no_template_comment("<button onclick={() => test.test = 1}></button>");
+}
+
+#[track_caller]
+fn assert_only_diagnostic(
+    source: &str,
+    expected_code: &str,
+    expected_start: u32,
+    expected_end: u32,
+) {
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, _js, diags) = crate::parse_with_js(&alloc, source);
+    let errors = diags
+        .iter()
+        .filter(|d| d.severity == svelte_diagnostics::Severity::Error)
+        .collect::<Vec<_>>();
+    assert_eq!(errors.len(), 1, "expected exactly one error, got {diags:?}");
+    let error = errors[0];
+    assert_eq!(
+        error.kind.code(),
+        expected_code,
+        "expected code {expected_code}, got {error:?}"
+    );
+    assert_eq!(
+        (error.span.start, error.span.end),
+        (expected_start, expected_end),
+        "expected span {expected_start}..{expected_end}, got {error:?}"
+    );
+}
+
+#[test]
+fn empty_if_expression_reports_js_parse_error_at_the_gap() {
+    assert_only_diagnostic("{#if }a{/if}", "js_parse_error", 5, 5);
+}
+
+#[test]
+fn empty_each_expression_reports_js_parse_error_at_the_gap() {
+    assert_only_diagnostic("{#each }a{/each}", "js_parse_error", 7, 7);
+}
+
+#[test]
+fn empty_key_expression_reports_js_parse_error_at_the_gap() {
+    assert_only_diagnostic("{#key }a{/key}", "js_parse_error", 6, 6);
+}
+
+#[test]
+fn empty_await_expression_reports_js_parse_error_at_the_gap() {
+    assert_only_diagnostic("{#await }a{/await}", "js_parse_error", 8, 8);
+}
+
+#[test]
+fn unparsable_script_reports_js_parse_error_at_the_offending_token() {
+    assert_only_diagnostic("<script>foo {}</script>", "js_parse_error", 12, 12);
+}
+
+#[test]
+fn unparsable_script_with_generics_reports_js_parse_error_at_the_offending_token() {
+    assert_only_diagnostic(
+        "<script generics=\"T\">foo {}</script>",
+        "js_parse_error",
+        25,
+        25,
+    );
+}
+
+#[test]
+fn type_alias_in_typescript_reports_declaration_tag_invalid_type() {
+    assert_only_diagnostic(
+        "<script lang=\"ts\">let a = 1;</script>{type X = 1}",
+        "declaration_tag_invalid_type",
+        38,
+        48,
+    );
+}
+
+#[test]
+fn snippet_header_without_whitespace_reports_expected_whitespace() {
+    assert_only_diagnostic("{#snippet}a{/snippet}", "expected_whitespace", 9, 9);
+}
+
+#[test]
+fn snippet_header_without_name_reports_expected_identifier() {
+    assert_only_diagnostic("{#snippet }a{/snippet}", "expected_identifier", 10, 10);
+}
+
+#[test]
+fn snippet_header_with_non_identifier_name_reports_expected_identifier() {
+    assert_only_diagnostic(
+        "{#snippet 1foo()}a{/snippet}",
+        "expected_identifier",
+        10,
+        10,
+    );
+}
+
+#[test]
+fn snippet_header_without_parameters_reports_expected_open_paren() {
+    assert_only_diagnostic("{#snippet foo}a{/snippet}", "expected_token", 13, 13);
+}
+
+#[test]
+fn earliest_error_in_the_source_wins_over_the_one_found_first() {
+    assert_only_diagnostic("{#if }{/if}{#snippet }{/snippet}", "js_parse_error", 5, 5);
+}
+
+#[test]
+fn closing_tag_over_component_is_an_error() {
+    assert_only_diagnostic("<div><Comp></div>", "element_invalid_closing_tag", 11, 11);
+}
+
+#[test]
+fn closing_tag_over_svelte_element_is_an_error() {
+    assert_only_diagnostic(
+        "<div><svelte:element this=\"p\"></div>",
+        "element_invalid_closing_tag",
+        30,
+        30,
+    );
+}
+
+#[test]
+fn closing_tag_over_regular_element_only_warns() {
+    let alloc = oxc_allocator::Allocator::default();
+    let (_component, _js, diags) = crate::parse_with_js(&alloc, "<div><span></div>");
+    assert!(
+        diags
+            .iter()
+            .all(|d| d.severity == svelte_diagnostics::Severity::Warning),
+        "expected no errors, got {diags:?}"
     );
 }

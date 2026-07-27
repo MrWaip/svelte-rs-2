@@ -9,7 +9,8 @@ use oxc_ast::ast::{
 };
 use oxc_span::{GetSpan, SPAN};
 
-use svelte_analyze::{DerivedKind, DerivedSource, WarningCode};
+use svelte_analyze::{DerivedKind, DerivedSource, Suspension, WarningCode};
+use svelte_emit_builders::async_entry::suspending_arrow_body;
 
 use svelte_ast_builder::{Arg, AssignLeft, Builder};
 use svelte_component_semantics::{SymbolId, walk_bindings};
@@ -88,7 +89,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
         decl_kind: VariableDeclarationKind,
         span_start: u32,
         mut declarator: VariableDeclarator<'a>,
+        suspension: Suspension,
     ) -> Statement<'a> {
+        let declarator_node_id = declarator.node_id();
         let init = declarator
             .init
             .take()
@@ -97,7 +100,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             BindingPattern::ArrayPattern(_) => "[$derived iterable]",
             _ => "[$derived object]",
         };
-        let tmp_init = self.async_derived_init(init, dev_label, span_start);
+        let tmp_init = self.async_derived_init(init, dev_label, span_start, suspension);
         let tmp_name = self.ident_gen.generate("$$d");
         let tmp_name_str: &str = self.b.alloc_str(&tmp_name);
         let root = self.b.call_expr("$.get", [Arg::Ident(tmp_name_str)]);
@@ -125,6 +128,9 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 );
             }
             let block_stmt = self.b.block_stmt(block);
+            if let Statement::BlockStatement(block) = &block_stmt {
+                block.set_node_id(declarator_node_id);
+            }
             self.b.seed_block_scope(&block_stmt, self.gen_arrow_scope);
             block_stmt
         } else {
@@ -217,6 +223,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         &mut self,
         span_start: u32,
         mut declarator: VariableDeclarator<'a>,
+        suspension: Suspension,
         out: &mut OxcVec<'a, VariableDeclarator<'a>>,
     ) {
         let BindingPattern::BindingIdentifier(binding) = &declarator.id else {
@@ -242,11 +249,11 @@ impl<'a> ComponentTransformer<'_, 'a> {
                 .is_ignored_at_span(span_start, WarningCode::AwaitReactivityLoss);
         let thunk = if let Expression::AwaitExpression(await_expr) = awaited {
             let source_expr = await_expr.unbox().argument;
+            let await_inner = self.b.await_expr(source_expr);
             if track_inner_await {
-                let await_inner = self.b.await_expr(source_expr);
                 self.b.async_arrow_expr_body(await_inner)
             } else {
-                self.b.thunk(source_expr)
+                suspending_arrow_body(self.b, await_inner, suspension)
             }
         } else {
             self.b.async_arrow_expr_body(awaited)
@@ -315,6 +322,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
         init: Expression<'a>,
         dev_label: &str,
         span_start: u32,
+        suspension: Suspension,
     ) -> Expression<'a> {
         let Expression::CallExpression(mut call) = init else {
             unreachable!("async $derived initializer is a call");
@@ -334,7 +342,7 @@ impl<'a> ComponentTransformer<'_, 'a> {
             if track_inner_await {
                 self.b.async_arrow_expr_body(await_inner)
             } else {
-                self.b.async_thunk(await_inner)
+                suspending_arrow_body(self.b, await_inner, suspension)
             }
         } else {
             self.b.async_arrow_expr_body(awaited)
@@ -438,14 +446,13 @@ impl<'a> ComponentTransformer<'_, 'a> {
         decl_kind: VariableDeclarationKind,
     ) -> VariableDeclarator<'a> {
         let (name, value) = self.derived_leaf_value(symbol, accessor);
-        self.b.ast.variable_declarator(
-            SPAN,
-            decl_kind,
-            self.b.ast.binding_pattern_binding_identifier(SPAN, name),
-            NONE,
-            Some(value),
-            false,
-        )
+        let pattern = self.b.ast.binding_pattern_binding_identifier(SPAN, name);
+        if let BindingPattern::BindingIdentifier(id) = &pattern {
+            id.symbol_id.set(Some(symbol));
+        }
+        self.b
+            .ast
+            .variable_declarator(SPAN, decl_kind, pattern, NONE, Some(value), false)
     }
 }
 

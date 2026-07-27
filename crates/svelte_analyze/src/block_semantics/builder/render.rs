@@ -71,6 +71,7 @@ fn callee_volatility(ctx: &Ctx<'_, '_>, callee_sym: Option<SymbolId>) -> Volatil
     match ctx.reactivity.binding_semantics(sym) {
         BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::Unresolved => Volatility::Static,
         BindingSemantics::Prop(_)
         | BindingSemantics::State(_)
@@ -155,7 +156,10 @@ fn derive_arg_kind(ctx: &Ctx<'_, '_>, argument: &Argument<'_>) -> RenderArgKind 
             } else {
                 None
             };
-            RenderArgKind::AwaitMemo { inner_node_id }
+            RenderArgKind::AwaitMemo {
+                inner_node_id,
+                suspension: data.suspension,
+            }
         }
         Volatility::Heavy => {
             if data.blockers.is_empty() {
@@ -196,6 +200,7 @@ fn passthrough_prop_binding(ctx: &Ctx<'_, '_>, arg: &Expression<'_>) -> Option<S
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     };

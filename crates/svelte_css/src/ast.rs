@@ -230,6 +230,7 @@ pub struct Declaration {
     pub span: Span,
     pub property: Span,
     pub value: Span,
+    pub has_colon: bool,
 
     pub value_override: Option<String>,
 }

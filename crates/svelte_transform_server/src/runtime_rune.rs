@@ -7,21 +7,49 @@ use svelte_ast_builder::Arg;
 
 use crate::model::ServerTransform;
 
+pub(crate) enum RuneRewrite {
+    NotARune,
+    Replaced,
+    ReplacedOpaque,
+}
+
+fn replacement_is_opaque(kind: RuntimeRuneKind) -> bool {
+    match kind {
+        RuntimeRuneKind::StateEager => true,
+        RuntimeRuneKind::EffectTracking
+        | RuntimeRuneKind::EffectPending
+        | RuntimeRuneKind::EffectRoot
+        | RuntimeRuneKind::StateSnapshot
+        | RuntimeRuneKind::Host
+        | RuntimeRuneKind::Effect
+        | RuntimeRuneKind::EffectPre
+        | RuntimeRuneKind::Inspect
+        | RuntimeRuneKind::InspectWith
+        | RuntimeRuneKind::InspectTrace
+        | RuntimeRuneKind::PropsId
+        | RuntimeRuneKind::Bindable => false,
+    }
+}
+
 impl<'a> ServerTransform<'_, 'a> {
-    pub(crate) fn rewrite_runtime_rune_call(&self, expr: &mut Expression<'a>) -> bool {
+    pub(crate) fn rewrite_runtime_rune_call(&self, expr: &mut Expression<'a>) -> RuneRewrite {
         let Expression::CallExpression(call) = expr else {
-            return false;
+            return RuneRewrite::NotARune;
         };
         let DeclaratorSemantics::RuntimeRuneCall { kind } =
             self.analysis.declarator_semantics(call.node_id())
         else {
-            return false;
+            return RuneRewrite::NotARune;
         };
+        let opaque = replacement_is_opaque(kind);
         let Some(replacement) = self.runtime_rune_value(call, kind) else {
-            return false;
+            return RuneRewrite::NotARune;
         };
         *expr = replacement;
-        true
+        if opaque {
+            return RuneRewrite::ReplacedOpaque;
+        }
+        RuneRewrite::Replaced
     }
 
     pub(crate) fn elide_state_snapshot_init(&self, declarator_init: &mut Expression<'a>) -> bool {
@@ -51,8 +79,12 @@ impl<'a> ServerTransform<'_, 'a> {
             RuntimeRuneKind::EffectRoot => Some(self.b.arrow_expr(self.b.no_params(), empty())),
             RuntimeRuneKind::StateEager => Some(self.take_rune_arg(call)),
             RuntimeRuneKind::StateSnapshot => {
-                let suppress_warning =
-                    self.dev && self.is_in_ignored_stmt(WarningCode::StateSnapshotUncloneable);
+                let suppress_warning = self.dev
+                    && (self.is_in_ignored_stmt(WarningCode::StateSnapshotUncloneable)
+                        || self.is_ignored_at_span(
+                            call.span.start,
+                            WarningCode::StateSnapshotUncloneable,
+                        ));
                 let arg = self.take_rune_arg(call);
                 let args = if suppress_warning {
                     vec![Arg::Expr(arg), Arg::Expr(self.b.bool_expr(true))]

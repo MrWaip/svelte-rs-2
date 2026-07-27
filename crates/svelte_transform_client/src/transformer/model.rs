@@ -61,11 +61,8 @@ impl<'d, 'a> IgnoreQuery<'d, 'a> {
     }
 
     pub(crate) fn is_ignored_at_span(&self, span_start: u32, code: WarningCode) -> bool {
-        self.analysis.is_some_and(|a| {
-            a.output
-                .ignore_data
-                .is_ignored_warning_at_span(span_start, code)
-        })
+        self.analysis
+            .is_some_and(|a| a.ignore.is_ignored_warning_at_span(span_start, code))
     }
 }
 
@@ -89,7 +86,6 @@ pub(crate) struct ComponentTransformer<'b, 'a> {
     pub(crate) strip_exports: bool,
     pub(crate) dev: bool,
     pub(crate) function_info_stack: Vec<FunctionInfo>,
-    pub(crate) has_tracing: bool,
     pub(crate) needs_ownership_validator: bool,
     pub(crate) pending_prop_update_validations: FxHashMap<u32, PendingPropMutationValidation<'a>>,
     pub(crate) component_source: &'b str,
@@ -135,7 +131,7 @@ impl<'b, 'a> ComponentTransformer<'b, 'a> {
         let Some(analysis) = self.analysis else {
             return false;
         };
-        analysis.output.ignore_data.is_ignored_warning(owner, code)
+        analysis.ignore.is_ignored_warning(owner, code)
     }
 
     pub(crate) fn binding_semantics_for_symbol(

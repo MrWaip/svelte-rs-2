@@ -268,10 +268,15 @@ impl Printer<'_> {
     fn print_declaration(&mut self, decl: &Declaration, source: &str) {
         self.write_indent();
         self.push_span(decl.property, source);
-        if self.minify {
-            self.push_ch(':');
+        if decl.has_colon {
+            if self.minify {
+                self.push_ch(':');
+            } else {
+                self.push_str(": ");
+            }
         } else {
-            self.push_str(": ");
+            let separator = svelte_span::Span::new(decl.property.end, decl.value.start);
+            self.push_span(separator, source);
         }
         match &decl.value_override {
             Some(ov) => self.push_str(ov),

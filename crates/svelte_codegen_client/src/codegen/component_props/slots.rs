@@ -12,10 +12,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_id: NodeId,
         fragment: svelte_ast::FragmentId,
     ) -> Result<Option<Expression<'a>>> {
-        let default_wrapper = match self.ctx.query.analysis.element_semantics.query(el_id) {
-            ElementSemantics::LegacyComponentSlots(sem) => sem.default_wrapper,
-            _ => None,
-        };
+        let (default_wrapper, default_let_scope_owners) =
+            match self.ctx.query.analysis.element_semantics.query(el_id) {
+                ElementSemantics::Component(sem) => (
+                    sem.legacy_slots.default_wrapper,
+                    sem.legacy_slots.default_let_scope_owners.clone(),
+                ),
+                _ => (None, Default::default()),
+            };
         let (let_owner, effective_fragment) = match default_wrapper {
             Some(wrapper_id) => match self.ctx.query.component.store.get(wrapper_id) {
                 Node::SvelteFragmentLegacy(el) => (wrapper_id, el.fragment),
@@ -23,7 +27,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             },
             None => (el_id, fragment),
         };
-        let let_stmts = self.emit_let_directive_legacy_stmts(let_owner)?;
+        let mut let_stmts = self.emit_let_directive_legacy_stmts(let_owner)?;
+
+        for &child_id in &default_let_scope_owners {
+            if child_id == let_owner {
+                continue;
+            }
+            let stmts = self.emit_let_directive_legacy_stmts(child_id)?;
+            let_stmts.extend(stmts);
+        }
 
         let inner_ctx = parent_ctx.child_of_block(
             self.ctx,

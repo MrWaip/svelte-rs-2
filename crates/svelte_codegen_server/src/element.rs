@@ -34,11 +34,11 @@ impl<'a> ServerCodegen<'a> {
             }
             return self.emit_element_inline(element);
         }
-        let blockers = async_kind.blockers().to_vec();
         let awaited = async_kind.awaited();
 
-        let (stmts, hoists) = self
-            .with_promise_hoisting(|cg| cg.child_statements(|c| c.emit_element_inline(element)));
+        let ((stmts, hoists), blockers) = self.with_emitted_blockers(|cg| {
+            cg.with_promise_hoisting(|cg| cg.child_statements(|c| c.emit_element_inline(element)))
+        });
         let stmts = stmts?;
 
         let mut body = hoists;
@@ -59,7 +59,7 @@ impl<'a> ServerCodegen<'a> {
             | ElementSemantics::Boundary(_)
             | ElementSemantics::SvelteElement(_)
             | ElementSemantics::LegacySlot(_)
-            | ElementSemantics::LegacyComponentSlots(_) => None,
+            | ElementSemantics::Component(_) => None,
         }
     }
 
@@ -113,9 +113,11 @@ impl<'a> ServerCodegen<'a> {
             | ElementValueRole::TextareaValue { .. }
             | ElementValueRole::ContentEditable { .. } => false,
         };
+        let mut pending_group = None;
         if emits_const_tags {
             self.emit_fragment_const_tags_hoisted(element.fragment)?;
             self.emit_fragment_declaration_tags(element.fragment)?;
+            pending_group = self.build_declaration_group_for(element.fragment)?;
         }
 
         let name = self
@@ -137,7 +139,7 @@ impl<'a> ServerCodegen<'a> {
                     let push_element = self.push_element_stmt(element);
                     self.push_stmt(push_element);
                 }
-                self.emit_textarea_value_body(element.id, body)?
+                self.emit_textarea_value_body(body)?
             }
             ElementValueRole::ContentEditable { bind_id, kind } => {
                 if self.dev {
@@ -151,12 +153,16 @@ impl<'a> ServerCodegen<'a> {
             | ElementValueRole::RawText
             | ElementValueRole::Select { .. }
             | ElementValueRole::Option { .. } => {
-                self.emit_fragment_snippets_debug_head(element.fragment)?;
+                self.emit_group_declarations_and_snippets(element.fragment, &mut pending_group)?;
+                self.emit_fragment_debug_tags(element.fragment)?;
+                self.push_declaration_group(pending_group.take());
                 if self.dev {
                     let push_element = self.push_element_stmt(element);
                     self.push_stmt(push_element);
                 }
-                self.fragment_children_only(element.fragment, FragmentParent::Element(element))?;
+                self.without_emitted_blockers(|cg| {
+                    cg.fragment_children_only(element.fragment, FragmentParent::Element(element))
+                })?;
             }
         }
 
@@ -187,8 +193,9 @@ impl<'a> ServerCodegen<'a> {
     fn emit_select_container(&mut self, element: &'a Element, rich: bool) -> Result<()> {
         let (object, optionals) =
             self.build_element_attribute_object(element.id, &element.attributes)?;
-        let body = self
-            .child_statements(|c| c.fragment(element.fragment, FragmentParent::Element(element)))?;
+        let body = self.without_emitted_blockers(|cg| {
+            cg.child_statements(|c| c.fragment(element.fragment, FragmentParent::Element(element)))
+        })?;
         let arrow = self.b.arrow_block_expr(self.b.params(["$$renderer"]), body);
         let mut args = vec![Arg::Expr(object), Arg::Expr(arrow)];
         args.extend(self.container_trailing_args(optionals, rich));
@@ -203,27 +210,32 @@ impl<'a> ServerCodegen<'a> {
         value: Option<NodeId>,
         rich: bool,
     ) -> Result<()> {
-        let (object, optionals) =
-            self.build_element_attribute_object(element.id, &element.attributes)?;
         let body = match value {
-            Some(node) => self.take_expression_tag(node)?,
+            Some(node) => {
+                let expr = self.take_expression_tag(node)?;
+                self.maybe_hoist_async_expr(node, expr)
+            }
             None => {
-                let stmts = self.child_statements(|c| {
-                    if c.dev {
-                        let push_element = c.push_element_stmt(element);
-                        c.push_stmt(push_element);
-                    }
-                    c.fragment(element.fragment, FragmentParent::Element(element))?;
-                    if c.dev {
-                        let pop_element = c.pop_element_stmt();
-                        c.push_stmt(pop_element);
-                    }
-                    Ok(())
+                let stmts = self.without_emitted_blockers(|cg| {
+                    cg.child_statements(|c| {
+                        if c.dev {
+                            let push_element = c.push_element_stmt(element);
+                            c.push_stmt(push_element);
+                        }
+                        c.fragment(element.fragment, FragmentParent::Element(element))?;
+                        if c.dev {
+                            let pop_element = c.pop_element_stmt();
+                            c.push_stmt(pop_element);
+                        }
+                        Ok(())
+                    })
                 })?;
                 self.b
                     .arrow_block_expr(self.b.params(["$$renderer"]), stmts)
             }
         };
+        let (object, optionals) =
+            self.build_element_attribute_object(element.id, &element.attributes)?;
         let mut args = vec![Arg::Expr(object), Arg::Expr(body)];
         args.extend(self.container_trailing_args(optionals, rich));
         let call = self.b.call_stmt("$$renderer.option", args);
@@ -300,9 +312,11 @@ impl<'a> ServerCodegen<'a> {
         Ok(self.b.block_stmt(body))
     }
 
-    fn emit_textarea_value_body(&mut self, owner: NodeId, body: &TextareaBody) -> Result<()> {
+    fn emit_textarea_value_body(&mut self, body: &TextareaBody) -> Result<()> {
         let expression = match body {
-            TextareaBody::Single(oxc_id) => self.take_expr_by_oxc_id(owner, *oxc_id)?,
+            TextareaBody::Single { node_id, oxc_id } => {
+                self.take_expr_by_oxc_id(*node_id, *oxc_id)?
+            }
             TextareaBody::Static(text) => self.b.str_expr(text),
             TextareaBody::Segments(segments) => self.textarea_segments_expr(segments)?,
         };

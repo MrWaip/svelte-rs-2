@@ -1,5 +1,6 @@
 use crate::codegen::expr::coarse_wrap;
 use oxc_ast::ast::Expression;
+use svelte_analyze::ExpressionData;
 use svelte_analyze::{
     AttributeSemantics, HtmlConcatPart, HtmlConcatSemantics, SpecialValueKind, TemplateEffect,
     normalize_regular_attribute_name,
@@ -55,7 +56,10 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         };
 
-        let val = self.build_html_concat_expr(attr, &semantics, &mut state.shared_memo)?;
+        let val = match special {
+            Some(_) => self.build_concat_expr(attr, &semantics, ConcatMemoSink::Deferred(state))?,
+            None => self.build_html_concat_expr(attr, &semantics, &mut state.shared_memo)?,
+        };
 
         if let Some((kind, defined, volatile)) = special {
             let coalesce = !defined;
@@ -74,7 +78,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     return Ok(());
                 }
                 SpecialValueKind::InputBindChecked => {
-                    self.emit_input_value(state, owner_var, val, coalesce);
+                    self.emit_input_value(state, owner_var, val, coalesce, volatile);
                     return Ok(());
                 }
             }
@@ -99,6 +103,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         semantics: &HtmlConcatSemantics,
         memo_deps: &mut TemplateMemoState<'a>,
     ) -> Result<Expression<'a>> {
+        self.build_concat_expr(attr, semantics, ConcatMemoSink::Immediate(memo_deps))
+    }
+
+    fn build_concat_expr(
+        &mut self,
+        attr: &ConcatenationAttribute,
+        semantics: &HtmlConcatSemantics,
+        mut sink: ConcatMemoSink<'_, 'a>,
+    ) -> Result<Expression<'a>> {
         if attr.parts.len() != semantics.parts.len() {
             return CodegenError::semantic_mismatch(
                 attr.id,
@@ -112,6 +125,12 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             match plan {
                 HtmlConcatPart::StaticText(text) => {
                     push_template_str(&mut tpl_parts, text.as_str());
+                }
+                HtmlConcatPart::FoldedText { text, part_id } => {
+                    push_template_str(&mut tpl_parts, text.as_str());
+                    if let Some(data) = self.ctx.expression_data(*part_id).cloned() {
+                        self.concat_push_deps(&mut sink, *part_id, &data);
+                    }
                 }
                 HtmlConcatPart::Inline {
                     part_id, defined, ..
@@ -128,7 +147,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     let data = self.ctx.expression_data(*part_id).cloned();
                     let wrapped = coarse_wrap(self.ctx, expr_value, data.as_ref());
                     if let Some(d) = &data {
-                        memo_deps.push_expression_data(self.ctx, d);
+                        self.concat_push_deps(&mut sink, *part_id, d);
                     }
                     let is_sequence = matches!(wrapped, Expression::SequenceExpression(_));
                     tpl_parts.push(TemplatePart::Expr(wrapped, *defined && !is_sequence));
@@ -147,11 +166,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     };
                     let data = self.ctx.expression_data(*part_id).cloned();
                     let wrapped = coarse_wrap(self.ctx, expr_value, data.as_ref());
-                    if let Some(d) = &data {
-                        memo_deps.push_expression_data(self.ctx, d);
-                    }
-                    let index = memo_deps.sync_values_push(wrapped);
-                    let slot = memo_deps.sync_param_expr(self.ctx, index);
+                    let slot = self.concat_memo_slot(
+                        &mut sink,
+                        *part_id,
+                        data.as_ref(),
+                        wrapped,
+                        ConcatSlotKind::Sync,
+                    );
                     tpl_parts.push(TemplatePart::Expr(slot, *defined));
                 }
                 HtmlConcatPart::AsyncMemoSlot {
@@ -168,11 +189,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     };
                     let data = self.ctx.expression_data(*part_id).cloned();
                     let wrapped = coarse_wrap(self.ctx, expr_value, data.as_ref());
-                    if let Some(d) = &data {
-                        memo_deps.push_expression_data(self.ctx, d);
-                    }
-                    let index = memo_deps.async_values_push(wrapped);
-                    let slot = memo_deps.async_param_expr(self.ctx, index);
+                    let slot = self.concat_memo_slot(
+                        &mut sink,
+                        *part_id,
+                        data.as_ref(),
+                        wrapped,
+                        ConcatSlotKind::Async,
+                    );
                     tpl_parts.push(TemplatePart::Expr(slot, *defined));
                 }
             }
@@ -188,6 +211,59 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
         Ok(self.ctx.b.template_parts_expr(tpl_parts))
     }
+
+    fn concat_push_deps(
+        &mut self,
+        sink: &mut ConcatMemoSink<'_, 'a>,
+        node: NodeId,
+        data: &ExpressionData,
+    ) {
+        match sink {
+            ConcatMemoSink::Immediate(memo) => memo.push_expression_data(self.ctx, data),
+            ConcatMemoSink::Deferred(state) => self.defer_blockers(state, node, data),
+        }
+    }
+
+    fn concat_memo_slot(
+        &mut self,
+        sink: &mut ConcatMemoSink<'_, 'a>,
+        node: NodeId,
+        data: Option<&ExpressionData>,
+        expr: Expression<'a>,
+        kind: ConcatSlotKind,
+    ) -> Expression<'a> {
+        match sink {
+            ConcatMemoSink::Immediate(memo) => {
+                if let Some(data) = data {
+                    memo.push_expression_data(self.ctx, data);
+                }
+                let index = match kind {
+                    ConcatSlotKind::Sync => memo.sync_values_push(expr),
+                    ConcatSlotKind::Async => {
+                        memo.async_values_push(expr, self.ctx.expression_suspension(node))
+                    }
+                };
+                match kind {
+                    ConcatSlotKind::Sync => memo.sync_param_expr(self.ctx, index),
+                    ConcatSlotKind::Async => memo.async_param_expr(self.ctx, index),
+                }
+            }
+            ConcatMemoSink::Deferred(state) => match data {
+                Some(data) => self.defer_memo_value(state, node, data, expr),
+                None => expr,
+            },
+        }
+    }
+}
+
+pub(super) enum ConcatMemoSink<'s, 'a> {
+    Immediate(&'s mut TemplateMemoState<'a>),
+    Deferred(&'s mut EmitState<'a>),
+}
+
+enum ConcatSlotKind {
+    Sync,
+    Async,
 }
 
 fn push_template_str<'a>(parts: &mut Vec<TemplatePart<'a>>, text: &str) {

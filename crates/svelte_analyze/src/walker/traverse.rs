@@ -1,4 +1,5 @@
 use std::slice;
+use svelte_ast::SLOT_ATTRIBUTE;
 
 use super::*;
 
@@ -23,9 +24,18 @@ fn walk_template_inner(
 ) {
     let store = ctx.store;
     let fragment_nodes = store.fragment_nodes(fragment_id);
+    let mut run_has_comment = false;
     for (idx, &id) in fragment_nodes.iter().enumerate() {
         let node = store.get(id);
-        let ignore_codes = scan_preceding_ignores(idx, fragment_nodes, ctx);
+        let ignore_codes = match run_has_comment {
+            true => scan_preceding_ignores(idx, fragment_nodes, ctx),
+            false => Vec::new(),
+        };
+        run_has_comment = match node {
+            Node::Comment(_) => true,
+            Node::Text(_) => run_has_comment,
+            _ => false,
+        };
         let has_ignores = !ignore_codes.is_empty();
         if has_ignores {
             ctx.push_ignore(ignore_codes);
@@ -432,7 +442,7 @@ fn walk_component_like(
 
 fn attrs_static_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> Option<&'a str> {
     attrs.iter().find_map(|attr| match attr {
-        Attribute::StringAttribute(attr) if attr.name == "slot" => {
+        Attribute::StringAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
             Some(attr.value_span.source_text(source))
         }
         _ => None,

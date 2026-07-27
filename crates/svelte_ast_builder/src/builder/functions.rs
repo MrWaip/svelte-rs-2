@@ -205,34 +205,13 @@ impl<'a> Builder<'a> {
         self.arrow_block_expr(self.no_params(), stmts)
     }
 
-    pub fn async_thunk(&self, expr: Expression<'a>) -> Expression<'a> {
-        if let Expression::AwaitExpression(await_node) = expr {
-            let inner = await_node.unbox().argument;
-            return self.thunk(inner);
+    pub fn outermost_await(&self, expr: Expression<'a>) -> OutermostAwait<'a> {
+        match expr.into_inner_expression() {
+            Expression::AwaitExpression(await_node) => {
+                OutermostAwait::Operand(await_node.unbox().argument)
+            }
+            other => OutermostAwait::Absent(other),
         }
-        if let Expression::CallExpression(call) = &expr
-            && matches!(
-                call.callee.get_inner_expression(),
-                Expression::AwaitExpression(_)
-            )
-        {
-            return self.async_arrow_expr_body(expr);
-        }
-        let await_expr = self.await_expr(expr);
-        let body = self.ast.function_body(
-            SPAN,
-            self.ast.vec(),
-            self.ast.vec_from_iter([self.expr_stmt(await_expr)]),
-        );
-        Expression::ArrowFunctionExpression(self.alloc(self.ast.arrow_function_expression(
-            SPAN,
-            true,
-            true,
-            NONE,
-            self.no_params(),
-            NONE,
-            body,
-        )))
     }
 
     pub fn await_expr(&self, expr: Expression<'a>) -> Expression<'a> {
@@ -375,4 +354,9 @@ impl<'a> Builder<'a> {
             Some(rest),
         )
     }
+}
+
+pub enum OutermostAwait<'a> {
+    Operand(Expression<'a>),
+    Absent(Expression<'a>),
 }

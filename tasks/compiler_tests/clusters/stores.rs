@@ -211,3 +211,32 @@ compiler_case!(
     store_base_source_prop_default,
     "stores/store_base_source_prop_default"
 );
+
+compiler_case!(
+    store_shadow_assign_guard,
+    "stores/store_shadow/assign_guard"
+);
+compiler_case!(
+    store_shadow_compound_assign_guard,
+    "stores/store_shadow/compound_assign_guard"
+);
+compiler_case!(
+    store_shadow_assign_runes_guard,
+    "stores/store_shadow/assign_runes_guard"
+);
+compiler_case!(
+    store_shadow_update_postfix,
+    "stores/store_shadow/update_postfix"
+);
+compiler_case!(
+    store_shadow_update_prefix_decrement,
+    "stores/store_shadow/update_prefix_decrement"
+);
+compiler_case!(
+    store_shadow_update_postfix_runes,
+    "stores/store_shadow/update_postfix_runes"
+);
+compiler_case!(
+    store_shadow_update_legacy_reactive_subscribed,
+    "stores/store_shadow/update_legacy_reactive_subscribed"
+);

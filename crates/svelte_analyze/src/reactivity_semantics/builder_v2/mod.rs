@@ -10,6 +10,7 @@ mod util;
 
 pub(crate) use util::expression_root_reference_id;
 
+use crate::expression_semantics::Suspension;
 use util::{property_key_atom, simple_assignment_target_member_root_reference_id};
 
 use super::data::{
@@ -216,7 +217,7 @@ pub(crate) fn build_v2<'a>(
     data.script.runes_mode = runes_mode;
     let runes = runes_mode.is_runes();
     data.script.immutable = runes || inputs.immutable;
-    data.script.accessors = data.output.is_custom_element_target || (!runes && inputs.accessors);
+    data.script.accessors = data.custom_element.is_target || (!runes && inputs.accessors);
 
     data.reactivity.set_uses_runes(runes);
     data.reactivity.set_runes_mode(runes_mode);
@@ -227,7 +228,7 @@ pub(crate) fn build_v2<'a>(
         component,
         parsed,
         data,
-        component_prop_emit_mode(data.output.is_custom_element_target),
+        component_prop_emit_mode(data.custom_element.is_target),
     );
     contextual::collect_template_declarations(component, parsed, data);
     contextual::promote_each_sources_to_legacy_state(component, parsed, data);
@@ -256,6 +257,8 @@ pub(crate) fn build_v2<'a>(
     let reference_count = data.scoping.references_len();
     data.reactivity.reserve_references(reference_count);
     let bind_this_proxy_targets = references::collect_raw_param_reads(component, parsed, data);
+    references::collect_element_local_derived_reads(component, parsed, data);
+    references::collect_detached_const_reads(component, parsed, data);
     references::collect_symbol_semantics(data);
     references::apply_bind_this_proxy_targets(data, &bind_this_proxy_targets);
     data.reactivity.classify_derived_sources();
@@ -264,7 +267,9 @@ pub(crate) fn build_v2<'a>(
     optimize_const_and_declaration_tags(component, parsed, data);
 
     legacy::register_legacy_synthetic_objects(data);
+    legacy::register_standalone_module_props_object(data);
     legacy::finalize_legacy_aggregates(data);
+    legacy::finalize_runes_store_prop_defaults(data);
     legacy_reactive::classify_mutated_import_references(data);
     import_subscribed::classify_import_subscribed_reads(data);
 }
@@ -481,7 +486,7 @@ fn is_promotable_legacy_let(
 ) -> bool {
     use super::data::BindingSemantics;
     let is_plain = match reactivity.binding_semantics(sym) {
-        BindingSemantics::NonReactive => true,
+        BindingSemantics::NonReactive | BindingSemantics::LegacyPropsObject => true,
         BindingSemantics::MaybeReactive
         | BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
@@ -1017,6 +1022,7 @@ fn reference_is_reactive(
             ReferenceReactivityMode::PropDefault => false,
         },
         BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::Unresolved
         | BindingSemantics::OptimizedRune(_) => match mode {
             ReferenceReactivityMode::General => !scoping.is_component_top_level_symbol(sym),
@@ -1120,8 +1126,8 @@ fn record_const_tag_declarators<'a>(
             continue;
         };
         let async_kind = match declarator.init.as_ref() {
-            Some(init) if expression_has_await(init) => DerivedAsyncKind::Async,
-            _ => DerivedAsyncKind::Sync,
+            Some(init) => async_kind_of(init),
+            None => DerivedAsyncKind::Sync,
         };
         data.reactivity.record_declarator_semantics(
             decl.node_id(),
@@ -1450,6 +1456,9 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
 
         for sym in mem::take(&mut self.standard_prop_source_symbols) {
             if self.data.scoping.is_member_mutated(sym) {
+                continue;
+            }
+            if self.data.scoping.is_reexported_specifier_local(sym) {
                 continue;
             }
             let refs = self.data.scoping.get_resolved_reference_ids(sym).to_vec();
@@ -2185,7 +2194,8 @@ impl<'d, 'a> ScriptSemanticCollector<'d, 'a> {
             BindingPattern::BindingIdentifier(ident) => {
                 let sym = ident.symbol_id.get()?;
                 let is_source = matches!(self.prop_lowering_mode, PropEmitMode::CustomElement)
-                    || self.data.scoping.is_mutated_any(sym);
+                    || self.data.scoping.is_mutated_any(sym)
+                    || self.data.scoping.is_reexported_specifier_local(sym);
                 let kind = if is_source {
                     if matches!(self.prop_lowering_mode, PropEmitMode::Standard) {
                         self.standard_prop_source_symbols.push(sym);
@@ -2399,6 +2409,14 @@ impl<'a> Visit<'a> for ScriptSemanticCollector<'_, 'a> {
             && let Some(fact) =
                 detect_rune_from_call(call).and_then(|kind| rune_call_fact(kind, call))
         {
+            if matches!(
+                fact,
+                DeclaratorSemantics::RuntimeRuneCall {
+                    kind: RuntimeRuneKind::InspectTrace
+                }
+            ) {
+                self.data.reactivity.mark_inspect_trace();
+            }
             self.data
                 .reactivity
                 .record_declarator_semantics(call.node_id(), fact);
@@ -2719,16 +2737,29 @@ fn is_simple_expression(expr: &Expression<'_>) -> bool {
 }
 
 fn derived_async_kind(call: &CallExpression<'_>) -> DerivedAsyncKind {
-    let has_await = call
-        .arguments
-        .first()
-        .and_then(|arg| arg.as_expression())
-        .is_some_and(expression_has_await);
-    if has_await {
-        DerivedAsyncKind::Async
-    } else {
-        DerivedAsyncKind::Sync
+    let Some(argument) = call.arguments.first().and_then(|arg| arg.as_expression()) else {
+        return DerivedAsyncKind::Sync;
+    };
+    async_kind_of(argument)
+}
+
+fn async_kind_of(argument: &Expression<'_>) -> DerivedAsyncKind {
+    if !expression_has_await(argument) {
+        return DerivedAsyncKind::Sync;
     }
+    DerivedAsyncKind::Async {
+        suspension: derived_suspension(argument),
+    }
+}
+
+fn derived_suspension(argument: &Expression<'_>) -> Suspension {
+    let Expression::AwaitExpression(outermost) = argument.get_inner_expression() else {
+        return Suspension::Interleaved;
+    };
+    if expression_has_await(&outermost.argument) {
+        return Suspension::Interleaved;
+    }
+    Suspension::Outermost
 }
 
 fn derived_source_reference(call: &CallExpression<'_>) -> Option<ReferenceId> {

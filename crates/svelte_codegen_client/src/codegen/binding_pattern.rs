@@ -74,7 +74,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     );
                 };
                 let item_reactive = self.each_item_reactive(block_id)?;
-                let (decls, writeback_places) = self.emit_each_item(pattern, item_reactive);
+                let (decls, writeback_places) =
+                    self.emit_each_item(block_id, pattern, item_reactive);
                 Ok(Out::EachItem {
                     decls,
                     writeback_places,
@@ -190,6 +191,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
 
     fn emit_each_item(
         &mut self,
+        block_id: NodeId,
         pattern: &'a BindingPattern<'a>,
         item_reactive: bool,
     ) -> (Vec<Statement<'a>>, FxHashMap<SymbolId, Expression<'a>>) {
@@ -202,7 +204,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             let needs_derived = v.path.iter().any(|s| s.default.is_some());
             let mut expr = self.item_read_expr(item_reactive);
             let mut update_expr = self.item_read_expr(item_reactive);
-            let mut member_chain = !v.is_rest;
 
             let simple_flags: Option<Vec<bool>> = self
                 .ctx
@@ -216,16 +217,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 match step.access {
                     Access::Key { key, computed } => {
                         expr = bp::member_access(&self.ctx.b, expr, key, computed);
-                        update_expr = bp::member_access(&self.ctx.b, update_expr, key, computed);
+                        update_expr =
+                            self.writeback_member_access(update_expr, key, computed, v.symbol, i);
                     }
                     Access::Index {
                         index,
                         len,
                         has_rest,
                     } => {
-                        member_chain = false;
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
+                            Some(block_id),
                             &mut carriers,
                             &mut carrier_stmts,
                             &prefix,
@@ -233,15 +235,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             carrier_count(len, has_rest),
                         );
                         let name_alloc: &'a str = self.ctx.b.alloc_str(&name);
-                        expr = self.ctx.b.computed_member_expr(
-                            rune_get(&self.ctx.b, name_alloc),
-                            self.ctx.b.num_expr(index as f64),
-                        );
+                        expr = self.carrier_index_expr(rune_get(&self.ctx.b, name_alloc), index);
+                        update_expr =
+                            self.carrier_index_expr(self.ctx.b.rid_expr(name_alloc), index);
                     }
                     Access::Slice { from } => {
-                        member_chain = false;
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
+                            Some(block_id),
                             &mut carriers,
                             &mut carrier_stmts,
                             &prefix,
@@ -249,14 +250,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                             None,
                         );
                         let name_alloc: &'a str = self.ctx.b.alloc_str(&name);
-                        let slice_callee = self
-                            .ctx
-                            .b
-                            .static_member_expr(rune_get(&self.ctx.b, name_alloc), "slice");
-                        expr = self
-                            .ctx
-                            .b
-                            .call_expr_callee(slice_callee, [Arg::Num(from as f64)]);
+                        expr = self.carrier_slice_expr(rune_get(&self.ctx.b, name_alloc), from);
+                        update_expr =
+                            self.carrier_slice_expr(self.ctx.b.rid_expr(name_alloc), from);
                     }
                 }
                 if let Some(default) = step.default {
@@ -273,7 +269,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 expr = bp::exclude_from_object(&self.ctx.b, expr, v.excluded);
             }
 
-            if member_chain {
+            if bp::has_each_item_writeback_place(&v) {
                 writeback_places.insert(v.symbol, update_expr);
             }
 
@@ -360,7 +356,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             };
             let target: &str = self.ctx.b.alloc_str(&name);
             let value_thunk = match async_kind {
-                DerivedAsyncKind::Async => self.ctx.b.async_thunk(init),
+                DerivedAsyncKind::Async { .. } => self.ctx.b.async_arrow_expr_body(init),
                 DerivedAsyncKind::Sync => self.ctx.b.thunk(init),
             };
             let derived = self.build_derived(value_thunk, async_kind);
@@ -400,7 +396,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .collect();
             let ret = self.ctx.b.return_stmt(self.ctx.b.object_expr(props));
             let value_thunk = match async_kind {
-                DerivedAsyncKind::Async => self.ctx.b.async_thunk_block(vec![destruct_stmt, ret]),
+                DerivedAsyncKind::Async { .. } => {
+                    self.ctx.b.async_thunk_block(vec![destruct_stmt, ret])
+                }
                 DerivedAsyncKind::Sync => self
                     .ctx
                     .b
@@ -428,10 +426,15 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         async_kind: DerivedAsyncKind,
     ) -> Expression<'a> {
         match async_kind {
-            DerivedAsyncKind::Async => self
-                .ctx
-                .b
-                .call_expr("$.async_derived", [Arg::Expr(value_thunk)]),
+            DerivedAsyncKind::Async { .. } => {
+                let derived = self
+                    .ctx
+                    .b
+                    .call_expr("$.async_derived", [Arg::Expr(value_thunk)]);
+                let save = self.ctx.b.call_expr("$.save", [Arg::Expr(derived)]);
+                let awaited = self.ctx.b.await_expr(save);
+                self.ctx.b.call_expr_callee(awaited, [])
+            }
             DerivedAsyncKind::Sync => {
                 let helper = self.ctx.query.view.derived_helper();
                 self.ctx.b.call_expr(helper, [Arg::Expr(value_thunk)])
@@ -454,8 +457,45 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         }
     }
 
+    fn writeback_member_access(
+        &self,
+        object: Expression<'a>,
+        key: &PropertyKey<'_>,
+        computed: bool,
+        symbol: SymbolId,
+        step: usize,
+    ) -> Expression<'a> {
+        if !computed {
+            return bp::member_access(&self.ctx.b, object, key, computed);
+        }
+        let raw = self
+            .ctx
+            .transform_data
+            .each_destructure_computed_keys
+            .get(&symbol)
+            .and_then(|keys| keys.get(step))
+            .and_then(|key| key.as_deref());
+        let Some(raw) = raw else {
+            return bp::member_access(&self.ctx.b, object, key, computed);
+        };
+        let key_expr = self.ctx.b.parse_expression(raw);
+        self.ctx.b.computed_member_expr(object, key_expr)
+    }
+
+    fn carrier_index_expr(&self, carrier: Expression<'a>, index: u32) -> Expression<'a> {
+        self.ctx
+            .b
+            .computed_member_expr(carrier, self.ctx.b.num_expr(index as f64))
+    }
+
+    fn carrier_slice_expr(&self, carrier: Expression<'a>, from: u32) -> Expression<'a> {
+        let callee = self.ctx.b.static_member_expr(carrier, "slice");
+        self.ctx.b.call_expr_callee(callee, [Arg::Num(from as f64)])
+    }
+
     fn ensure_carrier(
         &mut self,
+        block_id: Option<NodeId>,
         carriers: &mut HashMap<String, String>,
         carrier_stmts: &mut Vec<Statement<'a>>,
         prefix: &str,
@@ -465,7 +505,17 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         if let Some(name) = carriers.get(prefix) {
             return name.clone();
         }
-        let name = self.ctx.state.gen_ident("$$array");
+        let reserved = block_id.and_then(|block_id| {
+            self.ctx
+                .transform_data
+                .each_destructure_carrier_names
+                .get(&(block_id, prefix.to_string()))
+                .cloned()
+        });
+        let name = match reserved {
+            Some(name) => name,
+            None => self.ctx.state.gen_ident("$$array"),
+        };
         let derived = bp::to_array_derived(&self.ctx.b, array_expr, count, None);
         carrier_stmts.push(self.ctx.b.var_stmt(&name, derived));
         carriers.insert(prefix.to_string(), name.clone());
@@ -533,6 +583,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 | BindingSemantics::MaybeReactive
                 | BindingSemantics::NonReactive
                 | BindingSemantics::LegacyApiExport
+                | BindingSemantics::LegacyPropsObject
                 | BindingSemantics::Unresolved => false,
             };
             if carried {
@@ -652,6 +703,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
+                            None,
                             &mut carriers,
                             &mut carrier_stmts,
                             &prefix,
@@ -667,6 +719,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     Access::Slice { from } => {
                         let prefix = bp::serialize_prefix(&v.path[..i]);
                         let name = self.ensure_carrier(
+                            None,
                             &mut carriers,
                             &mut carrier_stmts,
                             &prefix,

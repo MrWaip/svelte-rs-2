@@ -1,5 +1,5 @@
 use compact_str::CompactString;
-use oxc_ast::ast::{Expression, Statement};
+use oxc_ast::ast::Statement;
 use svelte_ast::NodeId;
 
 use super::memo::TemplateMemoState;
@@ -7,7 +7,7 @@ use super::template::Template;
 
 #[derive(Default)]
 pub(crate) struct EmitState<'a> {
-    pub template: Template,
+    pub template: Template<'a>,
     pub init: Vec<Statement<'a>>,
     pub update: Vec<Statement<'a>>,
     pub after_update: Vec<Statement<'a>>,
@@ -16,9 +16,11 @@ pub(crate) struct EmitState<'a> {
     pub root_var: Option<CompactString>,
     pub special_elements: Vec<Statement<'a>>,
     pub shared_memo: TemplateMemoState<'a>,
-    pub script_blockers: Vec<u32>,
-    pub extra_blockers: Vec<Expression<'a>>,
+    pub deferred_memo_values: Vec<super::memo::DeferredMemoValue<'a>>,
+    pub script_blockers: Vec<svelte_analyze::BlockerSlot>,
+    pub extra_blockers: Vec<(String, usize)>,
     pub skip_snippets: bool,
+    pub skip_snippet_ids: Vec<svelte_ast::NodeId>,
     pub skip_const_tags: bool,
     pub last_fragment_needs_reset: bool,
     pub pending_element_init: Vec<Statement<'a>>,
@@ -31,6 +33,7 @@ pub(crate) struct EmitState<'a> {
     pub legacy_slot_record_const_tag_end: bool,
     pub legacy_slot_const_tag_end: Option<usize>,
     pub legacy_slot_const_tag_start: Option<usize>,
+    pub legacy_slot_anchor_end: Option<usize>,
 }
 
 impl<'a> EmitState<'a> {

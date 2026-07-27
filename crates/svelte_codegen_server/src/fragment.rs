@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use svelte_analyze::{BlockSemantics, ElementSemantics};
 use svelte_ast::{Element, FragmentId, Node, NodeId};
 
+use crate::const_tag::DeclarationGroupRun;
 use crate::error::Result;
 use crate::escape::escape_text;
 use crate::model::ServerCodegen;
@@ -53,10 +54,6 @@ impl<'a> ServerCodegen<'a> {
             self.emit_fragment_hoisted(id)?;
         }
 
-        if self.dev {
-            self.emit_svelte_element_dev_inits(id)?;
-        }
-
         let fragment = component.store.fragment(id);
         let mut kept: Vec<&'a Node> = Vec::with_capacity(fragment.nodes.len());
         for &node_id in &fragment.nodes {
@@ -71,7 +68,7 @@ impl<'a> ServerCodegen<'a> {
                 | ElementSemantics::Boundary(_)
                 | ElementSemantics::SvelteElement(_)
                 | ElementSemantics::LegacySlot(_)
-                | ElementSemantics::LegacyComponentSlots(_) => {}
+                | ElementSemantics::Component(_) => {}
             }
             kept.push(node);
         }
@@ -192,52 +189,80 @@ impl<'a> ServerCodegen<'a> {
         self.emit_fragment_titles(id)?;
         self.emit_fragment_const_tags_hoisted(id)?;
         self.emit_fragment_declaration_tags(id)?;
-        self.emit_fragment_snippets_debug_head(id)?;
+        let mut group = self.build_declaration_group_for(id)?;
+        self.emit_group_declarations_and_snippets(id, &mut group)?;
+        self.emit_fragment_debug_tags(id)?;
+        self.push_declaration_group(group);
         Ok(())
     }
 
     pub(crate) fn emit_fragment_declaration_tags(&mut self, id: FragmentId) -> Result<()> {
+        let group = self.fragment_declaration_group(id);
         let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
         let declaration_tags: Vec<NodeId> = node_ids
             .into_iter()
             .filter(|&nid| matches!(self.component.store.get(nid), Node::DeclarationTag(_)))
+            .filter(|nid| !group.contains(nid))
             .collect();
-        self.emit_declaration_tags(&declaration_tags)
-    }
-
-    pub(crate) fn emit_fragment_const_tags_hoisted(&mut self, id: FragmentId) -> Result<()> {
-        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
-
-        let mut const_tags: Vec<(u32, NodeId, bool)> = node_ids
-            .iter()
-            .copied()
-            .filter_map(|nid| match self.analysis.block_semantics(nid) {
-                BlockSemantics::ConstTag(sem) => {
-                    let is_async = !matches!(
-                        sem.async_kind,
-                        svelte_analyze::FragmentDeclarationAsyncKind::Sync
-                    );
-                    Some((sem.order_rank, nid, is_async))
-                }
-                _ => None,
-            })
-            .collect();
-        const_tags.sort_by_key(|(rank, _, _)| *rank);
-        let has_async = const_tags.iter().any(|(_, _, is_async)| *is_async);
-        if has_async {
-            let ordered: Vec<NodeId> = const_tags.iter().map(|(_, nid, _)| *nid).collect();
-            self.emit_const_tags_async(&ordered)?;
-        } else {
-            for (_, nid, _) in &const_tags {
-                self.const_tag(*nid)?;
-            }
+        for nid in declaration_tags {
+            self.declaration_tag(nid)?;
         }
         Ok(())
     }
 
-    pub(crate) fn emit_fragment_snippets_debug_head(&mut self, id: FragmentId) -> Result<()> {
+    pub(crate) fn fragment_declaration_group(&self, id: FragmentId) -> Vec<NodeId> {
+        if !self.experimental_async {
+            return Vec::new();
+        }
+        self.analysis.fragment_declaration_group(id).to_vec()
+    }
+
+    pub(crate) fn emit_fragment_const_tags_hoisted(&mut self, id: FragmentId) -> Result<()> {
+        let group = self.fragment_declaration_group(id);
         let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
 
+        let mut const_tags: Vec<(u32, NodeId)> = node_ids
+            .iter()
+            .copied()
+            .filter_map(|nid| match self.analysis.block_semantics(nid) {
+                BlockSemantics::ConstTag(sem) => Some((sem.order_rank, nid)),
+                _ => None,
+            })
+            .collect();
+        const_tags.sort_by_key(|(rank, _)| *rank);
+        for &(_, nid) in &const_tags {
+            if group.contains(&nid) {
+                continue;
+            }
+            self.const_tag(nid)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn build_declaration_group_for(
+        &mut self,
+        id: FragmentId,
+    ) -> Result<Option<DeclarationGroupRun<'a>>> {
+        let group = self.fragment_declaration_group(id);
+        if group.is_empty() {
+            return Ok(None);
+        }
+        self.build_fragment_declaration_group(id, &group)
+    }
+
+    pub(crate) fn emit_fragment_const_tags_and_group(&mut self, id: FragmentId) -> Result<()> {
+        self.emit_fragment_const_tags_hoisted(id)?;
+        let group = self.build_declaration_group_for(id)?;
+        self.push_declaration_group(group);
+        Ok(())
+    }
+
+    pub(crate) fn emit_group_declarations_and_snippets(
+        &mut self,
+        id: FragmentId,
+        group: &mut Option<DeclarationGroupRun<'a>>,
+    ) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
         for &nid in &node_ids {
             if matches!(self.component.store.get(nid), Node::SnippetBlock(_)) {
                 let mut local = Vec::new();
@@ -245,9 +270,15 @@ impl<'a> ServerCodegen<'a> {
                 for decl in local {
                     self.hoist_stmt(decl);
                 }
+                continue;
             }
+            self.hoist_group_declarations(group, nid);
         }
+        Ok(())
+    }
 
+    pub(crate) fn emit_fragment_debug_tags(&mut self, id: FragmentId) -> Result<()> {
+        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
         for &nid in &node_ids {
             if matches!(self.component.store.get(nid), Node::DebugTag(_)) {
                 self.debug_tag(nid)?;
@@ -260,16 +291,6 @@ impl<'a> ServerCodegen<'a> {
             }
         }
 
-        Ok(())
-    }
-
-    fn emit_svelte_element_dev_inits(&mut self, id: FragmentId) -> Result<()> {
-        let node_ids: Vec<NodeId> = self.component.store.fragment(id).nodes.to_vec();
-        for &nid in &node_ids {
-            if let Node::SvelteElement(el) = self.component.store.get(nid) {
-                self.svelte_element_dev_init(el)?;
-            }
-        }
         Ok(())
     }
 

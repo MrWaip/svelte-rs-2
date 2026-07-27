@@ -143,7 +143,7 @@ impl FragmentFacts {
 
 fn is_trivial_node(node: &Node, source: &str) -> bool {
     match node {
-        Node::Comment(_) | Node::ConstTag(_) => true,
+        Node::Comment(_) | Node::ConstTag(_) | Node::DeclarationTag(_) => true,
         Node::Text(text) => text.value(source).trim().is_empty(),
         _ => false,
     }

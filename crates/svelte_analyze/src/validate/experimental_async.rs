@@ -1,111 +1,134 @@
-use oxc_ast::ast::{ArrowFunctionExpression, AwaitExpression, CallExpression, Function, Program};
-use oxc_ast_visit::Visit;
-use oxc_ast_visit::walk::{
-    walk_arrow_function_expression, walk_await_expression, walk_call_expression, walk_function,
-    walk_program,
-};
-use oxc_semantic::ScopeFlags;
+use oxc_ast::{AstKind, AstType};
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
 use svelte_span::Span;
 
+use crate::js_walker::{JsFlow, JsNodeMask, JsVisitor};
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::types::data::AnalysisData;
 
-pub(super) fn validate_instance_program(
-    data: &AnalysisData<'_>,
-    program: &Program<'_>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    if data.script.experimental_async {
-        return;
-    }
-    let mut visitor = ExperimentalAsyncValidator {
-        reactivity: &data.reactivity,
-        diags,
-        function_depth: 0,
-        expression_active: false,
-        check_top_level: true,
-    };
-    visitor.visit_program(program);
+pub(super) fn new_instance_validator<'a>(
+    data: &'a AnalysisData<'_>,
+    runes: bool,
+    diags: &'a mut Vec<Diagnostic>,
+) -> Option<SuspendingAwaitValidator<'a>> {
+    new_validator(data, runes, diags, true)
 }
 
-pub fn validate_module_program(
-    data: &AnalysisData<'_>,
-    program: &Program<'_>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    if data.script.experimental_async {
-        return;
-    }
-    let mut visitor = ExperimentalAsyncValidator {
-        reactivity: &data.reactivity,
-        diags,
-        function_depth: 0,
-        expression_active: false,
-        check_top_level: false,
-    };
-    visitor.visit_program(program);
+pub(super) fn new_module_validator<'a>(
+    data: &'a AnalysisData<'_>,
+    diags: &'a mut Vec<Diagnostic>,
+) -> Option<SuspendingAwaitValidator<'a>> {
+    new_validator(data, true, diags, false)
 }
 
-struct ExperimentalAsyncValidator<'a> {
+fn new_validator<'a>(
+    data: &'a AnalysisData<'_>,
+    runes: bool,
+    diags: &'a mut Vec<Diagnostic>,
+    check_top_level: bool,
+) -> Option<SuspendingAwaitValidator<'a>> {
+    let legacy_mode = if !data.script.experimental_async {
+        false
+    } else if !runes {
+        true
+    } else {
+        return None;
+    };
+    Some(SuspendingAwaitValidator {
+        reactivity: &data.reactivity,
+        diags,
+        legacy_mode,
+        function_depth: 0,
+        expression_active: false,
+        expression_active_stack: Vec::new(),
+        check_top_level,
+    })
+}
+
+pub(super) struct SuspendingAwaitValidator<'a> {
     reactivity: &'a ReactivitySemantics,
     diags: &'a mut Vec<Diagnostic>,
+    legacy_mode: bool,
     function_depth: u32,
     expression_active: bool,
+    expression_active_stack: Vec<bool>,
     check_top_level: bool,
 }
 
-impl<'a> Visit<'a> for ExperimentalAsyncValidator<'_> {
-    fn visit_program(&mut self, program: &Program<'a>) {
-        walk_program(self, program);
-    }
-
-    fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
-        let prev_expression_active = self.expression_active;
-        self.expression_active = false;
+impl SuspendingAwaitValidator<'_> {
+    fn enter_isolated(&mut self, active: bool) {
+        self.expression_active_stack.push(self.expression_active);
+        self.expression_active = active;
         self.function_depth += 1;
-        walk_function(self, function, flags);
-        self.function_depth -= 1;
-        self.expression_active = prev_expression_active;
     }
 
-    fn visit_arrow_function_expression(&mut self, expr: &ArrowFunctionExpression<'a>) {
-        let prev_expression_active = self.expression_active;
-        self.expression_active = false;
-        self.function_depth += 1;
-        walk_arrow_function_expression(self, expr);
+    fn leave_isolated(&mut self) {
         self.function_depth -= 1;
-        self.expression_active = prev_expression_active;
+        if let Some(prev) = self.expression_active_stack.pop() {
+            self.expression_active = prev;
+        }
     }
 
-    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if self
-            .reactivity
-            .declarator_semantics(call.node_id())
-            .is_rune_derived()
-        {
-            let prev_expression_active = self.expression_active;
-            self.expression_active = true;
-            self.function_depth += 1;
-            for arg in &call.arguments {
-                if let Some(expr) = arg.as_expression() {
-                    self.visit_expression(expr);
-                }
+    fn is_derived_call(&self, kind: AstKind<'_>) -> bool {
+        matches!(kind, AstKind::CallExpression(call)
+            if self
+                .reactivity
+                .declarator_semantics(call.node_id())
+                .is_rune_derived())
+    }
+}
+
+const SUSPENDING_AWAIT_LEAVE_INTERESTS: JsNodeMask = JsNodeMask::new(&[
+    AstType::Function,
+    AstType::ArrowFunctionExpression,
+    AstType::CallExpression,
+]);
+
+const SUSPENDING_AWAIT_INTERESTS: JsNodeMask = JsNodeMask::new(&[
+    AstType::Function,
+    AstType::ArrowFunctionExpression,
+    AstType::CallExpression,
+    AstType::AwaitExpression,
+]);
+
+impl<'a> JsVisitor<'a> for SuspendingAwaitValidator<'_> {
+    fn enter_interests(&self) -> JsNodeMask {
+        SUSPENDING_AWAIT_INTERESTS
+    }
+
+    fn leave_interests(&self) -> JsNodeMask {
+        SUSPENDING_AWAIT_LEAVE_INTERESTS
+    }
+
+    fn enter_js_node(&mut self, kind: AstKind<'a>) -> JsFlow {
+        match kind {
+            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => {
+                self.enter_isolated(false)
             }
-            self.function_depth -= 1;
-            self.expression_active = prev_expression_active;
-            return;
+            AstKind::CallExpression(_) if self.is_derived_call(kind) => self.enter_isolated(true),
+            AstKind::AwaitExpression(expr)
+                if (self.check_top_level && self.function_depth == 0) || self.expression_active =>
+            {
+                let kind = if self.legacy_mode {
+                    DiagnosticKind::LegacyAwaitInvalid
+                } else {
+                    DiagnosticKind::ExperimentalAsync
+                };
+                self.diags.push(Diagnostic::error(
+                    kind,
+                    Span::new(expr.span.start, expr.span.end),
+                ));
+            }
+            _ => {}
         }
-        walk_call_expression(self, call);
+        JsFlow::Continue
     }
 
-    fn visit_await_expression(&mut self, expr: &AwaitExpression<'a>) {
-        if (self.check_top_level && self.function_depth == 0) || self.expression_active {
-            self.diags.push(Diagnostic::error(
-                DiagnosticKind::ExperimentalAsync,
-                Span::new(expr.span.start, expr.span.end),
-            ));
+    fn leave_js_node(&mut self, kind: AstKind<'a>) {
+        match kind {
+            AstKind::Function(_) | AstKind::ArrowFunctionExpression(_) => self.leave_isolated(),
+            AstKind::CallExpression(_) if self.is_derived_call(kind) => self.leave_isolated(),
+            _ => {}
         }
-        walk_await_expression(self, expr);
     }
 }

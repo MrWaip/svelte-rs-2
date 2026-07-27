@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
 
-ARG RUST_VERSION=1.94.1
+ARG RUST_VERSION=1.97.1
 ARG NODE_VERSION=22.13.0
 
 ENV CARGO_HOME=/usr/local/cargo \

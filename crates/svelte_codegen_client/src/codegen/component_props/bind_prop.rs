@@ -343,17 +343,19 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         &self,
         symbol: SymbolId,
     ) -> Option<Expression<'a>> {
-        let place = self
+        let assignment = self
             .ctx
             .state
             .each_item_writeback_places
             .as_ref()?
-            .get(&symbol)?
-            .clone_in(self.ctx.b.ast.allocator);
-        let assignment = self.ctx.b.assign_expr_raw(
-            self.ctx.b.expr_to_assignment_target(place),
-            self.ctx.b.rid_expr("$$value"),
-        );
+            .get(&symbol)
+            .map(|place| {
+                let place = place.clone_in(self.ctx.b.ast.allocator);
+                self.ctx.b.assign_expr_raw(
+                    self.ctx.b.expr_to_assignment_target(place),
+                    self.ctx.b.rid_expr("$$value"),
+                )
+            });
 
         let analysis = self.ctx.query.analysis;
         let sources = analysis.each_item_indirect_sources(symbol).unwrap_or(&[]);
@@ -379,7 +381,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             .b
             .call_expr("$.invalidate_inner_signals", [Arg::Expr(thunk)]);
 
-        let mut seq: Vec<Expression<'a>> = vec![assignment, invalidate_inner];
+        let mut seq: Vec<Expression<'a>> =
+            assignment.into_iter().chain([invalidate_inner]).collect();
         if let Some(&store_sym) = sources
             .iter()
             .find(|&&s| analysis.binding_semantics(s).is_store())

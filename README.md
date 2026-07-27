@@ -6,12 +6,12 @@
 
 Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.56.4**) — same JS output, ~13× faster.
 
-[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MrWaip/svelte-rs-2)
-[![npm](https://img.shields.io/badge/npm-%40mrwaip%2Fsvelte--rs2-cb3837)](https://www.npmjs.com/package/@mrwaip/svelte-rs2)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MrWaip/svelte-rs)
+[![npm](https://img.shields.io/badge/npm-%40mrwaip%2Fsvelte--rs2-cb3837)](https://www.npmjs.com/package/@mrwaip/svelte-rs)
 [![vite-plugin](https://img.shields.io/npm/v/@mrwaip/vite-plugin-svelte?label=vite-plugin-svelte&color=646cff)](https://www.npmjs.com/package/@mrwaip/vite-plugin-svelte)
 [![tests](https://img.shields.io/badge/e2e_tests-10k%2B-success)](./tasks/compiler_tests/cluster_cases)
 
-[Playground](https://mrwaip.github.io/svelte-rs-2/) · [Issues](https://github.com/MrWaip/svelte-rs-2/issues)
+[Playground](https://mrwaip.github.io/svelte-rs/) · [Issues](https://github.com/MrWaip/svelte-rs/issues)
 
 > ⚠️ **WIP / canary.** Built by a human with heavy AI assistance. Expect bugs, missing edge cases, and breaking changes. Not production-ready — please report what breaks.
 
@@ -38,11 +38,11 @@ Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.56.4**) — same
 ### As a compiler
 
 ```sh
-npm i -D @mrwaip/svelte-rs2
+npm i -D @mrwaip/svelte-rs
 ```
 
 ```js
-import { compile } from '@mrwaip/svelte-rs2/compiler';
+import { compile } from '@mrwaip/svelte-rs/compiler';
 
 const { js } = compile(
   `<script>let { name } = $props();</script><h1>hello {name}</h1>`,
@@ -52,7 +52,7 @@ const { js } = compile(
 console.log(js.code);
 ```
 
-The API mirrors `svelte/compiler`; see `packages/svelte-rs2/compiler/index.d.ts`. A few opt-in extras beyond the reference API:
+The API mirrors `svelte/compiler`; see `packages/svelte-rs/compiler/index.d.ts`. A few opt-in extras beyond the reference API:
 
 - **`warningFilter: (warning) => boolean`** — matches Svelte 5's option; drops warnings the predicate rejects.
 - **`suppress: WarningCode[]`** — a typed list of warning codes dropped at the source. Cheaper than filtering after the fact: suppressed warnings are never built, framed, or serialized.
@@ -62,7 +62,7 @@ Real input → output for every mode lives in [`tasks/compiler_tests/cluster_cas
 
 ### In a Vite app
 
-The fork of `vite-plugin-svelte` routes `compile` / `compileModule` through `@mrwaip/svelte-rs2` automatically, falling back to `svelte/compiler` for options the Rust side doesn't support yet.
+The fork of `vite-plugin-svelte` routes `compile` / `compileModule` through `@mrwaip/svelte-rs` automatically, falling back to `svelte/compiler` for options the Rust side doesn't support yet.
 
 ```sh
 npm i -D @mrwaip/vite-plugin-svelte
@@ -131,7 +131,7 @@ Whole-corpus throughput: **~2,950 real `.svelte` files**, each compiled in every
 | ssr | 1254.1 ms | 1137.2 ms | 88.8 ms | **14.1×** | **12.8×** |
 | ssr-dev | 1334.7 ms | 1225.5 ms | 93.7 ms | **14.2×** | **13.1×** |
 
-Reproduce with `just bench-compare`. Per-run instruction-count benchmarks (64 total) also run on every commit via [CodSpeed](https://codspeed.io/MrWaip/svelte-rs-2). The [rsvelte](#alternatives) column appears when its native binding is installed. These are rsvelte's serial `compile` numbers, matching our single-file harness; its parallel `compileBatch` (rayon) reaches ~3× over `svelte/compiler` on this machine, yet our single-threaded compiler is still faster than rsvelte's 12-core batch. rsvelte's serial path is also markedly slower on arm64 than on x64 — on x64 it lands closer to ~2× over `svelte/compiler`.
+Reproduce with `just bench-compare`. Per-run instruction-count benchmarks (64 total) also run on every commit via [CodSpeed](https://codspeed.io/MrWaip/svelte-rs). The [rsvelte](#alternatives) column appears when its native binding is installed. These are rsvelte's serial `compile` numbers, matching our single-file harness; its parallel `compileBatch` (rayon) reaches ~3× over `svelte/compiler` on this machine, yet our single-threaded compiler is still faster than rsvelte's 12-core batch. rsvelte's serial path is also markedly slower on arm64 than on x64 — on x64 it lands closer to ~2× over `svelte/compiler`.
 
 Our lead widens as components grow; rsvelte's serial edge over `svelte/compiler` is ~2× only on sub-1 KB fixtures and collapses on real components — which dominate the byte weight:
 
@@ -160,7 +160,7 @@ just test-diagnostics         # run the 731-case diagnostics parity suite
 
 Standard PRs welcome — no AI required. Day-to-day work uses [Claude Code](https://claude.com/claude-code) with repo-specific skills under `.claude/skills/`. Before opening a PR: `just test-compiler && just test-diagnostics && just lint` must be green.
 
-Bugs and questions: <https://github.com/MrWaip/svelte-rs-2/issues>.
+Bugs and questions: <https://github.com/MrWaip/svelte-rs/issues>.
 
 ## Acknowledgements
 

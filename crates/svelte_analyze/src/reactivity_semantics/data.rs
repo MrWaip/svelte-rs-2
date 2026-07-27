@@ -1,5 +1,6 @@
 use std::mem;
 
+use crate::expression_semantics::Suspension;
 use crate::scope::SymbolId;
 use oxc_index::IndexVec;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -27,6 +28,8 @@ pub enum BindingSemantics {
     LegacyBindableProp(LegacyBindablePropSemantics),
 
     LegacyApiExport,
+
+    LegacyPropsObject,
 
     LegacyState(LegacyStateSemantics),
 
@@ -90,6 +93,7 @@ impl BindingSemantics {
             | BindingSemantics::RuntimeRune { .. }
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved
             | BindingSemantics::Contextual(
                 ContextualBindingSemantics::EachItem(_)
@@ -118,6 +122,7 @@ impl BindingSemantics {
             | BindingSemantics::OptimizedDeclarationTag
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -141,6 +146,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -164,6 +170,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -186,6 +193,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -209,6 +217,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -232,6 +241,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -255,6 +265,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -277,6 +288,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -305,6 +317,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -328,6 +341,7 @@ impl BindingSemantics {
             | BindingSemantics::Contextual(_)
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -351,6 +365,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -374,6 +389,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => None,
         }
     }
@@ -381,7 +397,32 @@ impl BindingSemantics {
     pub(crate) fn is_legacy_api_export(&self) -> bool {
         match self {
             BindingSemantics::LegacyApiExport => true,
-            BindingSemantics::LegacyState(_)
+            BindingSemantics::LegacyPropsObject
+            | BindingSemantics::LegacyState(_)
+            | BindingSemantics::Prop(_)
+            | BindingSemantics::State(_)
+            | BindingSemantics::Derived(_)
+            | BindingSemantics::OptimizedDerived(_)
+            | BindingSemantics::OptimizedRune(_)
+            | BindingSemantics::RuntimeRune { .. }
+            | BindingSemantics::Store(_)
+            | BindingSemantics::LegacyBindableProp(_)
+            | BindingSemantics::Const(_)
+            | BindingSemantics::OptimizedConst(_)
+            | BindingSemantics::DeclarationTag
+            | BindingSemantics::OptimizedDeclarationTag
+            | BindingSemantics::Contextual(_)
+            | BindingSemantics::MaybeReactive
+            | BindingSemantics::NonReactive
+            | BindingSemantics::Unresolved => false,
+        }
+    }
+
+    pub fn is_legacy_props_object(&self) -> bool {
+        match self {
+            BindingSemantics::LegacyPropsObject => true,
+            BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyState(_)
             | BindingSemantics::Prop(_)
             | BindingSemantics::State(_)
             | BindingSemantics::Derived(_)
@@ -446,13 +487,14 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
 
     pub fn is_non_reactive(&self) -> bool {
         match self {
-            BindingSemantics::NonReactive => true,
+            BindingSemantics::NonReactive | BindingSemantics::LegacyPropsObject => true,
             BindingSemantics::Prop(_)
             | BindingSemantics::State(_)
             | BindingSemantics::Derived(_)
@@ -492,6 +534,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => false,
         }
     }
@@ -515,6 +558,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => None,
         }
     }
@@ -538,6 +582,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => None,
         }
     }
@@ -561,6 +606,7 @@ impl BindingSemantics {
             | BindingSemantics::MaybeReactive
             | BindingSemantics::NonReactive
             | BindingSemantics::LegacyApiExport
+            | BindingSemantics::LegacyPropsObject
             | BindingSemantics::Unresolved => None,
         }
     }
@@ -659,7 +705,7 @@ pub enum DerivedKind {
 pub enum DerivedAsyncKind {
     Sync,
 
-    Async,
+    Async { suspension: Suspension },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -695,6 +741,11 @@ pub struct PropsSummary {
 pub struct ReactivitySummary {
     pub props: PropsSummary,
     pub has_store_bindings: bool,
+    pub has_runes_bindable: bool,
+    pub has_legacy_reactive_statements: bool,
+    pub has_named_runes_prop: bool,
+    pub has_named_legacy_prop: bool,
+    pub has_inspect_trace: bool,
     pub legacy: LegacySummary,
 }
 
@@ -704,6 +755,7 @@ pub struct LegacySummary {
     pub reads_props_object: bool,
     pub reads_rest_props_object: bool,
     pub has_member_mutated: bool,
+    pub reads_slots_object: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1057,6 +1109,7 @@ pub enum ReferenceSemantics {
     SignalRead {
         kind: SignalReferenceKind,
         safe: bool,
+        locality: SignalReadLocality,
     },
 
     SignalWrite {
@@ -1175,6 +1228,10 @@ pub enum ReferenceSemantics {
         index_read: EachIndexStrategy,
     },
 
+    EachItemDestructuredWriteLegacy {
+        item_symbol: SymbolId,
+    },
+
     IllegalWrite,
 
     Unresolved,
@@ -1218,6 +1275,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => None,
         }
@@ -1269,6 +1327,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1311,6 +1370,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1352,6 +1412,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1393,6 +1454,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1440,6 +1502,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1481,6 +1544,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1522,6 +1586,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1563,6 +1628,7 @@ impl ReferenceSemantics {
             | ReferenceSemantics::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceSemantics::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceSemantics::EachItemIndexedLegacy { .. }
+            | ReferenceSemantics::EachItemDestructuredWriteLegacy { .. }
             | ReferenceSemantics::IllegalWrite
             | ReferenceSemantics::Unresolved => false,
         }
@@ -1573,6 +1639,13 @@ impl ReferenceSemantics {
 pub enum SignalReferenceKind {
     State(StateKind),
     Derived(DerivedKind),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignalReadLocality {
+    Cell,
+    ElementFragmentLocal,
+    Detached,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1648,6 +1721,7 @@ pub(crate) enum BindingFacts {
 
     LegacyBindableProp(LegacyBindablePropSemantics),
     LegacyApiExport,
+    LegacyPropsObject,
 
     LegacyState(LegacyStateSemantics),
     Store(StoreBindingSemantics),
@@ -1666,6 +1740,7 @@ pub(crate) enum ReferenceFacts {
     SignalRead {
         kind: SignalReferenceKind,
         safe: bool,
+        locality: SignalReadLocality,
     },
     SignalWrite {
         kind: StateKind,
@@ -1763,6 +1838,10 @@ pub(crate) enum ReferenceFacts {
         item_symbol: SymbolId,
     },
 
+    EachItemDestructuredWriteLegacy {
+        item_symbol: SymbolId,
+    },
+
     IllegalWrite,
 
     Proxy,
@@ -1805,6 +1884,7 @@ impl ReferenceFacts {
             | ReferenceFacts::LegacyEachItemMemberMutationRoot { .. }
             | ReferenceFacts::EachItemMemberMutationStoreInvalidate { .. }
             | ReferenceFacts::EachItemIndexedLegacy { .. }
+            | ReferenceFacts::EachItemDestructuredWriteLegacy { .. }
             | ReferenceFacts::IllegalWrite
             | ReferenceFacts::Proxy => None,
         }
@@ -1839,6 +1919,10 @@ pub struct ReactivitySemantics {
 
     raw_param_reads: FxHashSet<ReferenceId>,
 
+    element_local_derived_reads: FxHashSet<ReferenceId>,
+
+    detached_const_reads: FxHashSet<ReferenceId>,
+
     each_rest_symbols: FxHashSet<SymbolId>,
 
     maybe_reactive_symbols: FxHashSet<SymbolId>,
@@ -1856,6 +1940,14 @@ pub struct ReactivitySemantics {
     legacy_uses_rest_props: bool,
 
     legacy_has_member_mutated: bool,
+
+    legacy_reads_slots: bool,
+
+    has_named_runes_prop: bool,
+
+    has_named_legacy_prop: bool,
+
+    has_inspect_trace: bool,
 
     each_item_indirect_sources: FxHashMap<SymbolId, SmallVec<[SymbolId; 2]>>,
 
@@ -1900,6 +1992,8 @@ impl ReactivitySemantics {
             prop_member_mutation_root_refs: rustc_hash::FxHashSet::default(),
             contextual_owner: FxHashMap::default(),
             raw_param_reads: rustc_hash::FxHashSet::default(),
+            element_local_derived_reads: rustc_hash::FxHashSet::default(),
+            detached_const_reads: rustc_hash::FxHashSet::default(),
             each_item_indirect_sources: FxHashMap::default(),
             legacy_indirect_bindings: FxHashMap::default(),
             each_item_collection_store: FxHashMap::default(),
@@ -1914,6 +2008,10 @@ impl ReactivitySemantics {
             legacy_uses_props: false,
             legacy_uses_rest_props: false,
             legacy_has_member_mutated: false,
+            legacy_reads_slots: false,
+            has_named_runes_prop: false,
+            has_named_legacy_prop: false,
+            has_inspect_trace: false,
             uses_runes: false,
             runes_mode: RunesMode::Runes,
             svelte_store_rune_import: None,
@@ -2094,11 +2192,23 @@ impl ReactivitySemantics {
         ReactivitySummary {
             props: self.props_summary(),
             has_store_bindings: !self.store_declaration_symbols.is_empty(),
+            has_runes_bindable: self
+                .iter_runes_prop_symbols()
+                .any(|sym| self.binding_semantics(sym).is_bindable()),
+            has_legacy_reactive_statements: self
+                .legacy_reactive
+                .iter_statements_topo()
+                .next()
+                .is_some(),
+            has_named_runes_prop: self.has_named_runes_prop,
+            has_named_legacy_prop: self.has_named_legacy_prop,
+            has_inspect_trace: self.has_inspect_trace,
             legacy: LegacySummary {
                 has_bindable_prop: self.iter_legacy_bindable_prop_symbols().next().is_some(),
                 reads_props_object: self.legacy_uses_props,
                 reads_rest_props_object: self.legacy_uses_rest_props,
                 has_member_mutated: self.legacy_has_member_mutated,
+                reads_slots_object: self.legacy_reads_slots,
             },
         }
     }
@@ -2198,11 +2308,29 @@ impl ReactivitySemantics {
         self.legacy_has_member_mutated = value;
     }
 
+    pub(crate) fn mark_legacy_reads_slots(&mut self) {
+        self.legacy_reads_slots = true;
+    }
+
+    pub(crate) fn mark_inspect_trace(&mut self) {
+        self.has_inspect_trace = true;
+    }
+
+    pub(crate) fn set_named_prop_flags(&mut self, runes: bool, legacy: bool) {
+        self.has_named_runes_prop = runes;
+        self.has_named_legacy_prop = legacy;
+    }
+
     pub fn reference_semantics(&self, ref_id: ReferenceId) -> ReferenceSemantics {
         match self.lookup_reference_facts(ref_id) {
-            Some(ReferenceFacts::SignalRead { kind, safe }) => ReferenceSemantics::SignalRead {
+            Some(ReferenceFacts::SignalRead {
+                kind,
+                safe,
+                locality,
+            }) => ReferenceSemantics::SignalRead {
                 kind: *kind,
                 safe: *safe,
+                locality: *locality,
             },
             Some(ReferenceFacts::SignalWrite {
                 kind,
@@ -2326,6 +2454,11 @@ impl ReactivitySemantics {
                 collection_store: *collection_store,
                 raw_param: *raw_param,
             },
+            Some(ReferenceFacts::EachItemDestructuredWriteLegacy { item_symbol }) => {
+                ReferenceSemantics::EachItemDestructuredWriteLegacy {
+                    item_symbol: *item_symbol,
+                }
+            }
             Some(ReferenceFacts::EachItemIndexedLegacy { item_symbol }) => {
                 let index_sym = self.each_item_index_legacy(*item_symbol);
                 ReferenceSemantics::EachItemIndexedLegacy {
@@ -2610,6 +2743,22 @@ impl ReactivitySemantics {
         self.raw_param_reads.contains(&ref_id)
     }
 
+    pub(crate) fn record_element_local_derived_read(&mut self, ref_id: ReferenceId) {
+        self.element_local_derived_reads.insert(ref_id);
+    }
+
+    pub(crate) fn is_element_local_derived_read(&self, ref_id: ReferenceId) -> bool {
+        self.element_local_derived_reads.contains(&ref_id)
+    }
+
+    pub(crate) fn record_detached_const_read(&mut self, ref_id: ReferenceId) {
+        self.detached_const_reads.insert(ref_id);
+    }
+
+    pub(crate) fn is_detached_const_read(&self, ref_id: ReferenceId) -> bool {
+        self.detached_const_reads.contains(&ref_id)
+    }
+
     pub(crate) fn add_each_item_indirect_source(
         &mut self,
         item_sym: SymbolId,
@@ -2664,6 +2813,12 @@ impl ReactivitySemantics {
         self.each_item_collection_store.get(&item_sym).copied()
     }
 
+    pub(crate) fn each_block_iterates_store(&self, each_id: NodeId) -> bool {
+        self.contextual_owner.iter().any(|(item_sym, owner)| {
+            *owner == each_id && self.each_item_collection_store.contains_key(item_sym)
+        })
+    }
+
     pub(crate) fn set_each_item_index_legacy(&mut self, item_sym: SymbolId, index_sym: SymbolId) {
         self.each_item_index_legacy.insert(item_sym, index_sym);
     }
@@ -2687,6 +2842,10 @@ impl ReactivitySemantics {
 
     pub(crate) fn is_each_rest(&self, sym: SymbolId) -> bool {
         self.each_rest_symbols.contains(&sym)
+    }
+
+    pub(crate) fn record_legacy_props_object_binding(&mut self, sym: SymbolId) {
+        self.write_binding(sym, BindingFacts::LegacyPropsObject);
     }
 
     pub(crate) fn record_reference_semantics(
@@ -2760,6 +2919,7 @@ impl ReactivitySemantics {
                 BindingSemantics::LegacyBindableProp(*legacy)
             }
             BindingFacts::LegacyApiExport => BindingSemantics::LegacyApiExport,
+            BindingFacts::LegacyPropsObject => BindingSemantics::LegacyPropsObject,
             BindingFacts::LegacyState(legacy) => BindingSemantics::LegacyState(*legacy),
             BindingFacts::Store(store) => BindingSemantics::Store(*store),
             BindingFacts::Const(kind) => BindingSemantics::Const(*kind),

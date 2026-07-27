@@ -1,8 +1,8 @@
 use std::mem;
 
 use compact_str::CompactString;
-use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::Volatility;
+use oxc_ast::ast::Statement;
+use svelte_analyze::{ElementPropertyReset, Volatility};
 use svelte_ast::{Attribute, Namespace, Node, NodeId};
 use svelte_ast_builder::{Arg, AssignLeft, TemplatePart};
 
@@ -108,14 +108,13 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let el_ns = self.element_namespace(el_id, ctx.namespace);
 
         let is_html = matches!(el_ns, Namespace::Html) && el_name_hint != "svg";
-        state.template.push_element(&el_name_hint, is_html);
+        state.template.push_element(el_name_hint.clone(), is_html);
 
         let is_noscript = is_html && el_name_hint == "noscript";
 
         let has_is_attr = self.ctx.has_attribute(el_id, "is");
         state.template.needs_import_node |=
             el_name_hint == "video" || self.ctx.query.view.is_custom_element(el_id) || has_is_attr;
-        state.template.contains_script_tag |= el_name_hint == "script";
 
         let el_name = match existing_var {
             Some("") => String::new(),
@@ -132,6 +131,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let prev_pending_element_update = mem::take(&mut state.pending_element_update);
         let prev_pending_pre_update = mem::take(&mut state.pending_pre_update);
         let element_after_update_len_before = state.element_after_update.len();
+        let deferred_memo_start = state.deferred_memo_values.len();
 
         if !is_ghost && !is_noscript && !has_spread {
             self.emit_element_directives(state, el_id, &el_name_hint, &el_name, attributes)?;
@@ -199,7 +199,32 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     .call_stmt("$.replay_events", [Arg::Ident(&el_name)]),
             );
         }
-        if let Some(expr_id) = self.ctx.query.view.option_synthetic_value_expr(el_id) {
+        let needs_dir_reassert = match self
+            .ctx
+            .query
+            .analysis
+            .element_semantics
+            .query(el_id)
+            .property_reset()
+        {
+            ElementPropertyReset::Dir => true,
+            ElementPropertyReset::None | ElementPropertyReset::LazyLoadingImg => false,
+        };
+        if !is_ghost && needs_dir_reassert {
+            let b = &self.ctx.b;
+            let dir_assign = b.assign_stmt(
+                AssignLeft::StaticMember(b.static_member(b.rid_expr(&el_name), "dir")),
+                b.static_member_expr(b.rid_expr(&el_name), "dir"),
+            );
+            state.update.push(dir_assign);
+        }
+        if let Some(expr_id) = self
+            .ctx
+            .query
+            .view
+            .option_synthetic_value_expr(el_id)
+            .filter(|_| !has_spread)
+        {
             self.emit_option_synthetic_value(state, &el_name, expr_id)?;
         }
         let my_element_init = mem::take(&mut state.pending_element_init);
@@ -214,10 +239,11 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             Vec<Statement<'a>>,
             Vec<Statement<'a>>,
             TemplateMemoState<'a>,
-            Vec<u32>,
-            Vec<Expression<'a>>,
+            Vec<svelte_analyze::BlockerSlot>,
+            Vec<(String, usize)>,
         );
         let mut block_wrap: Option<BlockWrap<'a>> = None;
+        let saved_skip_snippets = mem::replace(&mut state.skip_snippets, false);
 
         if !is_noscript && !self.ctx.query.view.is_void(el_id) {
             if self.ctx.is_customizable_select(el_id) {
@@ -305,6 +331,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
             }
         }
 
+        state.skip_snippets = saved_skip_snippets;
+        self.flush_deferred_memo_values(state, deferred_memo_start)?;
         state.init.extend(my_element_init);
         state.init.extend(my_pre_update);
         state.update.extend(my_element_update);
@@ -424,8 +452,6 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 _ => return CodegenError::unexpected_node(el_id, "Element"),
             };
 
-        let tpl_name = self.ctx.state.gen_ident(&format!("{el_tag}_content"));
-
         let fragment_name = self.ctx.state.gen_ident("fragment");
         let anchor_name = self.ctx.state.gen_ident("anchor");
 
@@ -471,12 +497,29 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let html_str = inner_state.template.as_html();
         let needs_import = inner_state.template.needs_import_node;
         let from_fn = from_namespace(el_ns);
+        let flags: u32 = if needs_import { 3 } else { 1 };
+        let dedup_key =
+            (!self.ctx.state.dev).then(|| format!("{from_fn}\u{0}{flags}\u{0}{html_str}"));
         let tpl_expr = self.ctx.b.template_str_expr(&html_str);
-        let flags = if needs_import { 3.0 } else { 1.0 };
         let from_call = self
             .ctx
             .b
-            .call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags)]);
+            .call_expr(from_fn, [Arg::Expr(tpl_expr), Arg::Num(flags as f64)]);
+        let from_call = if self
+            .ctx
+            .query
+            .analysis
+            .fragment_semantics
+            .query(el_fragment)
+            .script
+            .has_script()
+        {
+            self.ctx
+                .b
+                .call_expr("$.with_script", [Arg::Expr(from_call)])
+        } else {
+            from_call
+        };
         let from_call = if self.ctx.state.dev
             && let Some(locs) = self.build_template_locations(&child_ctx, el_fragment)
         {
@@ -484,7 +527,8 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         } else {
             from_call
         };
-        self.hoist(self.ctx.b.var_stmt(&tpl_name, from_call));
+        let tpl_name =
+            self.hoist_template_dedup(dedup_key, &format!("{el_tag}_content"), from_call);
 
         let EmitState {
             init: inner_init,
@@ -648,6 +692,14 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 .call_stmt("$.remove_textarea_child", [Arg::Ident(el_name)]),
         );
 
+        let expr_ids: Vec<NodeId> = parts
+            .iter()
+            .filter_map(|p| match p {
+                Raw::Expr(id) => Some(*id),
+                Raw::Text(_) => None,
+            })
+            .collect();
+
         let single_expr_id = match parts.as_slice() {
             [Raw::Expr(id)] => Some(*id),
             _ => None,
@@ -703,6 +755,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                 state.update.push(self.ctx.b.expr_stmt(set_value));
             }
             Volatility::Reactive => {
+                for id in &expr_ids {
+                    state.shared_memo.push_node_deps(self.ctx, *id);
+                }
                 let set_value = self
                     .ctx
                     .b

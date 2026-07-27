@@ -41,3 +41,58 @@ compiler_case!(
     "custom_element/legacy_rest_props_excludes_host"
 );
 compiler_case!(shadow_mode_closed, "custom_element/shadow_mode_closed");
+
+compiler_case!(shadow_none_guard, "custom_element/shadow_none_guard");
+compiler_case!(
+    shadow_open_string_guard,
+    "custom_element/shadow_open_string_guard"
+);
+compiler_case!(
+    prop_type_explicit_guard,
+    "custom_element/prop_type_explicit_guard"
+);
+compiler_case!(
+    prop_type_numeric_init_guard,
+    "custom_element/prop_type_numeric_init_guard"
+);
+compiler_case!(prop_attribute_guard, "custom_element/prop_attribute_guard");
+compiler_case!(
+    prop_extra_export_empty_guard,
+    "custom_element/prop_extra_export_empty_guard"
+);
+compiler_case!(extend_option_guard, "custom_element/extend_option_guard");
+compiler_case!(no_tag_bare_guard, "custom_element/no_tag_bare_guard");
+compiler_case!(
+    shadow_none_extend_guard,
+    "custom_element/shadow_none_extend_guard"
+);
+
+compiler_case!(shadow_init_options, "custom_element/shadow_init_options");
+compiler_case!(
+    prop_type_boolean_inference,
+    "custom_element/prop_type_boolean_inference"
+);
+
+compiler_case!(
+    context_props_identifier,
+    "custom_element/context_props_identifier"
+);
+compiler_case!(context_rest_props, "custom_element/context_rest_props");
+compiler_case!(context_string_tag, "custom_element/context_string_tag");
+compiler_case!(
+    context_props_used_exports,
+    "custom_element/context_props_used_exports"
+);
+
+compiler_case!(
+    context_plain_unused_guard,
+    "custom_element/context_plain_unused_guard"
+);
+compiler_case!(
+    context_plain_effect_guard,
+    "custom_element/context_plain_effect_guard"
+);
+compiler_case!(
+    context_legacy_reactive_guard,
+    "custom_element/context_legacy_reactive_guard"
+);

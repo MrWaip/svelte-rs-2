@@ -18,6 +18,7 @@
   - ExpressionSemantics — `expression-semantics.md`
   - ElementSemantics — `element-semantics.md`
   - AttributeSemantics — `attribute-semantics.md`
+  - AwaitSemantics — `await-semantics.md`
   - BlockSemantics — `block-semantics.md`
   - FragmentSemantics — `fragment-semantics.md`
   - RuntimeSemantics — `runtime-semantics.md`
@@ -142,8 +143,11 @@ _Avoid_: partial, фрагмент.
 **Рендер** *(en: render)* — функция, в которую кодген компилирует компонент (`function App($$anchor, $$props) {…}`), исполняется рантаймом для построения и обновления DOM.
 _Avoid_: render-вызов сниппета (это `{@render}` как @-тег), DOM-операция (это действие рантайма, не сущность).
 
-**Слот** *(en: slot)* — legacy-механизм проброса контента в компонент через `<slot>` / `<div slot="name" />` / `<svelte:fragment slot="…">`.
+**Слот** *(en: slot)* — legacy-механизм проброса контента в компонент через `<slot>` / `<div slot="name" />` / `<svelte:fragment slot="…">`; со стороны скрипта тот же механизм читается через синтетический объект `$$slots`.
 _Avoid_: сниппет, placeholder.
+
+**Проекция контента** *(en: content projection; ось `ContentProjection` в `RuntimeSemantics`)* — каким словарём компонент принимает содержимое от потребителя: **слотом** (`<slot>`, `$$slots`) или **сниппетом** (`{@render}`). Свойство компонента целиком, не отдельного узла; Svelte 5 запрещает оба словаря разом. Инварианты вердикта — `runtime-semantics.md`.
+_Avoid_: slot forwarding, content channel, transclusion, slot/snippet conflict (это диагностика, а не механизм).
 
 ### Скоупы, биндинги, ссылки
 
@@ -233,6 +237,15 @@ _Avoid_: expensive, complex, dynamic call как форма, отдельное 
 
 **Асинхронное выражение** *(en: asynchronous; вариант `Volatility::Asynchronous`)* — выражение содержит `await`; причина выноса — оно **приостанавливается**, нужна async-машинерия (`async_values`-слот, deferred). `{await x}` асинхронно без вызова, `{foo()}` тяжело без await, `{await foo()}` — `Asynchronous` (поглощает тяжесть). Выбор формы выноса (sync-ячейка `$.derived` vs async-слот) — **эмит-форма**, derived-правило **в кодгене** (`MemoForm::of`: `Asynchronous → слот; Heavy && нет blockers → ячейка; иначе инлайн`), в анализе не хранится.
 _Avoid_: `await`-флаг (`has_await`), `async` (зарезервировано в Rust), promise-bearing, отдельное поле `asynchronous`.
+
+**Приостановка выражения** *(en: expression suspension; ось `Suspension` в `ExpressionSemantics`)* — где расположены исполняемые `await`'ы **асинхронного выражения** относительно него самого: нигде, ровно во внешнем `await`, чей операнд не ждёт снова, либо ещё и в других точках. Вопрос уровня выражения; пер-`await` сосед — **сохранение контекста await**. Backend по этому вердикту выбирает форму async-thunk'а; сама форма в вердикт не входит. Инварианты — `expression-semantics.md`.
+_Avoid_: collapse-флаг, async-thunk form, has_outer_await.
+
+**Блокер** *(en: blocker; `ExpressionBlocker`)* — асинхронное объявление, чьего разрешения обязана дождаться единица шаблона, потому что читает объявленное им значение. Два рода: скриптовый (top-level `await` в instance-скрипте) и объявление фрагмента (**const-тег** / **declaration-тег** с `await` в инициализаторе). Вердикт называет само объявление, а не место его приземления: где блокер оказался в выводе (индекс в массиве promise'ов, имя массива) — форма печати, её раздаёт backend. Список блокеров единицы упорядочен по первому упоминанию ссылки в её выражении и дедуплицирован; порядок доменный, backend его не пересобирает.
+_Avoid_: promise-индекс, `$$promises`-слот, dependency, две корзины (script + declaration).
+
+**Сохранение контекста await** *(en: await context preservation; кластер `AwaitSemantics`)* — доменный вердикт на каждом `await` шаблонного выражения: что ещё исполняется в той же продолжающейся цепочке после его разрешения — остаток самого выражения, объемлющая конструкция шаблона либо ничто. Backend'ы по этому вердикту решают, оборачивать ли `await` в восстановление контекста компонента. Инварианты — `await-semantics.md`.
+_Avoid_: pickled await, save-обёртка, отдельный `has_await`-флаг на await-узле.
 
 ### Режимы и legacy
 

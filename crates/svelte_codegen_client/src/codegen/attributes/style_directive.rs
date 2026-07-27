@@ -97,7 +97,9 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                     );
                     state.init.push(self.ctx.b.expr_stmt(style_call));
                 } else {
-                    state.template.set_attribute("style", Some(static_style));
+                    state
+                        .template
+                        .set_attribute("style", Some(static_style.into()));
                 }
             }
             return Ok(());
@@ -109,6 +111,7 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         };
         let static_style = self.ctx.static_style(owner_id).unwrap_or("").to_string();
         let props = self.build_style_props(owner_id)?;
+        self.push_style_directive_blockers(&mut state.shared_memo, owner_id);
 
         let directives_expr = if props.important.is_empty() {
             self.ctx.b.object_expr(props.normal)
@@ -225,31 +228,36 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
                         );
                     }
                 };
-                let mut memo_deps = TemplateMemoState::default();
-                let expr = self.build_html_concat_expr(a, &semantics, &mut memo_deps)?;
-                let has_state =
-                    !memo_deps.sync_values.is_empty() || !memo_deps.async_values.is_empty();
-                state
-                    .shared_memo
-                    .sync_values
-                    .append(&mut memo_deps.sync_values);
-                state
-                    .shared_memo
-                    .async_values
-                    .append(&mut memo_deps.async_values);
-                for idx in memo_deps.blockers {
-                    state.shared_memo.push_script_blocker(idx);
-                }
-                state
-                    .shared_memo
-                    .extra_blockers
-                    .append(&mut memo_deps.extra_blockers);
+                let sync_before = state.shared_memo.sync_values.len();
+                let async_before = state.shared_memo.async_values.len();
+                let expr = self.build_html_concat_expr(a, &semantics, &mut state.shared_memo)?;
+                let has_state = state.shared_memo.sync_values.len() > sync_before
+                    || state.shared_memo.async_values.len() > async_before;
                 Ok((expr, has_state))
             }
             _ => CodegenError::unexpected_node(
                 style_attr_id,
                 "style_attr_id must reference ExpressionAttribute or ConcatenationAttribute",
             ),
+        }
+    }
+
+    pub(super) fn push_style_directive_blockers(
+        &mut self,
+        memo: &mut TemplateMemoState<'a>,
+        owner_id: NodeId,
+    ) {
+        let ids: Vec<NodeId> = self
+            .ctx
+            .style_directives(owner_id)
+            .iter()
+            .map(|sd| sd.id)
+            .collect();
+        for id in ids {
+            let Some(data) = self.ctx.expression_data(id).cloned() else {
+                continue;
+            };
+            memo.push_expression_data(self.ctx, &data);
         }
     }
 

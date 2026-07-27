@@ -1,8 +1,9 @@
 {
+  "name": "svelte-rs",
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/svelte-rs2"
+    "packages/svelte-rs"
   ],
   "dependencies": {
     "@codspeed/benchmark.js-plugin": "^4.0.0",
@@ -19,6 +20,9 @@
     "@rsvelte/vite-plugin-svelte-native": "0.2.6"
   },
   "devDependencies": {
-    "@napi-rs/cli": "3.7.3"
+    "@napi-rs/cli": "3.7.3",
+    "@rsvelte/compiler": "0.7.16",
+    "marked": "18.0.7",
+    "sass": "1.102.0"
   }
 }

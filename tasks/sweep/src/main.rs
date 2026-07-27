@@ -23,7 +23,7 @@ use svelte_compiler::{
 };
 use svelte_diagnostics::Severity;
 
-const USAGE: &str = "usage: sweep [--mode=auto|runes|legacy] [--chunk=N] [--print-diffs] [--out=<file>] <directory>";
+const USAGE: &str = "usage: sweep [--mode=auto|runes|legacy] [--async] [--chunk=N] [--print-diffs] [--out=<file>] <directory>";
 
 const MIN_CHUNK: usize = 300;
 const MAX_CHUNK: usize = 4000;
@@ -118,9 +118,15 @@ enum Mode {
     Legacy,
 }
 
+#[derive(Clone, Copy)]
+struct CompileVariant {
+    mode: Mode,
+    async_: bool,
+}
+
 struct Cli {
     directory: String,
-    mode: Mode,
+    variant: CompileVariant,
     chunk: Option<usize>,
     print_diffs: bool,
     out: Option<String>,
@@ -129,6 +135,7 @@ struct Cli {
 fn parse_cli(args: &[String]) -> Result<Cli, String> {
     let mut directory: Option<String> = None;
     let mut mode = Mode::Auto;
+    let mut async_ = false;
     let mut chunk: Option<usize> = None;
     let mut print_diffs = false;
     let mut out: Option<String> = None;
@@ -145,6 +152,8 @@ fn parse_cli(args: &[String]) -> Result<Cli, String> {
                 "legacy" => Mode::Legacy,
                 other => return Err(format!("unknown --mode value: {other}")),
             };
+        } else if arg == "--async" {
+            async_ = true;
         } else if let Some(value) = arg.strip_prefix("--chunk=") {
             let parsed: usize = value
                 .parse()
@@ -165,7 +174,7 @@ fn parse_cli(args: &[String]) -> Result<Cli, String> {
     }
     Ok(Cli {
         directory: directory.ok_or_else(|| USAGE.to_string())?,
-        mode,
+        variant: CompileVariant { mode, async_ },
         chunk,
         print_diffs,
         out,
@@ -257,13 +266,16 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let mode_label = match cli.mode {
+    let mode_label = match cli.variant.mode {
         Mode::Auto => "auto",
         Mode::Runes => "runes",
         Mode::Legacy => "legacy",
     };
     println!("scan: {}", directory.display());
     println!("mode: {mode_label}");
+    if cli.variant.async_ {
+        println!("experimental async: on");
+    }
 
     panic::set_hook(Box::new(|_| {}));
     let progress = io::stderr().is_terminal();
@@ -287,7 +299,7 @@ fn main() -> ExitCode {
     let chunk = cli.chunk.unwrap_or_else(|| auto_chunk(files.len()));
 
     let reference_started = Instant::now();
-    let reference = match fetch_reference(&root, &files, cli.mode, chunk, progress) {
+    let reference = match fetch_reference(&root, &files, cli.variant, chunk, progress) {
         Ok(reference) => reference,
         Err(err) => {
             eprintln!("sweep: reference compiler failed: {err}");
@@ -318,7 +330,8 @@ fn main() -> ExitCode {
             files
                 .par_iter()
                 .flat_map(|file| {
-                    let file_findings = sweep_file(file, &root_dir, cli.mode, reference.get(file));
+                    let file_findings =
+                        sweep_file(file, &root_dir, cli.variant, reference.get(file));
                     if let Ok(mut latest) = current.lock() {
                         file.clone_into(&mut latest);
                     }
@@ -403,23 +416,28 @@ fn walk_dir(dir: &Path, progress: bool, counter: &AtomicUsize) -> Vec<String> {
     files
 }
 
-fn mode_config_json(mode: Mode) -> String {
-    match mode {
-        Mode::Auto => "{}".to_string(),
-        Mode::Runes => "{\"runes\":true}".to_string(),
-        Mode::Legacy => "{\"runes\":false}".to_string(),
+fn variant_config_json(variant: CompileVariant) -> String {
+    let mut entries: Vec<&str> = Vec::new();
+    match variant.mode {
+        Mode::Auto => {}
+        Mode::Runes => entries.push("\"runes\":true"),
+        Mode::Legacy => entries.push("\"runes\":false"),
     }
+    if variant.async_ {
+        entries.push("\"experimental\":{\"async\":true}");
+    }
+    format!("{{{}}}", entries.join(","))
 }
 
 fn fetch_reference(
     root: &Path,
     files: &[String],
-    mode: Mode,
+    variant: CompileVariant,
     chunk: usize,
     progress: bool,
 ) -> Result<HashMap<String, ReferenceFile>, String> {
     let script = root.join("tasks/sweep/reference.mjs");
-    let config = mode_config_json(mode);
+    let config = variant_config_json(variant);
     let chunks: Vec<(usize, &[String])> = files.chunks(chunk).enumerate().collect();
     let total_chunks = chunks.len();
     let total_files = files.len();
@@ -491,7 +509,7 @@ fn run_reference_chunk(
 fn sweep_file(
     file: &str,
     root_dir: &str,
-    mode: Mode,
+    variant: CompileVariant,
     reference: Option<&ReferenceFile>,
 ) -> Vec<Finding> {
     let Some(reference) = reference else {
@@ -508,7 +526,7 @@ fn sweep_file(
     let is_module = file.ends_with(".svelte.js") || file.ends_with(".svelte.ts");
 
     if let Some(message) = &reference.format_error {
-        let ours = run_our_cell(&source, file, root_dir, is_module, mode, &CELLS[0]);
+        let ours = run_our_cell(&source, file, root_dir, is_module, variant, &CELLS[0]);
         if matches!(ours, OurCell::Error { .. }) {
             return vec![];
         }
@@ -517,7 +535,7 @@ fn sweep_file(
 
     let our_cells: Vec<OurCell> = CELLS
         .iter()
-        .map(|cell| run_our_cell(&source, file, root_dir, is_module, mode, cell))
+        .map(|cell| run_our_cell(&source, file, root_dir, is_module, variant, cell))
         .collect();
 
     let mut findings = Vec::new();
@@ -547,7 +565,7 @@ fn run_our_cell(
     file: &str,
     root_dir: &str,
     is_module: bool,
-    mode: Mode,
+    variant: CompileVariant,
     cell: &CellSpec,
 ) -> OurCell {
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
@@ -567,7 +585,10 @@ fn run_our_cell(
                 dev: cell.dev,
                 generate: cell.generate,
                 disclose_version: false,
-                runes: runes_option(mode),
+                runes: runes_option(variant.mode),
+                experimental: svelte_compiler::ExperimentalOptions {
+                    async_: variant.async_,
+                },
                 root_dir: Some(root_dir.to_string()),
                 ..Default::default()
             };
@@ -696,8 +717,7 @@ fn canonical_js(source: &str) -> String {
 }
 
 fn normalize_css(css: &str) -> String {
-    let stripped = test_support::strip_reference_only_css_markers(css);
-    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
+    test_support::canonicalize_injected_css(css)
 }
 
 fn diff_size(before: &str, after: &str) -> usize {

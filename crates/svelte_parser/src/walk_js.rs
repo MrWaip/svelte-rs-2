@@ -25,7 +25,8 @@ pub(crate) fn parse_js<'a>(
     if let Some(script) = &component.instance_script {
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts) {
+        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts, false)
+        {
             Ok(program) => {
                 result.program = Some(program);
                 result.script_content_span = Some(script.content_span);
@@ -38,7 +39,8 @@ pub(crate) fn parse_js<'a>(
     if let Some(script) = &component.module_script {
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts) {
+        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts, false)
+        {
             Ok(program) => {
                 result.module_program = Some(program);
                 result.module_script_content_span = Some(script.content_span);
@@ -130,7 +132,16 @@ fn parse_span<'a>(
 ) {
     let source = component.source_text(span);
     let arena_source: &'a str = alloc.alloc_str(source);
-    match parse_expression_tag_body(alloc, arena_source, span.start, typescript) {
+    let has_comment = component.has_js_comment_at(span.start);
+    let mut comments = Vec::new();
+    match parse_expression_tag_body(
+        alloc,
+        arena_source,
+        span.start,
+        typescript,
+        has_comment,
+        &mut comments,
+    ) {
         ExpressionTagBody::Expression(expr) => {
             result.alloc_expr(span.start, expr);
         }
@@ -140,11 +151,15 @@ fn parse_span<'a>(
         }
         ExpressionTagBody::Invalid(diag) => {
             diags.push(diag.unwrap_or_else(|| {
-                Diagnostic::invalid_expression(svelte_span::Span::new(span.start, span.end))
+                Diagnostic::js_parse_error(
+                    svelte_span::Span::new(span.start, span.start),
+                    "Unexpected token".to_string(),
+                )
             }));
             result.alloc_expr(span.start, placeholder_expression(alloc, span.start));
         }
     }
+    result.push_template_comments(comments);
 }
 
 fn parse_binding_pattern<'a>(

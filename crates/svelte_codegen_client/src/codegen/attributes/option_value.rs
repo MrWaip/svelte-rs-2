@@ -65,13 +65,18 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         el_name: &str,
         expr_id: NodeId,
     ) -> Result<()> {
-        let volatile = self
-            .ctx
-            .expression_data(expr_id)
-            .map(|data| data.volatility.is_volatile())
+        let data = self.ctx.expression_data(expr_id).cloned();
+        let volatile = data
+            .as_ref()
+            .map(|d| d.volatility.is_volatile())
             .unwrap_or(false);
         let expr = self.clone_node_expr(expr_id)?;
-        self.emit_option_value(state, el_name, expr, OptionValueForm::Hidden, volatile);
+        let Some(data) = data else {
+            self.emit_option_value(state, el_name, expr, OptionValueForm::Hidden, volatile);
+            return Ok(());
+        };
+        let value = self.defer_memo_value(state, expr_id, &data, expr);
+        self.emit_option_value(state, el_name, value, OptionValueForm::Hidden, volatile);
         Ok(())
     }
 

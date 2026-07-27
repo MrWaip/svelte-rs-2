@@ -66,7 +66,7 @@ pub(super) fn collect_template_declarations<'a>(
     data: &mut AnalysisData<'a>,
 ) {
     let root = data.scoping.root_scope_id();
-    let component_name = data.output.component_name.clone();
+    let component_name = data.component_name.clone();
     let mut staging = ContextualStaging::default();
     let mut ctx = VisitContext::with_parsed(
         root,
@@ -418,7 +418,7 @@ pub(super) fn promote_each_sources_to_legacy_state<'a>(
     data: &mut AnalysisData<'a>,
 ) {
     let root = data.scoping.root_scope_id();
-    let component_name = data.output.component_name.clone();
+    let component_name = data.component_name.clone();
     let mut ctx = VisitContext::with_parsed(
         root,
         data,
@@ -597,6 +597,7 @@ fn collect_each_block_collection_sources_legacy(
                 | BindingFacts::OptimizedRune(_)
                 | BindingFacts::Prop(_)
                 | BindingFacts::LegacyApiExport
+                | BindingFacts::LegacyPropsObject
                 | BindingFacts::Store(_)
                 | BindingFacts::Const(_)
                 | BindingFacts::OptimizedConst(_)
@@ -773,6 +774,12 @@ impl<'a> Visit<'a> for ExprRefCollector {
             self.refs.push(ref_id);
         }
     }
+}
+
+pub(super) fn expression_reference_ids<'a>(expr: &Expression<'a>) -> Vec<ReferenceId> {
+    let mut collector = ExprRefCollector { refs: Vec::new() };
+    collector.visit_expression(expr);
+    collector.refs
 }
 
 pub(super) fn classify_contextual_read_kind(

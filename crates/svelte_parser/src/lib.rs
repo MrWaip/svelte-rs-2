@@ -34,7 +34,7 @@ pub fn parse_module<'a>(
     is_ts: bool,
 ) -> Result<Program<'a>, Vec<Diagnostic>> {
     let arena_source: &'a str = alloc.alloc_str(source);
-    parse_js::parse_script_with_alloc(alloc, arena_source, 0, is_ts)
+    parse_js::parse_script_with_alloc(alloc, arena_source, 0, is_ts, true)
 }
 
 pub fn parse_with_js<'a>(
@@ -51,14 +51,24 @@ pub fn parse_with_js<'a>(
 }
 
 fn reduce_to_first_error(diagnostics: &mut Vec<Diagnostic>) {
-    let mut seen_error = false;
+    let earliest = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == svelte_diagnostics::Severity::Error)
+        .map(|diagnostic| diagnostic.span.start)
+        .min();
+    let Some(earliest) = earliest else {
+        return;
+    };
+
+    let mut kept = false;
     diagnostics.retain(|diagnostic| {
-        if diagnostic.severity == svelte_diagnostics::Severity::Error {
-            if seen_error {
-                return false;
-            }
-            seen_error = true;
+        if diagnostic.severity != svelte_diagnostics::Severity::Error {
+            return true;
         }
+        if kept || diagnostic.span.start != earliest {
+            return false;
+        }
+        kept = true;
         true
     });
 }
@@ -275,6 +285,8 @@ impl<'a> Parser<'a> {
         let mut scanner = Scanner::new(self.source);
         let (tokens, scan_diagnostics) = scanner.scan_tokens();
         self.diagnostics.extend(scan_diagnostics);
+        let mut js_comment_expr_starts = scanner.take_js_comment_expr_starts();
+        js_comment_expr_starts.sort_unstable();
 
         let mut children_stack: Vec<Vec<NodeId>> = vec![vec![]];
         let mut entry_stack: Vec<StackEntry> = vec![];
@@ -540,6 +552,7 @@ impl<'a> Parser<'a> {
                     } else {
                         ScriptLanguage::JavaScript
                     };
+                    let attributes = self.convert_attributes(&script_tag.attributes, false);
 
                     if script_tag.is_module {
                         if module_script_data.is_some() {
@@ -556,6 +569,7 @@ impl<'a> Parser<'a> {
                             context: ScriptContext::Module,
                             context_deprecated: script_tag.context_deprecated,
                             invalid_context: script_tag.invalid_context,
+                            attributes,
                         });
                     } else {
                         if instance_script_data.is_some() {
@@ -572,6 +586,7 @@ impl<'a> Parser<'a> {
                             context: ScriptContext::Default,
                             context_deprecated: false,
                             invalid_context: script_tag.invalid_context,
+                            attributes,
                         });
                     }
                 }
@@ -587,10 +602,12 @@ impl<'a> Parser<'a> {
                     let preceding_comment = children_stack
                         .last()
                         .and_then(|siblings| self.preceding_comment_id(siblings));
+                    let attributes = self.convert_attributes(&style_tag.attributes, false);
                     css_data = Some(CssData {
                         span: token.span,
                         content_span: style_tag.content_span,
                         preceding_comment,
+                        attributes,
                     });
                 }
                 TokenType::EOF => break,
@@ -609,6 +626,7 @@ impl<'a> Parser<'a> {
             language: sd.language,
             context_deprecated: sd.context_deprecated,
             invalid_context: sd.invalid_context,
+            attributes: sd.attributes,
         });
 
         let module_script = module_script_data.map(|sd| Script {
@@ -619,12 +637,14 @@ impl<'a> Parser<'a> {
             language: sd.language,
             context_deprecated: sd.context_deprecated,
             invalid_context: sd.invalid_context,
+            attributes: sd.attributes,
         });
 
         let css = css_data.map(|cd| RawBlock {
             span: cd.span,
             content_span: cd.content_span,
             preceding_comment: cd.preceding_comment,
+            attributes: cd.attributes,
         });
 
         let root_fragment = self.new_fragment(FragmentRole::Root, roots);
@@ -637,6 +657,7 @@ impl<'a> Parser<'a> {
             module_script,
             css,
         );
+        component.js_comment_expr_starts = js_comment_expr_starts;
 
         self.extract_svelte_options(&mut component);
 
@@ -644,7 +665,7 @@ impl<'a> Parser<'a> {
 
         let root_nodes = component.fragment_nodes(component.root).to_vec();
 
-        Self::convert_slot_element_legacy(&mut component.store, &root_nodes);
+        Self::convert_slot_element_legacy(&mut component.store, &root_nodes, false);
         Self::convert_svelte_fragment_legacy(&mut component.store, &root_nodes);
         Self::convert_svelte_element(&mut component.store, &mut self.diagnostics, &root_nodes);
         Self::convert_svelte_boundary(&mut component.store, &root_nodes);
@@ -732,6 +753,12 @@ fn validate_custom_element_tag(tag: &str) -> Option<TagError> {
     None
 }
 
+pub(crate) fn is_regular_element_name(name: &str) -> bool {
+    !is_component_name(name)
+        && !svelte_ast::is_svelte_meta_tag(name)
+        && name != svelte_ast::SLOT_ELEMENT
+}
+
 fn is_component_name(name: &str) -> bool {
     name.starts_with(|c: char| c.is_uppercase())
         || name.contains('.')
@@ -746,12 +773,14 @@ struct ScriptData {
     context: ScriptContext,
     context_deprecated: bool,
     invalid_context: Option<Span>,
+    attributes: Vec<Attribute>,
 }
 
 struct CssData {
     span: Span,
     content_span: Span,
     preceding_comment: Option<NodeId>,
+    attributes: Vec<Attribute>,
 }
 
 #[cfg(test)]

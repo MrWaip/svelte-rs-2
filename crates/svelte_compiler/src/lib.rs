@@ -1,3 +1,4 @@
+mod arena_reuse;
 mod options;
 mod sourcemap_finalize;
 
@@ -6,7 +7,7 @@ pub use options::{
     RunesOption,
 };
 use svelte_diagnostics::{Diagnostic, DiagnosticKind};
-pub use svelte_sourcemap::{CssOutput, JsOutput, SourcemapKind};
+pub use svelte_sourcemap::{CssOutput, JsOutput, SourceMap, SourcemapKind};
 
 pub struct CompileResult {
     pub js: Option<JsOutput>,
@@ -31,7 +32,7 @@ fn filename_relative_to_root_dir(filename: &str, root_dir: Option<&str>) -> Stri
     };
     let rd_norm = rd.replace('\\', "/");
     if let Some(rest) = normalized.strip_prefix(&rd_norm) {
-        rest.trim_start_matches('/').to_string()
+        rest.strip_prefix('/').unwrap_or(rest).to_string()
     } else {
         normalized
     }
@@ -116,15 +117,25 @@ fn validate_compile_options(options: &CompileOptions, diagnostics: &mut Vec<Diag
 }
 
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
+    let js_alloc = arena_reuse::acquire();
+    let result = compile_in(&js_alloc, source, options);
+    arena_reuse::release(js_alloc);
+    result
+}
+
+fn compile_in(
+    js_alloc: &oxc_allocator::Allocator,
+    source: &str,
+    options: &CompileOptions,
+) -> CompileResult {
     let candidate_name = options.component_name();
     let preprocessor_map = options
         .preprocessor_map
         .as_deref()
         .and_then(svelte_sourcemap::parse_input_map);
 
-    let js_alloc = oxc_allocator::Allocator::default();
     let (mut component, js_result, mut diagnostics) =
-        svelte_parser::parse_with_js(&js_alloc, source);
+        svelte_parser::parse_with_js(js_alloc, source);
     validate_compile_options(options, &mut diagnostics);
     apply_compile_options_to_component(&mut component, options);
     let css_parsed = svelte_parser::parse_css_block(&component);
@@ -153,6 +164,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         warning_filter: None,
     };
 
+    let mut css_parse_diags: Vec<Diagnostic> = Vec::new();
     let (js, css, analyze_diags) = {
         let (mut analysis, mut parsed, mut analyze_diags) =
             svelte_analyze::analyze_with_options(&component, js_result, &analyze_opts);
@@ -164,7 +176,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 .css
                 .as_ref()
                 .map_or(0, |block| block.content_span.start);
-            analyze_diags.extend(css_diags.into_iter().map(|mut diag| {
+            css_parse_diags.extend(css_diags.into_iter().map(|mut diag| {
                 diag.span = svelte_span::Span::new(
                     diag.span.start + css_offset,
                     diag.span.end + css_offset,
@@ -172,7 +184,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 diag
             }));
             let inject_styles = resolved_css_mode(&component, options) == CssMode::Injected
-                || analysis.output.is_custom_element_target;
+                || analysis.custom_element.is_target;
             svelte_analyze::analyze_css_pass(
                 &component,
                 &ss,
@@ -191,9 +203,9 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             let needs_map = options.sourcemap_kind.is_enabled() && (!inject_styles || options.dev);
             if needs_map {
                 let (raw_css, mut raw_map) = svelte_transform_css::transform_css_with_sourcemap(
-                    &analysis.output.css.hash,
-                    &analysis.output.css.keyframes,
-                    Some(&analysis.output.css.used_selectors),
+                    &analysis.css.hash,
+                    &analysis.css.keyframes,
+                    Some(&analysis.css.used_selectors),
                     true,
                     ss,
                     css_source,
@@ -232,9 +244,9 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 }
             } else {
                 let raw_css = svelte_transform_css::transform_css_with_usage(
-                    &analysis.output.css.hash,
-                    &analysis.output.css.keyframes,
-                    Some(&analysis.output.css.used_selectors),
+                    &analysis.css.hash,
+                    &analysis.css.keyframes,
+                    Some(&analysis.css.used_selectors),
                     true,
                     ss,
                     css_source,
@@ -247,14 +259,14 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             }
         }
 
-        let (css, injected_css_text) = if analysis.output.css.inject_styles {
+        let (css, injected_css_text) = if analysis.css.inject_styles {
             (None, css_text)
         } else {
             (
                 css_text.map(|code| svelte_sourcemap::CssOutput {
                     code,
                     map: css_map,
-                    has_global: analysis.output.css.has_global,
+                    has_global: analysis.css.has_global,
                 }),
                 None,
             )
@@ -263,6 +275,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         let has_errors = has_parse_errors
             || analyze_diags
                 .iter()
+                .chain(css_parse_diags.iter())
                 .any(|d| d.severity == svelte_diagnostics::Severity::Error);
 
         if has_errors {
@@ -299,7 +312,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
             let js = match options.generate {
                 GenerateMode::Server => {
                     let mut compile_ctx = svelte_types::CompileContext {
-                        alloc: &js_alloc,
+                        alloc: js_alloc,
                         component: &component,
                         analysis: &analysis,
                         js_arena: &mut parsed,
@@ -320,7 +333,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                 GenerateMode::Client | GenerateMode::False => {
                     let transform_data = {
                         let mut compile_ctx = svelte_types::CompileContext {
-                            alloc: &js_alloc,
+                            alloc: js_alloc,
                             component: &component,
                             analysis: &analysis,
                             js_arena: &mut parsed,
@@ -333,7 +346,7 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
                         )
                     };
                     let compile_ctx = svelte_types::CompileContext {
-                        alloc: &js_alloc,
+                        alloc: js_alloc,
                         component: &component,
                         analysis: &analysis,
                         js_arena: &mut parsed,
@@ -352,7 +365,10 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
         }
     };
 
-    diagnostics.extend(analyze_diags);
+    diagnostics.extend(css_parse_diags);
+    if !has_parse_errors {
+        diagnostics.extend(analyze_diags);
+    }
     apply_suppress(&mut diagnostics, &options.suppress);
     let source_name =
         svelte_sourcemap::get_source_name(&options.filename, options.output_filename.as_deref());
@@ -372,13 +388,22 @@ pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
 }
 
 pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileResult {
+    let js_alloc = arena_reuse::acquire();
+    let result = compile_module_in(&js_alloc, source, options);
+    arena_reuse::release(js_alloc);
+    result
+}
+
+fn compile_module_in(
+    js_alloc: &oxc_allocator::Allocator,
+    source: &str,
+    options: &ModuleCompileOptions,
+) -> CompileResult {
     let is_ts = options.filename.ends_with(".ts");
     let dev = options.dev;
 
-    let js_alloc = oxc_allocator::Allocator::default();
-
     let (analysis, mut parsed, mut diagnostics) =
-        svelte_analyze::analyze_module(&js_alloc, source, is_ts, dev);
+        svelte_analyze::analyze_module(js_alloc, source, is_ts, dev);
     apply_suppress(&mut diagnostics, &options.suppress);
 
     if options.generate == GenerateMode::False
@@ -403,7 +428,7 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
         svelte_span::LineIndex::empty()
     };
     let kind = options.sourcemap_kind;
-    let filename = options.filename.clone();
+    let filename = filename_relative_to_root_dir(&options.filename, options.root_dir.as_deref());
     let js = match options.generate {
         GenerateMode::Server => {
             let mut ident_gen = svelte_analyze::IdentGen::with_conflicts(
@@ -414,16 +439,16 @@ pub fn compile_module(source: &str, options: &ModuleCompileOptions) -> CompileRe
                 filename: filename.clone(),
             };
             svelte_transform_server::transform_module(
-                &js_alloc,
+                js_alloc,
                 &mut program,
                 &analysis,
                 &mut ident_gen,
                 &transform_options,
             );
-            svelte_codegen_server::generate_module(&js_alloc, program)
+            svelte_codegen_server::generate_module(js_alloc, program)
         }
         GenerateMode::Client | GenerateMode::False => svelte_codegen_client::generate_module(
-            &js_alloc,
+            js_alloc,
             program,
             &analysis,
             &line_index,

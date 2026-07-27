@@ -1,0 +1,1 @@
+<Comp><svelte:element this={"div"} slot="x">{@const x = 1}<p>{x}</p></svelte:element></Comp>

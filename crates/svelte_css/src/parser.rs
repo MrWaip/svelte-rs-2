@@ -939,7 +939,7 @@ impl<'src> Parser<'src> {
 
         self.scanner.skip_whitespace();
 
-        self.scanner.eat(TokenKind::Colon);
+        let has_colon = self.scanner.eat(TokenKind::Colon);
 
         self.scanner.skip_whitespace();
 
@@ -967,6 +967,7 @@ impl<'src> Parser<'src> {
             span: Span::new(start, end),
             property,
             value,
+            has_colon,
             value_override: None,
         })
     }

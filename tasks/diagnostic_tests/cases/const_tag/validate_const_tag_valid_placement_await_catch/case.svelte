@@ -1,0 +1,1 @@
+{#await promise then v}y{:catch e}{@const x = e}<p>{x}</p>{/await}

@@ -1,8 +1,7 @@
 ---
 name: rust-style
-description: Rust style rules for any .rs change.
-paths:
-  - "**/*.rs"
+description: Non-negotiable Rust style rules for this repo — guard clauses over nested `else`, `Result` over `panic!`/`unwrap`, exhaustive `match` over domain enums, readable loops over crammed iterator chains. Use before writing or reviewing any `.rs` change.
+when_to_use: Whenever writing, editing, or reviewing Rust code; when about to reach for `unwrap`, `expect`, `panic!`, `unreachable!`, `todo!`, or `unimplemented!`; when adding a `_` wildcard arm to a domain enum `match` or a `matches!`; when a long `||`/`&&` chain or a negated `if !cond { } else { }` appears; when asked whether code follows repo style.
 ---
 
 # Rust Style

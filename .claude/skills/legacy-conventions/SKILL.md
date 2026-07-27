@@ -1,6 +1,6 @@
 ---
 name: legacy-conventions
-description: MUST consult before writing any code related to Svelte 4 legacy features. Contains mandatory naming conventions, doc-comment format, and isolation rules for legacy code. Use this skill whenever touching on:directive, bind:this legacy syntax, Svelte 4 deprecated features, code marked LEGACY(svelte4), or when porting/implementing any feature that has both a Svelte 5 and a Svelte 4 variant. Failure to follow these conventions creates tech debt that blocks future cleanup.
+description: LEGACY(svelte4) conventions — naming suffix, doc-comment tag, isolation rules. Use when touching on:directive or legacy bind:this, when editing code already tagged LEGACY(svelte4), or when porting a feature that has both a Svelte 5 and a Svelte 4 variant.
 paths:
   - "**/*.rs"
 ---

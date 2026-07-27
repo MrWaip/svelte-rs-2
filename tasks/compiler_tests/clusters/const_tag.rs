@@ -174,3 +174,39 @@ compiler_case!(
     destructured_prop_reactive_getter,
     "const_tag/destructured_prop_reactive_getter"
 );
+
+compiler_case!(
+    snippet_reference_component_prop_literal,
+    "const_tag/snippet_reference/component_prop_literal",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    snippet_reference_component_prop_chain,
+    "const_tag/snippet_reference/component_prop_chain",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    snippet_reference_component_prop_dynamic,
+    "const_tag/snippet_reference/component_prop_dynamic",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    snippet_reference_same_fragment_guard,
+    "const_tag/snippet_reference/same_fragment_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    snippet_reference_local_const_guard,
+    "const_tag/snippet_reference/local_const_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    snippet_reference_nested_closure_guard,
+    "const_tag/snippet_reference/nested_closure_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    snippet_reference_boundary_failed_guard,
+    "const_tag/snippet_reference/boundary_failed_guard",
+    [prod, dev, ssr, ssr_dev]
+);

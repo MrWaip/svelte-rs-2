@@ -1,7 +1,7 @@
 use svelte_ast::NodeId;
 use svelte_ast_builder::{Arg, ObjProp};
 
-use super::super::data_structures::{EmitState, FragmentCtx};
+use super::super::data_structures::{EmitState, FragmentCtx, TemplateMemoState};
 use super::super::{Codegen, Result};
 
 impl<'a, 'ctx> Codegen<'a, 'ctx> {
@@ -47,11 +47,28 @@ impl<'a, 'ctx> Codegen<'a, 'ctx> {
         let log_call = self.ctx.b.call_stmt("console.log", [Arg::Expr(obj)]);
         let debugger = self.ctx.b.debugger_stmt();
         let thunk = self.ctx.b.thunk_block(vec![log_call, debugger]);
-        state.init.push(
-            self.ctx
-                .b
-                .call_stmt("$.template_effect", [Arg::Expr(thunk)]),
-        );
+        let mut deps = TemplateMemoState::default();
+        deps.push_node_deps(self.ctx, id);
+        if !deps.has_blockers() {
+            state.init.push(
+                self.ctx
+                    .b
+                    .call_stmt("$.template_effect", [Arg::Expr(thunk)]),
+            );
+            return Ok(());
+        }
+        let empty_sync = self.ctx.b.array_expr([]);
+        let empty_async = self.ctx.b.array_expr([]);
+        let blockers = deps.blockers_expr(self.ctx);
+        state.init.push(self.ctx.b.call_stmt(
+            "$.template_effect",
+            [
+                Arg::Expr(thunk),
+                Arg::Expr(empty_sync),
+                Arg::Expr(empty_async),
+                Arg::Expr(blockers),
+            ],
+        ));
         Ok(())
     }
 }

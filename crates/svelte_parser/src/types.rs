@@ -19,6 +19,7 @@ pub struct JsAst<'a> {
     pub script_content_span: Option<Span>,
     pub module_script_content_span: Option<Span>,
     pub typescript: bool,
+    template_comments: Vec<oxc_ast::Comment>,
 }
 
 impl<'a> Default for JsAst<'a> {
@@ -39,7 +40,16 @@ impl<'a> JsAst<'a> {
             script_content_span: None,
             module_script_content_span: None,
             typescript: false,
+            template_comments: Vec::new(),
         }
+    }
+
+    pub fn push_template_comments(&mut self, comments: impl IntoIterator<Item = oxc_ast::Comment>) {
+        self.template_comments.extend(comments);
+    }
+
+    pub fn template_comments(&self) -> &[oxc_ast::Comment] {
+        &self.template_comments
     }
 
     pub fn alloc_expr(&mut self, offset: u32, expr: Expression<'a>) {
@@ -167,8 +177,8 @@ impl<'a> JsAst<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CeDomMode {
     Open,
-    Closed,
     None,
+    Custom,
 }
 
 #[derive(Debug, Clone)]
@@ -183,7 +193,6 @@ pub struct CePropConfig {
 pub struct ParsedCeConfig {
     pub tag: Option<String>,
     pub shadow: CeDomMode,
-    pub delegates_focus: bool,
 
     pub props: Vec<CePropConfig>,
 

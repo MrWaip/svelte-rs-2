@@ -1,0 +1,113 @@
+use super::*;
+
+compiler_case!(attr_param_read, "closure_volatility/attr_param_read");
+compiler_case!(
+    attr_param_read_legacy,
+    "closure_volatility/attr_param_read_legacy"
+);
+compiler_case!(
+    attr_local_declaration_read,
+    "closure_volatility/attr_local_declaration_read"
+);
+compiler_case!(
+    attr_function_expression_param_read,
+    "closure_volatility/attr_function_expression_param_read"
+);
+compiler_case!(
+    attr_destructured_param_read,
+    "closure_volatility/attr_destructured_param_read"
+);
+compiler_case!(
+    attr_default_param_read,
+    "closure_volatility/attr_default_param_read"
+);
+compiler_case!(
+    attr_object_method_param_read,
+    "closure_volatility/attr_object_method_param_read"
+);
+compiler_case!(
+    attr_class_method_param_read,
+    "closure_volatility/attr_class_method_param_read"
+);
+compiler_case!(
+    attr_nested_closure_param_read,
+    "closure_volatility/attr_nested_closure_param_read"
+);
+compiler_case!(
+    attr_outer_state_read_legacy,
+    "closure_volatility/attr_outer_state_read_legacy"
+);
+compiler_case!(
+    attr_outer_state_read_runes,
+    "closure_volatility/attr_outer_state_read_runes"
+);
+compiler_case!(
+    class_directive_param_read,
+    "closure_volatility/class_directive_param_read"
+);
+compiler_case!(
+    style_directive_param_read,
+    "closure_volatility/style_directive_param_read"
+);
+compiler_case!(
+    spread_props_param_read,
+    "closure_volatility/spread_props_param_read"
+);
+compiler_case!(
+    component_prop_param_read_unknown,
+    "closure_volatility/component_prop_param_read_unknown"
+);
+
+compiler_case!(
+    attr_call_arg_param_read,
+    "closure_volatility/attr_call_arg_param_read"
+);
+compiler_case!(
+    attr_call_arg_param_read_legacy,
+    "closure_volatility/attr_call_arg_param_read_legacy"
+);
+compiler_case!(
+    class_directive_call_arg_param_read,
+    "closure_volatility/class_directive_call_arg_param_read"
+);
+compiler_case!(
+    text_closure_store_read,
+    "closure_volatility/text_closure_store_read"
+);
+compiler_case!(
+    attr_closure_store_read,
+    "closure_volatility/attr_closure_store_read"
+);
+compiler_case!(
+    attr_closure_legacy_props_read,
+    "closure_volatility/attr_closure_legacy_props_read"
+);
+
+compiler_case!(
+    attr_call_arg_state_read_guard,
+    "closure_volatility/attr_call_arg_state_read_guard"
+);
+compiler_case!(
+    text_store_read_guard,
+    "closure_volatility/text_store_read_guard"
+);
+compiler_case!(
+    attr_unused_param_guard,
+    "closure_volatility/attr_unused_param_guard"
+);
+compiler_case!(
+    attr_rest_param_guard,
+    "closure_volatility/attr_rest_param_guard"
+);
+compiler_case!(
+    attr_global_read_guard,
+    "closure_volatility/attr_global_read_guard"
+);
+compiler_case!(
+    attr_state_read_guard,
+    "closure_volatility/attr_state_read_guard"
+);
+compiler_case!(
+    event_handler_param_read_guard,
+    "closure_volatility/event_handler_param_read_guard"
+);

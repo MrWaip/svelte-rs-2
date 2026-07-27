@@ -9,7 +9,7 @@ use oxc_ast::ast::{
 use oxc_span::SPAN;
 use svelte_analyze::{DeclaratorSemantics, DerivedAsyncKind, DerivedKind};
 use svelte_ast_builder::Arg;
-use svelte_component_semantics::{Access, Step, walk_bindings};
+use svelte_component_semantics::{Access, Step, SymbolId, walk_bindings};
 use svelte_emit_builders::binding_pattern as bp;
 
 use crate::derived::build_derived_init;
@@ -40,7 +40,7 @@ impl<'a> ServerTransform<'_, 'a> {
             DeclaratorSemantics::RuneDerived {
                 kind, async_kind, ..
             } => {
-                if matches!(async_kind, DerivedAsyncKind::Async) && self.fn_depth == 0 {
+                if matches!(async_kind, DerivedAsyncKind::Async { .. }) && self.fn_depth == 0 {
                     return None;
                 }
                 self.expand_derived_destructure(declarator, kind, async_kind)
@@ -75,7 +75,7 @@ impl<'a> ServerTransform<'_, 'a> {
             let name: &str = self
                 .b
                 .alloc_str(self.analysis.scoping.symbol_name(v.symbol));
-            leaf_decls.push(self.make_declarator(name, access));
+            leaf_decls.push(self.make_declarator_for(name, access, Some(v.symbol)));
         });
 
         let mut out = vec![self.make_declarator(tmp, value)];
@@ -134,7 +134,7 @@ impl<'a> ServerTransform<'_, 'a> {
             let name: &str = self
                 .b
                 .alloc_str(self.analysis.scoping.symbol_name(v.symbol));
-            leaf_decls.push(self.make_declarator(name, value));
+            leaf_decls.push(self.make_declarator_for(name, value, Some(v.symbol)));
         });
 
         let mut out = prefix_decls;
@@ -262,12 +262,28 @@ impl<'a> ServerTransform<'_, 'a> {
     }
 
     fn make_declarator(&self, name: &str, init: Expression<'a>) -> VariableDeclarator<'a> {
+        self.make_declarator_for(name, init, None)
+    }
+
+    fn make_declarator_for(
+        &self,
+        name: &str,
+        init: Expression<'a>,
+        symbol: Option<SymbolId>,
+    ) -> VariableDeclarator<'a> {
+        let pattern = self
+            .b
+            .ast
+            .binding_pattern_binding_identifier(SPAN, self.b.alloc_str(name));
+        if let Some(symbol) = symbol
+            && let BindingPattern::BindingIdentifier(id) = &pattern
+        {
+            id.symbol_id.set(Some(symbol));
+        }
         self.b.ast.variable_declarator(
             SPAN,
             VariableDeclarationKind::Let,
-            self.b
-                .ast
-                .binding_pattern_binding_identifier(SPAN, self.b.alloc_str(name)),
+            pattern,
             NONE,
             Some(init),
             false,

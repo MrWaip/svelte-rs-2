@@ -1,10 +1,12 @@
 use super::super::ContextSignal;
 use super::super::ExpressionSemanticsStore;
 use super::super::data::{
-    Evaluation, ExpressionData, ExpressionSemantics, LegacyWrap, SyntheticPropsCarrier, Volatility,
+    Evaluation, ExpressionData, ExpressionSemantics, LegacyWrap, Suspension, SyntheticPropsCarrier,
+    Volatility,
 };
 use super::collector::{ExprFacts, collect};
 use super::derive;
+use crate::await_semantics::AwaitSemanticsStore;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{BindingSemantics, BlockerData, JsAst, PropBindingKind, SnippetData};
@@ -29,6 +31,7 @@ pub(super) fn populate<'a>(
     value_evaluation: &ValueEvaluation,
     has_class_state_fields: bool,
     blockers: &BlockerData,
+    await_semantics: &AwaitSemanticsStore,
     runes_mode: svelte_ast::RunesMode,
     store: &mut ExpressionSemanticsStore,
     dev: bool,
@@ -53,6 +56,7 @@ pub(super) fn populate<'a>(
         value_evaluation,
         has_class_state_fields,
         blockers,
+        await_semantics,
         uses_legacy_coarse_wrap: matches!(runes_mode, svelte_ast::RunesMode::HardLegacy),
         evaluator,
         declared_evaluator,
@@ -69,6 +73,7 @@ pub(super) struct Ctx<'c, 'a> {
     pub(super) value_evaluation: &'c ValueEvaluation,
     pub(super) has_class_state_fields: bool,
     pub(super) blockers: &'c BlockerData,
+    pub(super) await_semantics: &'c AwaitSemanticsStore,
     pub(super) uses_legacy_coarse_wrap: bool,
     pub(super) evaluator: ValueEvaluator<'c, 'a>,
     pub(super) declared_evaluator: ValueEvaluator<'c, 'a>,
@@ -79,6 +84,7 @@ enum SiteContext {
     Text,
     ElementAttr,
     StyleDirective,
+    StyleDirectiveShorthand,
     ComponentAttr,
     ComponentName,
     Structural,
@@ -120,6 +126,15 @@ fn visit_fragment(
             }
             Node::ConstTag(tag) => {
                 store_const_tag(tag.id, tag.decl.id(), ctx, sink);
+            }
+            Node::DebugTag(tag) => {
+                store_aggregate(
+                    tag.id,
+                    tag.identifier_refs.iter().map(|r| r.id()),
+                    ctx,
+                    sink,
+                    SiteContext::Inert,
+                );
             }
             Node::DeclarationTag(tag) => {
                 store_declaration_tag(tag.id, tag.declaration.id(), ctx, sink);
@@ -279,13 +294,12 @@ fn visit_attributes(
                     store_aggregate(a.id, exprs, ctx, sink, SiteContext::StyleDirective);
                 }
                 StyleDirectiveValue::Expression => {
-                    store_single(
-                        a.id,
-                        a.expression.id(),
-                        ctx,
-                        sink,
-                        SiteContext::StyleDirective,
-                    );
+                    let site = if a.shorthand {
+                        SiteContext::StyleDirectiveShorthand
+                    } else {
+                        SiteContext::StyleDirective
+                    };
+                    store_single(a.id, a.expression.id(), ctx, sink, site);
                 }
                 StyleDirectiveValue::String(_) => {}
             },
@@ -478,34 +492,50 @@ fn store_aggregate(
         let (part, facts) = compute(expr, ctx, context);
         update_aggregates(sink, &facts, ctx);
         acc.volatility = acc.volatility.max(part.volatility);
-        acc.legacy_wrap = combine_legacy_wrap(acc.legacy_wrap, part.legacy_wrap);
-        for b in part.blockers {
-            if !acc.blockers.contains(&b) {
-                acc.blockers.push(b);
-            }
+        if part.volatility.is_asynchronous() {
+            acc.suspension = Suspension::Interleaved;
         }
+        acc.legacy_wrap = combine_legacy_wrap(acc.legacy_wrap, part.legacy_wrap);
         for sym in part.references {
             if !acc.references.contains(&sym) {
                 acc.references.push(sym);
+            }
+        }
+        for sym in part.blocker_references {
+            if !acc.blocker_references.contains(&sym) {
+                acc.blocker_references.push(sym);
             }
         }
     }
     if !any {
         return;
     }
-    acc.blockers.sort_unstable();
+    acc.blockers = super::derive::blockers_of(&acc.blocker_references, ctx.blockers);
     sink.set(site_id, ExpressionSemantics::Expression(acc));
 }
 
 fn empty_data() -> ExpressionData {
     ExpressionData {
         volatility: Volatility::Static,
+        suspension: Suspension::None,
         evaluation: Evaluation::unknown(),
         declared_evaluation: Evaluation::unknown(),
         blockers: SmallVec::new(),
         legacy_wrap: LegacyWrap::None,
         references: SmallVec::new(),
+        blocker_references: SmallVec::new(),
+        evaluated_reads: SmallVec::new(),
     }
+}
+
+fn is_detached_const_read(expr: &Expression<'_>, ctx: &Ctx<'_, '_>) -> bool {
+    let Expression::Identifier(id) = expr else {
+        return false;
+    };
+    let Some(ref_id) = id.reference_id.get() else {
+        return false;
+    };
+    ctx.reactivity.is_detached_const_read(ref_id)
 }
 
 fn compute<'a>(
@@ -518,7 +548,17 @@ fn compute<'a>(
     let evaluation = ctx.evaluator.evaluate(expr);
 
     let is_reactive = derive::is_reactive_template(&facts, ctx);
-    let blockers = derive::blockers(&facts, ctx.blockers);
+    let blocker_references: SmallVec<[SymbolId; 2]> = match context {
+        SiteContext::StyleDirectiveShorthand => SmallVec::new(),
+        SiteContext::Text
+        | SiteContext::ElementAttr
+        | SiteContext::StyleDirective
+        | SiteContext::ComponentAttr
+        | SiteContext::ComponentName
+        | SiteContext::Structural
+        | SiteContext::Inert => facts.references.iter().copied().collect(),
+    };
+    let blockers = derive::blockers_of(&blocker_references, ctx.blockers);
     let has_blockers = !blockers.is_empty();
     let reactive_gate = match context {
         SiteContext::Text => derive::volatile(
@@ -528,8 +568,10 @@ fn compute<'a>(
             &evaluation,
             ctx.reactivity,
         ),
-        SiteContext::ElementAttr | SiteContext::StyleDirective => {
-            derive::volatile_element_attr(is_reactive, &facts.references, ctx)
+        SiteContext::ElementAttr
+        | SiteContext::StyleDirective
+        | SiteContext::StyleDirectiveShorthand => {
+            has_blockers || derive::volatile_element_attr(is_reactive, &facts.evaluated_reads, ctx)
         }
         SiteContext::ComponentAttr => is_reactive,
         SiteContext::ComponentName => derive::volatile_component_name(
@@ -547,7 +589,7 @@ fn compute<'a>(
         .any(|&sym| is_context_member_root(ctx.reactivity.binding_semantics(sym)));
     let volatility = derive::volatility(reactive_gate, &facts);
     let inline_style_emit = match context {
-        SiteContext::StyleDirective => true,
+        SiteContext::StyleDirective | SiteContext::StyleDirectiveShorthand => true,
         SiteContext::Text
         | SiteContext::ElementAttr
         | SiteContext::ComponentAttr
@@ -569,8 +611,14 @@ fn compute<'a>(
         }
     };
     let declared_evaluation = ctx.declared_evaluator.evaluate(expr);
+    let evaluation = if is_detached_const_read(expr, ctx) {
+        declared_evaluation.clone()
+    } else {
+        evaluation
+    };
     let data = ExpressionData {
         volatility,
+        suspension: derive::suspension(expr, volatility, &facts, ctx.await_semantics),
         evaluation,
         declared_evaluation,
         blockers,
@@ -580,6 +628,8 @@ fn compute<'a>(
             has_context_member_root,
         ),
         references: facts.references.clone(),
+        blocker_references,
+        evaluated_reads: facts.evaluated_reads.clone(),
     };
     (data, facts)
 }
@@ -631,6 +681,7 @@ fn is_context_member_root(semantics: BindingSemantics) -> bool {
         | BindingSemantics::DeclarationTag
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -656,6 +707,7 @@ fn is_safe_member_root(reactivity: &ReactivitySemantics, sym: SymbolId) -> bool 
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_)
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => true,
     }

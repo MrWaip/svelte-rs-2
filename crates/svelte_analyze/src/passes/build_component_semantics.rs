@@ -5,7 +5,7 @@ use smallvec::smallvec;
 use std::slice;
 use svelte_ast::{
     Attribute, AwaitBlock, BindDirective, ClassDirective, Component, LetDirectiveLegacy, Node,
-    NodeId, StyleDirective, StyleDirectiveValue,
+    NodeId, SLOT_ATTRIBUTE, StyleDirective, StyleDirectiveValue,
 };
 use svelte_component_semantics::SymbolId;
 use svelte_component_semantics::{
@@ -277,11 +277,13 @@ impl<'d, 'a> AnalyzeTemplateWalker<'d, 'a> {
             record_expr_id(key_ref, key_ref.span.start, &mut self.expr_id_map);
         }
         self.walk_fragment(body, ctx);
-        ctx.leave_scope();
 
         if let Some(fb) = fallback {
+            ctx.enter_fragment_scope_by_id(fb);
             self.walk_fragment(fb, ctx);
+            ctx.leave_scope();
         }
+        ctx.leave_scope();
     }
 
     fn walk_await_block(&mut self, block: &'d AwaitBlock, ctx: &mut TemplateBuildContext<'_, 'a>) {
@@ -688,7 +690,7 @@ fn attr_root_symbol<'a>(
 
 fn attrs_static_slot_name<'a>(attributes: &'a [Attribute], source: &'a str) -> Option<&'a str> {
     attributes.iter().find_map(|attr| match attr {
-        Attribute::StringAttribute(attr) if attr.name == "slot" => {
+        Attribute::StringAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
             Some(attr.value_span.source_text(source))
         }
         _ => None,

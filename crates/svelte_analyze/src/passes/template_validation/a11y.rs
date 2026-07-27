@@ -360,7 +360,7 @@ fn check_a11y_aria_attribute_warnings(
         }
 
         let attribute = name.trim_start_matches("aria-");
-        if !super::A11Y_ARIA_ATTRIBUTES.contains(&attribute) {
+        if !super::A11Y_ARIA_ATTRIBUTES_INDEX.contains(attribute) {
             ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::A11yUnknownAriaAttribute {
                     attribute: attribute.to_string(),
@@ -420,14 +420,14 @@ fn check_a11y_role_warnings(el: &Element, attrs: &[Attribute], ctx: &mut VisitCo
                 continue;
             }
 
-            if super::A11Y_ABSTRACT_ROLES.contains(&role) {
+            if super::A11Y_ABSTRACT_ROLES_INDEX.contains(role) {
                 ctx.warnings_mut().push(Diagnostic::warning(
                     DiagnosticKind::A11yNoAbstractRole {
                         role: role.to_string(),
                     },
                     attr_value_span(attr),
                 ));
-            } else if !super::A11Y_ARIA_ROLES.contains(&role) {
+            } else if !super::A11Y_ARIA_ROLES_INDEX.contains(role) {
                 ctx.warnings_mut().push(Diagnostic::warning(
                     DiagnosticKind::A11yUnknownRole {
                         role: role.to_string(),
@@ -534,7 +534,7 @@ fn check_a11y_role_supported_aria_props_warnings(
         }
 
         let attribute = name.trim_start_matches("aria-");
-        if !super::A11Y_ARIA_ATTRIBUTES.contains(&attribute) {
+        if !super::A11Y_ARIA_ATTRIBUTES_INDEX.contains(attribute) {
             continue;
         }
 
@@ -656,7 +656,7 @@ fn check_a11y_role_attribute_interaction_warnings(
     {
         let interactive_handlers = handlers
             .iter()
-            .filter(|handler| super::A11Y_INTERACTIVE_HANDLERS.contains(&handler.as_str()))
+            .filter(|handler| super::A11Y_INTERACTIVE_HANDLERS_INDEX.contains(handler.as_str()))
             .map(String::as_str)
             .collect::<Vec<_>>();
         if !interactive_handlers.is_empty() {
@@ -699,7 +699,7 @@ fn check_a11y_role_attribute_interaction_warnings(
 
     let has_interactive_handlers = handlers
         .iter()
-        .any(|handler| super::A11Y_INTERACTIVE_HANDLERS.contains(&handler.as_str()));
+        .any(|handler| super::A11Y_INTERACTIVE_HANDLERS_INDEX.contains(handler.as_str()));
     if !has_interactive_handlers
         || has_spread
         || has_disabled_attribute(el.id, attrs, ctx)
@@ -928,7 +928,9 @@ fn implicit_role_for_element(
         "menuitem" => {
             let type_attr = ctx.data.attribute(el.id, attrs, "type")?;
             let type_value = static_text_attr_value(type_attr, ctx.source)?;
-            lookup_static_pair(super::A11Y_MENUITEM_IMPLICIT_ROLES, type_value)
+            super::A11Y_MENUITEM_IMPLICIT_ROLES_INDEX
+                .get(type_value)
+                .copied()
         }
         "input" => {
             let type_attr = ctx.data.attribute(el.id, attrs, "type")?;
@@ -938,10 +940,14 @@ fn implicit_role_for_element(
             {
                 Some("combobox")
             } else {
-                lookup_static_pair(super::A11Y_INPUT_IMPLICIT_ROLES, type_value)
+                super::A11Y_INPUT_IMPLICIT_ROLES_INDEX
+                    .get(type_value)
+                    .copied()
             }
         }
-        _ => lookup_static_pair(super::A11Y_IMPLICIT_ROLES, el.name.as_str()),
+        _ => super::A11Y_IMPLICIT_ROLES_INDEX
+            .get(el.name.as_str())
+            .copied(),
     }
 }
 
@@ -958,13 +964,11 @@ fn semantic_role_for_element(
 }
 
 fn nested_implicit_role(name: &str) -> Option<&'static str> {
-    lookup_static_pair(super::A11Y_NESTED_IMPLICIT_ROLES, name)
+    super::A11Y_NESTED_IMPLICIT_ROLES_INDEX.get(name).copied()
 }
 
 fn required_role_props(role: &str) -> Option<&'static [&'static str]> {
-    super::A11Y_REQUIRED_ROLE_PROPS
-        .iter()
-        .find_map(|(name, props)| (*name == role).then_some(*props))
+    super::A11Y_REQUIRED_ROLE_PROPS_INDEX.get(role).copied()
 }
 
 fn is_semantic_role_element(
@@ -987,12 +991,6 @@ fn has_sectioning_ancestor(id: NodeId, ctx: &VisitContext<'_, '_>) -> bool {
             .as_element()
             .is_some_and(|element| matches!(element.name.as_str(), "section" | "article"))
     })
-}
-
-fn lookup_static_pair<'a>(pairs: &'a [(&'a str, &'a str)], needle: &str) -> Option<&'a str> {
-    pairs
-        .iter()
-        .find_map(|(name, value)| (*name == needle).then_some(*value))
 }
 
 fn format_required_role_props(props: &[&str]) -> String {
@@ -1369,11 +1367,11 @@ fn is_noninteractive_element_to_interactive_role_exception(name: &str, role: &st
 }
 
 fn is_interactive_role(role: Option<&str>) -> bool {
-    role.is_some_and(|role| super::A11Y_INTERACTIVE_ROLES.contains(&role))
+    role.is_some_and(|role| super::A11Y_INTERACTIVE_ROLES_INDEX.contains(role))
 }
 
 fn is_non_interactive_role(role: Option<&str>) -> bool {
-    role.is_some_and(|role| super::A11Y_NON_INTERACTIVE_ROLES.contains(&role))
+    role.is_some_and(|role| super::A11Y_NON_INTERACTIVE_ROLES_INDEX.contains(role))
 }
 
 fn is_presentation_role(role: Option<&str>) -> bool {
@@ -1381,11 +1379,11 @@ fn is_presentation_role(role: Option<&str>) -> bool {
 }
 
 fn is_abstract_role(role: Option<&str>) -> bool {
-    role.is_some_and(|role| super::A11Y_ABSTRACT_ROLES.contains(&role))
+    role.is_some_and(|role| super::A11Y_ABSTRACT_ROLES_INDEX.contains(role))
 }
 
 fn is_known_role_for_prop_support(role: &str) -> bool {
-    super::A11Y_ARIA_ROLES.contains(&role)
+    super::A11Y_ARIA_ROLES_INDEX.contains(role)
 }
 
 fn role_supports_aria_prop(role: &str, attr: &str) -> bool {
@@ -1393,7 +1391,7 @@ fn role_supports_aria_prop(role: &str, attr: &str) -> bool {
         return false;
     }
 
-    if super::A11Y_GLOBAL_ROLE_SUPPORTED_PROPS.contains(&attr) {
+    if super::A11Y_GLOBAL_ROLE_SUPPORTED_PROPS_INDEX.contains(attr) {
         return true;
     }
 

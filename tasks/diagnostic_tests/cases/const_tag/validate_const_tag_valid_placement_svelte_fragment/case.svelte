@@ -1,0 +1,1 @@
+<Comp><svelte:fragment slot="x">{@const x = 1}<p>{x}</p></svelte:fragment></Comp>

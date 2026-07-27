@@ -1,4 +1,4 @@
-use crate::expression_semantics::Volatility;
+use crate::expression_semantics::{Suspension, Volatility};
 use crate::scope::SymbolId;
 use bitflags::bitflags;
 use smallvec::SmallVec;
@@ -70,6 +70,8 @@ pub struct EachBlockSemantics {
 
     pub async_kind: EachAsyncKind,
 
+    pub blockers: SmallVec<[ExpressionBlocker; 2]>,
+
     pub collection: EachCollection,
 }
 
@@ -85,13 +87,36 @@ pub enum EachCollectionSource {
     Prop { sym: SymbolId },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExpressionBlocker {
+    Script { entry: u32 },
+
+    FragmentDeclaration { node: NodeId },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EachAsyncKind {
     Sync,
 
-    Awaited { blockers: SmallVec<[u32; 2]> },
+    Awaited,
 
-    Deferred { blockers: SmallVec<[u32; 2]> },
+    Deferred,
+}
+
+impl EachAsyncKind {
+    pub fn is_sync(&self) -> bool {
+        match self {
+            EachAsyncKind::Sync => true,
+            EachAsyncKind::Awaited | EachAsyncKind::Deferred => false,
+        }
+    }
+
+    pub fn is_awaited(&self) -> bool {
+        match self {
+            EachAsyncKind::Awaited => true,
+            EachAsyncKind::Sync | EachAsyncKind::Deferred => false,
+        }
+    }
 }
 
 bitflags! {
@@ -247,9 +272,15 @@ pub struct ConstTagBlockSemantics {
 pub enum FragmentDeclarationAsyncKind {
     Sync,
 
-    Awaited { blockers: SmallVec<[u32; 2]> },
+    Awaited {
+        blockers: SmallVec<[u32; 2]>,
+        declaration_blockers: SmallVec<[NodeId; 2]>,
+    },
 
-    Deferred { blockers: SmallVec<[u32; 2]> },
+    Deferred {
+        blockers: SmallVec<[u32; 2]>,
+        declaration_blockers: SmallVec<[NodeId; 2]>,
+    },
 }
 
 impl FragmentDeclarationAsyncKind {
@@ -264,6 +295,8 @@ impl FragmentDeclarationAsyncKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeclarationTagBlockSemantics {
+    pub decl_node_id: OxcNodeId,
+
     pub async_kind: FragmentDeclarationAsyncKind,
 }
 
@@ -289,11 +322,16 @@ pub enum RenderCallKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RenderArgKind {
-    PropPassthrough { sym: SymbolId },
+    PropPassthrough {
+        sym: SymbolId,
+    },
 
     NeedsMemo,
 
-    AwaitMemo { inner_node_id: Option<OxcNodeId> },
+    AwaitMemo {
+        inner_node_id: Option<OxcNodeId>,
+        suspension: Suspension,
+    },
 
     InertThunk,
 }
@@ -316,6 +354,8 @@ pub struct IfBlockSemantics {
     pub is_elseif_root: bool,
 
     pub async_kind: IfAsyncKind,
+
+    pub blockers: SmallVec<[ExpressionBlocker; 2]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -334,13 +374,29 @@ pub enum IfConditionKind {
     AsyncParam,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IfAsyncKind {
     Sync,
 
-    Awaited { blockers: SmallVec<[u32; 2]> },
+    Awaited,
 
-    Deferred { blockers: SmallVec<[u32; 2]> },
+    Deferred,
+}
+
+impl IfAsyncKind {
+    pub fn is_sync(&self) -> bool {
+        match self {
+            IfAsyncKind::Sync => true,
+            IfAsyncKind::Awaited | IfAsyncKind::Deferred => false,
+        }
+    }
+
+    pub fn is_awaited(&self) -> bool {
+        match self {
+            IfAsyncKind::Awaited => true,
+            IfAsyncKind::Sync | IfAsyncKind::Deferred => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

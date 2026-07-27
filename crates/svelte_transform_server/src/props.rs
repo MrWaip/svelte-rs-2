@@ -56,7 +56,13 @@ impl<'a> ServerTransform<'_, 'a> {
     }
 
     fn slots_binding_property(&self) -> BindingProperty<'a> {
-        if !self.analysis.output.needs_sanitized_legacy_slots {
+        if self
+            .analysis
+            .runtime_semantics
+            .query()
+            .sanitized_legacy_slots
+            != svelte_analyze::LegacySlotSanitization::Needed
+        {
             return self.shorthand_binding_property("$$slots");
         }
         let key_atom = "$$slots";

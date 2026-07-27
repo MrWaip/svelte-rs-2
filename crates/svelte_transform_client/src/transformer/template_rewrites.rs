@@ -3,6 +3,7 @@ use std::mem;
 use oxc_ast::{NONE, ast::Expression};
 use oxc_span::SPAN;
 use oxc_traverse::TraverseCtx;
+use svelte_analyze::AwaitSemantics;
 
 use super::equals::wrap_binary_equals_dev;
 use super::model::ComponentTransformer;
@@ -60,11 +61,16 @@ pub(crate) fn rewrite_template_exit<'a>(
     if let Expression::AwaitExpression(await_expr) = it {
         let ignored = t.template_owner_node.is_some_and(|id| {
             analysis
-                .output
-                .ignore_data
+                .ignore
                 .is_ignored_warning(id, svelte_analyze::WarningCode::AwaitReactivityLoss)
         });
-        let is_pickled = analysis.pickled_awaits.contains(await_expr.node_id());
+        let is_pickled = match analysis.await_semantics.query(await_expr.node_id()) {
+            AwaitSemantics::NonTerminal => true,
+            AwaitSemantics::TerminalInFragmentInterpolation
+            | AwaitSemantics::TerminalInConstruct
+            | AwaitSemantics::TerminalInReactiveDeclaration
+            | AwaitSemantics::Detached => false,
+        };
 
         let ast = t.b.ast;
         let arg = mem::replace(

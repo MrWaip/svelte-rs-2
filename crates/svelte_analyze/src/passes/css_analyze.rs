@@ -41,7 +41,7 @@ pub fn analyze_css_pass(
         .any(|diag| diag.severity == svelte_diagnostics::Severity::Error);
 
     let node_count = component.node_count();
-    data.output.css = CssAnalysis {
+    data.css = CssAnalysis {
         hash,
         scoped_elements: NodeBitSet::new(node_count),
         inject_styles,

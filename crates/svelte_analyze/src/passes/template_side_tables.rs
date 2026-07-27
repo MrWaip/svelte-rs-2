@@ -10,6 +10,7 @@ use crate::types::data::{
     AnalysisData, FragmentFacts, FragmentFactsEntry, NamespaceKind, RichContentFacts,
     RichContentFactsEntry, RichContentParentKind,
 };
+use crate::utils::snippet::snippet_name_symbol;
 use crate::walker::{TemplateVisitor, VisitContext};
 
 pub(crate) type FragmentBuckets = Vec<Option<Vec<NodeId>>>;
@@ -763,21 +764,19 @@ fn record_legacy_slot_wrappers(
 }
 
 fn record_custom_element_slot_name(data: &mut AnalysisData, attrs: &[Attribute], source: &str) {
-    if !data.output.is_custom_element_target {
+    if !data.custom_element.is_target {
         return;
     }
     let slot_name = legacy_slot_name(attrs, source);
     if data
-        .output
-        .custom_element_slot_names
+        .custom_element
+        .slot_names
         .iter()
         .any(|existing| existing == slot_name)
     {
         return;
     }
-    data.output
-        .custom_element_slot_names
-        .push(slot_name.to_string());
+    data.custom_element.slot_names.push(slot_name.to_string());
 }
 
 fn legacy_slot_name<'a>(attrs: &'a [Attribute], source: &'a str) -> &'a str {
@@ -895,8 +894,10 @@ impl TemplateVisitor for TemplateSideTablesVisitor<'_> {
 
     fn leave_snippet_block(&mut self, block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
         ctx.data.template.snippets.local_snippets.push(block.id);
-        let name = block.name(&self.component.source);
-        if let Some(name_sym) = ctx.data.scoping.find_binding(ctx.scope, name) {
+        if let Some(name_sym) = ctx
+            .parsed()
+            .and_then(|parsed| snippet_name_symbol(parsed, block))
+        {
             ctx.data
                 .template
                 .snippets

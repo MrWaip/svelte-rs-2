@@ -30,15 +30,43 @@ impl FragmentBindings {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FragmentContent {
+    Markup,
+    SelfContained,
+}
+
+impl FragmentContent {
+    pub fn is_self_contained(self) -> bool {
+        matches!(self, FragmentContent::SelfContained)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FragmentScript {
+    Plain,
+    ContainsScript,
+}
+
+impl FragmentScript {
+    pub fn has_script(self) -> bool {
+        matches!(self, FragmentScript::ContainsScript)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FragmentSemantics {
     pub whitespace: FragmentWhitespace,
     pub bindings: FragmentBindings,
+    pub script: FragmentScript,
+    pub content: FragmentContent,
 }
 
 impl FragmentSemantics {
     const DEFAULT: FragmentSemantics = FragmentSemantics {
         whitespace: FragmentWhitespace::Collapse,
         bindings: FragmentBindings::None,
+        script: FragmentScript::Plain,
+        content: FragmentContent::Markup,
     };
 }
 

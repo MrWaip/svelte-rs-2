@@ -1,6 +1,6 @@
 use oxc_allocator::CloneIn;
 use oxc_ast::ast::{Expression, Statement};
-use svelte_analyze::{BlockSemantics, BoundaryBranch, ElementSemantics, Evaluation};
+use svelte_analyze::{BlockSemantics, BoundaryBranch, ElementSemantics};
 use svelte_ast::{Attribute, Node, NodeId, SvelteBoundary};
 use svelte_ast_builder::{Arg, ObjProp};
 
@@ -15,18 +15,16 @@ impl<'a> ServerCodegen<'a> {
             _ => return Err(CodegenError::Unsupported(boundary.id, "boundary")),
         };
 
-        if let (BoundaryBranch::None, BoundaryBranch::Attribute(attr_id)) =
-            (sem.failed, sem.pending)
-            && self.boundary_pending_nullish(boundary, attr_id)
-        {
-            return self.emit_boundary_nullish_pending(boundary, attr_id);
-        }
-
         let has_failed = !matches!(sem.failed, BoundaryBranch::None);
         let excluded = boundary_branch_snippets(&sem);
-        let inner = match sem.pending {
-            BoundaryBranch::None => self.boundary_children_body(boundary, has_failed, &excluded)?,
-            branch => self.boundary_pending_body(boundary, branch)?,
+        let inner = match (sem.pending, sem.pending_needs_nullish_guard) {
+            (BoundaryBranch::Attribute(attr_id), true) => {
+                self.boundary_nullish_pending_body(boundary, attr_id)?
+            }
+            (BoundaryBranch::None, _) => {
+                self.boundary_children_body(boundary, has_failed, &excluded)?
+            }
+            (branch, _) => self.boundary_pending_body(boundary, branch)?,
         };
 
         match sem.failed {
@@ -51,22 +49,11 @@ impl<'a> ServerCodegen<'a> {
         }
     }
 
-    fn boundary_pending_nullish(&self, boundary: &SvelteBoundary, attr_id: NodeId) -> bool {
-        boundary.attributes.iter().any(|attr| {
-            attr.id() == attr_id
-                && matches!(attr, Attribute::ExpressionAttribute(a)
-                    if self
-                        .analysis
-                        .expression_data(a.id)
-                        .is_some_and(|d| matches!(d.declared_evaluation, Evaluation::MaybeNullish { .. })))
-        })
-    }
-
-    fn emit_boundary_nullish_pending(
+    fn boundary_nullish_pending_body(
         &mut self,
         boundary: &'a SvelteBoundary,
         attr_id: NodeId,
-    ) -> Result<()> {
+    ) -> Result<Vec<Statement<'a>>> {
         let callee = self.take_boundary_attr_expr(boundary, attr_id)?;
         let test = callee.clone_in(self.b.ast.allocator);
         let call = self.b.call_expr_callee(callee, [Arg::Ident("$$renderer")]);
@@ -83,8 +70,7 @@ impl<'a> ServerCodegen<'a> {
             self.renderer_push_template_stmt("<!--]-->"),
         ]);
         let if_stmt = self.b.if_stmt(test, pending_body, Some(children_body));
-        self.push_stmt(if_stmt);
-        Ok(())
+        Ok(vec![if_stmt])
     }
 
     fn boundary_children_body(
@@ -201,7 +187,7 @@ impl<'a> ServerCodegen<'a> {
                 let mut local = Vec::new();
                 self.route_snippet(nid, &mut local)?;
                 for decl in local {
-                    self.push_stmt(decl);
+                    self.hoist_stmt(decl);
                 }
             }
         }

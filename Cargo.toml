@@ -1,11 +1,11 @@
 [workspace]
 members = ["crates/*", "tasks/*"]
-exclude = ["tasks/compiler_bench"]
+exclude = ["tasks/compiler_bench", "tasks/preprocess_tests"]
 resolver = "2"
 
 [workspace.package]
 license = "MIT"
-repository = "https://github.com/MrWaip/svelte-rs-2"
+repository = "https://github.com/MrWaip/svelte-rs"
 
 [workspace.metadata.dylint]
 libraries = [
@@ -55,6 +55,8 @@ oxc_allocator = "0.140.0"
 oxc_ast = "0.140.0"
 oxc_ast_visit = "0.140.0"
 oxc_codegen = "0.140.0"
+oxc_diagnostics = "0.140.0"
+oxc_ecmascript = "0.140.0"
 oxc_index = "5.0.0"
 oxc_parser = "0.140.0"
 oxc_semantic = "0.140.0"

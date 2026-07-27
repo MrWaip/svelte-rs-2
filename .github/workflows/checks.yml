@@ -21,7 +21,7 @@ permissions:
   pull-requests: read
 
 env:
-  RUST_CHANNEL: '1.94.1'
+  RUST_CHANNEL: '1.97.1'
   NODE_VERSION: '22.13.0'
 
 jobs:
@@ -38,10 +38,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Install just and nextest
         uses: taiki-e/install-action@v2
         with:
           tool: just,nextest
+
+      - name: Build native addon
+        run: just build-native-dev
 
       - name: Run tests
         run: just test-all --locked

@@ -7,13 +7,14 @@ use oxc_ast_visit::{Visit, walk};
 use oxc_span::GetSpan;
 use svelte_ast::{
     AnimateDirective, AttachTag, Attribute, AwaitBlock, BindDirective, ClassDirective,
-    ComponentNode, ConcatPart, ConcatenationAttribute, ConstTag, DebugTag, EachBlock, Element,
-    ExprRef, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock, LetDirectiveLegacy,
-    Node, NodeId, OnDirectiveLegacy, RenderTag, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT,
-    SVELTE_ELEMENT, SVELTE_HEAD, SVELTE_META_TAG_LIST, SVELTE_SELF, SVELTE_WINDOW,
-    SlotElementLegacy, SnippetBlock, SpreadAttribute, StyleDirective, SvelteBody, SvelteBoundary,
-    SvelteDocument, SvelteElement, SvelteFragmentLegacy, SvelteHead, SvelteWindow, Text,
-    TransitionDirection, TransitionDirective, UseDirective, is_svelte_meta_tag, is_svg,
+    ComponentNode, ConcatPart, ConcatenationAttribute, ConstTag, DEFAULT_SLOT_NAME, DebugTag,
+    EachBlock, Element, ExprRef, ExpressionAttribute, ExpressionTag, HtmlTag, IfBlock, KeyBlock,
+    LetDirectiveLegacy, Node, NodeId, OnDirectiveLegacy, RenderTag, SLOT_ATTRIBUTE,
+    SLOT_NAME_ATTRIBUTE, SVELTE_BODY, SVELTE_COMPONENT, SVELTE_DOCUMENT, SVELTE_ELEMENT,
+    SVELTE_HEAD, SVELTE_META_TAG_LIST, SVELTE_SELF, SVELTE_WINDOW, SlotElementLegacy, SnippetBlock,
+    SpreadAttribute, StyleDirective, SvelteBody, SvelteBoundary, SvelteDocument, SvelteElement,
+    SvelteFragmentLegacy, SvelteHead, SvelteWindow, Text, TransitionDirection, TransitionDirective,
+    UseDirective, is_svelte_meta_tag, is_svg,
 };
 use svelte_component_semantics::{ScopeId, SymbolFlags, SymbolId, walk_bindings};
 use svelte_diagnostics::codes::fuzzymatch;
@@ -25,10 +26,13 @@ use crate::types::data::{
     BindHostKind, BindPropertyKind, BindTargetSemantics, BindingSemantics, ElementSizeKind,
 };
 use crate::utils::html_tree_validation::{is_tag_valid_with_ancestor, is_tag_valid_with_parent};
+use crate::utils::snippet::snippet_name_symbol;
 use crate::validate::attrs_have_duplicate;
 use crate::validate::const_assignment::constant_kind;
-use crate::walker::{ParentKind, ParentRef, TemplateVisitor, VisitContext};
+use crate::walker::{ParentKind, TemplateVisitor, VisitContext};
 use crate::{AnalysisData, EventModifier, concat_single_dynamic_expr, event_attribute};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::sync::LazyLock;
 
 mod a11y;
 
@@ -596,6 +600,44 @@ const A11Y_GLOBAL_ROLE_SUPPORTED_PROPS: &[&str] = &[
     "aria-roledescription",
 ];
 
+type StaticNameSet = LazyLock<FxHashSet<&'static str>>;
+type StaticNameMap = LazyLock<FxHashMap<&'static str, &'static str>>;
+type StaticNameListMap = LazyLock<FxHashMap<&'static str, &'static [&'static str]>>;
+
+macro_rules! name_set {
+    ($index:ident, $table:ident) => {
+        static $index: StaticNameSet = LazyLock::new(|| $table.iter().copied().collect());
+    };
+}
+
+macro_rules! name_map {
+    ($index:ident, $table:ident) => {
+        static $index: StaticNameMap = LazyLock::new(|| $table.iter().copied().collect());
+    };
+}
+
+name_set!(A11Y_ARIA_ATTRIBUTES_INDEX, A11Y_ARIA_ATTRIBUTES);
+name_set!(A11Y_ARIA_ROLES_INDEX, A11Y_ARIA_ROLES);
+name_set!(A11Y_ABSTRACT_ROLES_INDEX, A11Y_ABSTRACT_ROLES);
+name_set!(A11Y_INTERACTIVE_ROLES_INDEX, A11Y_INTERACTIVE_ROLES);
+name_set!(A11Y_NON_INTERACTIVE_ROLES_INDEX, A11Y_NON_INTERACTIVE_ROLES);
+name_set!(A11Y_INTERACTIVE_HANDLERS_INDEX, A11Y_INTERACTIVE_HANDLERS);
+name_set!(
+    A11Y_GLOBAL_ROLE_SUPPORTED_PROPS_INDEX,
+    A11Y_GLOBAL_ROLE_SUPPORTED_PROPS
+);
+
+name_map!(A11Y_IMPLICIT_ROLES_INDEX, A11Y_IMPLICIT_ROLES);
+name_map!(A11Y_NESTED_IMPLICIT_ROLES_INDEX, A11Y_NESTED_IMPLICIT_ROLES);
+name_map!(A11Y_INPUT_IMPLICIT_ROLES_INDEX, A11Y_INPUT_IMPLICIT_ROLES);
+name_map!(
+    A11Y_MENUITEM_IMPLICIT_ROLES_INDEX,
+    A11Y_MENUITEM_IMPLICIT_ROLES
+);
+
+static A11Y_REQUIRED_ROLE_PROPS_INDEX: StaticNameListMap =
+    LazyLock::new(|| A11Y_REQUIRED_ROLE_PROPS.iter().copied().collect());
+
 struct BindParentInfo<'d> {
     id: svelte_ast::NodeId,
     name: String,
@@ -654,10 +696,6 @@ pub(crate) struct TemplateValidationVisitor {
 
     dialog_depth: u32,
 
-    first_legacy_slot_span: Option<Span>,
-    saw_render_tag: bool,
-    emitted_slot_snippet_conflict: bool,
-
     mixed_first_on_directive: Option<(Span, String)>,
     mixed_uses_s5_events: bool,
     mixed_emitted: bool,
@@ -673,9 +711,6 @@ impl TemplateValidationVisitor {
         Self {
             element_event_state: Vec::new(),
             dialog_depth: 0,
-            first_legacy_slot_span: None,
-            saw_render_tag: false,
-            emitted_slot_snippet_conflict: false,
             mixed_first_on_directive: None,
             mixed_uses_s5_events: false,
             mixed_emitted: false,
@@ -808,41 +843,6 @@ impl TemplateValidationVisitor {
         }
     }
 
-    fn note_legacy_slot_element(&mut self, span: Span, ctx: &mut VisitContext<'_, '_>) {
-        if ctx.data.output.is_custom_element_target {
-            return;
-        }
-
-        if self.saw_render_tag {
-            self.emit_slot_snippet_conflict(span, ctx);
-            return;
-        }
-
-        self.first_legacy_slot_span.get_or_insert(span);
-    }
-
-    fn note_render_tag(&mut self, ctx: &mut VisitContext<'_, '_>) {
-        self.saw_render_tag = true;
-
-        if ctx.data.output.is_custom_element_target {
-            return;
-        }
-
-        if let Some(span) = self.first_legacy_slot_span {
-            self.emit_slot_snippet_conflict(span, ctx);
-        }
-    }
-
-    fn emit_slot_snippet_conflict(&mut self, span: Span, ctx: &mut VisitContext<'_, '_>) {
-        if self.emitted_slot_snippet_conflict {
-            return;
-        }
-
-        ctx.warnings_mut()
-            .push(Diagnostic::error(DiagnosticKind::SlotSnippetConflict, span));
-        self.emitted_slot_snippet_conflict = true;
-    }
-
     fn visit_special_element(
         &mut self,
         kind: SpecialElementKind,
@@ -927,7 +927,6 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
     fn visit_render_tag(&mut self, tag: &RenderTag, ctx: &mut VisitContext<'_, '_>) {
         check_template_await(ctx, tag.id, &tag.expression);
-        self.note_render_tag(ctx);
         check_opening_sigil(tag.span, b'@', ctx);
 
         let invalid_call = ctx
@@ -971,21 +970,15 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        let is_valid_parent = ctx.data.parent(tag.id).is_some_and(|p| {
-            matches!(
-                p.kind,
-                ParentKind::IfBlock
-                    | ParentKind::EachBlock
-                    | ParentKind::SnippetBlock
-                    | ParentKind::ComponentNode
-                    | ParentKind::AwaitBlock
-                    | ParentKind::SvelteBoundary
-                    | ParentKind::KeyBlock
-                    | ParentKind::SvelteFragmentLegacy
-            ) || element_has_slot_attr(p, ctx)
+        let hosted = ctx.store.node_fragment(tag.id).is_some_and(|fragment| {
+            ctx.data
+                .fragment_semantics
+                .query(fragment)
+                .content
+                .is_self_contained()
         });
 
-        if !is_valid_parent {
+        if !hosted {
             ctx.warnings_mut().push(Diagnostic::error(
                 DiagnosticKind::ConstTagInvalidPlacement,
                 tag.span,
@@ -993,13 +986,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
             return;
         }
 
-        if !ctx.data.script.experimental_async
-            && let Some(parsed) = ctx.parsed()
+        if let Some(parsed) = ctx.parsed()
             && let Some(stmt) = parsed.stmt(tag.decl.id())
             && let Some(span) = first_await_span_in_stmt(stmt, tag.decl.span.start)
         {
-            ctx.warnings_mut()
-                .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
+            emit_suspending_await_diagnostic(ctx, span);
         }
     }
 
@@ -1015,13 +1006,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
             ));
         }
 
-        if !ctx.data.script.experimental_async
-            && let Some(parsed) = ctx.parsed()
+        if let Some(parsed) = ctx.parsed()
             && let Some(stmt) = parsed.stmt(tag.declaration.id())
             && let Some(span) = first_await_span_in_stmt(stmt, tag.declaration.span.start)
         {
-            ctx.warnings_mut()
-                .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
+            emit_suspending_await_diagnostic(ctx, span);
         }
     }
 
@@ -1084,7 +1073,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
             slot_attr,
         ) = {
             (
-                ctx.data.has_attribute(el.id, "slot"),
+                ctx.data.has_attribute(el.id, SLOT_ATTRIBUTE),
                 ctx.data.has_spread(el.id),
                 ctx.data.attribute(el.id, &el.attributes, "accesskey"),
                 ctx.data.attribute(el.id, &el.attributes, "tabindex"),
@@ -1095,7 +1084,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                     None
                 },
                 ctx.data.has_attribute(el.id, "value"),
-                ctx.data.attribute(el.id, &el.attributes, "slot"),
+                ctx.data.attribute(el.id, &el.attributes, SLOT_ATTRIBUTE),
             )
         };
 
@@ -1110,7 +1099,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
         }
 
         if has_slot && let Some(attr) = slot_attr {
-            validate_slot_attribute_placement(el, attr, ctx);
+            validate_slot_attribute_placement(el.id, el.span, attr, ctx);
         }
 
         a11y::check_element_warnings(
@@ -1145,9 +1134,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
         ctx: &mut VisitContext<'_, '_>,
     ) {
         self.element_event_state.push(ElementEventState::default());
-        self.note_legacy_slot_element(el.span, ctx);
 
-        if ctx.runes && !ctx.data.output.is_custom_element_target {
+        if ctx.runes && !ctx.data.custom_element.is_target {
             ctx.warnings_mut().push(Diagnostic::warning(
                 DiagnosticKind::SlotElementDeprecated,
                 el.span,
@@ -1156,27 +1144,27 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         for attr in &el.attributes {
             match attr {
-                Attribute::StringAttribute(attr) if attr.name == "name" => {
-                    if attr.value_span.source_text(ctx.source) == "default" {
+                Attribute::StringAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
+                    if attr.value_span.source_text(ctx.source) == DEFAULT_SLOT_NAME {
                         ctx.warnings_mut().push(Diagnostic::error(
                             DiagnosticKind::SlotElementInvalidNameDefault,
                             attr.span,
                         ));
                     }
                 }
-                Attribute::ExpressionAttribute(attr) if attr.name == "name" => {
+                Attribute::ExpressionAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::SlotElementInvalidName,
                         attr.span,
                     ));
                 }
-                Attribute::ConcatenationAttribute(attr) if attr.name == "name" => {
+                Attribute::ConcatenationAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::SlotElementInvalidName,
                         attr.span,
                     ));
                 }
-                Attribute::BooleanAttribute(attr) if attr.name == "name" => {
+                Attribute::BooleanAttribute(attr) if attr.name == SLOT_NAME_ATTRIBUTE => {
                     ctx.warnings_mut().push(Diagnostic::error(
                         DiagnosticKind::SlotElementInvalidName,
                         attr.span,
@@ -1269,7 +1257,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         for attr in &el.attributes {
             match attr {
-                Attribute::StringAttribute(attr) if attr.name == "slot" => {
+                Attribute::StringAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
                     if !is_direct_child_of_component {
                         ctx.warnings_mut().push(Diagnostic::error(
                             DiagnosticKind::SlotAttributeInvalidPlacement,
@@ -1277,20 +1265,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
                         ));
                     }
                 }
-                Attribute::ExpressionAttribute(attr) if attr.name == "slot" => {
-                    if !is_direct_child_of_component {
-                        ctx.warnings_mut().push(Diagnostic::error(
-                            DiagnosticKind::SlotAttributeInvalidPlacement,
-                            el.span,
-                        ));
-                    } else {
-                        ctx.warnings_mut().push(Diagnostic::error(
-                            DiagnosticKind::SlotAttributeInvalid,
-                            attr.span,
-                        ));
-                    }
-                }
-                Attribute::ConcatenationAttribute(attr) if attr.name == "slot" => {
+                Attribute::ExpressionAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
                     if !is_direct_child_of_component {
                         ctx.warnings_mut().push(Diagnostic::error(
                             DiagnosticKind::SlotAttributeInvalidPlacement,
@@ -1303,7 +1278,20 @@ impl TemplateVisitor for TemplateValidationVisitor {
                         ));
                     }
                 }
-                Attribute::BooleanAttribute(attr) if attr.name == "slot" => {
+                Attribute::ConcatenationAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
+                    if !is_direct_child_of_component {
+                        ctx.warnings_mut().push(Diagnostic::error(
+                            DiagnosticKind::SlotAttributeInvalidPlacement,
+                            el.span,
+                        ));
+                    } else {
+                        ctx.warnings_mut().push(Diagnostic::error(
+                            DiagnosticKind::SlotAttributeInvalid,
+                            attr.span,
+                        ));
+                    }
+                }
+                Attribute::BooleanAttribute(attr) if attr.name == SLOT_ATTRIBUTE => {
                     if !is_direct_child_of_component {
                         ctx.warnings_mut().push(Diagnostic::error(
                             DiagnosticKind::SlotAttributeInvalidPlacement,
@@ -1336,6 +1324,11 @@ impl TemplateVisitor for TemplateValidationVisitor {
         check_attribute_unquoted_sequence(&el.attributes, ctx);
         check_attribute_sequence_expression(&el.attributes, ctx);
         check_event_handler_value(&el.attributes, ctx);
+
+        if let Some(attr) = ctx.data.attribute(el.id, &el.attributes, SLOT_ATTRIBUTE) {
+            let attr = attr.clone();
+            validate_slot_attribute_placement(el.id, el.span, &attr, ctx);
+        }
     }
 
     fn visit_svelte_head(&mut self, head: &SvelteHead, ctx: &mut VisitContext<'_, '_>) {
@@ -1425,7 +1418,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
             })
         {
-            emit_template_await_experimental(ctx, &attr.expression);
+            let span = first_await_span(ctx, &attr.expression).unwrap_or(attr.expression.span);
+            emit_suspending_await_diagnostic(ctx, span);
         }
 
         self.check_event_handler_references(&attr.name, &attr.expression, ctx);
@@ -1694,8 +1688,7 @@ impl TemplateVisitor for TemplateValidationVisitor {
 
         if ctx
             .data
-            .output
-            .ignore_data
+            .ignore
             .is_ignored_warning(text.id, crate::WarningCode::BidirectionalControlCharacters)
         {
             return;
@@ -1741,7 +1734,8 @@ impl TemplateVisitor for TemplateValidationVisitor {
                 Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
             })
         {
-            emit_template_await_experimental(ctx, &tag.expression);
+            let span = first_await_span(ctx, &tag.expression).unwrap_or(tag.expression.span);
+            emit_suspending_await_diagnostic(ctx, span);
         }
     }
 
@@ -2573,23 +2567,33 @@ fn validate_snippet_shadowing_prop(block: &SnippetBlock, ctx: &mut VisitContext<
     let Node::ComponentNode(component) = ctx.store.get(parent.id) else {
         return;
     };
-    let snippet_name = block.name(ctx.source);
+    let Some(sym) = ctx
+        .parsed()
+        .and_then(|parsed| snippet_name_symbol(parsed, block))
+    else {
+        return;
+    };
+    let snippet_name = ctx.data.scoping.semantics().symbol_name(sym).to_string();
     if component
         .attributes
         .iter()
-        .any(|attr| named_component_attr(attr, snippet_name))
+        .any(|attr| named_component_attr(attr, &snippet_name))
     {
         ctx.warnings_mut().push(Diagnostic::error(
-            DiagnosticKind::SnippetShadowingProp {
-                prop: snippet_name.to_string(),
-            },
+            DiagnosticKind::SnippetShadowingProp { prop: snippet_name },
             block.decl.span,
         ));
     }
 }
 
 fn validate_snippet_children_conflict(block: &SnippetBlock, ctx: &mut VisitContext<'_, '_>) {
-    if block.name(ctx.source) != "children" {
+    let Some(sym) = ctx
+        .parsed()
+        .and_then(|parsed| snippet_name_symbol(parsed, block))
+    else {
+        return;
+    };
+    if ctx.data.scoping.semantics().symbol_name(sym) != "children" {
         return;
     }
 
@@ -2716,13 +2720,14 @@ fn scope_is_within(ctx: &VisitContext<'_, '_>, mut scope: ScopeId, target: Scope
 }
 
 fn validate_slot_attribute_placement(
-    el: &Element,
+    el_id: NodeId,
+    el_span: Span,
     slot_attr: &Attribute,
     ctx: &mut VisitContext<'_, '_>,
 ) {
     if ctx
         .data
-        .parent(el.id)
+        .parent(el_id)
         .is_some_and(|parent| parent.kind == ParentKind::SnippetBlock)
     {
         if !matches!(slot_attr, Attribute::StringAttribute(_)) {
@@ -2734,7 +2739,7 @@ fn validate_slot_attribute_placement(
         return;
     }
 
-    let owner = ctx.data.ancestors(el.id).find(|ancestor| {
+    let owner = ctx.data.ancestors(el_id).find(|ancestor| {
         matches!(
             ancestor.kind,
             ParentKind::ComponentNode
@@ -2747,7 +2752,7 @@ fn validate_slot_attribute_placement(
     let Some(owner) = owner else {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SlotAttributeInvalidPlacement,
-            el.span,
+            el_span,
         ));
         return;
     };
@@ -2762,12 +2767,12 @@ fn validate_slot_attribute_placement(
 
     let is_direct_child = ctx
         .data
-        .parent(el.id)
+        .parent(el_id)
         .is_some_and(|parent| parent.id == owner.id);
     if !is_direct_child {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SlotAttributeInvalidPlacement,
-            el.span,
+            el_span,
         ));
         return;
     }
@@ -2780,15 +2785,15 @@ fn validate_slot_attribute_placement(
         return;
     }
 
-    validate_component_slot_conflicts(el, slot_attr, ctx);
+    validate_component_slot_conflicts(el_id, slot_attr, ctx);
 }
 
 fn validate_component_slot_conflicts(
-    el: &Element,
+    el_id: NodeId,
     slot_attr: &Attribute,
     ctx: &mut VisitContext<'_, '_>,
 ) {
-    let Some(parent) = ctx.data.parent(el.id) else {
+    let Some(parent) = ctx.data.parent(el_id) else {
         return;
     };
     if parent.kind != ParentKind::ComponentNode {
@@ -2803,7 +2808,7 @@ fn validate_component_slot_conflicts(
     };
     let slot_name = slot_attr.value_span.source_text(ctx.source);
 
-    if has_prior_named_slot(component, el.id, slot_name, ctx) {
+    if has_prior_named_slot(component, el_id, slot_name, ctx) {
         let component_name = ctx.source
             [component.name.span.start as usize..component.name.span.end as usize]
             .to_string();
@@ -2818,7 +2823,7 @@ fn validate_component_slot_conflicts(
 
     if slot_name == "default"
         && let Some(conflict_span) =
-            component_has_implicit_default_children(component, Some(el.id), ctx)
+            component_has_implicit_default_children(component, Some(el_id), ctx)
     {
         ctx.warnings_mut().push(Diagnostic::error(
             DiagnosticKind::SlotDefaultDuplicate,
@@ -2835,20 +2840,6 @@ fn check_empty_fragment(fragment_id: svelte_ast::FragmentId, ctx: &mut VisitCont
         ctx.warnings_mut()
             .push(Diagnostic::warning(DiagnosticKind::BlockEmpty, text.span));
     }
-}
-
-fn element_has_slot_attr(parent: ParentRef, ctx: &VisitContext<'_, '_>) -> bool {
-    if !matches!(parent.kind, ParentKind::Element | ParentKind::SvelteElement) {
-        return false;
-    }
-    let attrs = match ctx.store.get(parent.id) {
-        Node::Element(el) => &el.attributes,
-        Node::SvelteElement(el) => &el.attributes,
-        _ => return false,
-    };
-    ctx.data
-        .attribute(parent.id, attrs, "slot")
-        .is_some_and(|attr| matches!(attr, Attribute::StringAttribute(_)))
 }
 
 fn contains_non_whitespace_text(text: &str) -> bool {
@@ -2988,6 +2979,7 @@ fn decl_is_bindable_target(decl: &BindingSemantics) -> bool {
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -3020,6 +3012,7 @@ fn decl_is_each_item(decl: &BindingSemantics) -> bool {
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -3052,6 +3045,7 @@ fn decl_is_each_contextual(decl: &BindingSemantics) -> bool {
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -3084,6 +3078,7 @@ fn decl_is_snippet_param(decl: &BindingSemantics) -> bool {
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     }
@@ -3148,6 +3143,7 @@ fn maybe_const_tag_invalid_reference(
         | BindingSemantics::Contextual(_)
         | BindingSemantics::MaybeReactive
         | BindingSemantics::NonReactive
+        | BindingSemantics::LegacyPropsObject
         | BindingSemantics::LegacyApiExport
         | BindingSemantics::Unresolved => false,
     };
@@ -3162,7 +3158,10 @@ fn maybe_const_tag_invalid_reference(
             let Node::SnippetBlock(block) = ctx.store.get(parent.id) else {
                 continue;
             };
-            snippet_name = Some(block.name(ctx.source).to_string());
+            snippet_name = ctx
+                .parsed()
+                .and_then(|parsed| snippet_name_symbol(parsed, block))
+                .map(|sym| ctx.data.scoping.semantics().symbol_name(sym).to_string());
             continue;
         }
 
@@ -3277,7 +3276,7 @@ fn check_named_slot_duplicate(
         return;
     };
     let Some(slot_span) = attributes.iter().find_map(|a| match a {
-        Attribute::StringAttribute(sa) if sa.name == "slot" => Some(sa.value_span),
+        Attribute::StringAttribute(sa) if sa.name == SLOT_ATTRIBUTE => Some(sa.value_span),
         _ => None,
     }) else {
         return;
@@ -3309,7 +3308,7 @@ fn check_component_default_slot_duplicate(cn: &ComponentNode, ctx: &mut VisitCon
         node_attributes(ctx.store.get(id)).is_some_and(|attrs| {
             attrs.iter().any(|a| {
                 matches!(a, Attribute::StringAttribute(sa)
-                    if sa.name == "slot" && sa.value_span.source_text(ctx.source) == "default")
+                    if sa.name == SLOT_ATTRIBUTE && sa.value_span.source_text(ctx.source) == "default")
             })
         })
     });
@@ -3327,7 +3326,7 @@ fn check_component_default_slot_duplicate(cn: &ComponentNode, ctx: &mut VisitCon
         let has_slot = node_attributes(node).is_some_and(|attrs| {
             attrs
                 .iter()
-                .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == "slot"))
+                .any(|a| matches!(a, Attribute::StringAttribute(sa) if sa.name == SLOT_ATTRIBUTE))
         });
         if has_slot {
             continue;
@@ -3726,6 +3725,10 @@ fn check_event_handler_value(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>
 }
 
 fn check_attribute_unquoted_sequence(attrs: &[Attribute], ctx: &mut VisitContext<'_, '_>) {
+    if !ctx.runes {
+        return;
+    }
+
     for attr in attrs {
         let Attribute::ConcatenationAttribute(concat) = attr else {
             continue;
@@ -3891,17 +3894,20 @@ fn check_template_await(ctx: &mut VisitContext<'_, '_>, id: NodeId, expression: 
             Volatility::Static | Volatility::Reactive | Volatility::Heavy => false,
         })
     {
-        emit_template_await_experimental(ctx, expression);
+        let span = first_await_span(ctx, expression).unwrap_or(expression.span);
+        emit_suspending_await_diagnostic(ctx, span);
     }
 }
 
-fn emit_template_await_experimental(ctx: &mut VisitContext<'_, '_>, expression: &ExprRef) {
-    if ctx.data.script.experimental_async {
+fn emit_suspending_await_diagnostic(ctx: &mut VisitContext<'_, '_>, span: Span) {
+    let kind = if !ctx.data.script.experimental_async {
+        DiagnosticKind::ExperimentalAsync
+    } else if !ctx.runes {
+        DiagnosticKind::LegacyAwaitInvalid
+    } else {
         return;
-    }
-    let span = first_await_span(ctx, expression).unwrap_or(expression.span);
-    ctx.warnings_mut()
-        .push(Diagnostic::error(DiagnosticKind::ExperimentalAsync, span));
+    };
+    ctx.warnings_mut().push(Diagnostic::error(kind, span));
 }
 
 fn expression_tag_body_is_declaration(ctx: &VisitContext<'_, '_>, tag: &ExpressionTag) -> bool {

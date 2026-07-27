@@ -53,6 +53,17 @@ pub(crate) fn rewrite_legacy_reactive<'a>(
         slots.push(Slot::Keep(stmt));
     }
 
+    if source_order.is_empty() {
+        let mut restored = OxcVec::with_capacity_in(slots.len(), allocator);
+        for slot in slots {
+            if let Slot::Keep(stmt) = slot {
+                restored.push(stmt);
+            }
+        }
+        program.body = restored;
+        return;
+    }
+
     let mut implicit_syms: Vec<SymbolId> = Vec::new();
     let mut seen_implicit: FxHashSet<SymbolId> = FxHashSet::default();
     for node_id in &source_order {
@@ -219,7 +230,9 @@ fn build_dep_read<'a>(
         | BindingSemantics::DeclarationTag
         | BindingSemantics::OptimizedDeclarationTag
         | BindingSemantics::Contextual(_) => b.rid_expr(name),
-        BindingSemantics::Unresolved | BindingSemantics::LegacyApiExport => b.rid_expr(name),
+        BindingSemantics::Unresolved
+        | BindingSemantics::LegacyApiExport
+        | BindingSemantics::LegacyPropsObject => b.rid_expr(name),
         BindingSemantics::State(_)
         | BindingSemantics::Derived(_)
         | BindingSemantics::OptimizedDerived(_)

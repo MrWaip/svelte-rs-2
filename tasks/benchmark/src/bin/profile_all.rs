@@ -12,15 +12,32 @@ fn is_module(path: &str) -> bool {
 fn main() {
     let mut seconds: u64 = 10;
     let mut dev = false;
-    for arg in env::args().skip(1) {
+    let mut async_ = false;
+    let mut root: Option<String> = None;
+    let mut fixed_iters: Option<u64> = None;
+    let mut args = env::args().skip(1);
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "--dev" => dev = true,
             "--prod" => dev = false,
+            "--async" => async_ = true,
+            "--dir" => root = Some(args.next().expect("--dir requires value")),
+            "--iters" => {
+                fixed_iters = Some(
+                    args.next()
+                        .expect("--iters requires value")
+                        .parse()
+                        .expect("u64"),
+                );
+            }
             other => seconds = other.parse().expect("seconds must be u64"),
         }
     }
 
-    let pattern = format!("{}/benches/compiler/**/*", env!("CARGO_MANIFEST_DIR"));
+    let pattern = match &root {
+        Some(dir) => format!("{dir}/**/*"),
+        None => format!("{}/benches/compiler/**/*", env!("CARGO_MANIFEST_DIR")),
+    };
     let mut sources: Vec<(String, String, bool)> = glob(&pattern)
         .expect("glob")
         .filter_map(|e| e.ok())
@@ -39,7 +56,7 @@ fn main() {
 
     let deadline = Instant::now() + Duration::from_secs(seconds);
     let mut iters: u64 = 0;
-    while Instant::now() < deadline {
+    while fixed_iters.map_or_else(|| Instant::now() < deadline, |target| iters < target) {
         for (path, source, module) in &sources {
             if *module {
                 let opts = svelte_compiler::ModuleCompileOptions {
@@ -52,6 +69,7 @@ fn main() {
                 let opts = svelte_compiler::CompileOptions {
                     dev,
                     filename: path.clone(),
+                    experimental: svelte_compiler::ExperimentalOptions { async_ },
                     ..svelte_compiler::CompileOptions::default()
                 };
                 let _ = svelte_compiler::compile(source, &opts);
@@ -59,5 +77,5 @@ fn main() {
         }
         iters += 1;
     }
-    eprintln!("iters over suite: {iters} (dev: {dev})");
+    eprintln!("iters over suite: {iters} (dev: {dev}, async: {async_})");
 }

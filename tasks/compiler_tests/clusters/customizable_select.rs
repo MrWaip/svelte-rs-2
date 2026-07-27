@@ -40,3 +40,59 @@ compiler_case!(
     multi_static_first_guard,
     "customizable_select/multi_static_first_guard"
 );
+compiler_case!(
+    multi_distinct_guard,
+    "customizable_select/multi_distinct_guard"
+);
+
+compiler_case!(
+    content_script_in_select,
+    "customizable_select/content_script_in_select"
+);
+compiler_case!(
+    content_script_in_optgroup,
+    "customizable_select/content_script_in_optgroup"
+);
+compiler_case!(
+    content_script_in_option,
+    "customizable_select/content_script_in_option"
+);
+compiler_case!(
+    content_script_nested,
+    "customizable_select/content_script_nested"
+);
+compiler_case!(
+    content_no_script_guard,
+    "customizable_select/content_no_script_guard"
+);
+compiler_case!(
+    root_script_with_script_guard,
+    "customizable_select/root_script_with_script_guard"
+);
+
+compiler_case!(multi_dup_render, "customizable_select/multi_dup_render");
+compiler_case!(multi_dup_option, "customizable_select/multi_dup_option");
+compiler_case!(
+    multi_dup_cross_parent,
+    "customizable_select/multi_dup_cross_parent"
+);
+compiler_case!(
+    static_then_dynamic_ident,
+    "customizable_select/static_then_dynamic_ident"
+);
+
+compiler_case!(
+    select_event_attr,
+    "customizable_select/select_event_attr",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    option_event_attr,
+    "customizable_select/option_event_attr",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
+    plain_element_event_attr_guard,
+    "customizable_select/plain_element_event_attr_guard",
+    [prod, dev, ssr, ssr_dev]
+);

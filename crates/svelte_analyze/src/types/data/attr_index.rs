@@ -34,18 +34,15 @@ impl AttrIndex {
             .map(|(_, pos)| &attrs[*pos as usize])
     }
 
-    pub fn all<'attrs>(
-        &self,
-        attrs: &'attrs [Attribute],
-        name: &str,
-    ) -> impl Iterator<Item = &'attrs Attribute> {
-        let positions: SmallVec<[u16; 4]> = self
-            .entries
+    pub fn all<'a>(
+        &'a self,
+        attrs: &'a [Attribute],
+        name: &'a str,
+    ) -> impl Iterator<Item = &'a Attribute> + 'a {
+        self.entries
             .iter()
-            .filter(|(n, _)| n.eq_ignore_ascii_case(name))
-            .map(|(_, pos)| *pos)
-            .collect();
-        positions.into_iter().map(move |pos| &attrs[pos as usize])
+            .filter(move |(n, _)| n.eq_ignore_ascii_case(name))
+            .map(move |(_, pos)| &attrs[*pos as usize])
     }
 
     #[inline]

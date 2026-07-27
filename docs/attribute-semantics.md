@@ -29,7 +29,9 @@ topics: attribute, directive, bind/BindDirective, on/use/class/style/transition/
 - `RuntimeBehavior` — директива-поведение без проекции в разметку: `use:`, `transition:`/`in:`/`out:`, `animate:`, element-level `{@attach}`.
 - `NonSpecial` — default.
 
-Вариант несёт доменный вердикт; кодген ветвится на варианте и выбирает форму, не комбинирует. Ряд существующих вариантов пока несёт выбранную emit-форму (`ComponentSpreadEmit`, `ComponentAttachEmit`, `ConcatPartEmit`, `ComponentPropMemo`, …) — это долг по §«Codegen-агностичность анализа», не норма. `EventSemantics` носит доменные оси события — `name` (разрешённое имя DOM-события, capture-суффикс уже снят), `delegatable`/`capture`/`passive` (свойства DOM-доставки) и `EventHandler` (природа handler-выражения); выбор runtime-формы (`$.delegated` vs `$.event`, обёртка handler) — в кодгене.
+Вариант несёт доменный вердикт; кодген ветвится на варианте и выбирает форму, не комбинирует. Ряд существующих вариантов пока несёт выбранную emit-форму (`ComponentSpreadEmit`, `ComponentAttachEmit`, `ConcatPartEmit`, `ComponentPropMemo`, …) — это долг по §«Codegen-агностичность анализа», не норма.
+
+Для `bind:group` значение опции (атрибут `value`, из которого backend строит `checked`) — доменный вердикт `GroupBindValue`, различающий формы по **значению**, а не по печати; backend не пере-обходит атрибуты, чтобы его восстановить. Формы различимы, потому что shorthand-`value` без значения означает булев `true` (`group.includes(true)`), а не строку: свернуть его в строковую форму — **Анализ в кодгене**. Отсутствие `value` — отдельный ответ (checked не эмитится), не форма значения. `EventSemantics` носит доменные оси события — `name` (разрешённое имя DOM-события, capture-суффикс уже снят), `delegatable`/`capture`/`passive` (свойства DOM-доставки) и `EventHandler` (природа handler-выражения); выбор runtime-формы (`$.delegated` vs `$.event`, обёртка handler) — в кодгене.
 
 ## Архитектурные инварианты
 
