@@ -43,6 +43,18 @@ const { code } = await preprocess(source, [myPreprocessor], { filename: 'App.sve
 
 The API mirrors `svelte/compiler`; full typings live in `compiler/index.d.ts`.
 
+`compileAsync` / `compileModuleAsync` run the same compilation off the main thread, and `compileBatchAsync` compiles many components in one call, spreading them across the thread pool:
+
+```js
+import { compileAsync, compileBatchAsync } from '@mrwaip/svelte-rs/compiler';
+
+const one = await compileAsync(source, { filename: 'App.svelte' });
+const many = await compileBatchAsync([
+  { source: a, options: { filename: 'A.svelte' } },
+  { source: b, options: { filename: 'B.svelte' } }
+]);
+```
+
 ### In a Vite app
 
 A fork of `vite-plugin-svelte` routes `compile` / `compileModule` through this package, falling back to `svelte/compiler` for options the Rust side doesn't support yet.
@@ -101,7 +113,7 @@ Rust diagnostics with severity `Error` are rethrown as JS exceptions unless `wit
 - `modernAst: true` is accepted but ignored — emits an `unsupported_option_ignored` warning.
 - `dev: true` runtime checks land case-by-case: not every ownership / hydration diagnostic is emitted yet.
 - Custom elements and the long tail of compiler options are still in progress.
-- `transformTypescript`, `transformStyle`, `loadPaths` and `cssTargets` work at runtime but are not yet declared in the `CompileOptions` typings.
+- The extras above (`transformTypescript`, `transformStyle`, `loadPaths`, `stylePrepend`, `cacheStyles`, `cssTargets`, `reportAllErrors`) apply to `compile` only — `compileModule` ignores them.
 
 The [feature matrix](https://github.com/MrWaip/svelte-rs#status) says which areas accept bug reports today.
 

@@ -125,6 +125,8 @@ export type CompileMetadata = {
   };
 };
 
+export type SourcemapKind = 'none' | 'inline' | 'default';
+
 export interface CompileOptions {
   dev?: boolean;
   filename?: string;
@@ -149,9 +151,17 @@ export interface CompileOptions {
   generate?: 'client' | 'server' | false;
   modernAst?: boolean;
   sourcemap?: string | object;
+  sourcemapKind?: SourcemapKind;
   suppress?: WarningCode[];
   warningFilter?: (warning: Warning) => boolean;
   withDiagnostics?: boolean;
+  transformTypescript?: boolean;
+  reportAllErrors?: boolean;
+  transformStyle?: boolean;
+  loadPaths?: string[];
+  stylePrepend?: string;
+  cacheStyles?: boolean;
+  cssTargets?: string[];
   ast?: never;
   outputFilename?: never;
 }
@@ -186,11 +196,25 @@ export type CompileResultWithDiagnostics = {
   ast: null;
 };
 
+export interface CompileError extends Error {
+  code: string;
+  warnings: Warning[];
+  diagnostics: Warning[];
+}
+
 export declare function compile(
   source: string,
   options: CompileOptions & { withDiagnostics: true }
 ): CompileResultWithDiagnostics;
 export declare function compile(source: string, options?: CompileOptions): CompileResult;
+export declare function compileAsync(
+  source: string,
+  options: CompileOptions & { withDiagnostics: true }
+): Promise<CompileResultWithDiagnostics>;
+export declare function compileAsync(
+  source: string,
+  options?: CompileOptions
+): Promise<CompileResult>;
 export declare function compileModule(
   source: string,
   options: ModuleCompileOptions & { withDiagnostics: true }
@@ -199,6 +223,26 @@ export declare function compileModule(
   source: string,
   options?: ModuleCompileOptions
 ): CompileResult;
+export declare function compileModuleAsync(
+  source: string,
+  options: ModuleCompileOptions & { withDiagnostics: true }
+): Promise<CompileResultWithDiagnostics>;
+export declare function compileModuleAsync(
+  source: string,
+  options?: ModuleCompileOptions
+): Promise<CompileResult>;
+
+export type CompileBatchEntry = {
+  source: string;
+  options?: CompileOptions;
+};
+
+export declare function compileBatchAsync(
+  entries: Array<{ source: string; options: CompileOptions & { withDiagnostics: true } }>
+): Promise<CompileResultWithDiagnostics[]>;
+export declare function compileBatchAsync(
+  entries: CompileBatchEntry[]
+): Promise<CompileResult[]>;
 
 export type PreprocessorAttributes = Record<string, string | boolean>;
 

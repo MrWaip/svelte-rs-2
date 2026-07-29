@@ -232,6 +232,87 @@ pub enum GenerateMode {
 }
 
 #[cfg(test)]
+mod published_typings_tests {
+    use std::{fs, path::PathBuf};
+
+    struct PublishedFacade {
+        js: String,
+        dts: String,
+    }
+
+    fn published_facade() -> Option<PublishedFacade> {
+        let dir =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packages/svelte-rs/compiler");
+        let js = fs::read_to_string(dir.join("index.js")).ok()?;
+        let dts = fs::read_to_string(dir.join("index.d.ts")).ok()?;
+        Some(PublishedFacade { js, dts })
+    }
+
+    fn identifiers_after<'a>(content: &'a str, prefix: &str) -> Vec<&'a str> {
+        let mut names = Vec::new();
+        for (index, _) in content.match_indices(prefix) {
+            let rest = &content[index + prefix.len()..];
+            let end = rest
+                .find(|c: char| !c.is_alphanumeric() && c != '_')
+                .unwrap_or(rest.len());
+            if end == 0 {
+                continue;
+            }
+            let name = &rest[..end];
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        names
+    }
+
+    #[track_caller]
+    fn assert_exports_declared(facade: &PublishedFacade) {
+        let declared = identifiers_after(&facade.dts, "export declare function ");
+        let mut exported = identifiers_after(&facade.js, "export function ");
+        exported.extend(identifiers_after(&facade.js, "export async function "));
+        let undeclared: Vec<&str> = exported
+            .into_iter()
+            .filter(|name| !declared.contains(name))
+            .collect();
+        assert!(
+            undeclared.is_empty(),
+            "index.d.ts must declare every index.js export: missing {undeclared:?}, declared {declared:?}"
+        );
+    }
+
+    #[track_caller]
+    fn assert_options_declared(facade: &PublishedFacade) {
+        let read = identifiers_after(&facade.js, "options.");
+        let undeclared: Vec<&str> = read
+            .iter()
+            .copied()
+            .filter(|option| !facade.dts.contains(&format!("{option}?:")))
+            .collect();
+        assert!(
+            undeclared.is_empty(),
+            "index.d.ts must declare every option index.js reads: missing {undeclared:?}, read {read:?}"
+        );
+    }
+
+    #[test]
+    fn declares_every_facade_export() {
+        let Some(facade) = published_facade() else {
+            return;
+        };
+        assert_exports_declared(&facade);
+    }
+
+    #[test]
+    fn declares_every_facade_option() {
+        let Some(facade) = published_facade() else {
+            return;
+        };
+        assert_options_declared(&facade);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
