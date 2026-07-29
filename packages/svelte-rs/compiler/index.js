@@ -100,10 +100,27 @@ function normalizeCompileOptions(options = {}) {
         ? options.compatibility.componentApi
         : undefined,
     experimentalAsync: Boolean(options.experimental?.async),
+    transformTypescript: Boolean(options.transformTypescript),
+    reportAllErrors: Boolean(options.reportAllErrors),
+    transformStyle: Boolean(options.transformStyle),
+    loadPaths: Array.isArray(options.loadPaths)
+      ? options.loadPaths.filter((entry) => typeof entry === 'string')
+      : undefined,
+    stylePrepend: typeof options.stylePrepend === 'string' ? options.stylePrepend : undefined,
+    cacheStyles: typeof options.cacheStyles === 'boolean' ? options.cacheStyles : undefined,
+    cssTargets: Array.isArray(options.cssTargets)
+      ? options.cssTargets.filter((entry) => typeof entry === 'string')
+      : undefined,
     generate: normalizeGenerate(options.generate),
     sourcemap: normalizeInputMap(options.sourcemap),
+    sourcemapKind: normalizeSourcemapKind(options.sourcemapKind),
     suppress: normalizeSuppress(options.suppress)
   };
+}
+
+function normalizeSourcemapKind(value) {
+  if (value === 'none' || value === 'inline' || value === 'default') return value;
+  return undefined;
 }
 
 function normalizeModuleCompileOptions(options = {}) {
@@ -228,6 +245,66 @@ export function compile(source, options = {}) {
   const normalizedOptions = normalizeCompileOptions(options);
   const optionWarnings = collectOptionWarnings(options);
   const nativeResult = native.compile(source, normalizedOptions);
+  return normalizeCompileResponse(nativeResult, normalizedOptions.filename, optionWarnings, {
+    withDiagnostics: Boolean(options.withDiagnostics),
+    warningFilter: options.warningFilter,
+    source
+  });
+}
+
+export async function compileAsync(source, options = {}) {
+  if (typeof source !== 'string') {
+    throw new TypeError('compileAsync(source, options): source must be a string');
+  }
+
+  const normalizedOptions = normalizeCompileOptions(options);
+  const optionWarnings = collectOptionWarnings(options);
+  const nativeResult = await native.compileAsync(source, normalizedOptions);
+  return normalizeCompileResponse(nativeResult, normalizedOptions.filename, optionWarnings, {
+    withDiagnostics: Boolean(options.withDiagnostics),
+    warningFilter: options.warningFilter,
+    source
+  });
+}
+
+export async function compileBatchAsync(entries) {
+  if (!Array.isArray(entries)) {
+    throw new TypeError('compileBatchAsync(entries): entries must be an array');
+  }
+
+  const prepared = entries.map((entry) => {
+    if (typeof entry?.source !== 'string') {
+      throw new TypeError('compileBatchAsync(entries): every entry needs a string source');
+    }
+    return {
+      source: entry.source,
+      options: normalizeCompileOptions(entry.options ?? {})
+    };
+  });
+
+  const nativeResults = await native.compileBatchAsync(prepared);
+  return nativeResults.map((nativeResult, index) =>
+    normalizeCompileResponse(
+      nativeResult,
+      prepared[index].options.filename,
+      collectOptionWarnings(entries[index].options ?? {}),
+      {
+        withDiagnostics: Boolean(entries[index].options?.withDiagnostics),
+        warningFilter: entries[index].options?.warningFilter,
+        source: entries[index].source
+      }
+    )
+  );
+}
+
+export async function compileModuleAsync(source, options = {}) {
+  if (typeof source !== 'string') {
+    throw new TypeError('compileModuleAsync(source, options): source must be a string');
+  }
+
+  const normalizedOptions = normalizeModuleCompileOptions(options);
+  const optionWarnings = collectOptionWarnings(options);
+  const nativeResult = await native.compileModuleAsync(source, normalizedOptions);
   return normalizeCompileResponse(nativeResult, normalizedOptions.filename, optionWarnings, {
     withDiagnostics: Boolean(options.withDiagnostics),
     warningFilter: options.warningFilter,

@@ -48,6 +48,14 @@ pub struct CompileOptions {
     pub compatibility_component_api: u8,
     pub experimental: ExperimentalOptions,
 
+    pub transform_typescript: bool,
+    pub report_all_errors: bool,
+    pub transform_style: bool,
+    pub load_paths: Vec<String>,
+    pub style_prepend: Option<String>,
+    pub cache_styles: bool,
+    pub css_targets: Vec<String>,
+
     pub enable_sourcemap: Option<bool>,
     #[serde(skip)]
     pub sourcemap_kind: svelte_sourcemap::SourcemapKind,
@@ -79,6 +87,13 @@ impl Default for CompileOptions {
             accessors: false,
             immutable: false,
             compatibility_component_api: 5,
+            transform_typescript: false,
+            report_all_errors: false,
+            transform_style: false,
+            load_paths: Vec::new(),
+            style_prepend: None,
+            cache_styles: false,
+            css_targets: Vec::new(),
             experimental: ExperimentalOptions::default(),
             enable_sourcemap: None,
             sourcemap_kind: svelte_sourcemap::SourcemapKind::default(),

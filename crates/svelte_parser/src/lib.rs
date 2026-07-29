@@ -41,11 +41,36 @@ pub fn parse_with_js<'a>(
     alloc: &'a Allocator,
     source: &str,
 ) -> (svelte_ast::Component, JsAst<'a>, Vec<Diagnostic>) {
+    parse_with_js_options(alloc, source, false)
+}
+
+pub fn parse_with_js_options<'a>(
+    alloc: &'a Allocator,
+    source: &str,
+    transform_typescript: bool,
+) -> (svelte_ast::Component, JsAst<'a>, Vec<Diagnostic>) {
+    parse_with_js_diagnostics(alloc, source, transform_typescript, false)
+}
+
+pub fn parse_with_js_diagnostics<'a>(
+    alloc: &'a Allocator,
+    source: &str,
+    transform_typescript: bool,
+    report_all_errors: bool,
+) -> (svelte_ast::Component, JsAst<'a>, Vec<Diagnostic>) {
     let trimmed = source.trim_end();
     let (component, mut diagnostics) = Parser::new(trimmed).parse();
     let mut result = JsAst::new();
-    walk_js::parse_js(alloc, &component, &mut result, &mut diagnostics);
-    reduce_to_first_error(&mut diagnostics);
+    walk_js::parse_js(
+        alloc,
+        &component,
+        &mut result,
+        &mut diagnostics,
+        transform_typescript,
+    );
+    if !report_all_errors {
+        reduce_to_first_error(&mut diagnostics);
+    }
 
     (component, result, diagnostics)
 }

@@ -9,9 +9,20 @@ export declare class ExternalObject<T> {
 }
 export declare function compile(source: string, options?: NativeCompileOptions | undefined | null): NativeCompileResult
 
+export declare function compileAsync(source: string, options?: NativeCompileOptions | undefined | null): Promise<NativeCompileResult>
+
+export declare function compileBatchAsync(items: Array<NativeBatchItem>): Promise<NativeCompileResult[]>
+
 export declare function compileModule(source: string, options?: NativeModuleCompileOptions | undefined | null): NativeCompileResult
 
+export declare function compileModuleAsync(source: string, options?: NativeModuleCompileOptions | undefined | null): Promise<NativeCompileResult>
+
 export declare function findPreprocessorRegions(source: string): NativePreprocessorRegions
+
+export interface NativeBatchItem {
+  source: string
+  options?: NativeCompileOptions
+}
 
 export interface NativeCompileOptions {
   dev?: boolean
@@ -30,8 +41,16 @@ export interface NativeCompileOptions {
   immutable?: boolean
   compatibilityComponentApi?: number
   experimentalAsync?: boolean
+  transformTypescript?: boolean
+  reportAllErrors?: boolean
+  transformStyle?: boolean
+  loadPaths?: Array<string>
+  stylePrepend?: string
+  cacheStyles?: boolean
+  cssTargets?: Array<string>
   generate?: string
   sourcemap?: string
+  sourcemapKind?: string
   suppress?: Array<string>
 }
 

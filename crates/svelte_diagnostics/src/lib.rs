@@ -255,6 +255,9 @@ pub enum DiagnosticKind {
     JsParseError {
         message: String,
     },
+    StylePreprocessFailed {
+        message: String,
+    },
     LetDirectiveInvalidPlacement,
     MixedEventHandlerSyntaxes {
         name: String,
@@ -684,6 +687,7 @@ impl DiagnosticKind {
             Self::IllegalAwaitExpression => "illegal_await_expression",
             Self::IllegalElementAttribute { .. } => "illegal_element_attribute",
             Self::JsParseError { .. } => "js_parse_error",
+            Self::StylePreprocessFailed { .. } => "style_preprocess_failed",
             Self::LetDirectiveInvalidPlacement => "let_directive_invalid_placement",
             Self::MixedEventHandlerSyntaxes { .. } => "mixed_event_handler_syntaxes",
             Self::NodeInvalidPlacement { .. } => "node_invalid_placement",
@@ -991,6 +995,7 @@ impl DiagnosticKind {
             Self::IllegalAwaitExpression => "`use:`, `transition:` and `animate:` directives, attachments and bindings do not support await expressions".into(),
             Self::IllegalElementAttribute { name } => format!("`<{name}>` does not support non-event attributes or spread attributes"),
             Self::JsParseError { message } => message.clone(),
+            Self::StylePreprocessFailed { message } => format!("Style preprocessing failed: {message}"),
             Self::LetDirectiveInvalidPlacement => "`let:` directive at invalid position".into(),
             Self::MixedEventHandlerSyntaxes { name } => format!("Mixing old (on:{name}) and new syntaxes for event handling is not allowed. Use only the on{name} syntax"),
             Self::NodeInvalidPlacement { message } => format!("{message}. The browser will 'repair' the HTML (by moving, removing, or inserting elements) which breaks Svelte's assumptions about the structure of your components."),

@@ -1,8 +1,10 @@
 use std::any::Any;
+use std::mem;
 use std::panic;
 
-use napi::bindgen_prelude::{Env, External, Object};
+use napi::bindgen_prelude::{AsyncTask, Env, External, Object, Task};
 use napi_derive::napi;
+use rayon::prelude::*;
 use svelte_ast::{Attribute, Script};
 use svelte_compiler::{
     CompileOptions, CompileResult, CssMode, GenerateMode, ModuleCompileOptions, Namespace,
@@ -65,8 +67,16 @@ pub struct NativeCompileOptions {
     pub immutable: Option<bool>,
     pub compatibility_component_api: Option<u8>,
     pub experimental_async: Option<bool>,
+    pub transform_typescript: Option<bool>,
+    pub report_all_errors: Option<bool>,
+    pub transform_style: Option<bool>,
+    pub load_paths: Option<Vec<String>>,
+    pub style_prepend: Option<String>,
+    pub cache_styles: Option<bool>,
+    pub css_targets: Option<Vec<String>>,
     pub generate: Option<String>,
     pub sourcemap: Option<String>,
+    pub sourcemap_kind: Option<String>,
     pub suppress: Option<Vec<String>>,
 }
 
@@ -98,6 +108,115 @@ pub fn compile_module(
     let strip_single_source = options.preprocessor_map.is_none();
     let result = catch_compile(|| svelte_compiler::compile_module(&source, &options));
     to_node_result(result, &source, strip_single_source)
+}
+
+pub struct CompileTask {
+    source: String,
+    options: CompileOptions,
+}
+
+impl Task for CompileTask {
+    type Output = NativeCompileResult;
+    type JsValue = NativeCompileResult;
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        let strip_single_source = self.options.preprocessor_map.is_none();
+        let result = catch_compile(|| svelte_compiler::compile(&self.source, &self.options));
+        Ok(to_node_result(result, &self.source, strip_single_source))
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+pub struct CompileModuleTask {
+    source: String,
+    options: ModuleCompileOptions,
+}
+
+impl Task for CompileModuleTask {
+    type Output = NativeCompileResult;
+    type JsValue = NativeCompileResult;
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        let strip_single_source = self.options.preprocessor_map.is_none();
+        let result = catch_compile(|| svelte_compiler::compile_module(&self.source, &self.options));
+        Ok(to_node_result(result, &self.source, strip_single_source))
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+#[napi(object)]
+pub struct NativeBatchItem {
+    pub source: String,
+    pub options: Option<NativeCompileOptions>,
+}
+
+pub struct CompileBatchTask {
+    items: Vec<NativeBatchItem>,
+}
+
+impl Task for CompileBatchTask {
+    type Output = Vec<NativeCompileResult>;
+    type JsValue = Vec<NativeCompileResult>;
+
+    fn compute(&mut self) -> napi::Result<Self::Output> {
+        let items = mem::take(&mut self.items);
+        let results = items
+            .into_par_iter()
+            .map(|item| {
+                let options = to_compile_options(item.options.unwrap_or_default());
+                let strip_single_source = options.preprocessor_map.is_none();
+                let result = catch_compile(|| svelte_compiler::compile(&item.source, &options));
+                to_node_result(result, &item.source, strip_single_source)
+            })
+            .collect();
+        Ok(results)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> napi::Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+#[napi(
+    js_name = "compileBatchAsync",
+    ts_return_type = "Promise<NativeCompileResult[]>"
+)]
+pub fn compile_batch_async(items: Vec<NativeBatchItem>) -> AsyncTask<CompileBatchTask> {
+    AsyncTask::new(CompileBatchTask { items })
+}
+
+#[napi(
+    js_name = "compileAsync",
+    ts_return_type = "Promise<NativeCompileResult>"
+)]
+pub fn compile_async(
+    source: String,
+    options: Option<NativeCompileOptions>,
+) -> AsyncTask<CompileTask> {
+    AsyncTask::new(CompileTask {
+        source,
+        options: to_compile_options(options.unwrap_or_default()),
+    })
+}
+
+#[napi(
+    js_name = "compileModuleAsync",
+    ts_return_type = "Promise<NativeCompileResult>"
+)]
+pub fn compile_module_async(
+    source: String,
+    options: Option<NativeModuleCompileOptions>,
+) -> AsyncTask<CompileModuleTask> {
+    AsyncTask::new(CompileModuleTask {
+        source,
+        options: to_module_compile_options(options.unwrap_or_default()),
+    })
 }
 
 fn catch_compile(f: impl FnOnce() -> CompileResult) -> CompileResult {
@@ -181,13 +300,45 @@ fn to_compile_options(native: NativeCompileOptions) -> CompileOptions {
     if let Some(value) = native.experimental_async {
         options.experimental.async_ = value;
     }
+    if let Some(value) = native.transform_typescript {
+        options.transform_typescript = value;
+    }
+    if let Some(value) = native.report_all_errors {
+        options.report_all_errors = value;
+    }
+    if let Some(value) = native.transform_style {
+        options.transform_style = value;
+    }
+    if let Some(value) = native.load_paths {
+        options.load_paths = value;
+    }
+    if let Some(value) = native.style_prepend {
+        options.style_prepend = Some(value);
+    }
+    if let Some(value) = native.cache_styles {
+        options.cache_styles = value;
+    }
+    if let Some(value) = native.css_targets {
+        options.css_targets = value;
+    }
     if let Some(value) = native.sourcemap {
         options.preprocessor_map = Some(value);
+    }
+    if let Some(value) = native.sourcemap_kind {
+        options.sourcemap_kind = parse_sourcemap_kind(&value);
     }
     if let Some(value) = native.suppress {
         options.suppress = value;
     }
     options
+}
+
+fn parse_sourcemap_kind(raw: &str) -> svelte_compiler::SourcemapKind {
+    match raw {
+        "none" => svelte_compiler::SourcemapKind::None,
+        "inline" => svelte_compiler::SourcemapKind::Inline,
+        _ => svelte_compiler::SourcemapKind::Default,
+    }
 }
 
 fn to_module_compile_options(native: NativeModuleCompileOptions) -> ModuleCompileOptions {

@@ -1,0 +1,10 @@
+{
+  "id": "local-mounts",
+  "version": "1.0.0",
+  "name": "Local bench corpora",
+  "description": "Copy to local-mounts/devcontainer-feature.json and edit. Absolute host paths only — ~ is not expanded.",
+  "mounts": [
+    { "source": "/Users/me/code", "target": "/corpus/code", "type": "bind" },
+    { "source": "/Users/me/work/admin-ui", "target": "/corpus/admin-ui", "type": "bind" }
+  ]
+}

@@ -117,8 +117,44 @@ fn validate_compile_options(options: &CompileOptions, diagnostics: &mut Vec<Diag
 }
 
 pub fn compile(source: &str, options: &CompileOptions) -> CompileResult {
+    let incoming_map = options
+        .preprocessor_map
+        .as_deref()
+        .and_then(svelte_sourcemap::parse_input_map);
+
+    let has_style_prepend = options
+        .style_prepend
+        .as_deref()
+        .is_some_and(|prepend| !prepend.trim().is_empty());
+    if !options.transform_style && options.css_targets.is_empty() && !has_style_prepend {
+        let js_alloc = arena_reuse::acquire();
+        let result = compile_in(&js_alloc, source, options, incoming_map);
+        arena_reuse::release(js_alloc);
+        return result;
+    }
+
+    let preprocessed = svelte_preprocess::preprocess_style(
+        source,
+        incoming_map.as_ref(),
+        &svelte_preprocess::PreprocessOptions {
+            filename: options.filename.clone(),
+            load_paths: options.load_paths.iter().map(Into::into).collect(),
+            style_prepend: options.style_prepend.clone(),
+            cache_styles: options.cache_styles,
+            css_targets: options.css_targets.clone(),
+        },
+    );
+
+    if !preprocessed.diagnostics.is_empty() {
+        return CompileResult {
+            js: None,
+            css: None,
+            diagnostics: preprocessed.diagnostics,
+        };
+    }
+
     let js_alloc = arena_reuse::acquire();
-    let result = compile_in(&js_alloc, source, options);
+    let result = compile_in(&js_alloc, &preprocessed.code, options, preprocessed.map);
     arena_reuse::release(js_alloc);
     result
 }
@@ -127,15 +163,16 @@ fn compile_in(
     js_alloc: &oxc_allocator::Allocator,
     source: &str,
     options: &CompileOptions,
+    preprocessor_map: Option<svelte_sourcemap::SourceMap<'static>>,
 ) -> CompileResult {
     let candidate_name = options.component_name();
-    let preprocessor_map = options
-        .preprocessor_map
-        .as_deref()
-        .and_then(svelte_sourcemap::parse_input_map);
 
-    let (mut component, js_result, mut diagnostics) =
-        svelte_parser::parse_with_js(js_alloc, source);
+    let (mut component, js_result, mut diagnostics) = svelte_parser::parse_with_js_diagnostics(
+        js_alloc,
+        source,
+        options.transform_typescript,
+        options.report_all_errors,
+    );
     validate_compile_options(options, &mut diagnostics);
     apply_compile_options_to_component(&mut component, options);
     let css_parsed = svelte_parser::parse_css_block(&component);

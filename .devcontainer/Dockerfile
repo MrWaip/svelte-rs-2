@@ -8,6 +8,7 @@ ENV CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
     NVM_DIR=/usr/local/nvm \
     PATH=/usr/local/cargo/bin:/usr/local/nvm/versions/node/v${NODE_VERSION}/bin:$PATH \
+    NODE_USE_SYSTEM_CA=1 \
     DEBIAN_FRONTEND=noninteractive
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
