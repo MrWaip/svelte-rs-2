@@ -97,6 +97,11 @@ inherits = "release"
 lto = false
 codegen-units = 16
 
+[profile.bench]
+inherits = "release"
+lto = "thin"
+codegen-units = 4
+
 [profile.test]
 # Local development in this workspace repeatedly rebuilds large compiler crates.
 # Favor incremental test rebuilds and cheaper debug info so `test-compiler` is fast.
