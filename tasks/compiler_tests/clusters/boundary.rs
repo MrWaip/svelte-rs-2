@@ -16,6 +16,11 @@ compiler_case!(
 );
 compiler_case!(boundary_plain_handler_guard, "boundary/plain_handler_guard");
 compiler_case!(
+    boundary_plain_handler_class_state_guard,
+    "boundary/plain_handler_class_state_guard",
+    [prod, dev, ssr, ssr_dev]
+);
+compiler_case!(
     boundary_state_handler_ident_guard,
     "boundary/state_handler_ident_guard"
 );

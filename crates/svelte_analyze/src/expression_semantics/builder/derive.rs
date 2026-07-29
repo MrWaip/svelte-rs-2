@@ -8,8 +8,9 @@ use crate::reactivity_semantics::data::ContextualBindingSemantics;
 use crate::reactivity_semantics::data::ReactivitySemantics;
 use crate::scope::{ComponentScoping, SymbolId};
 use crate::types::data::{BindingSemantics, BlockerData, PropBindingKind};
-use crate::value_evaluation::symbol_read_is_static;
+use crate::value_evaluation::{ValueClass, symbol_read_is_static};
 use oxc_ast::ast::Expression;
+use oxc_syntax::symbol::SymbolFlags;
 use smallvec::SmallVec;
 
 pub(super) fn needs_context(facts: &ExprFacts, reactivity: &ReactivitySemantics) -> bool {
@@ -98,6 +99,21 @@ fn identifier_read_is_reactive(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
     ctx.has_class_state_fields
         && ctx.scoping.is_component_top_level_symbol(sym)
         && is_unified_plain_symbol(ctx.reactivity, sym)
+        && !symbol_holds_function(ctx, sym)
+}
+
+fn symbol_holds_function(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {
+    if ctx
+        .semantics
+        .symbol_flags(sym)
+        .contains(SymbolFlags::Function)
+    {
+        return true;
+    }
+    matches!(
+        ctx.value_evaluation.evaluation(sym).class(),
+        Some(ValueClass::Function)
+    )
 }
 
 pub(super) fn symbol_is_volatile(ctx: &Ctx<'_, '_>, sym: SymbolId) -> bool {

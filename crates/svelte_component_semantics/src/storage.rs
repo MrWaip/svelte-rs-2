@@ -481,7 +481,7 @@ impl<'a> ComponentSemantics<'a> {
                 }
                 AstKind::BindingRestElement(_) => return None,
 
-                AstKind::VariableDeclarator(_) => {
+                AstKind::VariableDeclarator(_) | AstKind::Function(_) | AstKind::Class(_) => {
                     return Some((Cow::Borrowed(self.symbol_name(sym_id)), OriginKind::Ident));
                 }
                 other => {
