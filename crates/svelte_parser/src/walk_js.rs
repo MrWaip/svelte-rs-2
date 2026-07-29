@@ -5,7 +5,7 @@ use svelte_diagnostics::Diagnostic;
 use crate::parse_js::{
     DeclarationTagBody, ExpressionTagBody, parse_const_declaration_with_alloc,
     parse_declaration_body, parse_each_context_with_alloc, parse_each_index_with_alloc,
-    parse_expression_tag_body, parse_expression_with_alloc, parse_script_with_alloc,
+    parse_expression_tag_body, parse_expression_with_alloc, parse_script_with_options,
     parse_slot_let_decl_with_alloc, parse_snippet_decl_with_alloc, placeholder_expression,
     placeholder_statement,
 };
@@ -17,6 +17,7 @@ pub(crate) fn parse_js<'a>(
     component: &Component,
     result: &mut JsAst<'a>,
     diags: &mut Vec<Diagnostic>,
+    transform_typescript: bool,
 ) {
     let is_ts_lang = |s: &svelte_ast::Script| matches!(s.language, ScriptLanguage::TypeScript);
     let is_ts = component.instance_script.as_ref().is_some_and(is_ts_lang)
@@ -25,8 +26,14 @@ pub(crate) fn parse_js<'a>(
     if let Some(script) = &component.instance_script {
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts, false)
-        {
+        match parse_script_with_options(
+            alloc,
+            arena_source,
+            script.content_span.start,
+            is_ts,
+            false,
+            transform_typescript,
+        ) {
             Ok(program) => {
                 result.program = Some(program);
                 result.script_content_span = Some(script.content_span);
@@ -39,8 +46,14 @@ pub(crate) fn parse_js<'a>(
     if let Some(script) = &component.module_script {
         let source = component.source_text(script.content_span);
         let arena_source: &'a str = alloc.alloc_str(source);
-        match parse_script_with_alloc(alloc, arena_source, script.content_span.start, is_ts, false)
-        {
+        match parse_script_with_options(
+            alloc,
+            arena_source,
+            script.content_span.start,
+            is_ts,
+            false,
+            transform_typescript,
+        ) {
             Ok(program) => {
                 result.module_program = Some(program);
                 result.module_script_content_span = Some(script.content_span);

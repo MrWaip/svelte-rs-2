@@ -50,3 +50,6 @@ tmp2
 
 # napi generated platform npm packages (created in CI via `napi create-npm-dirs`)
 packages/svelte-rs/npm/
+
+# Dev container local bench mounts (machine-local)
+.devcontainer/local-mounts/

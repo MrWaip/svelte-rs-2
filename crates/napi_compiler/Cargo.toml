@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = { version = "3", features = ["napi8"] }
 napi-derive = "3"
+rayon = { workspace = true }
 svelte_compiler = { workspace = true }
 svelte_diagnostics = { workspace = true }
 svelte_parser = { workspace = true }

@@ -1,9 +1,9 @@
 # PRD: Поддерживающие крэйты (корневой)
 
 label: supporting-crates
-topics: svelte_ast_builder, svelte_emit_builders, svelte_transform_css, css scoping, injected styles, IdentGen, emit builders (store/binding/runes/props/legacy_wrap/server_refs)
+topics: svelte_ast_builder, svelte_emit_builders, svelte_transform_css, svelte_preprocess, css scoping, injected styles, IdentGen, emit builders (store/binding/runes/props/legacy_wrap/server_refs), preprocess, scss, sass, grass, lightningcss, load_paths, css_targets
 
-Корневой PRD для поддерживающих крэйтов: `svelte_ast_builder`, `svelte_emit_builders`, `svelte_transform_css`.
+Корневой PRD для поддерживающих крэйтов: `svelte_ast_builder`, `svelte_emit_builders`, `svelte_transform_css`, `svelte_preprocess`.
 
 ## `svelte_ast_builder`
 
@@ -30,11 +30,20 @@ Public entry: `transform_css(...)`, `transform_css_with_usage(...)`, `compact_cs
 - **Анти-паттерны:** пере-парсинг CSS / переклассификация селекторов тут; трогание CSS AST-полей кроме `*_override`.
 - **Injected CSS сверяется семантически, не побайтово.** Строка `$$css.code` (`css: injected` / custom element, встраивается в JS) — единственное место, где выходной JS намеренно не байт-парити с Оригиналом: мы минифицируем её в обоих режимах, Оригинал в dev сохраняет исходное форматирование. Парити держится через `test_support::canonicalize_injected_css_in_js` — переминификацию `$$css.code` обеих сторон через lightningcss во всех точках сверки (харнес, quick-check, sweep). Sourcemap injected CSS парити не держит. Не выравнивать под Оригинал — расхождение намеренное; причина и механизм — `adr/0003-injected-css-semantic-compare.md`.
 
+## `svelte_preprocess`
+
+Public entry: компиляция `<style lang="scss|sass">` до разбора CSS. Включается опцией `transform_style` (см. `compiler.md` §«Встроенный препроцессинг»); scss через `grass`, browser targets через `lightningcss`, сплайс региона обратно в исходник через `svelte_sourcemap`.
+
+- **Назначение:** снять препроцессинг стилей с JS-обвязки, оставив вход и выход текстовыми — препроцессор получает строку блока, а не файл.
+- **Спецификаторы с явным расширением резолвятся до `grass`.** Для `@use "…/theme.scss"` `grass` load paths игнорирует, поэтому такие спецификаторы переписываются в абсолютные пути заранее — включая резолв через `exports` из `package.json` пакета.
+- **Каталог самого компонента — первый load path.** Вход для `grass` — строка, а не файл, поэтому без этого относительный `@import '../styles'` внутри `<style>` не резолвится.
+- **Анти-паттерны:** отдавать `grass` спецификатор с расширением, не резолвя его; собирать load paths без каталога компонента; полагаться на кэш стилей в watch-режиме (`cache_styles` — только one-shot, `compiler.md` §«Архитектурные инварианты»).
+
 ## Связь с другими документами
 
 - `context.md` §«Кросс-каттинг».
 - `ast.md` — `oxc_ast` (что строит `Builder`) и `svelte_css::ast` (`*_override`-поля).
 - `transform.md`, `codegen.md` — потребители `Builder` и `emit_builders`.
 - `reactivity-semantics.md` — `BindingSemantics` для `$.store_*`-форм.
-- `compiler.md` — CSS-шаг пайплайна.
+- `compiler.md` — CSS-шаг пайплайна, §«Встроенный препроцессинг» (опции `transform_style` / `cache_styles`).
 - `adr/0003-injected-css-semantic-compare.md` — почему injected CSS сверяется семантически.

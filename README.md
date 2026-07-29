@@ -7,9 +7,9 @@
 Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.56.4**) — same JS output, ~9× faster.
 
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MrWaip/svelte-rs)
-[![npm](https://img.shields.io/badge/npm-%40mrwaip%2Fsvelte--rs2-cb3837)](https://www.npmjs.com/package/@mrwaip/svelte-rs)
+[![npm](https://img.shields.io/badge/npm-%40mrwaip%2Fsvelte--rs-cb3837)](https://www.npmjs.com/package/@mrwaip/svelte-rs)
 [![vite-plugin](https://img.shields.io/npm/v/@mrwaip/vite-plugin-svelte?label=vite-plugin-svelte&color=646cff)](https://www.npmjs.com/package/@mrwaip/vite-plugin-svelte)
-[![tests](https://img.shields.io/badge/e2e_tests-10k%2B-success)](./tasks/compiler_tests/cluster_cases)
+[![tests](https://img.shields.io/badge/e2e_tests-12k%2B-success)](./tasks/compiler_tests/cluster_cases)
 
 [Playground](https://mrwaip.github.io/svelte-rs/) · [Issues](https://github.com/MrWaip/svelte-rs/issues)
 
@@ -27,8 +27,8 @@ Drop-in replacement for `svelte/compiler` (pinned to **svelte@5.56.4**) — same
   <img src="./assets/benchmark.svg" alt="svelte-rs compiler benchmark — ~9× faster than svelte/compiler, ~3.7× faster than rsvelte" width="720">
 </picture>
 
-- **Byte-exact JS output** — **~2,600 cases** (1,404 cluster + 1,199 legacy), each diffed against the reference compiler in all four modes (client/server × dev/prod) — **10,000+ passing comparisons**.
-- **Diagnostics parity** — **731 cases** across 26 categories (a11y, runes, CSS, TypeScript, …), matched against `svelte/compiler`'s own warnings and errors by code, severity, and span.
+- **Byte-exact JS output** — **~3,000 cases** (1,840 cluster + 1,182 legacy), each diffed against the reference compiler in all four modes (client/server × dev/prod) — **12,000+ passing comparisons**.
+- **Diagnostics parity** — **823 cases** across 27 categories (a11y, runes, CSS, TypeScript, …), matched against `svelte/compiler`'s own warnings and errors by code, severity, and span.
 - **Drop-in** — same `compile()` / `compileModule()` API as `svelte/compiler`.
 - **~9× faster** on two anonymized real-world production codebases (8.6–10.2× across every mode, 3.7–4.9× over rsvelte's native binding).
 - **Ready to try** — wired into a fork of `vite-plugin-svelte`, so it runs in a real Vite app today.
@@ -56,6 +56,9 @@ The API mirrors `svelte/compiler`; see `packages/svelte-rs/compiler/index.d.ts`.
 
 - **`warningFilter: (warning) => boolean`** — matches Svelte 5's option; drops warnings the predicate rejects.
 - **`suppress: WarningCode[]`** — a typed list of warning codes dropped at the source. Cheaper than filtering after the fact: suppressed warnings are never built, framed, or serialized.
+- **`transformTypescript: true`** — transpiles TypeScript features that emit runtime code (`enum`, `namespace`, parameter properties, decorators) instead of reporting `typescript_invalid_feature`. Behaviourally equivalent to `vitePreprocess({ script: true })`, not byte-equal: esbuild inlines enum member reads and renames shadowed parameters, we don't.
+- **`transformStyle: true`** (+ **`loadPaths`**) — compiles `lang="scss"` / `lang="sass"` with `grass` before the CSS pipeline. Semantically equal to dart-sass on our corpus (verified by lightningcss re-minification), but `grass` does not promise full dart-sass compatibility — keep a JS preprocessor fallback for unsupported constructs.
+- **`cssTargets: string[]`** — browserslist queries; lowers modern CSS and adds vendor prefixes via `lightningcss`, replacing `postcss` + `autoprefixer`. Not byte-equal to autoprefixer: the prefix databases disagree (e.g. autoprefixer still emits `-moz-user-select` where lightningcss does not).
 - **`withDiagnostics: true`** — returns `{ js, css, diagnostics }` where each diagnostic carries `severity: 'error' | 'warning'`, and never throws on error. Handy for editors, linters, and batch tooling.
 
 Real input → output for every mode lives in [`tasks/compiler_tests/cluster_cases/`](./tasks/compiler_tests/cluster_cases): each leaf has `case.svelte` plus our output and the reference (`case-rust.js` / `case-svelte.js`, `.dev.js`, `.server.js`, `.server.dev.js`). The older flat [`cases2/`](./tasks/compiler_tests/cases2) suite is legacy but still checked.
@@ -107,7 +110,8 @@ Parity target: **svelte@5.56.4**. Check this before logging an issue.
 | HMR | done | Hot-module-replacement output supported. |
 | Custom elements | in progress | Basic path works; some option combinations not covered. |
 | Compiler options | in progress | Most common options honored (incl. `discloseVersion`, `warningFilter`); long tail still landing. |
-| Preprocessors | not ready | Not started. |
+| Preprocessors | done | `preprocess()` with markup / script / style hooks, dependency collection, sourcemap splicing. |
+| Built-in preprocessing | opt-in | `transformTypescript` (enum / namespace / decorators via OXC), `transformStyle` (scss / sass via `grass`, `loadPaths`), `cssTargets` (vendor prefixes via `lightningcss`). Runs inside the compiler with no Node round trip. Outside the parity contract — see below. |
 
 **done** — no known deficits; OK to log bugs. **in progress** — partially working; log panics only. **not ready** — don't file bugs yet.
 
@@ -152,8 +156,8 @@ Requires Rust, Node, and [`just`](https://github.com/casey/just) (`cargo install
 ```sh
 just playground               # build wasm + serve playground
 just quick-check App.svelte   # diff one component against svelte/compiler
-just test-compiler            # run the 10,000+ comparison e2e suite (all modes)
-just test-diagnostics         # run the 731-case diagnostics parity suite
+just test-compiler            # run the 12,000+ comparison e2e suite (all modes)
+just test-diagnostics         # run the 823-case diagnostics parity suite
 ```
 
 ## Contributing

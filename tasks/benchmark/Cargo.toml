@@ -29,6 +29,10 @@ name = "svelte_compile_module_dev"
 harness = false
 
 [[bin]]
+name = "corpus_bench"
+path = "src/bin/corpus_bench.rs"
+
+[[bin]]
 name = "profile"
 path = "src/bin/profile.rs"
 
@@ -61,4 +65,5 @@ svelte_ast = { workspace = true }
 oxc_allocator = { workspace = true }
 criterion2 = { workspace = true }
 glob = { workspace = true }
+rayon = { workspace = true }
 mimalloc = { workspace = true }

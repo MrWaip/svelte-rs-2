@@ -588,7 +588,10 @@ if (!nativeBinding) {
 
 module.exports = nativeBinding
 module.exports.compile = nativeBinding.compile
+module.exports.compileAsync = nativeBinding.compileAsync
+module.exports.compileBatchAsync = nativeBinding.compileBatchAsync
 module.exports.compileModule = nativeBinding.compileModule
+module.exports.compileModuleAsync = nativeBinding.compileModuleAsync
 module.exports.findPreprocessorRegions = nativeBinding.findPreprocessorRegions
 module.exports.sourceMapToJson = nativeBinding.sourceMapToJson
 module.exports.spliceRegion = nativeBinding.spliceRegion

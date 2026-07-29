@@ -1,8 +1,12 @@
+use std::path::Path;
+
 use oxc_allocator::Allocator;
 use oxc_ast::AstBuilder;
 use oxc_ast::ast::{Expression, Program, Statement, VariableDeclarationKind};
 use oxc_parser::Parser as OxcParser;
+use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType, Span as OxcSpan};
+use oxc_transformer::{TransformOptions, Transformer};
 
 use svelte_diagnostics::Diagnostic;
 use svelte_span::Span;
@@ -187,6 +191,17 @@ pub fn parse_script_with_alloc<'a>(
     typescript: bool,
     is_module: bool,
 ) -> Result<Program<'a>, Vec<Diagnostic>> {
+    parse_script_with_options(alloc, source, offset, typescript, is_module, false)
+}
+
+pub fn parse_script_with_options<'a>(
+    alloc: &'a Allocator,
+    source: &'a str,
+    offset: u32,
+    typescript: bool,
+    is_module: bool,
+    transform_typescript: bool,
+) -> Result<Program<'a>, Vec<Diagnostic>> {
     let source_type = if typescript {
         SourceType::mjs().with_typescript(true)
     } else {
@@ -204,6 +219,11 @@ pub fn parse_script_with_alloc<'a>(
     }
 
     let mut program = result.program;
+
+    if typescript && transform_typescript {
+        run_typescript_transform(alloc, &mut program);
+    }
+
     process_program(
         alloc,
         &mut program,
@@ -212,6 +232,17 @@ pub fn parse_script_with_alloc<'a>(
         is_module,
     );
     Ok(program)
+}
+
+fn run_typescript_transform<'a>(alloc: &'a Allocator, program: &mut Program<'a>) {
+    let scoping = SemanticBuilder::new()
+        .build(program)
+        .semantic
+        .into_scoping();
+    let mut options = TransformOptions::default();
+    options.typescript.only_remove_type_imports = true;
+    let source_path = Path::new("component.ts");
+    Transformer::new(alloc, source_path, &options).build_with_scoping(scoping, program);
 }
 
 pub enum DeclarationTagBody<'a> {

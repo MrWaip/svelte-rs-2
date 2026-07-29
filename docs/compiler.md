@@ -1,7 +1,7 @@
 # PRD: Compiler entry (корневой)
 
 label: compiler
-topics: compiler entry, compile/compile_module, pipeline orchestration, CompileOptions, diagnostics aggregation, standalone .svelte.js, hmr
+topics: compiler entry, compile/compile_module, pipeline orchestration, CompileOptions, diagnostics aggregation, standalone .svelte.js, hmr, preprocess, transform_typescript, transform_style, cache_styles, style_prepend, load_paths, css_targets
 
 Корневой PRD для crate `svelte_compiler` — единственного оркестратора пайплайна.
 Public entry: `compile(source, &CompileOptions) -> CompileResult`. Module entry: `compile_module(source, &ModuleCompileOptions)`.
@@ -24,17 +24,26 @@ Public entry: `compile(source, &CompileOptions) -> CompileResult`. Module entry:
 
 **Точка ветвления client | server — строго после анализа.** Два backend'а (`transform.md` + `codegen.md` против `transform-server.md` + `codegen-server.md`) потребляют одну и ту же `AnalysisData`; target-специфичных веток и полей в анализе нет (см. `context.md` §«Codegen-агностичность анализа»).
 
+## Встроенный препроцессинг
+
+Две opt-in опции снимают препроцессинг с JS-обвязки. `transform_typescript` — TypeScript снимается в парсере (шаг 2 пайплайна). `transform_style` — `<style lang="scss|sass">` компилируется в `svelte_preprocess` до разбора CSS (шаг 4); сопутствующие опции `load_paths`, `style_prepend` (аналог sass `additionalData`), `css_targets`, `cache_styles`.
+
+Механика самого препроцессора — `supporting-crates.md` §«`svelte_preprocess`».
+
 ## Архитектурные инварианты
 
 1. **Compiler — единственный владелец `Allocator`.** Фаза-функции его заимствуют; второй `Allocator` посреди пайплайна не аллоцируется.
 2. **Сам compiler не производит диагностик** — агрегирует из парсера + анализа и возвращает единый `Vec<Diagnostic>`.
 3. **Standalone module path** (`compile_module`) роутится через `analyze_module` и пропускает template/css-шаги. После анализа ветвится по `generate` так же, как component path: `server` → `svelte_transform_server::transform_module` + `svelte_codegen_server::generate_module` (import `svelte/internal/server` + стёртое тело, без render-функции), иначе клиентский `generate_module`.
 4. **`hmr` — только backend-опция.** Протягивается в `CodegenOptions` (оба backend'а), но не в `AnalyzeOptions`/`TransformOptions`: анализ и трансформ hmr не наблюдают. Проверка: `grep -ri hmr crates/svelte_analyze crates/svelte_transform_client crates/svelte_transform_server` пуст.
+5. **TS-стриппинг сохраняет value-импорты.** `transform_typescript` строит `TransformOptions` с `only_remove_type_imports = true`: импорт, использованный только в шаблоне, для oxc выглядит мёртвым, и без этого флага из графа модулей пропадают компоненты вместе с их CSS.
+6. **`cache_styles` — только для one-shot сборки.** Кэш скомпилированного стиля живёт в процессе и не инвалидируется по mtime, поэтому в dev/watch опция неприменима.
 
 ## Анти-паттерны
 
 - Аллокация второго `Allocator` посреди пайплайна.
 - Инлайн логики анализа / трансформа / кодгена в entry-crate.
+- Логика препроцессинга в entry-crate вместо `svelte_preprocess`.
 
 ## Релизная сборка
 
@@ -47,5 +56,5 @@ Public entry: `compile(source, &CompileOptions) -> CompileResult`. Module entry:
 
 - `context.md` §«Слои крэйтов», §«Кросс-каттинг» (standalone-модули, диагностики).
 - `parser.md`, `analyze.md`, `transform.md`, `codegen.md` — фазы, которые оркестрирует.
-- `supporting-crates.md` — `svelte_transform_css` (CSS-шаг пайплайна).
+- `supporting-crates.md` — `svelte_transform_css` (CSS-шаг пайплайна), `svelte_preprocess` (препроцессинг стилей).
 - `adr/0007-pgo-release-build.md` — почему релизный аддон собирается с PGO.

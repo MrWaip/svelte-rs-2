@@ -4,7 +4,7 @@
     "dockerfile": "Dockerfile"
   },
   "remoteUser": "vscode",
-  "initializeCommand": "docker run --rm --privileged --pid=host alpine sysctl -w kernel.perf_event_paranoid=1 >/dev/null 2>&1 || true",
+  "initializeCommand": "sh .devcontainer/initialize.sh",
   "runArgs": [
     "--cap-add=SYS_PTRACE",
     "--cap-add=PERFMON",
@@ -21,8 +21,7 @@
     "source=svelte-rs-cargo-registry,target=/usr/local/cargo/registry,type=volume",
     "source=svelte-rs-cargo-git,target=/usr/local/cargo/git,type=volume",
     "source=svelte-rs-target,target=/workspaces/svelte-rs/target,type=volume",
-    "source=svelte-rs-node-modules,target=/workspaces/svelte-rs/node_modules,type=volume",
-    "source=${localEnv:HOME}/personal-code/svelte/packages/svelte/tests,target=/workspaces/samples,type=bind,consistency=cached"
+    "source=svelte-rs-node-modules,target=/workspaces/svelte-rs/node_modules,type=volume"
   ],
   "remoteEnv": {
     "GH_TOKEN": "${localEnv:GH_TOKEN}"
@@ -39,7 +38,8 @@
     "COLORTERM": "truecolor"
   },
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "./local-mounts": {}
   },
   "customizations": {
     "vscode": {

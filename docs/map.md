@@ -49,6 +49,7 @@
 - `svelte_compiler` — оркестрация + опции (`src/options.rs`), агрегация диагностик.
 - `svelte_diagnostics` — тип `Diagnostic`, коды (`src/codes.rs`), `svelte-ignore` (`src/extract_svelte_ignore.rs`).
 - `svelte_sourcemap` — sourcemaps (WIP).
+- `svelte_preprocess` — встроенный препроцессинг стилей: scss/sass через `grass`, browser targets через `lightningcss`, сплайс региона через `svelte_sourcemap`. Вход `src/lib.rs`.
 
 ## Тесты и инструменты (`tasks/`)
 
