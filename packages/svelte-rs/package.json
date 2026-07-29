@@ -1,7 +1,29 @@
 {
   "name": "@mrwaip/svelte-rs",
   "version": "0.0.0-canary.0",
+  "description": "The Svelte 5 compiler, rewritten in Rust — a drop-in replacement for svelte/compiler with byte-exact JS output and ~9x faster compilation.",
+  "keywords": [
+    "svelte",
+    "svelte5",
+    "svelte-compiler",
+    "compiler",
+    "rust",
+    "native",
+    "napi-rs",
+    "runes",
+    "ssr",
+    "vite",
+    "performance"
+  ],
   "license": "MIT",
+  "author": "Lobkov Constantine (https://github.com/MrWaip)",
+  "homepage": "https://github.com/MrWaip/svelte-rs#readme",
+  "bugs": {
+    "url": "https://github.com/MrWaip/svelte-rs/issues"
+  },
+  "engines": {
+    "node": "^20.19 || ^22.12 || >=24"
+  },
   "type": "module",
   "files": [
     "README.md",
@@ -18,7 +40,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/MrWaip/svelte-rs"
+    "url": "git+https://github.com/MrWaip/svelte-rs.git",
+    "directory": "packages/svelte-rs"
   },
   "scripts": {
     "build": "napi build --manifest-path ../../crates/napi_compiler/Cargo.toml -p napi_compiler --platform --output-dir compiler/native --js binding.cjs --dts binding.d.ts",
