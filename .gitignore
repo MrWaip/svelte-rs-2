@@ -53,3 +53,4 @@ packages/svelte-rs/npm/
 
 # Dev container local bench mounts (machine-local)
 .devcontainer/local-mounts/
+playground/blog/
