@@ -38,7 +38,7 @@ The first hard part was how to parse JS. Svelte used acorn for that. OXC already
 
 A script tag is fairly easy to parse, but an expression like `{ 1 + 1 }` was not obvious to me. You can't just scan from brace to brace, because a JS expression can have nested braces inside. It can have string literals like `"${name}"`. The original compiler just hands acorn the chunk starting at `{` and lets it find the end of the expression itself.
 
-I couldn't come up with anything better than counting brace balance and not parsing JS at the lexer stage, especially since OXC couldn't behave like acorn and would blow up. That way lexing stayed backtracking-free, O(n).
+I couldn't think of anything better than counting brace balance and not parsing JS in the lexer at all. OXC also couldn't behave like acorn and would just blow up. So lexing stayed backtracking-free, O(n).
 
 That's also when I decided to write a recovering parser. Svelte's parsing is built on exceptions: the first error stops it, and in the IDE you see one problem at a time. In mine the error goes into a list and parsing continues. The idea was to eventually embed it in an LSP.
 
@@ -58,7 +58,7 @@ export default function App($$anchor) {
 
 No three text nodes, no three assignments. Things like that don't fall out of the grammar, you have to go find them in the original one by one.
 
-And how do you design an AST in Rust? I decided to follow the JS version of the AST and store strings. But not `String`, just `str`, efficient, no allocations, same string, I thought. The next mistake was storing meta information in the AST, like the original does, filled in by analysis phase. Both of these decisions meant a lifetime grew through the entire AST, and mutating a tree like that without Cell, RefCell, .borrow was impossible. Together it turned into code that's slow and boring to write and maintain.
+And how do you design an AST in Rust? I decided to follow the JS version of the AST and store strings. But not `String`, just `str`, efficient, no allocations, same string, I thought. The next mistake was storing meta information in the AST, like the original does, filled in by analysis phase. Both decisions meant a lifetime grew through the whole AST. And mutating such a tree without Cell, RefCell, .borrow was impossible. Together it turned into code that's slow and boring to write and maintain.
 
 A separate headache: where to put all these optimizations and facts about the code. I didn't want to shove them into the AST, it was already bloated with meta fields. That's when I read about how HIR works in rustc, and it seemed logical: there it is, a second tree, let's put everything there.
 
@@ -68,7 +68,7 @@ And it was pointless. The separate tree turned out to be unnecessary: the thing 
 
 That was the final nail in the coffin of my motivation.
 
-Five and a half months, 303 commits, and I'd gotten nowhere. I was falling further behind the original, they were shipping new features, OXC kept updating, and I was drowning in lifetimes and boilerplate. Writing Rust was exhausting and I spent more time threading types around than doing actual useful work. I realized I wouldn't finish it in a year, that I'd burn out on top of it, and that I'd be behind the original forever. I quit on Apr 24, 2025, on the commit `each block`, in the middle of `{#each}`. And forgot about the whole thing for ten and a half months.
+Five and a half months, 303 commits, and I'd gotten nowhere. I was falling further behind the original, they were shipping new features, OXC kept updating, and I was drowning in lifetimes and boilerplate. Writing Rust was exhausting and I spent more time threading types around than doing actual useful work. I understood I wouldn't finish it even in a year. And I'd burn out on top of that, and stay behind the original forever. I quit on Apr 24, 2025, on the commit `each block`, in the middle of `{#each}`. And forgot about the whole thing for ten and a half months.
 
 # Second try: AI generation
 
@@ -174,7 +174,7 @@ And out of that thought later grew the /verdict-directed principle: analysis pro
 query semantic by id -> match exhaustive Semantic -> emit/rewrite
 ```
 
-That refactor also took a long time, but now I started to fully understand and notice when something was going wrong. It got easier to keep an eye on the AI: if it does something ad hoc in codegen that could be moved into semantics. And the `/verdict-directed` review agent got noticeably better and actually useful. Clear dependencies between analysis passes also appeared, instead of spaghetti.
+That refactor also took a long time, but now I started to fully understand and notice when something was going wrong. It got easier to keep an eye on the AI. When it does something ad hoc in codegen that belongs in semantics, I see it now. And the `/verdict-directed` review agent got noticeably better and actually useful. Clear dependencies between analysis passes also appeared, instead of spaghetti.
 
 ./specs was wiped, and ./docs/ came in its place, holding real specs/PRDs. They described how a given piece of the system works. ReactivitySemantics, for example. What it's responsible for, what the main public methods are, where it lives. Invariants of what you can and can't do. These files are reviewed strictly per `/writing-docs` for fluff and junk, only the info that's hard or expensive to derive from the code, because it runs through many systems. A `/required` skill was written for it: it greps tags out of ./docs and reads the files that match. As a whole this gave a boost in writing quality and speed. Fewer ad-hoc fixes, and more often in the right places. A model is a model, and sometimes it wrote absolute garbage, you just have to make peace with that.
 
@@ -206,17 +206,17 @@ The result is mixed.
 
 First, on a codebase with vite < 8 and svelte-check without TypeScript 7, it gives a significant boost. The biggest project, 23k components on Vite 7: it was 3:37, now it's 2:09. Minus 40% off every build. On the Mac with 8 gigs, `npm run build` completes, where with the original compiler it got OOM killed. In dev mode Vite starts faster, prebundles faster, HMR is faster. All of that is great.
 
-Second, on projects with Vite 8 and svelte-check with `--tsgo` the difference isn't as dramatic, 8-10 seconds, about 9% of the build, because Rolldown uses parallelism and keeps the whole structure in Rust code, so it automatically eats less memory and the slow Svelte compiler isn't sequential anymore, it's parallelized. And with the Rust compiler it takes a negligible amount of time, 0.2 seconds for all the project's components.
+Second, on projects with Vite 8 and svelte-check with `--tsgo` the difference isn't that big. 8-10 seconds, about 9% of the build. Rolldown is parallel and keeps the whole structure in Rust code, so it eats less memory by itself, and the slow Svelte compiler isn't sequential anymore. And with Rust compiler it's nothing at all, 0.2 seconds for every component in the project.
 
 But the seconds aren't the point at all, and I only understood that at the end.
 
-The point is memory. A JS compiler allocates the AST in the same V8 heap where the module graph already lives. On Rollup that's not "N seconds slower," it's "does it build or not."
+The point is memory. JS compiler allocates AST in the same V8 heap where module graph already lives. On Rollup that's not "N seconds slower", that's "does it build or not".
 
-Second: the compiler is mine, so I can drag anything I want into it. SCSS and TypeScript preprocessing moved into Rust, sass-embedded got thrown out: grass compiles a style block in 2.6 ms versus 30. With someone else's JS compiler that move is impossible in principle.
+And the compiler is mine, so I can drag into it whatever I want. SCSS and TypeScript preprocessing moved into Rust, sass-embedded got thrown out, grass compiles a style block in 2.6 ms versus 30. With someone else's JS compiler you can't do that at all.
 
-Third: where there's no bundler, speed starts to matter again. That's the IDE and svelte-check: 2785 components in a loop, without Rolldown to hide the difference.
+Where there's no bundler, speed matters again. IDE and svelte-check, 2785 components in a loop, no Rolldown to hide the difference behind itself.
 
-And fourth, the most boring one: it's a drop-in replacement. A byte-for-byte match with the original across 144k components means you can install it with one line and remove it with one line. Didn't like it? Roll back, nothing breaks.
+And the boring one. It's a drop-in replacement. Byte-for-byte match across 144k components means you install it with one line and remove it with one line. Didn't like it, roll back, nothing breaks.
 
 In the first attempt, 108 days with commits and an abandoned `{#each}`. In the second, 106 days and a working compiler.
 
@@ -226,6 +226,6 @@ Yes, when I started I didn't know about rsvelte. And I didn't know that with Vit
 
 Code is here: https://github.com/MrWaip/svelte-rs. It's canary, there are bugs, we're already using it on our projects.
 
-If this kind of experience interests you, I can go into specifics later: about the skills and hooks, about how the compiler itself is built, about how the parity harness is done. Write and tell me what would be more useful.
+If anyone wants details on the skills and hooks, or how the compiler is built inside, or how the parity harness works, say so and I'll figure something out.
 
 And honestly, I'm taking a break from this project, I'm pretty tired. For a while. Happy hacking, everyone!
