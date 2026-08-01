@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 440" width="780" height="440" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+  <rect x="1" y="1" width="778" height="438" rx="16" fill="#0e141d" stroke="#20293480" stroke-width="1"/>
+
+  <circle cx="53" cy="50" r="5" fill="#ff5a1f"/>
+  <text x="69" y="56" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" letter-spacing="2" fill="#8b98a5">7,910 REAL COMPONENTS · SINGLE-THREAD</text>
+
+  <text x="48" y="118" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" font-weight="700" letter-spacing="-1" fill="#e6edf3">Compiling Svelte,</text>
+  <text x="48" y="158" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" font-weight="700" letter-spacing="-1" fill="#ff5a1f">the Rust way.</text>
+
+  <text x="48" y="212" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#e6edf3">svelte/compiler <tspan fill="#8b98a5" font-weight="400">5.56.4</tspan></text>
+  <text x="732" y="212" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#e6edf3" text-anchor="end">1,995.2 <tspan fill="#8b98a5" font-weight="400">ms</tspan></text>
+  <rect x="48" y="222" width="684" height="32" rx="8" fill="#1a2029"/>
+  <rect x="48" y="222" width="684" height="32" rx="8" fill="#6b7784"/>
+
+  <text x="48" y="286" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#e6edf3">rsvelte <tspan fill="#8b98a5" font-weight="400">0.3.1 native</tspan></text>
+  <text x="732" y="286" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#e6edf3" text-anchor="end">820.2 <tspan fill="#8b98a5" font-weight="400">ms</tspan></text>
+  <rect x="48" y="296" width="684" height="32" rx="8" fill="#1a2029"/>
+  <rect x="48" y="296" width="281.2" height="32" rx="8" fill="#47515f"/>
+
+  <text x="48" y="360" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#e6edf3">svelte-rs</text>
+  <rect x="153" y="345" width="46" height="20" rx="10" fill="#ff5a1f"/>
+  <text x="176" y="359" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10" font-weight="700" fill="#2a0e04" text-anchor="middle">OURS</text>
+  <text x="732" y="360" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#e6edf3" text-anchor="end">221.7 <tspan fill="#8b98a5" font-weight="400">ms</tspan></text>
+  <rect x="48" y="370" width="684" height="32" rx="8" fill="#2a1810"/>
+  <rect x="46" y="368" width="80.0" height="36" rx="10" fill="none" stroke="#ff5a1f" stroke-opacity="0.5" stroke-width="2"/>
+  <rect x="48" y="370" width="76.0" height="32" rx="8" fill="#ff5a1f"/>
+  <text x="140" y="392" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#ff5a1f">9.0× faster</text>
+
+  <text x="48" y="424" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#5a6673">shorter is faster · median of 5 runs · 8.6–10.2× across every mode</text>
+</svg>
